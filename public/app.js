@@ -420,36 +420,110 @@ function renderVelocities() {
 // ══════════════════════════════════════════════════════════
 //  ACCOUNTS
 // ══════════════════════════════════════════════════════════
-let acSort = {col:'name', dir:1};
-let acSearch = '';
+function acLastContacted(a) {
+  const noteDate     = a.notes?.length ? a.notes[a.notes.length-1].date : null;
+  const outreachDate = a.outreach?.length ? a.outreach[a.outreach.length-1].date : null;
+  if (noteDate && outreachDate) return noteDate > outreachDate ? noteDate : outreachDate;
+  return noteDate || outreachDate || null;
+}
 
 function renderAccounts() {
   let list = DB.a('ac');
-  if (acSearch) {
-    const q = acSearch.toLowerCase();
-    list = list.filter(a=>a.name.toLowerCase().includes(q)||a.contact?.toLowerCase().includes(q)||a.territory?.toLowerCase().includes(q));
-  }
+  const search     = qs('#ac-search')?.value?.toLowerCase().trim() || '';
+  const typeFilter = qs('#ac-type-filter')?.value || '';
+  const sortVal    = qs('#ac-sort')?.value || 'name';
+
+  if (search) list = list.filter(a=>
+    a.name?.toLowerCase().includes(search) ||
+    a.contact?.toLowerCase().includes(search) ||
+    a.territory?.toLowerCase().includes(search) ||
+    a.address?.toLowerCase().includes(search));
+  if (typeFilter) list = list.filter(a=>a.type===typeFilter);
+
   list = list.slice().sort((a,b)=>{
-    const av = (a[acSort.col]||'').toString().toLowerCase();
-    const bv = (b[acSort.col]||'').toString().toLowerCase();
-    return av < bv ? -acSort.dir : av > bv ? acSort.dir : 0;
+    if (sortVal==='name')          return (a.name||'') < (b.name||'') ? -1 : 1;
+    if (sortVal==='lastOrder')     return (a.lastOrder||'') < (b.lastOrder||'') ? 1 : -1;
+    if (sortVal==='lastContacted') return (acLastContacted(a)||'') < (acLastContacted(b)||'') ? 1 : -1;
+    if (sortVal==='territory')     return (a.territory||'') < (b.territory||'') ? -1 : 1;
+    return 0;
   });
 
-  const tbody = qs('#ac-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = list.map(a=>`
-    <tr onclick="openAccount('${a.id}')" style="cursor:pointer">
-      <td><strong>${a.name}</strong></td>
-      <td>${a.contact||'—'}</td>
-      <td>${a.type||'—'}</td>
-      <td>${a.territory||'—'}</td>
-      <td>${statusBadge(AC_STATUS, a.status)}</td>
-      <td>${(a.skus||[]).map(skuBadge).join(' ')}</td>
-      <td>${daysAgo(a.lastOrder) < 999 ? daysAgo(a.lastOrder)+'d ago' : '—'}</td>
-      <td><button class="btn xs" onclick="event.stopPropagation();openAccount('${a.id}')">View</button></td>
-    </tr>`).join('') || '<tr><td colspan="8" class="empty">No accounts yet</td></tr>';
+  const el = qs('#ac-cards');
+  if (!el) return;
+  if (qs('#ac-count')) qs('#ac-count').textContent = `${list.length} account${list.length!==1?'s':''}`;
 
-  qs('#ac-count').textContent = `${list.length} account${list.length!==1?'s':''}`;
+  el.innerHTML = list.map(a=>{
+    const lastContact  = acLastContacted(a);
+    const needsAttn    = daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30;
+
+    const lastOrderHtml = a.lastOrder
+      ? `<span class="ac-metric-val${daysAgo(a.lastOrder)>=30?' red':''}">${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d)</span>`
+      : `<span class="ac-metric-val red">Never</span>`;
+
+    const lastContactHtml = lastContact
+      ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
+      : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
+
+    const acOrds = DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled')
+      .sort((x,y)=>x.dueDate>y.dueDate?1:-1);
+    let velocityHtml = `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
+    if (acOrds.length>=2) {
+      const intervals=[];
+      for (let i=1;i<acOrds.length;i++){
+        const d=(new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
+        if(d>0) intervals.push(d);
+      }
+      if (intervals.length) {
+        const avg=Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
+        velocityHtml=`<span class="ac-metric-val">Every ${avg}d</span>`;
+      }
+    }
+
+    const outstanding = DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid');
+    const outstandingHtml = outstanding.length
+      ? `<span class="ac-metric-val red">${outstanding.length} unpaid</span>`
+      : `<span class="ac-metric-val green">Clear</span>`;
+
+    const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
+    const lastOutreach = a.outreach?.length ? a.outreach[a.outreach.length-1] : null;
+
+    return `<div class="ac-card${needsAttn?' needs-attention':''}">
+      <div class="ac-card-hdr">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <span class="ac-card-name">${a.name}</span>
+            ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
+          </div>
+          <div class="ac-card-sub">${[a.type,a.address].filter(Boolean).join(' · ')}</div>
+          ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).join(' · ')}</div>`:''}
+          ${a.email?`<div class="ac-card-email">✉ ${a.email}</div>`:''}
+          ${(a.locations||0)>1?`<div class="ac-card-sub">${a.locations} locations</div>`:''}
+        </div>
+        <div class="ac-card-badges">
+          ${a.type?`<span class="badge gray">${a.type}</span>`:''}
+          ${statusBadge(AC_STATUS,a.status)}
+          ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
+        </div>
+      </div>
+      <div class="ac-card-metrics">
+        <div><div class="ac-metric-label">Last Order</div>${lastOrderHtml}</div>
+        <div><div class="ac-metric-label">Last Contacted</div>${lastContactHtml}</div>
+        <div><div class="ac-metric-label">Velocity</div>${velocityHtml}</div>
+        <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
+      </div>
+      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
+      ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
+      ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${lastOutreach.note?' — '+lastOutreach.note:''}</div></div>`:''}
+      ${a.dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
+      <div class="ac-card-actions">
+        <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
+        <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
+        <button class="btn sm" onclick="logOutreach('${a.id}')">📞 Outreach</button>
+        <button class="btn sm run" onclick="openNewOrder('${a.id}')">+ Run</button>
+        <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
+      </div>
+    </div>`;
+  }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
 }
 
 function openAccount(id) {
@@ -543,10 +617,13 @@ function editAccount(id) {
   qs('#eac-contact').value = a.contact||'';
   qs('#eac-phone').value = a.phone||'';
   qs('#eac-email').value = a.email||'';
+  qs('#eac-address').value = a.address||'';
   qs('#eac-type').value = a.type||'Grocery';
   qs('#eac-territory').value = a.territory||'';
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
+  qs('#eac-locations').value = a.locations||1;
+  qs('#eac-drop-rules').value = a.dropOffRules||'';
 
   // SKU checkboxes
   qs('#eac-skus').innerHTML = SKUS.map(s=>`
@@ -588,18 +665,23 @@ function saveAccount(id, isNew) {
   const par = {};
   skus.forEach(s=>{par[s]=parseInt(qs('#par-'+s)?.value)||24;});
 
+  const existing = DB.a('ac').find(x=>x.id===id);
   const rec = {
     id, name,
-    contact: qs('#eac-contact')?.value?.trim()||'',
-    phone:   qs('#eac-phone')?.value?.trim()||'',
-    email:   qs('#eac-email')?.value?.trim()||'',
-    type:    qs('#eac-type')?.value||'Grocery',
-    territory: qs('#eac-territory')?.value?.trim()||'',
-    status:  qs('#eac-status')?.value||'active',
-    since:   qs('#eac-since')?.value||today(),
+    contact:      qs('#eac-contact')?.value?.trim()||'',
+    phone:        qs('#eac-phone')?.value?.trim()||'',
+    email:        qs('#eac-email')?.value?.trim()||'',
+    address:      qs('#eac-address')?.value?.trim()||'',
+    type:         qs('#eac-type')?.value||'Grocery',
+    territory:    qs('#eac-territory')?.value?.trim()||'',
+    status:       qs('#eac-status')?.value||'active',
+    since:        qs('#eac-since')?.value||today(),
+    locations:    parseInt(qs('#eac-locations')?.value)||1,
+    dropOffRules: qs('#eac-drop-rules')?.value?.trim()||'',
     skus, par,
-    notes:   DB.a('ac').find(x=>x.id===id)?.notes||[],
-    lastOrder: DB.a('ac').find(x=>x.id===id)?.lastOrder||null,
+    notes:     existing?.notes||[],
+    outreach:  existing?.outreach||[],
+    lastOrder: existing?.lastOrder||null,
   };
 
   if (isNew) DB.push('ac', rec);
@@ -620,29 +702,77 @@ function deleteAccount(id) {
 // ══════════════════════════════════════════════════════════
 //  PROSPECTS
 // ══════════════════════════════════════════════════════════
-function renderProspects() {
-  const pr = DB.a('pr');
-  const groups = {};
-  Object.keys(PR_STATUS).forEach(s=>groups[s]=[]);
-  pr.forEach(p=>{(groups[p.status]||groups.lead).push(p);});
+const PRIORITY_CFG = {
+  high:   {label:'High',   cls:'red'},
+  medium: {label:'Medium', cls:'amber'},
+  low:    {label:'Low',    cls:'gray'},
+};
+const PRIORITY_ORDER = {high:0, medium:1, low:2};
 
-  const el = qs('#pr-kanban');
+function renderProspects() {
+  let list = DB.a('pr');
+  const search      = qs('#pr-search')?.value?.toLowerCase().trim() || '';
+  const stageFilter = qs('#pr-stage-filter')?.value || '';
+  const sortVal     = qs('#pr-sort')?.value || 'priority';
+
+  if (search) list = list.filter(p=>
+    p.name?.toLowerCase().includes(search) ||
+    p.contact?.toLowerCase().includes(search) ||
+    p.address?.toLowerCase().includes(search));
+  if (stageFilter) list = list.filter(p=>p.status===stageFilter);
+
+  list = list.slice().sort((a,b)=>{
+    if (sortVal==='priority') return (PRIORITY_ORDER[a.priority||'medium']||1)-(PRIORITY_ORDER[b.priority||'medium']||1);
+    if (sortVal==='nextDate') return (a.nextDate||'9999')<(b.nextDate||'9999')?-1:1;
+    if (sortVal==='name')     return (a.name||'')<(b.name||'')?-1:1;
+    return 0;
+  });
+
+  const el = qs('#pr-cards');
   if (!el) return;
-  el.innerHTML = Object.entries(PR_STATUS).map(([status, cfg])=>{
-    const cards = groups[status]||[];
-    return `<div class="card" style="min-width:180px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span class="badge ${cfg.cls}">${cfg.label}</span>
-        <span style="font-size:12px;color:var(--muted)">${cards.length}</span>
+
+  el.innerHTML = list.map(p=>{
+    const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
+    const lastNote      = p.notes?.length ? p.notes[p.notes.length-1] : null;
+    const lastOutreach  = p.outreach?.length ? p.outreach[p.outreach.length-1] : null;
+    const lastContactStr= p.lastContact
+      ? `${fmtD(p.lastContact)} (${daysAgo(p.lastContact)}d)`
+      : (lastOutreach ? `${fmtD(lastOutreach.date)} (${daysAgo(lastOutreach.date)}d)` : '—');
+    const nextFollowHtml= p.nextDate
+      ? `<span style="color:${p.nextDate<today()?'var(--red)':'var(--blue)'}">${fmtD(p.nextDate)}</span>`
+      : '<span style="color:var(--muted)">—</span>';
+
+    return `<div class="pr-card">
+      <div class="pr-card-hdr">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <span class="pr-card-name">${p.name}</span>
+          </div>
+          <div class="ac-card-sub">${[p.type,p.address||p.territory].filter(Boolean).join(' · ')}</div>
+          ${p.contact||p.phone?`<div class="ac-card-sub">${[p.contact,p.phone].filter(Boolean).join(' · ')}</div>`:''}
+          ${p.email?`<div class="ac-card-email">✉ ${p.email}</div>`:''}
+        </div>
+        <div class="ac-card-badges">
+          ${statusBadge(PR_STATUS,p.status)}
+          <span class="badge ${priCfg.cls}">${priCfg.label}</span>
+        </div>
       </div>
-      ${cards.map(p=>`
-        <div style="background:#f9fafb;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer" onclick="openProspect('${p.id}')">
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${p.name}</div>
-          <div style="font-size:11px;color:var(--muted)">${p.contact||''} · ${p.territory||''}</div>
-          ${p.nextDate ? `<div style="font-size:11px;color:${p.nextDate<today()?'var(--red)':'var(--blue)'};margin-top:4px">📅 ${fmtD(p.nextDate)}</div>` : ''}
-        </div>`).join('')}
+      <div class="ac-card-metrics cols3">
+        <div><div class="ac-metric-label">Last Contacted</div><div class="ac-metric-val">${lastContactStr}</div></div>
+        <div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val">${nextFollowHtml}</div></div>
+        <div><div class="ac-metric-label">Stage</div><div class="ac-metric-val">${PR_STATUS[p.status]?.label||p.status||'—'}</div></div>
+      </div>
+      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
+      ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}</div></div>`:''}
+      ${p.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${p.nextAction}</div></div>`:''}
+      <div class="ac-card-actions">
+        <button class="btn sm primary" onclick="editProspect('${p.id}')">Edit</button>
+        <button class="btn sm" onclick="logProspectOutreach('${p.id}')">📞 Log Outreach</button>
+        <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert to Account</button>
+        <button class="btn sm red" onclick="deleteProspect('${p.id}')">✕</button>
+      </div>
     </div>`;
-  }).join('');
+  }).join('')||'<div class="empty">No prospects yet. Click "+ Add Prospect" to get started.</div>';
 }
 
 function openProspect(id) {
@@ -713,11 +843,13 @@ function editProspect(id) {
   qs('#epr-contact').value = p.contact||'';
   qs('#epr-phone').value = p.phone||'';
   qs('#epr-email').value = p.email||'';
+  qs('#epr-address').value = p.address||'';
   qs('#epr-type').value = p.type||'Grocery';
   qs('#epr-territory').value = p.territory||'';
   qs('#epr-status').value = p.status||'lead';
   qs('#epr-source').value = p.source||'';
   qs('#epr-next-action').value = p.nextAction||'';
+  qs('#epr-priority').value = p.priority||'medium';
   qs('#epr-next-date').value = p.nextDate||'';
 
   qs('#epr-save-btn').onclick = () => saveProspect(id, isNew);
@@ -738,13 +870,16 @@ function saveProspect(id, isNew) {
     contact:    qs('#epr-contact')?.value?.trim()||'',
     phone:      qs('#epr-phone')?.value?.trim()||'',
     email:      qs('#epr-email')?.value?.trim()||'',
+    address:    qs('#epr-address')?.value?.trim()||'',
     type:       qs('#epr-type')?.value||'Grocery',
     territory:  qs('#epr-territory')?.value?.trim()||'',
     status:     qs('#epr-status')?.value||'lead',
     source:     qs('#epr-source')?.value?.trim()||'',
     nextAction: qs('#epr-next-action')?.value?.trim()||'',
+    priority:   qs('#epr-priority')?.value||'medium',
     nextDate:   qs('#epr-next-date')?.value||'',
     notes:      DB.a('pr').find(x=>x.id===id)?.notes||[],
+    outreach:   DB.a('pr').find(x=>x.id===id)?.outreach||[],
     lastContact: DB.a('pr').find(x=>x.id===id)?.lastContact||today(),
   };
   if (isNew) DB.push('pr', rec);
@@ -752,6 +887,45 @@ function saveProspect(id, isNew) {
   closeModal('modal-edit-prospect');
   renderProspects();
   toast(isNew?'Prospect added':'Prospect updated');
+}
+
+// ── Quick actions from card buttons ──────────────────────
+function quickNote(id) {
+  const text = prompt('Note:');
+  if (!text?.trim()) return;
+  const next = prompt('Next action (leave blank to skip):') || '';
+  const nextDate = next ? prompt('Next action date (YYYY-MM-DD):') || '' : '';
+  const note = {id:uid(), date:today(), text:text.trim(), author:'you', nextAction:next.trim(), nextDate};
+  DB.update('ac', id, a=>({...a, notes:[...(a.notes||[]),note]}));
+  renderAccounts();
+  toast('Note saved');
+}
+
+function logOutreach(id) {
+  const type = prompt('Outreach type (Call / Email / Visit / Text):') || 'Call';
+  if (!type.trim()) return;
+  const note = prompt('Notes (optional):') || '';
+  const entry = {id:uid(), type:type.trim(), date:today(), note:note.trim()};
+  DB.update('ac', id, a=>({...a, outreach:[...(a.outreach||[]),entry]}));
+  renderAccounts();
+  toast('Outreach logged');
+}
+
+function logProspectOutreach(id) {
+  const type = prompt('Outreach type (Call / Email / Visit / Text):') || 'Call';
+  if (!type.trim()) return;
+  const note = prompt('Notes (optional):') || '';
+  const entry = {id:uid(), type:type.trim(), date:today(), note:note.trim()};
+  DB.update('pr', id, p=>({...p, outreach:[...(p.outreach||[]),entry], lastContact:today()}));
+  renderProspects();
+  toast('Outreach logged');
+}
+
+function deleteProspect(id) {
+  if (!confirm2('Delete this prospect?')) return;
+  DB.remove('pr', id);
+  renderProspects();
+  toast('Prospect deleted');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1264,16 +1438,26 @@ function closeModal(id) {
 
 function qs(sel) { return document.querySelector(sel); }
 
-// ══════════════════════════════════════════════════════════
-//  SEARCH AUTOCOMPLETE (global)
-// ══════════════════════════════════════════════════════════
-function setupGlobalSearch() {
-  const inp = qs('#global-search');
-  if (!inp) return;
-  inp.addEventListener('input', () => {
-    const q = inp.value.toLowerCase().trim();
-    if (q.length < 2) { acSearch=''; renderAccounts(); return; }
-    if (currentPage === 'accounts') { acSearch = q; renderAccounts(); }
+// ── Wire filter/search controls ──────────────────────────
+function setupFilters() {
+  // Accounts
+  ['#ac-search','#ac-type-filter','#ac-sort'].forEach(sel=>{
+    const el = qs(sel);
+    if (el) el.addEventListener('input', renderAccounts);
+  });
+  // Prospects
+  ['#pr-search','#pr-stage-filter','#pr-sort'].forEach(sel=>{
+    const el = qs(sel);
+    if (el) el.addEventListener('input', renderProspects);
+  });
+  // Global search (also feeds accounts)
+  const gs = qs('#global-search');
+  if (gs) gs.addEventListener('input', ()=>{
+    const q = gs.value.toLowerCase().trim();
+    if (currentPage==='accounts') {
+      const inp = qs('#ac-search');
+      if (inp) { inp.value=q; renderAccounts(); }
+    }
   });
 }
 
@@ -1341,7 +1525,7 @@ window.onAppReady = function() {
     );
   }
 
-  setupGlobalSearch();
+  setupFilters();
 
   // Navigate to dashboard
   nav('dashboard');

@@ -185,34 +185,46 @@
 
     <!-- ═══════ ACCOUNTS ═══════ -->
     <div class="page" id="page-accounts">
-      <div class="section-hdr" style="margin-bottom:16px">
+      <div class="page-filter-bar">
+        <input id="ac-search" type="search" placeholder="Search accounts...">
+        <select id="ac-type-filter">
+          <option value="">All Types</option>
+          <option>Grocery</option><option>Gym</option><option>Café</option>
+          <option>Restaurant</option><option>Spa / Wellness</option><option>Specialty / Gift</option>
+          <option>Farm / Country Store</option><option>Co-op</option><option>Online</option><option>Other</option>
+        </select>
+        <select id="ac-sort">
+          <option value="name">Sort: Name A–Z</option>
+          <option value="lastOrder">Sort: Last Order</option>
+          <option value="lastContacted">Sort: Last Contacted</option>
+          <option value="territory">Sort: Territory</option>
+        </select>
+        <div class="spacer"></div>
         <span id="ac-count" style="font-size:13px;color:var(--muted)"></span>
-        <button class="btn primary" onclick="editAccount(uid())">+ New Account</button>
+        <button class="btn primary" onclick="editAccount(uid())">+ Add Account</button>
       </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr>
-            <th onclick="acSort={col:'name',dir:acSort.col==='name'?-acSort.dir:1};renderAccounts()">Account ↕</th>
-            <th onclick="acSort={col:'contact',dir:acSort.col==='contact'?-acSort.dir:1};renderAccounts()">Contact ↕</th>
-            <th>Type</th>
-            <th onclick="acSort={col:'territory',dir:acSort.col==='territory'?-acSort.dir:1};renderAccounts()">Territory ↕</th>
-            <th>Status</th>
-            <th>SKUs</th>
-            <th onclick="acSort={col:'lastOrder',dir:acSort.col==='lastOrder'?-acSort.dir:1};renderAccounts()">Last Order ↕</th>
-            <th></th>
-          </tr></thead>
-          <tbody id="ac-tbody"></tbody>
-        </table>
-      </div>
+      <div id="ac-cards"></div>
     </div>
 
     <!-- ═══════ PROSPECTS ═══════ -->
     <div class="page" id="page-prospects">
-      <div class="section-hdr" style="margin-bottom:16px">
-        <span style="font-size:13px;color:var(--muted)">Pipeline board</span>
-        <button class="btn primary" onclick="editProspect(uid())">+ New Prospect</button>
+      <div class="page-filter-bar">
+        <input id="pr-search" type="search" placeholder="Search prospects...">
+        <select id="pr-stage-filter">
+          <option value="">All Stages</option>
+          <option value="lead">Lead</option><option value="contacted">Contacted</option>
+          <option value="sampling">Sampling</option><option value="negotiating">Negotiating</option>
+          <option value="won">Won</option><option value="lost">Lost</option>
+        </select>
+        <select id="pr-sort">
+          <option value="priority">Sort: Priority</option>
+          <option value="nextDate">Sort: Follow-up Date</option>
+          <option value="name">Sort: Name A–Z</option>
+        </select>
+        <div class="spacer"></div>
+        <button class="btn primary" onclick="editProspect(uid())">+ Add Prospect</button>
       </div>
-      <div id="pr-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start"></div>
+      <div id="pr-cards"></div>
     </div>
 
     <!-- ═══════ INVENTORY ═══════ -->
@@ -480,16 +492,24 @@
       <div class="form-group"><label>Phone</label><input id="eac-phone" type="tel"></div>
       <div class="form-group"><label>Email</label><input id="eac-email" type="email"></div>
     </div>
+    <div class="form-group" style="margin-bottom:10px"><label>Address</label><input id="eac-address" placeholder="123 Main St, City, State"></div>
     <div class="form-row col3">
       <div class="form-group"><label>Type</label>
-        <select id="eac-type"><option>Grocery</option><option>Gym</option><option>Café</option><option>Restaurant</option><option>Online</option><option>Other</option></select>
+        <select id="eac-type"><option>Grocery</option><option>Gym</option><option>Café</option><option>Restaurant</option><option>Spa / Wellness</option><option>Specialty / Gift</option><option>Farm / Country Store</option><option>Co-op</option><option>Online</option><option>Other</option></select>
       </div>
       <div class="form-group"><label>Territory</label><input id="eac-territory" placeholder="North"></div>
       <div class="form-group"><label>Status</label>
         <select id="eac-status"><option value="active">Active</option><option value="paused">Paused</option><option value="inactive">Inactive</option></select>
       </div>
     </div>
-    <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
+    <div class="form-row col2" style="margin-bottom:10px">
+      <div class="form-group"><label>Customer since</label><input type="date" id="eac-since"></div>
+      <div class="form-group"><label>Locations</label><input type="number" id="eac-locations" min="1" placeholder="1"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Drop-off / delivery rules</label>
+      <textarea id="eac-drop-rules" placeholder="e.g. Drop off at back entrance, call ahead, see contract for details..." style="min-height:50px"></textarea>
+    </div>
     <div style="margin-bottom:10px">
       <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Active SKUs</label>
       <div id="eac-skus" style="display:flex;flex-wrap:wrap;gap:10px"></div>
@@ -563,9 +583,13 @@
         </select>
       </div>
     </div>
-    <div class="form-row col2">
+    <div class="form-group" style="margin-bottom:10px"><label>Address / Location</label><input id="epr-address" placeholder="123 Main St, City, State"></div>
+    <div class="form-row col3" style="margin-bottom:10px">
       <div class="form-group"><label>Source</label><input id="epr-source" placeholder="Trade show, referral…"></div>
       <div class="form-group"><label>Next action</label><input id="epr-next-action" placeholder="Follow up call"></div>
+      <div class="form-group"><label>Priority</label>
+        <select id="epr-priority"><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select>
+      </div>
     </div>
     <div class="form-group" style="margin-bottom:16px"><label>Next action date</label><input type="date" id="epr-next-date"></div>
     <div class="modal-footer">
