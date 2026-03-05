@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>purpl CRM</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#7B4FA0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="purpl CRM">
+</head>
+<body>
+
+<!-- ══════════════════════════ AUTH SCREEN ══════════════════════════ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">purpl<span>.</span></div>
+    <div class="auth-tagline">Beverage Sales CRM — sign in to continue</div>
+    <button class="auth-btn" id="sign-in-btn">
+      <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="auth-status" id="auth-status"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ LOADING ══════════════════════════════ -->
+<div id="loading-screen">
+  <div class="loading-spinner"></div>
+</div>
+
+<!-- ══════════════════════════ APP SHELL ════════════════════════════ -->
+<div id="app-shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo">
+      <div class="wordmark">purpl<span>.</span></div>
+      <div class="tagline">Beverage Sales CRM</div>
+    </div>
+    <div class="sb-nav">
+      <a data-page="dashboard">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <div class="section">Sales</div>
+      <a data-page="accounts">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Accounts
+      </a>
+      <a data-page="prospects">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Prospects
+      </a>
+      <a data-page="orders">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Orders
+      </a>
+      <div class="section">Operations</div>
+      <a data-page="inventory">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Inventory
+      </a>
+      <a data-page="production">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Production
+      </a>
+      <a data-page="delivery">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        Delivery
+      </a>
+      <div class="section">Insights</div>
+      <a data-page="reports">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Reports
+      </a>
+      <a data-page="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Settings
+      </a>
+    </div>
+    <div class="sb-bottom">
+      <small>
+        <span class="sync-dot synced" id="sync-dot"></span>
+        <span id="sync-label">Saved</span>
+      </small>
+      <button class="sb-signout" id="sign-out-btn">Sign out</button>
+    </div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <h1 id="topbar-title">Dashboard</h1>
+      <div class="topbar-right">
+        <input id="global-search" type="search" placeholder="Search accounts…" style="width:200px">
+        <button class="btn primary" onclick="editAccount(uid())">+ Account</button>
+        <button class="btn" onclick="editProspect(uid())">+ Prospect</button>
+      </div>
+    </div>
+
+    <!-- ═══════ DASHBOARD ═══════ -->
+    <div class="page" id="page-dashboard">
+      <div class="card-grid grid-4" id="dash-kpis" style="margin-bottom:20px">
+        <div id="dash-kpi-revenue"></div>
+        <div id="dash-kpi-accounts"></div>
+        <div id="dash-kpi-pipeline"></div>
+        <div id="dash-kpi-alerts"></div>
+      </div>
+      <div class="card-grid grid-2">
+        <div class="card">
+          <div class="section-hdr"><h2>Needs Attention</h2></div>
+          <div id="dash-attention"></div>
+        </div>
+        <div class="card">
+          <div class="section-hdr">
+            <h2>Recent Orders</h2>
+            <button class="btn sm" onclick="nav('orders')">View all →</button>
+          </div>
+          <div class="tbl-wrap">
+            <table><thead><tr><th>Account</th><th>Items</th><th>Due</th><th>Status</th></tr></thead>
+            <tbody id="dash-recent-orders"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ ACCOUNTS ═══════ -->
+    <div class="page" id="page-accounts">
+      <div class="section-hdr" style="margin-bottom:16px">
+        <span id="ac-count" style="font-size:13px;color:var(--muted)"></span>
+        <button class="btn primary" onclick="editAccount(uid())">+ New Account</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th onclick="acSort={col:'name',dir:acSort.col==='name'?-acSort.dir:1};renderAccounts()">Account ↕</th>
+            <th onclick="acSort={col:'contact',dir:acSort.col==='contact'?-acSort.dir:1};renderAccounts()">Contact ↕</th>
+            <th>Type</th>
+            <th onclick="acSort={col:'territory',dir:acSort.col==='territory'?-acSort.dir:1};renderAccounts()">Territory ↕</th>
+            <th>Status</th>
+            <th>SKUs</th>
+            <th onclick="acSort={col:'lastOrder',dir:acSort.col==='lastOrder'?-acSort.dir:1};renderAccounts()">Last Order ↕</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="ac-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════ PROSPECTS ═══════ -->
+    <div class="page" id="page-prospects">
+      <div class="section-hdr" style="margin-bottom:16px">
+        <span style="font-size:13px;color:var(--muted)">Pipeline board</span>
+        <button class="btn primary" onclick="editProspect(uid())">+ New Prospect</button>
+      </div>
+      <div id="pr-kanban" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:start"></div>
+    </div>
+
+    <!-- ═══════ INVENTORY ═══════ -->
+    <div class="page" id="page-inventory">
+      <div class="section-hdr" style="margin-bottom:16px">
+        <h2>Current Stock</h2>
+      </div>
+      <div class="tbl-wrap" style="margin-bottom:20px">
+        <table>
+          <thead><tr><th>SKU</th><th>On Hand</th><th>Total In</th><th>Total Out</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="inv-table-body"></tbody>
+        </table>
+      </div>
+      <div class="section-hdr"><h2>Inventory Log</h2></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>SKU</th><th>Type</th><th>Qty</th><th>Note</th><th></th></tr></thead>
+          <tbody id="inv-log-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════ ORDERS ═══════ -->
+    <div class="page" id="page-orders">
+      <div class="section-hdr" style="margin-bottom:12px">
+        <span id="orders-count" style="font-size:13px;color:var(--muted)"></span>
+        <button class="btn primary" id="new-order-btn">+ New Order</button>
+      </div>
+      <div class="tabs" id="orders-filter">
+        <button class="tab active" data-status="all">All</button>
+        <button class="tab" data-status="pending">Pending</button>
+        <button class="tab" data-status="confirmed">Confirmed</button>
+        <button class="tab" data-status="in_transit">In Transit</button>
+        <button class="tab" data-status="delivered">Delivered</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Created</th><th>Account</th><th>Items</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="orders-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════ PRODUCTION ═══════ -->
+    <div class="page" id="page-production">
+      <div class="card-grid grid-2" style="margin-bottom:20px">
+
+        <!-- Log a run -->
+        <div class="card">
+          <div class="section-hdr"><h2>Log Production Run</h2></div>
+          <div id="prod-today-sched"></div>
+          <div style="margin-top:10px">
+            <textarea id="sched-notes" placeholder="Notes (optional)…" style="min-height:50px"></textarea>
+          </div>
+          <div style="margin-top:10px">
+            <button class="btn primary" id="save-run-btn">Save Run + Update Inventory</button>
+          </div>
+        </div>
+
+        <!-- Upcoming shipments -->
+        <div class="card">
+          <div class="section-hdr">
+            <h2>Upcoming Shipments</h2>
+            <button class="btn sm primary" id="add-ship-btn">+ Schedule</button>
+          </div>
+          <div id="prod-upcoming"></div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="card">
+        <div class="section-hdr"><h2>Production History</h2></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Output</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="prod-history-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ DELIVERY ═══════ -->
+    <div class="page" id="page-delivery">
+      <div class="section-hdr" style="margin-bottom:4px">
+        <h2>Today's Route</h2>
+        <div style="display:flex;gap:8px">
+          <span id="del-progress" style="font-size:13px;color:var(--muted);align-self:center"></span>
+          <button class="btn sm red" id="clear-route-btn">Clear Route</button>
+        </div>
+      </div>
+      <div class="card-grid grid-2" style="margin-bottom:20px">
+        <div>
+          <div id="del-stops"></div>
+        </div>
+        <!-- Add stop form -->
+        <div class="card">
+          <div class="section-hdr"><h2>Add Stop</h2></div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label>From account</label>
+            <select id="del-account-sel"><option value="">— Or fill manually —</option></select>
+          </div>
+          <div class="form-row col2">
+            <div class="form-group"><label>Stop name *</label><input id="del-stop-name" placeholder="Whole Foods Oak Park"></div>
+            <div class="form-group"><label>Address</label><input id="del-stop-addr" placeholder="123 Main St"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Quantities</label>
+            <div id="del-qty-inputs">
+              <!-- Filled by JS via SKUS -->
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Notes</label>
+            <input id="del-stop-notes" placeholder="e.g. use back entrance">
+          </div>
+          <button class="btn primary" id="add-stop-btn">Add to Route</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ REPORTS ═══════ -->
+    <div class="page" id="page-reports">
+      <!-- KPI summary -->
+      <div class="card-grid grid-4" style="margin-bottom:20px">
+        <div class="kpi green"><div class="num" id="rep-total-rev">—</div><div class="label">Total Revenue</div></div>
+        <div class="kpi purple"><div class="num" id="rep-total-qty">—</div><div class="label">Units Sold</div></div>
+        <div class="kpi blue"><div class="num" id="rep-total-gp">—</div><div class="label">Gross Profit</div></div>
+        <div class="kpi amber"><div class="num" id="rep-margin">—</div><div class="label">Avg Margin</div></div>
+      </div>
+      <div class="card-grid grid-2">
+        <div class="card">
+          <div class="section-hdr"><h2>Sales by SKU</h2></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>SKU</th><th>Units</th><th>Revenue</th><th>COGS</th><th>Gross Profit</th><th>Margin</th></tr></thead>
+              <tbody id="rep-sku-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-hdr"><h2>Inventory Snapshot</h2></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>SKU</th><th>In</th><th>Out</th><th>On Hand</th><th>Value</th><th>Status</th></tr></thead>
+              <tbody id="rep-inv-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ SETTINGS ═══════ -->
+    <div class="page" id="page-settings">
+      <div class="card-grid grid-2">
+        <div class="card">
+          <div class="section-hdr"><h2>Company</h2></div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Company name</label>
+            <input id="set-company" placeholder="purpl Beverages">
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label>Payment terms (days)</label>
+            <input id="set-payment-terms" type="number" value="30">
+          </div>
+          <button class="btn primary" id="save-settings-btn">Save Settings</button>
+        </div>
+        <div class="card">
+          <div class="section-hdr"><h2>COGS &amp; Margins</h2></div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cost per unit by SKU</label>
+            <!-- Filled by JS -->
+            <div id="sku-cost-inputs">
+              <div class="sku-row classic-bg"><div><span class="badge sku-classic">Classic</span></div><input type="number" id="cost-classic" step="0.01" placeholder="2.10" style="width:90px"></div>
+              <div class="sku-row blueberry-bg"><div><span class="badge sku-blueberry">Blueberry</span></div><input type="number" id="cost-blueberry" step="0.01" placeholder="2.20" style="width:90px"></div>
+              <div class="sku-row peach-bg"><div><span class="badge sku-peach">Peach</span></div><input type="number" id="cost-peach" step="0.01" placeholder="2.15" style="width:90px"></div>
+              <div class="sku-row raspberry-bg"><div><span class="badge sku-raspberry">Raspberry</span></div><input type="number" id="cost-raspberry" step="0.01" placeholder="2.18" style="width:90px"></div>
+              <div class="sku-row variety-bg"><div><span class="badge sku-variety">Variety</span></div><input type="number" id="cost-variety" step="0.01" placeholder="2.25" style="width:90px"></div>
+            </div>
+          </div>
+          <div class="form-row col2">
+            <div class="form-group">
+              <label>Monthly overhead ($)</label>
+              <input id="cost-overhead" type="number" step="50" placeholder="1200">
+            </div>
+            <div class="form-group">
+              <label>Target margin (%)</label>
+              <input id="cost-target-margin" type="number" step="1" placeholder="60">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app-shell -->
+
+<!-- ══════════════════════ MODALS ════════════════════════ -->
+
+<!-- Account view -->
+<div class="overlay" id="modal-account">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-hdr">
+      <div>
+        <h2 id="mac-name">Account</h2>
+        <div id="mac-status-badge" style="margin-top:4px"></div>
+      </div>
+      <button class="modal-close btn sm">✕</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="orders">Orders</button>
+      <button class="tab" data-tab="notes">Notes</button>
+    </div>
+    <!-- Overview -->
+    <div id="mac-tab-overview" class="tab-pane">
+      <div class="card-grid grid-2" style="margin-bottom:14px">
+        <div><span style="font-size:11px;color:var(--muted)">Contact</span><div id="mac-contact"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Phone</span><div id="mac-phone"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Email</span><div id="mac-email"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Type</span><div id="mac-type"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Territory</span><div id="mac-territory"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Customer Since</span><div id="mac-since"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Last Order</span><div id="mac-last-order"></div></div>
+      </div>
+      <div style="margin-bottom:8px"><span style="font-size:11px;color:var(--muted)">Active SKUs</span><div id="mac-skus" style="margin-top:4px"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Par Levels</span><div id="mac-par" style="margin-top:4px"></div></div>
+    </div>
+    <!-- Orders tab -->
+    <div id="mac-tab-orders" class="tab-pane" style="display:none">
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody id="mac-order-hist"></tbody></table>
+      </div>
+    </div>
+    <!-- Notes tab -->
+    <div id="mac-tab-notes" class="tab-pane" style="display:none">
+      <div class="notes-list" id="mac-notes-list"></div>
+      <hr class="light">
+      <div class="form-group" style="margin-bottom:8px">
+        <label>Add note</label>
+        <textarea id="mac-note-text" placeholder="What happened at this account?…"></textarea>
+      </div>
+      <div class="form-row col2">
+        <div class="form-group"><label>Next action</label><input id="mac-note-next" placeholder="e.g. bring samples"></div>
+        <div class="form-group"><label>Next date</label><input type="date" id="mac-note-next-date"></div>
+      </div>
+      <button class="btn primary sm" id="mac-add-note-btn">Save Note</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="mac-order-btn">+ New Order</button>
+      <button class="btn primary" id="mac-edit-btn">Edit Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account edit -->
+<div class="overlay" id="modal-edit-account">
+  <div class="modal">
+    <div class="modal-hdr"><h2>Edit Account</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Account name *</label><input id="eac-name"></div>
+      <div class="form-group"><label>Contact person</label><input id="eac-contact"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Phone</label><input id="eac-phone" type="tel"></div>
+      <div class="form-group"><label>Email</label><input id="eac-email" type="email"></div>
+    </div>
+    <div class="form-row col3">
+      <div class="form-group"><label>Type</label>
+        <select id="eac-type"><option>Grocery</option><option>Gym</option><option>Café</option><option>Restaurant</option><option>Online</option><option>Other</option></select>
+      </div>
+      <div class="form-group"><label>Territory</label><input id="eac-territory" placeholder="North"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="eac-status"><option value="active">Active</option><option value="paused">Paused</option><option value="inactive">Inactive</option></select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Active SKUs</label>
+      <div id="eac-skus" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Par Levels</label>
+      <div id="eac-par"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" id="eac-delete-btn" style="margin-right:auto">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="eac-save-btn">Save Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prospect view -->
+<div class="overlay" id="modal-prospect">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div><h2 id="mpr-name">Prospect</h2><div id="mpr-status-badge" style="margin-top:4px"></div></div>
+      <button class="modal-close btn sm">✕</button>
+    </div>
+    <div class="card-grid grid-2" style="margin-bottom:14px">
+      <div><span style="font-size:11px;color:var(--muted)">Contact</span><div id="mpr-contact"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Phone</span><div id="mpr-phone"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Email</span><div id="mpr-email"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Type</span><div id="mpr-type"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Territory</span><div id="mpr-territory"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Source</span><div id="mpr-source"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Last Contact</span><div id="mpr-last-contact"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Next Date</span><div id="mpr-next-date"></div></div>
+    </div>
+    <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Next action</span><div id="mpr-next-action"></div></div>
+    <div class="notes-list" id="mpr-notes-list" style="max-height:180px;overflow-y:auto"></div>
+    <hr class="light">
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Add note</label>
+      <textarea id="mpr-note-text" placeholder="What happened?…"></textarea>
+    </div>
+    <button class="btn primary sm" id="mpr-add-note-btn">Save Note</button>
+    <div class="modal-footer">
+      <button class="btn green" id="mpr-convert-btn">Convert to Account</button>
+      <button class="btn primary" id="mpr-edit-btn">Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prospect edit -->
+<div class="overlay" id="modal-edit-prospect">
+  <div class="modal">
+    <div class="modal-hdr"><h2>Edit Prospect</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Name *</label><input id="epr-name"></div>
+      <div class="form-group"><label>Contact</label><input id="epr-contact"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Phone</label><input id="epr-phone" type="tel"></div>
+      <div class="form-group"><label>Email</label><input id="epr-email" type="email"></div>
+    </div>
+    <div class="form-row col3">
+      <div class="form-group"><label>Type</label>
+        <select id="epr-type"><option>Grocery</option><option>Gym</option><option>Café</option><option>Restaurant</option><option>Other</option></select>
+      </div>
+      <div class="form-group"><label>Territory</label><input id="epr-territory" placeholder="North"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="epr-status">
+          <option value="lead">Lead</option><option value="contacted">Contacted</option>
+          <option value="sampling">Sampling</option><option value="negotiating">Negotiating</option>
+          <option value="won">Won</option><option value="lost">Lost</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Source</label><input id="epr-source" placeholder="Trade show, referral…"></div>
+      <div class="form-group"><label>Next action</label><input id="epr-next-action" placeholder="Follow up call"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Next action date</label><input type="date" id="epr-next-date"></div>
+    <div class="modal-footer">
+      <button class="btn red" id="epr-delete-btn" style="margin-right:auto">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="epr-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- New order -->
+<div class="overlay" id="modal-new-order">
+  <div class="modal">
+    <div class="modal-hdr"><h2>New Order</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2" style="margin-bottom:12px">
+      <div class="form-group"><label>Account *</label><select id="nord-account"></select></div>
+      <div class="form-group"><label>Due date *</label><input type="date" id="nord-due"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Items</label>
+      <div id="nord-items"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label><input id="nord-notes" placeholder="Any special instructions…"></div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="nord-save-btn">Create Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order detail -->
+<div class="overlay" id="modal-order-detail">
+  <div class="modal">
+    <div class="modal-hdr"><h2>Order Detail</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="card-grid grid-2" style="margin-bottom:14px">
+      <div><span style="font-size:11px;color:var(--muted)">Account</span><div id="mod-account"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Due Date</span><div id="mod-due"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Status</span><div id="mod-status"></div></div>
+      <div><span style="font-size:11px;color:var(--muted)">Notes</span><div id="mod-notes"></div></div>
+    </div>
+    <div style="margin-bottom:16px"><span style="font-size:11px;color:var(--muted)">Items</span><div id="mod-items" style="margin-top:6px"></div></div>
+    <div class="modal-footer">
+      <button class="btn red" id="mod-delete-btn" style="margin-right:auto">Delete Order</button>
+      <button class="btn" id="mod-status-btn">Advance Status →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schedule shipment -->
+<div class="overlay" id="modal-shipment">
+  <div class="modal">
+    <div class="modal-hdr"><h2>Schedule Shipment</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Customer / destination *</label><input id="ship-customer" placeholder="Whole Foods Oak Park"></div>
+      <div class="form-group"><label>Ship date *</label><input type="date" id="ship-date"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Type</label>
+      <select id="ship-type"><option>Standard</option><option>Express</option><option>Will Call</option></select>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Quantities</label>
+      <div class="sku-inputs">
+        <div class="sku-row classic-bg"><div><span class="badge sku-classic">Classic</span></div><input type="number" id="ship-classic" min="0" step="6" placeholder="0" style="width:80px"></div>
+        <div class="sku-row blueberry-bg"><div><span class="badge sku-blueberry">Blueberry</span></div><input type="number" id="ship-blueberry" min="0" step="6" placeholder="0" style="width:80px"></div>
+        <div class="sku-row peach-bg"><div><span class="badge sku-peach">Peach</span></div><input type="number" id="ship-peach" min="0" step="6" placeholder="0" style="width:80px"></div>
+        <div class="sku-row raspberry-bg"><div><span class="badge sku-raspberry">Raspberry</span></div><input type="number" id="ship-raspberry" min="0" step="6" placeholder="0" style="width:80px"></div>
+        <div class="sku-row variety-bg"><div><span class="badge sku-variety">Variety</span></div><input type="number" id="ship-variety" min="0" step="6" placeholder="0" style="width:80px"></div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label><input id="ship-notes"></div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="save-ship-btn">Schedule Shipment</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ═══════════════════════ SCRIPTS ══════════════════════ -->
+
+<!-- Firebase SDK (modular v10 compat layer) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- Expose modular API shims used by db.js + auth.js -->
+<script>
+// db.js uses modular-style imports via window.FirestoreAPI / window.FirebaseAuthAPI etc.
+// Firebase compat SDK exposes everything on firebase.*  — wire it up here.
+window.FirebaseAppAPI  = { initializeApp: (cfg) => firebase.initializeApp(cfg) };
+window.FirebaseAuthAPI = {
+  getAuth:            (app) => app.auth(),
+  onAuthStateChanged: (auth, cb) => auth.onAuthStateChanged(cb),
+  signInWithPopup:    (auth, p)  => auth.signInWithPopup(p),
+  GoogleAuthProvider: firebase.auth.GoogleAuthProvider,
+  signOut:            (auth)     => auth.signOut(),
+};
+window.FirestoreAPI = {
+  getFirestore:               (app)     => app.firestore(),
+  enableIndexedDbPersistence: (db)      => db.enablePersistence(),
+  doc:                        (db,...p) => db.doc(p.join('/')),
+  getDoc:                     (ref)     => ref.get(),
+  setDoc:                     (ref, d)  => ref.set(d),
+};
+</script>
+
+<!-- App files -->
+<script src="firebase-config.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
+<script src="auth.js"></script>
+
+<!-- Build delivery qty inputs -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('del-qty-inputs');
+  if (el) {
+    const SKUS_DEF = [
+      {id:'classic',label:'Classic',cls:'sku-classic',bg:'classic-bg'},
+      {id:'blueberry',label:'Blueberry',cls:'sku-blueberry',bg:'blueberry-bg'},
+      {id:'peach',label:'Peach',cls:'sku-peach',bg:'peach-bg'},
+      {id:'raspberry',label:'Raspberry',cls:'sku-raspberry',bg:'raspberry-bg'},
+      {id:'variety',label:'Variety',cls:'sku-variety',bg:'variety-bg'},
+    ];
+    el.innerHTML = SKUS_DEF.map(s=>`
+      <div class="sku-row ${s.bg}" style="margin-bottom:4px">
+        <span class="badge ${s.cls}">${s.label}</span>
+        <input type="number" id="del-qty-${s.id}" min="0" step="6" placeholder="0" style="width:80px">
+      </div>`).join('');
+  }
+});
+</script>
+
+<!-- PWA service worker -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+
+</body>
+</html>
