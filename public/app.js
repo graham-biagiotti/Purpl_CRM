@@ -122,86 +122,299 @@ function seedIfEmpty() {
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
 function renderDash() {
-  const ac = DB.a('ac').filter(x=>x.status==='active');
-  const pr = DB.a('pr');
-  const ord = DB.a('ord');
+  const ac  = DB.a('ac').filter(x=>x.status==='active');
+  const pr  = DB.a('pr');
+  const ord = DB.a('orders');
   const inv = DB.a('iv');
 
-  // KPIs
-  const revenue30 = ord.filter(o=>daysAgo(o.date)<=30&&o.status!=='cancelled')
-    .reduce((s,o)=>{
-      return s + (o.items||[]).reduce((ss,it)=>{
-        const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-        const price = ac2?.pricing?.[it.sku] || DB.obj('costs')?.cogs?.[it.sku]*2.2 || 5;
-        return ss + price * it.qty;
-      },0);
-    },0);
-
-  const pipeline = pr.filter(x=>!['won','lost'].includes(x.status)).length;
-  const overdue = DB.a('orders').filter(o=>o.status==='pending'&&o.dueDate<today()).length;
-  const lowStock = SKUS.filter(s=>{
-    const on_hand = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((s,i)=>s+i.qty,0)
-                  - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((s,i)=>s+i.qty,0);
-    return on_hand < 48;
+  const revenue30 = ord.filter(o=>daysAgo(o.created)<=30&&o.status!=='cancelled')
+    .reduce((s,o)=>s+calcOrderValue(o), 0);
+  const pipeline  = pr.filter(x=>!['won','lost'].includes(x.status)).length;
+  const overdue   = ord.filter(o=>o.status==='pending'&&o.dueDate<today()).length;
+  const lowStock  = SKUS.filter(s=>{
+    const oh = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
+             - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+    return oh < 48;
   }).length;
 
-  qs('#dash-kpi-revenue').innerHTML = kpiHtml('Revenue (30d)', fmtC(revenue30), 'green');
-  qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length, 'purple');
-  qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects', pipeline, 'blue');
-  qs('#dash-kpi-alerts').innerHTML = kpiHtml('Alerts', overdue + lowStock, overdue+lowStock>0?'red':'gray');
+  qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
+  qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple');
+  qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
+  qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
-  // Attention panel
   renderAttention();
-
-  // Recent orders
-  const recentOrd = DB.a('orders').slice().sort((a,b)=>b.created>a.created?1:-1).slice(0,5);
-  qs('#dash-recent-orders').innerHTML = recentOrd.length ? recentOrd.map(o=>{
-    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-    return `<tr>
-      <td>${ac2?.name||'—'}</td>
-      <td>${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}`).join(' ')}</td>
-      <td>${fmtD(o.dueDate)}</td>
-      <td>${statusBadge(ORD_STATUS,o.status)}</td>
-    </tr>`;
-  }).join('') : '<tr><td colspan="4" class="empty">No orders yet</td></tr>';
+  renderFollowUps();
+  renderPendingOrders();
+  renderInvoiceStatus();
+  renderProjections();
+  renderVelocities();
 }
 
 function kpiHtml(label, val, color) {
   return `<div class="kpi ${color}"><div class="num">${val}</div><div class="label">${label}</div></div>`;
 }
 
+// Price an order based on COGS*2.2 (or account-specific pricing if set)
+function calcOrderValue(o) {
+  const costs = DB.obj('costs', {cogs:{}});
+  const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
+  return (o.items||[]).reduce((s,i)=>{
+    const price = ac2?.pricing?.[i.sku] || (costs.cogs[i.sku]||2.15)*2.2;
+    return s + price*i.qty;
+  }, 0);
+}
+
+// ── Needs Attention (30+ days no contact) ────────────────
 function renderAttention() {
   const items = [];
   const ac = DB.a('ac');
 
-  // Accounts not ordered in 21+ days
   ac.filter(a=>a.status==='active').forEach(a=>{
     const last = a.lastOrder;
-    if (daysAgo(last) >= 21) {
-      items.push({icon:'🕐', name:a.name, reason:`No order in ${daysAgo(last)} days`, action:`nav('accounts');openAccount('${a.id}')`});
+    if (daysAgo(last) >= 30) {
+      items.push({icon:'🕐', name:a.name, reason:`No order in ${daysAgo(last)} days`, action:`openAccount('${a.id}')`});
     }
   });
 
-  // Low stock
   SKUS.forEach(s=>{
     const inv = DB.a('iv');
-    const on_hand = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
-                  - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    if (on_hand < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${on_hand} units on hand`, action:`nav('inventory')`});
+    const oh = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
+             - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+    if (oh < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${oh} units on hand`, action:`nav('inventory')`});
   });
 
-  // Prospects with past-due next action
   DB.a('pr').filter(p=>p.nextDate&&p.nextDate<today()&&!['won','lost'].includes(p.status)).forEach(p=>{
-    items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`nav('prospects');openProspect('${p.id}')`});
+    items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`openProspect('${p.id}')`});
   });
 
   const el = qs('#dash-attention');
   if (!el) return;
-  el.innerHTML = items.length ? items.slice(0,8).map(i=>`
+  el.innerHTML = items.length ? items.slice(0,10).map(i=>`
     <div class="attn-item" onclick="${i.action}" style="cursor:pointer">
       <div class="attn-icon">${i.icon}</div>
       <div class="attn-info"><div class="attn-name">${i.name}</div><div class="attn-reason">${i.reason}</div></div>
     </div>`).join('') : '<div class="empty">All clear! No immediate action needed.</div>';
+}
+
+// ── Upcoming Follow-ups (next 14 days from notes / prospects) ─
+function renderFollowUps() {
+  const items = [];
+  const now   = today();
+  const in14  = new Date(Date.now()+14*864e5).toISOString().slice(0,10);
+
+  DB.a('ac').forEach(a=>{
+    if (!a.notes?.length) return;
+    const ln = a.notes[a.notes.length-1];
+    if (ln?.nextDate && ln.nextDate >= now && ln.nextDate <= in14) {
+      const daysUntil = Math.max(0, Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5));
+      items.push({type:'account', name:a.name, date:ln.nextDate, action:ln.nextAction||'Follow up', id:a.id, daysUntil});
+    }
+  });
+
+  DB.a('pr').filter(p=>!['won','lost'].includes(p.status)).forEach(p=>{
+    if (p.nextDate && p.nextDate >= now && p.nextDate <= in14) {
+      const daysUntil = Math.max(0, Math.ceil((new Date(p.nextDate+'T12:00:00')-Date.now())/864e5));
+      items.push({type:'prospect', name:p.name, date:p.nextDate, action:p.nextAction||'Follow up', id:p.id, daysUntil});
+    }
+  });
+
+  items.sort((a,b)=>a.date>b.date?1:-1);
+
+  const el = qs('#dash-followups');
+  if (!el) return;
+  el.innerHTML = items.length ? items.map(i=>`
+    <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
+      <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
+      <div class="attn-info">
+        <div class="attn-name">${i.name}</div>
+        <div class="attn-reason">${i.action} &middot; <strong>${i.daysUntil===0?'Today':i.daysUntil===1?'Tomorrow':'in '+i.daysUntil+'d'}</strong> (${fmtD(i.date)})</div>
+      </div>
+    </div>`).join('') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
+}
+
+// ── Pending Orders (with reschedule button) ───────────────
+function renderPendingOrders() {
+  const pending = DB.a('orders').filter(o=>o.status==='pending').sort((a,b)=>a.dueDate>b.dueDate?1:-1);
+  const el = qs('#dash-pending-orders');
+  if (!el) return;
+  el.innerHTML = pending.length ? pending.slice(0,8).map(o=>{
+    const ac2      = DB.a('ac').find(a=>a.id===o.accountId);
+    const isOverdue = o.dueDate < today();
+    return `<div class="attn-item">
+      <div class="attn-icon" onclick="openOrderDetail('${o.id}')" style="cursor:pointer">${isOverdue?'⚠️':'📋'}</div>
+      <div class="attn-info" style="flex:1;cursor:pointer" onclick="openOrderDetail('${o.id}')">
+        <div class="attn-name">${ac2?.name||'Unknown'}</div>
+        <div class="attn-reason">${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}`).join(' ')} &middot; Due ${fmtD(o.dueDate)}${isOverdue?' <span class="badge red">Overdue</span>':''}</div>
+      </div>
+      <button class="btn xs" onclick="rescheduleOrder('${o.id}')" title="Change due date">Reschedule</button>
+    </div>`;
+  }).join('') : '<div class="empty">No pending orders</div>';
+}
+
+function rescheduleOrder(id) {
+  const o = DB.a('orders').find(x=>x.id===id);
+  if (!o) return;
+  const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
+  if (!newDate || newDate===o.dueDate) return;
+  DB.update('orders', id, x=>({...x, dueDate:newDate}));
+  renderDash();
+  toast('Due date updated');
+}
+
+// ── Invoice Status ────────────────────────────────────────
+const INVOICE_STATUS = {
+  none:     {label:'Not Invoiced',    cls:'gray'},
+  invoiced: {label:'Invoiced',        cls:'blue'},
+  paid:     {label:'Paid',            cls:'green'},
+  overdue:  {label:'Invoice Overdue', cls:'red'},
+};
+
+function renderInvoiceStatus() {
+  const delivered = DB.a('orders').filter(o=>o.status==='delivered');
+  const terms     = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+
+  let notInvoiced=0, invoiced=0, paid=0, overdueList=[];
+
+  delivered.forEach(o=>{
+    const st = o.invoiceStatus||'none';
+    if (st==='paid')     { paid++; return; }
+    if (st==='invoiced') {
+      if (daysAgo(o.invoiceDate||o.dueDate) > terms) overdueList.push(o);
+      else invoiced++;
+      return;
+    }
+    notInvoiced++;
+  });
+
+  const el = qs('#dash-invoice-status');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:20px;font-weight:700">${notInvoiced}</div>
+        <div style="font-size:11px;color:var(--muted)">Not Invoiced</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:20px;font-weight:700;color:var(--blue)">${invoiced}</div>
+        <div style="font-size:11px;color:var(--muted)">Invoiced</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:20px;font-weight:700;color:var(--green)">${paid}</div>
+        <div style="font-size:11px;color:var(--muted)">Paid</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
+        <div style="font-size:20px;font-weight:700;color:var(--red)">${overdueList.length}</div>
+        <div style="font-size:11px;color:var(--muted)">Overdue</div>
+      </div>
+    </div>
+    ${overdueList.length ? overdueList.map(o=>{
+      const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+      return `<div class="attn-item">
+        <div class="attn-icon">💰</div>
+        <div class="attn-info"><div class="attn-name">${ac2?.name||'Unknown'}</div><div class="attn-reason">Invoice overdue &middot; ${fmtD(o.dueDate)}</div></div>
+        <button class="btn xs green" onclick="setInvStatus('${o.id}','paid')">Mark Paid</button>
+      </div>`;
+    }).join('') : '<div class="empty">No invoice issues</div>'}`;
+}
+
+function setInvStatus(id, status) {
+  const extra = status==='invoiced' ? {invoiceDate:today()} : status==='paid' ? {paidDate:today()} : {};
+  DB.update('orders', id, o=>({...o, invoiceStatus:status, ...extra}));
+  openOrderDetail(id);
+  renderInvoiceStatus();
+  toast(status==='paid'?'Marked as paid':'Invoice updated');
+}
+
+// ── Revenue Projections ───────────────────────────────────
+function renderProjections() {
+  const {proj30, proj60, proj90, accountsWithData} = calcProjections();
+  const pendingVal = DB.a('orders').filter(o=>o.status==='pending').reduce((s,o)=>s+calcOrderValue(o),0);
+
+  const el = qs('#dash-projections');
+  if (!el) return;
+  el.innerHTML = `
+    <div>${kpiHtml('Projected 30d', fmtC(proj30), 'green')}</div>
+    <div>${kpiHtml('Projected 60d', fmtC(proj60), 'blue')}</div>
+    <div>${kpiHtml('Projected 90d', fmtC(proj90), 'purple')}</div>
+    <div>${kpiHtml('Pending Orders', fmtC(pendingVal), 'amber')}</div>`;
+
+  const note = qs('#dash-projection-notes');
+  if (note) note.textContent = `Based on order history from ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders. Pending orders value shown separately.`;
+}
+
+function calcProjections() {
+  const allOrders = DB.a('orders').filter(o=>o.status!=='cancelled');
+  const accounts  = DB.a('ac').filter(a=>a.status==='active');
+  const now = Date.now();
+  const d30 = now+30*864e5, d60 = now+60*864e5, d90 = now+90*864e5;
+
+  let proj30=0, proj60=0, proj90=0, accountsWithData=0;
+  const velocities = [];
+
+  accounts.forEach(ac=>{
+    const acOrds = allOrders.filter(o=>o.accountId===ac.id).sort((a,b)=>a.dueDate>b.dueDate?1:-1);
+
+    // Units in last 90 days for velocity table
+    const recentOrds = acOrds.filter(o=>daysAgo(o.dueDate)<=90);
+    const totalUnits = Object.fromEntries(SKUS.map(s=>[s.id,0]));
+    recentOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+i.qty; }));
+
+    const periodDays = Math.max(7, Math.min(90, acOrds.length>0 ? Math.max(1, daysAgo(acOrds[0].dueDate)) : 90));
+    const weeksInPeriod = periodDays/7;
+    const weeklyUnits   = Object.fromEntries(SKUS.map(s=>[s.id, Math.round((totalUnits[s.id]||0)/weeksInPeriod*10)/10]));
+
+    let avgDays=null, nextProjected=null, avgOrderValue=0;
+
+    if (acOrds.length >= 2) {
+      const intervals = [];
+      for (let i=1;i<acOrds.length;i++) {
+        const diff = (new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
+        if (diff>0) intervals.push(diff);
+      }
+      if (intervals.length) {
+        avgDays        = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
+        avgOrderValue  = acOrds.reduce((s,o)=>s+calcOrderValue(o),0)/acOrds.length;
+        accountsWithData++;
+
+        const lastMs = new Date(acOrds[acOrds.length-1].dueDate+'T12:00:00').getTime();
+        let next = lastMs + avgDays*864e5;
+        while (next <= d90) {
+          if (next > now) {
+            if (next<=d30) proj30+=avgOrderValue;
+            if (next<=d60) proj60+=avgOrderValue;
+            proj90+=avgOrderValue;
+            if (!nextProjected) nextProjected = new Date(next).toISOString().slice(0,10);
+          }
+          next += avgDays*864e5;
+        }
+      }
+    }
+
+    velocities.push({account:ac, avgDays, avgOrderValue, nextProjected, weeklyUnits, ordCount:acOrds.length});
+  });
+
+  return {proj30, proj60, proj90, accountsWithData, velocities};
+}
+
+// ── Store by Store Velocity ───────────────────────────────
+function renderVelocities() {
+  const {velocities} = calcProjections();
+  const el = qs('#dash-velocities');
+  if (!el) return;
+
+  el.innerHTML = velocities.length ? velocities.map(v=>{
+    const totalWkly = Math.round(SKUS.reduce((s,sk)=>s+(v.weeklyUnits[sk.id]||0),0)*10)/10;
+    const nextCls   = v.nextProjected && v.nextProjected < today() ? 'color:var(--red)' : 'color:var(--blue)';
+    return `<tr onclick="openAccount('${v.account.id}')" style="cursor:pointer">
+      <td><strong>${v.account.name}</strong><br><small style="color:var(--muted)">${v.account.territory||''}</small></td>
+      <td>${v.avgDays ? v.avgDays+'d' : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${v.nextProjected ? `<span style="${nextCls}">${fmtD(v.nextProjected)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
+      ${SKUS.map(s=>`<td>${v.weeklyUnits[s.id]||0}</td>`).join('')}
+      <td><strong>${totalWkly}</strong></td>
+      <td>${v.avgOrderValue ? fmtC(v.avgOrderValue) : '<span style="color:var(--muted)">—</span>'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="10" class="empty">No active accounts</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -689,8 +902,32 @@ function openOrderDetail(id) {
   qs('#mod-status').innerHTML = statusBadge(ORD_STATUS, o.status);
   qs('#mod-notes').textContent = o.notes||'—';
   qs('#mod-items').innerHTML = (o.items||[]).map(i=>`<div>${skuBadge(i.sku)} × <strong>${i.qty}</strong></div>`).join('');
-  qs('#mod-delete-btn').onclick = ()=>{ if(confirm2('Delete this order?')){ DB.remove('orders',id); closeModal('modal-order-detail'); renderOrders(); toast('Deleted'); }};
-  qs('#mod-status-btn').onclick = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
+
+  // Invoice status
+  const invEl = qs('#mod-invoice-status');
+  if (invEl) {
+    if (o.status==='delivered') {
+      const st = o.invoiceStatus||'none';
+      const cfg = INVOICE_STATUS[st]||INVOICE_STATUS.none;
+      invEl.innerHTML = `<span class="badge ${cfg.cls}">${cfg.label}</span>`
+        + (st==='none'     ? `<button class="btn xs blue"  onclick="setInvStatus('${id}','invoiced')">Mark Invoiced</button>` : '')
+        + (st==='invoiced' ? `<button class="btn xs green" onclick="setInvStatus('${id}','paid')">Mark Paid</button>` : '')
+        + (o.paidDate      ? `<span style="font-size:12px;color:var(--muted)">Paid ${fmtD(o.paidDate)}</span>` : '');
+    } else {
+      invEl.innerHTML = `<span style="font-size:12px;color:var(--muted)">Invoice tracking available after delivery</span>`;
+    }
+  }
+
+  qs('#mod-delete-btn').onclick    = ()=>{ if(confirm2('Delete this order?')){ DB.remove('orders',id); closeModal('modal-order-detail'); renderOrders(); toast('Deleted'); }};
+  qs('#mod-status-btn').onclick    = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
+  qs('#mod-reschedule-btn').onclick = ()=>{
+    const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
+    if (!newDate || newDate===o.dueDate) return;
+    DB.update('orders', id, x=>({...x, dueDate:newDate}));
+    openOrderDetail(id);
+    renderOrders();
+    toast('Due date updated');
+  };
   openModal('modal-order-detail');
 }
 

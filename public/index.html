@@ -104,28 +104,83 @@
 
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page" id="page-dashboard">
+
+      <!-- Row 1: KPIs -->
       <div class="card-grid grid-4" id="dash-kpis" style="margin-bottom:20px">
         <div id="dash-kpi-revenue"></div>
         <div id="dash-kpi-accounts"></div>
         <div id="dash-kpi-pipeline"></div>
         <div id="dash-kpi-alerts"></div>
       </div>
-      <div class="card-grid grid-2">
+
+      <!-- Row 2: Needs Attention + Upcoming Follow-ups -->
+      <div class="card-grid grid-2" style="margin-bottom:20px">
         <div class="card">
-          <div class="section-hdr"><h2>Needs Attention</h2></div>
+          <div class="section-hdr">
+            <h2>Needs Attention</h2>
+            <small style="color:var(--muted);font-size:12px">30+ days no contact</small>
+          </div>
           <div id="dash-attention"></div>
         </div>
         <div class="card">
           <div class="section-hdr">
-            <h2>Recent Orders</h2>
-            <button class="btn sm" onclick="nav('orders')">View all →</button>
+            <h2>Upcoming Follow-ups</h2>
+            <small style="color:var(--muted);font-size:12px">Next 14 days</small>
           </div>
-          <div class="tbl-wrap">
-            <table><thead><tr><th>Account</th><th>Items</th><th>Due</th><th>Status</th></tr></thead>
-            <tbody id="dash-recent-orders"></tbody></table>
-          </div>
+          <div id="dash-followups"></div>
         </div>
       </div>
+
+      <!-- Row 3: Pending Orders + Invoice Status -->
+      <div class="card-grid grid-2" style="margin-bottom:20px">
+        <div class="card">
+          <div class="section-hdr">
+            <h2>Pending Orders</h2>
+            <button class="btn sm" onclick="nav('orders')">View all →</button>
+          </div>
+          <div id="dash-pending-orders"></div>
+        </div>
+        <div class="card">
+          <div class="section-hdr"><h2>Invoice Status</h2></div>
+          <div id="dash-invoice-status"></div>
+        </div>
+      </div>
+
+      <!-- Row 4: Revenue Projections -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-hdr">
+          <h2>Revenue Projections</h2>
+          <small style="color:var(--muted);font-size:12px">Based on order cadence per account</small>
+        </div>
+        <div class="card-grid grid-4" id="dash-projections" style="margin-bottom:16px"></div>
+        <div id="dash-projection-notes" style="font-size:12px;color:var(--muted)"></div>
+      </div>
+
+      <!-- Row 5: Store by Store Velocity -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>Store by Store Velocity</h2>
+          <small style="color:var(--muted);font-size:12px">Last 90 days · units/week</small>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Account</th>
+              <th>Avg Cycle</th>
+              <th>Next Order (est.)</th>
+              <th>Classic/wk</th>
+              <th>Blueberry/wk</th>
+              <th>Peach/wk</th>
+              <th>Raspberry/wk</th>
+              <th>Variety/wk</th>
+              <th>Total/wk</th>
+              <th>Avg Order $</th>
+            </tr></thead>
+            <tbody id="dash-velocities"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
     <!-- ═══════ ACCOUNTS ═══════ -->
@@ -551,9 +606,14 @@
       <div><span style="font-size:11px;color:var(--muted)">Status</span><div id="mod-status"></div></div>
       <div><span style="font-size:11px;color:var(--muted)">Notes</span><div id="mod-notes"></div></div>
     </div>
-    <div style="margin-bottom:16px"><span style="font-size:11px;color:var(--muted)">Items</span><div id="mod-items" style="margin-top:6px"></div></div>
+    <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Items</span><div id="mod-items" style="margin-top:6px"></div></div>
+    <div style="margin-bottom:16px">
+      <span style="font-size:11px;color:var(--muted)">Invoice</span>
+      <div id="mod-invoice-status" style="margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn red" id="mod-delete-btn" style="margin-right:auto">Delete Order</button>
+      <button class="btn xs" id="mod-reschedule-btn">Reschedule</button>
       <button class="btn" id="mod-status-btn">Advance Status →</button>
     </div>
   </div>
