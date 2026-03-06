@@ -1,19 +1,41 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --black:#0a0a0a;--sidebar:#111;--purple:#7B4FA0;--purple2:#9B6DC0;
+  /* ── purpl Brand Colors ───────────────────────────────────────── */
+  --brand-purple:       #4B2082;   /* Primary deep brand purple — logo, headings, primary actions */
+  --brand-purple-hover: #3A1768;   /* Darker on hover */
+  --brand-purple-mid:   #7B5CA7;   /* Medium purple — secondary accents, badges */
+  --brand-purple-soft:  #EDE4F5;   /* Soft lavender — tinted backgrounds */
+  --brand-purple-bg:    #F6F3FB;   /* Very light lavender — page background */
+
+  /* ── Semantic aliases (used throughout app) ───────────────────── */
+  --black:#0a0a0a;
+  --sidebar:#0D0820;               /* Near-black with brand purple undertone */
+  --purple:var(--brand-purple);
+  --purple2:var(--brand-purple-mid);
   --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;
-  --bg:#f8f7fb;--card:#fff;--border:#e5e7eb;--text:#1a1a2e;--muted:#6b7280;
+  --bg:var(--brand-purple-bg);
+  --card:#fff;--border:#e8e4f0;--text:#1a1a2e;--muted:#6b7280;
   --lavblue:#4a90b8;
-  --sku-classic:#7B4FA0;--sku-blueberry:#3b82f6;--sku-peach:#f97316;--sku-raspberry:#e11d48;--sku-variety:#0891b2;
+
+  /* ── SKU Colors ───────────────────────────────────────────────── */
+  --sku-classic:#4B2082;--sku-blueberry:#3b82f6;--sku-peach:#f97316;--sku-raspberry:#e11d48;--sku-variety:#0891b2;
+
+  /* ── Typography ───────────────────────────────────────────────── */
+  --font-brand:'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;font-size:14px}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);display:flex;min-height:100vh;font-size:14px}
 
 /* AUTH SCREEN */
-#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%;background:linear-gradient(135deg,#1a0a2e,#2d1b4e)}
-.auth-card{background:#fff;border-radius:16px;padding:40px;text-align:center;max-width:380px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.4)}
-.auth-logo{font-size:42px;font-weight:800;letter-spacing:-2px;color:#1a1a2e;margin-bottom:6px}
-.auth-logo span{color:var(--purple2)}
-.auth-tagline{font-size:13px;color:var(--muted);margin-bottom:32px}
+#auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%;background:linear-gradient(135deg,#0D0820,#1e0d3a,#2a1055)}
+.auth-card{background:#fff;border-radius:16px;padding:40px;text-align:center;max-width:380px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.5)}
+/* Auth logo brand lockup */
+.auth-logo-wrap{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px}
+.auth-sprig{width:32px;height:64px;color:var(--brand-purple);flex-shrink:0}
+.auth-logo{font-family:var(--font-brand);font-size:52px;font-weight:700;letter-spacing:-1px;color:var(--brand-purple);line-height:1}
+.auth-logo sup{font-size:14px;font-weight:400;vertical-align:super;opacity:.6;font-family:var(--font-body)}
+.auth-tagline{font-size:12px;color:var(--brand-purple-mid);margin-bottom:8px;font-style:italic;letter-spacing:.04em}
+.auth-crm-tag{font-size:12px;color:var(--muted);margin-bottom:28px}
 .auth-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--border);background:#fff;cursor:pointer;transition:.2s;color:var(--text)}
 .auth-btn:hover{background:#f9fafb;border-color:#d1d5db}
 .auth-btn svg{width:20px;height:20px}
@@ -21,7 +43,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 /* LOADING SCREEN */
 #loading-screen{display:none;align-items:center;justify-content:center;min-height:100vh;width:100%;background:var(--bg)}
-.loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite}
+.loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--brand-purple);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* APP SHELL */
@@ -29,16 +51,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 /* SIDEBAR */
 .sidebar{width:210px;min-height:100vh;background:var(--sidebar);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100}
-.sb-logo{padding:20px 16px 12px;border-bottom:1px solid #222}
-.sb-logo .wordmark{font-size:22px;font-weight:700;letter-spacing:-1px;color:#fff}
-.sb-logo .wordmark span{color:var(--purple2)}
-.sb-logo .tagline{font-size:10px;color:#666;margin-top:2px}
+.sb-logo{padding:18px 16px 14px;border-bottom:1px solid #1e1535}
+
+/* Brand lockup in sidebar */
+.brand-lockup{display:flex;align-items:center;gap:10px}
+.brand-sprig{width:16px;height:32px;flex-shrink:0;color:#fff;opacity:.9}
+.brand-text .wordmark{font-family:var(--font-brand);font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px;line-height:1}
+.brand-text .wordmark sup{font-size:9px;font-weight:400;vertical-align:super;opacity:.7;font-family:var(--font-body)}
+.brand-text .tagline{font-size:10px;color:#6b5f8a;margin-top:2px;letter-spacing:.02em}
+
 .sb-nav{flex:1;padding:8px 0;overflow-y:auto}
-.sb-nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#aaa;text-decoration:none;font-size:13px;transition:.15s;cursor:pointer;border:none;background:none;width:100%}
-.sb-nav a:hover,.sb-nav a.active{background:#1e1e1e;color:#fff}
-.sb-nav a.active{border-left:3px solid var(--purple2);padding-left:13px}
-.sb-nav .section{font-size:10px;color:#444;padding:12px 16px 4px;text-transform:uppercase;letter-spacing:.08em}
-.sb-bottom{padding:12px 16px;border-top:1px solid #222;display:flex;flex-direction:column;gap:6px}
+.sb-nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#9080b0;text-decoration:none;font-size:13px;transition:.15s;cursor:pointer;border:none;background:none;width:100%}
+.sb-nav a:hover,.sb-nav a.active{background:#1a1033;color:#fff}
+.sb-nav a.active{border-left:3px solid var(--brand-purple-mid);padding-left:13px}
+.sb-nav .section{font-size:10px;color:#3d2f5c;padding:12px 16px 4px;text-transform:uppercase;letter-spacing:.08em}
+.sb-bottom{padding:12px 16px;border-top:1px solid #1e1535;display:flex;flex-direction:column;gap:6px}
 .sb-bottom small{color:#555;font-size:11px}
 .sb-signout{font-size:11px;color:#666;background:none;border:none;cursor:pointer;text-align:left;padding:0;text-decoration:underline}
 .sb-signout:hover{color:#999}
@@ -46,7 +73,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* MAIN */
 .main{margin-left:210px;flex:1;min-height:100vh;display:flex;flex-direction:column}
 .topbar{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.topbar h1{font-size:16px;font-weight:600}
+.topbar h1{font-size:17px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
 .page{display:none;padding:24px;flex:1}
 .page.active{display:block}
@@ -61,9 +88,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 /* KPI */
 .kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
-.kpi .num{font-size:28px;font-weight:700;line-height:1}
-.kpi .label{font-size:11px;color:var(--muted);margin-top:4px}
-.kpi.purple .num{color:var(--purple)}
+.kpi .num{font-size:28px;font-weight:700;line-height:1;font-family:var(--font-brand)}
+.kpi .label{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--font-body)}
+.kpi.purple .num{color:var(--brand-purple)}
 .kpi.green .num{color:var(--green)}
 .kpi.red .num{color:var(--red)}
 .kpi.amber .num{color:var(--amber)}
@@ -86,13 +113,13 @@ tr.loc-row:hover td{background:#f0f9ff}
 .badge.red{background:#fee2e2;color:#991b1b}
 .badge.amber{background:#fef3c7;color:#92400e}
 .badge.blue{background:#dbeafe;color:#1e40af}
-.badge.purple{background:#ede9fe;color:#5b21b6}
+.badge.purple{background:#ede4f5;color:#4B2082}
 .badge.gray{background:#f3f4f6;color:#374151}
 .badge.lav{background:#dbeafe;color:var(--lavblue);border:1px solid #bfdbfe}
 .badge.cyan{background:#cffafe;color:#155e75}
 
 /* SKU badges */
-.sku-classic{background:#ede9fe;color:#5b21b6}
+.sku-classic{background:#ede4f5;color:#4B2082}
 .sku-blueberry{background:#dbeafe;color:#1e40af}
 .sku-peach{background:#ffedd5;color:#9a3412}
 .sku-raspberry{background:#ffe4e6;color:#9f1239}
@@ -101,8 +128,8 @@ tr.loc-row:hover td{background:#f0f9ff}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:500;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:.15s;color:var(--text)}
 .btn:hover{background:#f3f4f6}
-.btn.primary{background:var(--purple);color:#fff;border-color:var(--purple)}
-.btn.primary:hover{background:#6a3f8f}
+.btn.primary{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
+.btn.primary:hover{background:var(--brand-purple-hover)}
 .btn.green{background:var(--green);color:#fff;border-color:var(--green)}
 .btn.red{background:var(--red);color:#fff;border-color:var(--red)}
 .btn.sm{padding:4px 10px;font-size:12px}
@@ -115,7 +142,7 @@ tr.loc-row:hover td{background:#f0f9ff}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-group label{font-size:12px;font-weight:500;color:var(--muted)}
 input,select,textarea{padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;width:100%;background:#fff;color:var(--text)}
-input:focus,select:focus,textarea:focus{outline:2px solid var(--purple);border-color:transparent}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brand-purple);border-color:transparent}
 textarea{resize:vertical;min-height:60px}
 
 /* MODAL */
@@ -123,7 +150,7 @@ textarea{resize:vertical;min-height:60px}
 .overlay.open{display:flex}
 .modal{background:#fff;border-radius:14px;padding:24px;max-width:660px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.25)}
 .modal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
-.modal-hdr h2{font-size:17px;font-weight:600}
+.modal-hdr h2{font-size:17px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
 
 /* ALERTS */
@@ -135,7 +162,7 @@ textarea{resize:vertical;min-height:60px}
 /* TABS */
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px}
 .tab{padding:8px 14px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:none;border-left:none;border-right:none}
-.tab.active{color:var(--purple);border-bottom-color:var(--purple)}
+.tab.active{color:var(--brand-purple);border-bottom-color:var(--brand-purple)}
 
 /* NOTES PANEL */
 .notes-list .note-item{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
@@ -165,7 +192,7 @@ textarea{resize:vertical;min-height:60px}
 
 /* MISC */
 .section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.section-hdr h2{font-size:15px;font-weight:600}
+.section-hdr h2{font-size:15px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .empty{text-align:center;padding:40px;color:var(--muted);font-size:13px}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
 .dot.green{background:var(--green)}.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.gray{background:#d1d5db}
@@ -176,9 +203,9 @@ textarea{resize:vertical;min-height:60px}
 .ac-suggestions div:hover{background:#f3f4f6}
 .pos-rel{position:relative}
 .gauge-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:6px}
-.gauge-fill{height:100%;border-radius:4px;background:var(--purple);transition:.3s}
+.gauge-fill{height:100%;border-radius:4px;background:var(--brand-purple);transition:.3s}
 hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
-.highlight-box{background:linear-gradient(135deg,#f5f0ff,#ede9fe);border:1px solid #c4b5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.highlight-box{background:linear-gradient(135deg,#f5f0ff,var(--brand-purple-soft));border:1px solid #c4a8e8;border-radius:8px;padding:12px 14px;margin-bottom:14px}
 
 /* SKU row in production form */
 .sku-row{display:grid;grid-template-columns:130px 1fr;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;margin-bottom:6px}
@@ -232,5 +259,5 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .pr-card-nextsteps .ac-card-section-label{color:#1e40af}
 .pr-card-nextsteps-text{font-size:13px;color:#1e3a8a}
 .ac-card-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px}
-.btn.run{background:var(--purple);color:#fff;border-color:var(--purple)}
-.btn.run:hover{background:#6a3f8f}
+.btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
+.btn.run:hover{background:var(--brand-purple-hover)}
