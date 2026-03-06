@@ -126,6 +126,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Reports
       </a>
+      <a data-page="integrations">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Integrations
+      </a>
       <a data-page="settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         Settings
@@ -766,6 +770,126 @@
         </div>
         <div id="rep-saved-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:36px">
           <span style="color:var(--muted);font-size:13px">No saved reports yet. Configure a report and click 💾 Save.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ INTEGRATIONS ═══════ -->
+    <div class="page" id="page-integrations">
+      <!-- Phase 1: Local Line CSV Import -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr">
+          <h2>🟢 Local Line — CSV Import <span class="badge green" style="font-size:11px;margin-left:8px">Active</span></h2>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Export orders from Local Line and import them directly into purpl CRM. New accounts and orders are created automatically.</p>
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <div>
+            <div class="section-hdr" style="margin-bottom:8px"><h4>Step 1 — Export from Local Line</h4></div>
+            <ol style="font-size:13px;color:var(--text);padding-left:18px;margin:0;line-height:1.8">
+              <li>Go to <strong>Orders</strong> in Local Line</li>
+              <li>Filter by date range if needed</li>
+              <li>Click <strong>Export → CSV</strong></li>
+              <li>Save the file to your computer</li>
+            </ol>
+          </div>
+          <div>
+            <div class="section-hdr" style="margin-bottom:8px"><h4>Step 2 — Import into purpl CRM</h4></div>
+            <div style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;background:var(--brand-purple-bg)">
+              <div style="font-size:13px;color:var(--muted);margin-bottom:10px">Drop your Local Line CSV here or</div>
+              <label class="btn primary" style="cursor:pointer">
+                Choose CSV File
+                <input type="file" id="ll-csv-input" accept=".csv" style="display:none" onchange="handleLLCSV(this)">
+              </label>
+            </div>
+          </div>
+        </div>
+        <!-- Preview -->
+        <div id="ll-preview" style="display:none">
+          <div class="section-hdr" style="margin-bottom:8px"><h4>Preview — <span id="ll-preview-count"></span></h4></div>
+          <div class="tbl-wrap" style="max-height:280px;overflow-y:auto;margin-bottom:12px">
+            <table>
+              <thead id="ll-preview-head"></thead>
+              <tbody id="ll-preview-body"></tbody>
+            </table>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn primary" id="ll-import-btn">Import Orders</button>
+            <button class="btn secondary" onclick="document.getElementById('ll-preview').style.display='none'">Cancel</button>
+            <span id="ll-import-msg" style="font-size:13px;color:var(--muted)"></span>
+          </div>
+        </div>
+        <!-- Import history -->
+        <div class="section-hdr" style="margin-top:16px;margin-bottom:8px"><h4>Import History</h4></div>
+        <div id="ll-import-history">
+          <div class="empty" style="font-size:13px">No imports yet</div>
+        </div>
+      </div>
+
+      <!-- Phase 2: Zapier Webhook -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr">
+          <h2>🟡 Zapier Webhook <span class="badge amber" style="font-size:11px;margin-left:8px">Ready to Activate</span></h2>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Automatically push new Local Line orders to purpl CRM via Zapier — no manual exports needed.</p>
+        <div class="card-grid grid-2">
+          <div>
+            <div class="section-hdr" style="margin-bottom:8px"><h4>Setup Instructions</h4></div>
+            <ol style="font-size:13px;color:var(--text);padding-left:18px;margin:0;line-height:2">
+              <li>Create a new Zap in <a href="https://zapier.com" target="_blank" style="color:var(--brand-purple)">Zapier</a></li>
+              <li><strong>Trigger:</strong> Local Line → New Order</li>
+              <li><strong>Action:</strong> Webhooks by Zapier → POST</li>
+              <li>Paste your webhook URL below into the Zapier URL field</li>
+              <li>Map fields: order_id, buyer_name, products, total, date</li>
+              <li>Test and activate the Zap</li>
+            </ol>
+          </div>
+          <div>
+            <div class="section-hdr" style="margin-bottom:8px"><h4>Your Webhook URL</h4></div>
+            <div style="background:var(--brand-purple-bg);border-radius:6px;padding:12px;margin-bottom:12px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Firebase Cloud Function endpoint</div>
+              <div id="zapier-webhook-url" style="font-family:monospace;font-size:12px;word-break:break-all;color:var(--brand-purple)">
+                Not configured — deploy the webhook Cloud Function first
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--muted);background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px">
+              💡 To activate: deploy <code>functions/webhook.js</code> to Firebase Functions, then paste the URL here. The function is already scaffolded in your repo.
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <input type="text" id="zapier-url-input" class="input" placeholder="Paste your Cloud Function URL" style="flex:1;font-size:12px">
+              <button class="btn primary" onclick="saveWebhookUrl()" style="font-size:12px">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3: Direct API -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>⚪ Local Line Direct API <span class="badge gray" style="font-size:11px;margin-left:8px">Coming Soon</span></h2>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Real-time two-way sync with Local Line via their API. Orders, inventory, and pricing will sync automatically.</p>
+        <div class="card-grid grid-3" style="opacity:0.6">
+          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">🔄</div>
+            <div style="font-weight:600;font-size:13px">Auto-sync Orders</div>
+            <div style="font-size:12px;color:var(--muted)">New orders appear instantly</div>
+          </div>
+          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">📦</div>
+            <div style="font-weight:600;font-size:13px">Inventory Push</div>
+            <div style="font-size:12px;color:var(--muted)">Update Local Line stock from CRM</div>
+          </div>
+          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
+            <div style="font-size:24px;margin-bottom:8px">💰</div>
+            <div style="font-weight:600;font-size:13px">Price Sync</div>
+            <div style="font-size:12px;color:var(--muted)">Keep pricing consistent</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;text-align:center">
+          <div style="font-size:13px;color:var(--muted)">
+            <strong>To request early access to the Direct API integration, contact your account manager.</strong><br>
+            API key field will appear here once activated.
+          </div>
         </div>
       </div>
     </div>

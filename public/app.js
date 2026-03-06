@@ -55,7 +55,7 @@ function nav(page) {
     dashboard:'Dashboard', accounts:'Accounts', distributors:'Distributors',
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
-    reports:'Reports', settings:'Settings'
+    reports:'Reports', integrations:'Integrations', settings:'Settings'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -74,6 +74,7 @@ const renders = {
   delivery:     renderDelivery,
   projections:  renderProjectionsPage,
   reports:      renderReports,
+  integrations: renderIntegrations,
   settings:     renderSettings
 };
 
@@ -3049,6 +3050,199 @@ function loadSavedReport(id) {
 function deleteSavedReport(id) {
   DB.remove('saved_reports', id);
   renderSavedReports();
+}
+
+// ══════════════════════════════════════════════════════════
+//  INTEGRATIONS — Phase 8: Local Line
+// ══════════════════════════════════════════════════════════
+function renderIntegrations() {
+  // Load webhook URL from settings if saved
+  const settings = DB.obj('settings', {});
+  const urlInput = qs('#zapier-url-input');
+  if (urlInput && settings.zapierWebhookUrl) urlInput.value = settings.zapierWebhookUrl;
+  const urlDisplay = qs('#zapier-webhook-url');
+  if (urlDisplay && settings.zapierWebhookUrl) urlDisplay.textContent = settings.zapierWebhookUrl;
+  _renderLLImportHistory();
+}
+
+function saveWebhookUrl() {
+  const url = qs('#zapier-url-input')?.value?.trim();
+  if (!url) { toast('Paste a URL first'); return; }
+  const settings = DB.obj('settings',{});
+  DB.setObj('settings', {...settings, zapierWebhookUrl: url});
+  const display = qs('#zapier-webhook-url');
+  if (display) display.textContent = url;
+  toast('Webhook URL saved');
+}
+
+// ── Local Line CSV Import (Phase 8.1) ─────────────────────
+// Expected Local Line CSV columns (flexible auto-detect):
+//   Order ID/Number, Customer/Buyer/Account, Product, Variant, Qty/Quantity,
+//   Unit Price/Price, Total, Status, Date/Order Date
+
+const LL_COLUMN_MAP = {
+  orderId:    ['order id','order number','order #','#'],
+  buyer:      ['customer','buyer','account','company','name','customer name'],
+  product:    ['product','item','product name'],
+  variant:    ['variant','sku','size','format'],
+  qty:        ['qty','quantity','ordered','units'],
+  unitPrice:  ['unit price','price','unit cost'],
+  total:      ['total','order total','subtotal'],
+  status:     ['status','order status'],
+  date:       ['date','order date','created','created at','placed'],
+};
+
+let _llParsedRows = [];
+
+function handleLLCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => _parseLLCSV(e.target.result);
+  reader.readAsText(file);
+}
+
+function _parseLLCSV(text) {
+  const lines = text.trim().split('\n').filter(l=>l.trim());
+  if (lines.length < 2) { toast('CSV appears empty'); return; }
+
+  // Parse CSV respecting quoted fields
+  const parseRow = line => {
+    const result=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'&&!inQ){inQ=true;}
+      else if(ch==='"'&&inQ&&line[i+1]==='"'){cur+='"';i++;}
+      else if(ch==='"'&&inQ){inQ=false;}
+      else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+      else{cur+=ch;}
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headers = parseRow(lines[0]).map(h=>h.toLowerCase().replace(/['"]/g,'').trim());
+  const dataRows = lines.slice(1).map(l=>parseRow(l));
+
+  // Auto-detect column indices
+  const colIdx = {};
+  Object.entries(LL_COLUMN_MAP).forEach(([key, candidates])=>{
+    for(const cand of candidates) {
+      const idx = headers.findIndex(h=>h.includes(cand));
+      if(idx>=0){ colIdx[key]=idx; break; }
+    }
+  });
+
+  const get = (row, key) => (colIdx[key]!==undefined ? (row[colIdx[key]]||'').trim() : '');
+
+  _llParsedRows = dataRows.map((row,i)=>({
+    _rowNum: i+2,
+    orderId:   get(row,'orderId'),
+    buyer:     get(row,'buyer'),
+    product:   get(row,'product'),
+    variant:   get(row,'variant'),
+    qty:       parseFloat(get(row,'qty'))||0,
+    unitPrice: parseFloat(get(row,'unitPrice').replace(/[$,]/g,''))||0,
+    total:     parseFloat(get(row,'total').replace(/[$,]/g,''))||0,
+    status:    get(row,'status')||'pending',
+    date:      get(row,'date')||today(),
+  })).filter(r=>r.buyer||r.orderId);
+
+  // Group rows by order ID (or buyer+date)
+  const grouped = {};
+  _llParsedRows.forEach(r=>{
+    const key = r.orderId || `${r.buyer}-${r.date}`;
+    if(!grouped[key]) grouped[key]={...r, items:[]};
+    if(r.product) grouped[key].items.push({product:r.product, variant:r.variant, qty:r.qty, unitPrice:r.unitPrice});
+    grouped[key].total = (grouped[key].total||0) || r.total;
+  });
+  const orders = Object.values(grouped);
+
+  // Preview
+  const preview = qs('#ll-preview');
+  const countEl = qs('#ll-preview-count');
+  const head    = qs('#ll-preview-head');
+  const tbody   = qs('#ll-preview-body');
+  if (!preview) return;
+
+  preview.style.display = '';
+  if (countEl) countEl.textContent = `${orders.length} order${orders.length!==1?'s':''} detected`;
+  if (head) head.innerHTML = '<tr><th>Buyer</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr>';
+  if (tbody) tbody.innerHTML = orders.map(o=>`<tr>
+    <td><strong>${o.buyer||'Unknown'}</strong></td>
+    <td>${o.date}</td>
+    <td>${o.items.map(i=>`${i.product}${i.variant?' ('+i.variant+')':''} ×${i.qty}`).join(', ')||'—'}</td>
+    <td>${fmtC(o.total||o.items.reduce((s,i)=>s+i.unitPrice*i.qty,0))}</td>
+    <td><span class="badge ${o.status.includes('complet')||o.status.includes('deliver')?'green':o.status.includes('cancel')?'red':'amber'}">${o.status}</span></td>
+  </tr>`).join('') || '<tr><td colspan="5" class="empty">No orders detected</td></tr>';
+
+  const importBtn = qs('#ll-import-btn');
+  if (importBtn) importBtn.onclick = ()=>importLLOrders(orders);
+  const msgEl = qs('#ll-import-msg');
+  if (msgEl) msgEl.textContent = `Columns detected: ${Object.entries(colIdx).map(([k,i])=>`${k}=col${i+1}`).join(', ')}`;
+}
+
+function importLLOrders(orders) {
+  let newAccounts=0, newOrders=0, skipped=0;
+  const existingOrders = DB.a('orders');
+
+  orders.forEach(o=>{
+    // Find or create account
+    let acct = DB.a('ac').find(a=>a.name.toLowerCase()===o.buyer.toLowerCase());
+    if (!acct) {
+      acct = {id:uid(), name:o.buyer, status:'active', type:'retail', source:'Local Line Import', created:today(), notes:[], outreach:[], pricing:{}};
+      DB.push('ac', acct);
+      newAccounts++;
+    }
+
+    // Detect duplicate
+    const isDup = existingOrders.some(ex=>ex.accountId===acct.id && ex.created===o.date && ex.source==='local_line' && ex.externalId===o.orderId);
+    if (isDup) { skipped++; return; }
+
+    // Map product name → SKU (fuzzy)
+    const mapSku = (product, variant)=>{
+      const p = (product+' '+(variant||'')).toLowerCase();
+      if(p.includes('blueberry')) return 'blueberry';
+      if(p.includes('peach'))     return 'peach';
+      if(p.includes('raspberry')) return 'raspberry';
+      if(p.includes('variety'))   return 'variety';
+      return 'classic'; // default
+    };
+
+    const items = o.items.map(i=>({sku:mapSku(i.product,i.variant), qty:i.qty||1}));
+    const ord = {
+      id:uid(), accountId:acct.id, created:o.date, dueDate:o.date,
+      status: o.status.toLowerCase().includes('complet')||o.status.toLowerCase().includes('deliver') ? 'delivered' : 'pending',
+      items, source:'local_line', externalId:o.orderId||'', importedAt:today(),
+    };
+    DB.push('orders', ord);
+    newOrders++;
+  });
+
+  // Log import
+  DB.push('saved_reports', {id:uid(), name:`LL Import ${today()}`, type:'ll_import', from:today(), to:today(), savedAt:today(), meta:`${newOrders} orders, ${newAccounts} new accounts, ${skipped} skipped`});
+
+  const msgEl = qs('#ll-import-msg');
+  if (msgEl) msgEl.textContent = `✓ Imported: ${newOrders} orders, ${newAccounts} new accounts. ${skipped} duplicates skipped.`;
+  _renderLLImportHistory();
+  toast(`Imported ${newOrders} orders from Local Line`);
+}
+
+function _renderLLImportHistory() {
+  const el = qs('#ll-import-history');
+  if (!el) return;
+  const imports = DB.a('saved_reports').filter(r=>r.type==='ll_import').slice().sort((a,b)=>b.savedAt>a.savedAt?1:-1);
+  if (!imports.length) { el.innerHTML = '<div class="empty" style="font-size:13px">No imports yet</div>'; return; }
+  el.innerHTML = imports.map(r=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span><strong>${r.name}</strong> &nbsp;<span style="color:var(--muted)">${r.meta||''}</span></span>
+      <button class="btn xs red" onclick="deleteLLImportLog('${r.id}')">✕</button>
+    </div>`).join('');
+}
+
+function deleteLLImportLog(id) {
+  DB.remove('saved_reports', id);
+  _renderLLImportHistory();
 }
 
 // ══════════════════════════════════════════════════════════
