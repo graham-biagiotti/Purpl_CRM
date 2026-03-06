@@ -11,6 +11,12 @@
 //  5. Paste the key below:
 window.GOOGLE_PLACES_KEY = '';  // <-- paste your key here
 
+// ── Shared team account ──────────────────────────────────────────────────────
+// Create ONE Firebase Auth account (e.g. in the Firebase console) and put its
+// email here. Everyone on the team enters only the shared password to log in.
+// Steps: Firebase console → Authentication → Add user → set email + password
+window.TEAM_EMAIL = 'team@purplbeverage.com'; // <-- change to your team email
+
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyBbEQ1wV7MwJJjSC9_EalYxHMvTjHklwFY",
   authDomain: "purpl-crm.firebaseapp.com",

@@ -51,10 +51,19 @@ const DB = {
 
   // ── Load all data from Firestore into memory ────────
   async _loadAll() {
-    const { doc, getDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const { doc, getDoc, setDoc } = window.FirestoreAPI;
+    const ref = doc(this._db, 'workspace', 'main', 'data', 'store');
     try {
-      const snap = await getDoc(ref);
+      let snap = await getDoc(ref);
+      // One-time migration: copy existing user data to shared workspace
+      if (!snap.exists() && this._uid) {
+        const oldRef = doc(this._db, 'users', this._uid, 'data', 'store');
+        const oldSnap = await getDoc(oldRef);
+        if (oldSnap.exists()) {
+          await setDoc(ref, oldSnap.data());
+          snap = await getDoc(ref);
+        }
+      }
       if (snap.exists()) {
         const data = snap.data();
         ARRAY_KEYS.forEach(k => {
@@ -80,7 +89,7 @@ const DB = {
     if (!this._uid || !this._db) return;
     this._updateSyncUI('syncing');
     const { doc, setDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const ref = doc(this._db, 'workspace', 'main', 'data', 'store');
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
@@ -142,7 +151,7 @@ const DB = {
 
   async _forceSave() {
     const { doc, setDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const ref = doc(this._db, 'workspace', 'main', 'data', 'store');
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);

@@ -43,9 +43,7 @@
     <div class="auth-tagline">calm starts here</div>
     <div class="auth-crm-tag">Beverage Sales CRM — sign in to continue</div>
     <div style="width:100%;margin-top:8px">
-      <input type="email" id="auth-email" placeholder="Email" autocomplete="email"
-        style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:10px;outline:none">
-      <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password"
+      <input type="password" id="auth-password" placeholder="Team password" autocomplete="current-password"
         style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;margin-bottom:14px;outline:none">
       <button class="auth-btn" id="sign-in-btn" style="gap:0;font-size:15px;justify-content:center">
         Sign In
@@ -1470,11 +1468,10 @@
 // Firebase compat SDK exposes everything on firebase.*  — wire it up here.
 window.FirebaseAppAPI  = { initializeApp: (cfg) => firebase.initializeApp(cfg) };
 window.FirebaseAuthAPI = {
-  getAuth:            (app) => app.auth(),
-  onAuthStateChanged: (auth, cb) => auth.onAuthStateChanged(cb),
-  signInWithPopup:    (auth, p)  => auth.signInWithPopup(p),
-  GoogleAuthProvider: firebase.auth.GoogleAuthProvider,
-  signOut:            (auth)     => auth.signOut(),
+  getAuth:                    (app)        => app.auth(),
+  onAuthStateChanged:         (auth, cb)   => auth.onAuthStateChanged(cb),
+  signInWithEmailAndPassword: (auth, e, p) => auth.signInWithEmailAndPassword(e, p),
+  signOut:                    (auth)       => auth.signOut(),
 };
 window.FirestoreAPI = {
   getFirestore:               (app)     => app.firestore(),

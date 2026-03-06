@@ -28,22 +28,19 @@ async function bootApp() {
   const signInBtn    = document.getElementById('sign-in-btn');
   const signOutBtn   = document.getElementById('sign-out-btn');
 
-  // Sign-in button — email + password
+  // Sign-in button — shared team password only
   const doSignIn = async () => {
-    const email    = document.getElementById('auth-email')?.value?.trim();
     const password = document.getElementById('auth-password')?.value;
-    if (!email || !password) { authStatus.textContent = 'Enter your email and password.'; return; }
+    if (!password) { authStatus.textContent = 'Enter the team password.'; return; }
     authStatus.textContent = 'Signing in…';
     signInBtn.disabled = true;
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, window.TEAM_EMAIL, password);
     } catch(e) {
       const msgs = {
-        'auth/invalid-credential':   'Incorrect email or password.',
-        'auth/user-not-found':       'No account found with that email.',
-        'auth/wrong-password':       'Incorrect password.',
-        'auth/too-many-requests':    'Too many attempts — try again later.',
-        'auth/invalid-email':        'Please enter a valid email address.',
+        'auth/invalid-credential': 'Incorrect password.',
+        'auth/wrong-password':     'Incorrect password.',
+        'auth/too-many-requests':  'Too many attempts — try again later.',
       };
       authStatus.textContent = msgs[e.code] || 'Sign-in failed. Please try again.';
       signInBtn.disabled = false;
