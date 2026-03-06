@@ -679,6 +679,8 @@ function editAccount(id) {
   renderParInputs(a);
 
   qs('#eac-save-btn').onclick = () => saveAccount(id, isNew);
+  // Re-attach address autocomplete (safe to call multiple times)
+  if (window.PlacesAC) PlacesAC.reattach();
   if (!isNew) {
     const delBtn = qs('#eac-delete-btn');
     if (delBtn) { delBtn.style.display=''; delBtn.onclick = ()=>deleteAccount(id); }
@@ -702,7 +704,7 @@ function renderParInputs(a) {
     </div>`).join('') : '<div style="font-size:12px;color:var(--muted)">Select SKUs above</div>';
 }
 
-function saveAccount(id, isNew) {
+async function saveAccount(id, isNew) {
   const name = qs('#eac-name')?.value?.trim();
   if (!name) { toast('Account name required'); return; }
   const skus = [...document.querySelectorAll('#eac-skus input:checked')].map(x=>x.value);
@@ -710,12 +712,26 @@ function saveAccount(id, isNew) {
   skus.forEach(s=>{par[s]=parseInt(qs('#par-'+s)?.value)||24;});
 
   const existing = DB.a('ac').find(x=>x.id===id);
+  const addrEl  = qs('#eac-address');
+  const address = addrEl?.value?.trim()||'';
+
+  // Silently capture lat/lng (from autocomplete or geocode fallback)
+  let lat = null, lng = null;
+  if (address && window.PlacesAC) {
+    const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
+    if (coords) { lat = coords.lat; lng = coords.lng; }
+  } else if (addrEl?.dataset?.lat) {
+    lat = parseFloat(addrEl.dataset.lat);
+    lng = parseFloat(addrEl.dataset.lng);
+  }
+
   const rec = {
     id, name,
     contact:      qs('#eac-contact')?.value?.trim()||'',
     phone:        qs('#eac-phone')?.value?.trim()||'',
     email:        qs('#eac-email')?.value?.trim()||'',
-    address:      qs('#eac-address')?.value?.trim()||'',
+    address,
+    lat, lng,                         // stored for future map use
     type:         qs('#eac-type')?.value||'Grocery',
     territory:    qs('#eac-territory')?.value?.trim()||'',
     status:       qs('#eac-status')?.value||'active',
@@ -897,6 +913,8 @@ function editProspect(id) {
   qs('#epr-next-date').value = p.nextDate||'';
 
   qs('#epr-save-btn').onclick = () => saveProspect(id, isNew);
+  // Re-attach address autocomplete
+  if (window.PlacesAC) PlacesAC.reattach();
   const delBtn = qs('#epr-delete-btn');
   if (delBtn) {
     delBtn.style.display = isNew ? 'none' : '';
@@ -906,15 +924,30 @@ function editProspect(id) {
   openModal('modal-edit-prospect');
 }
 
-function saveProspect(id, isNew) {
+async function saveProspect(id, isNew) {
   const name = qs('#epr-name')?.value?.trim();
   if (!name) { toast('Name required'); return; }
+
+  const addrEl  = qs('#epr-address');
+  const address = addrEl?.value?.trim()||'';
+
+  // Silently capture lat/lng
+  let lat = null, lng = null;
+  if (address && window.PlacesAC) {
+    const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
+    if (coords) { lat = coords.lat; lng = coords.lng; }
+  } else if (addrEl?.dataset?.lat) {
+    lat = parseFloat(addrEl.dataset.lat);
+    lng = parseFloat(addrEl.dataset.lng);
+  }
+
   const rec = {
     id, name,
     contact:    qs('#epr-contact')?.value?.trim()||'',
     phone:      qs('#epr-phone')?.value?.trim()||'',
     email:      qs('#epr-email')?.value?.trim()||'',
-    address:    qs('#epr-address')?.value?.trim()||'',
+    address,
+    lat, lng,                       // stored for future map use
     type:       qs('#epr-type')?.value||'Grocery',
     territory:  qs('#epr-territory')?.value?.trim()||'',
     status:     qs('#epr-status')?.value||'lead',
@@ -1510,6 +1543,10 @@ function setupFilters() {
 // ══════════════════════════════════════════════════════════
 window.onAppReady = function() {
   seedIfEmpty();
+
+  // Initialize address autocomplete (Phase 3)
+  // Fires async — no blocking. Silent if no API key set.
+  if (window.PlacesAC) PlacesAC.initAll();
 
   // Wire nav links
   document.querySelectorAll('.sb-nav a[data-page]').forEach(a=>{
