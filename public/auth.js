@@ -1,17 +1,16 @@
 // ═══════════════════════════════════════════════════════
-//  auth.js  —  Email/Password Sign-In + app boot sequence
+//  auth.js  —  Google + Email/Password Sign-In
 // ═══════════════════════════════════════════════════════
 
 async function bootApp() {
   const { initializeApp } = window.FirebaseAppAPI;
-  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = window.FirebaseAuthAPI;
+  const { getAuth, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, GoogleAuthProvider, signOut } = window.FirebaseAuthAPI;
   const { getFirestore, enableIndexedDbPersistence } = window.FirestoreAPI;
 
   const app = initializeApp(window.FIREBASE_CONFIG);
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // Enable offline persistence (critical for delivery runs)
   try {
     await enableIndexedDbPersistence(db);
   } catch(e) {
@@ -24,12 +23,24 @@ async function bootApp() {
   const loadingScreen = document.getElementById('loading-screen');
   const appShell      = document.getElementById('app-shell');
   const authStatus    = document.getElementById('auth-status');
+  const googleBtn     = document.getElementById('google-sign-in-btn');
   const signInBtn     = document.getElementById('sign-in-btn');
   const emailInput    = document.getElementById('auth-email');
   const passwordInput = document.getElementById('auth-password');
   const signOutBtn    = document.getElementById('sign-out-btn');
 
-  // Sign-in button
+  // Google Sign-In
+  googleBtn.addEventListener('click', async () => {
+    authStatus.textContent = 'Opening Google sign-in…';
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch(e) {
+      authStatus.textContent = 'Sign-in failed. Please try again.';
+      console.error(e);
+    }
+  });
+
+  // Email/password sign-in
   signInBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim();
     const password = passwordInput.value;
@@ -48,12 +59,10 @@ async function bootApp() {
     }
   });
 
-  // Allow pressing Enter in password field to submit
   passwordInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') signInBtn.click();
   });
 
-  // Sign-out button (in sidebar)
   if (signOutBtn) {
     signOutBtn.addEventListener('click', async () => {
       if (!confirm('Sign out of purpl CRM?')) return;
@@ -61,7 +70,6 @@ async function bootApp() {
     });
   }
 
-  // Auth state listener — runs on every page load
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       authScreen.style.display = 'none';

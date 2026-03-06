@@ -72,11 +72,9 @@ const DB = {
         // One-time migration from old UID path if workspace was just populated
         return;
       }
-      // Workspace empty — try migrating from old owner's UID path
-      if (window.OLD_OWNER_UID) {
-        await this._migrateFromLegacyPath(window.OLD_OWNER_UID);
-        return;
-      }
+      // Workspace empty — try migrating from this user's old UID path automatically
+      await this._migrateFromLegacyPath(this._uid);
+      return;
       // Fresh start
       ARRAY_KEYS.forEach(k => this._cache[k] = []);
       OBJ_KEYS.forEach(k => this._cache[k] = null);
