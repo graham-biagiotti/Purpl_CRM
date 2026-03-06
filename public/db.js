@@ -41,6 +41,12 @@ const DB = {
   _db: null,
   _syncStatus: 'synced', // 'synced' | 'syncing' | 'error'
 
+  // ── Shared workspace path (all users share same data) ─
+  _ref() {
+    const { doc } = window.FirestoreAPI;
+    return doc(this._db, 'workspace', 'main', 'data', 'store');
+  },
+
   // ── Init ────────────────────────────────────────────
   async init(uid, firestoreDb) {
     this._uid = uid;
@@ -51,8 +57,8 @@ const DB = {
 
   // ── Load all data from Firestore into memory ────────
   async _loadAll() {
-    const { doc, getDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const { getDoc } = window.FirestoreAPI;
+    const ref = this._ref();
     try {
       const snap = await getDoc(ref);
       if (snap.exists()) {
@@ -63,11 +69,17 @@ const DB = {
         OBJ_KEYS.forEach(k => {
           this._cache[k] = data[k] || null;
         });
-      } else {
-        // First time user — initialize empty
-        ARRAY_KEYS.forEach(k => this._cache[k] = []);
-        OBJ_KEYS.forEach(k => this._cache[k] = null);
+        // One-time migration from old UID path if workspace was just populated
+        return;
       }
+      // Workspace empty — try migrating from old owner's UID path
+      if (window.OLD_OWNER_UID) {
+        await this._migrateFromLegacyPath(window.OLD_OWNER_UID);
+        return;
+      }
+      // Fresh start
+      ARRAY_KEYS.forEach(k => this._cache[k] = []);
+      OBJ_KEYS.forEach(k => this._cache[k] = null);
     } catch(e) {
       console.warn('Firestore load failed, using cached/empty data:', e);
       ARRAY_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = []; });
@@ -75,12 +87,43 @@ const DB = {
     }
   },
 
+  // ── One-time migration from old per-user path ───────
+  async _migrateFromLegacyPath(oldUid) {
+    const { doc, getDoc, setDoc } = window.FirestoreAPI;
+    try {
+      const oldRef = doc(this._db, 'users', oldUid, 'data', 'store');
+      const snap = await getDoc(oldRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        ARRAY_KEYS.forEach(k => {
+          this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
+        });
+        OBJ_KEYS.forEach(k => {
+          this._cache[k] = data[k] || null;
+        });
+        // Save to shared workspace
+        const payload = {};
+        ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
+        OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
+        await setDoc(this._ref(), payload);
+        console.log('Migration complete: data moved to shared workspace');
+      } else {
+        ARRAY_KEYS.forEach(k => this._cache[k] = []);
+        OBJ_KEYS.forEach(k => this._cache[k] = null);
+      }
+    } catch(e) {
+      console.warn('Migration failed:', e);
+      ARRAY_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = []; });
+      OBJ_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = null; });
+    }
+  },
+
   // ── Persist to Firestore (fire-and-forget) ──────────
   _save() {
-    if (!this._uid || !this._db) return;
+    if (!this._db) return;
     this._updateSyncUI('syncing');
-    const { doc, setDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const { setDoc } = window.FirestoreAPI;
+    const ref = this._ref();
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
@@ -141,11 +184,10 @@ const DB = {
   },
 
   async _forceSave() {
-    const { doc, setDoc } = window.FirestoreAPI;
-    const ref = doc(this._db, 'users', this._uid, 'data', 'store');
+    const { setDoc } = window.FirestoreAPI;
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
-    await setDoc(ref, payload);
+    await setDoc(this._ref(), payload);
   }
 };

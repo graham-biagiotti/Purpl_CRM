@@ -11,6 +11,13 @@
 //  5. Paste the key below:
 window.GOOGLE_PLACES_KEY = '';  // <-- paste your key here
 
+// ── One-time data migration ──────────────────────────────────────────────────
+// If you had data under your old Google Sign-In account, paste your old UID
+// here (Firebase console → Authentication → Users → your Google account → UID).
+// The app will automatically migrate data to the shared workspace on first login.
+// After migration completes, you can clear this value.
+window.OLD_OWNER_UID = '';  // <-- paste your old Google UID here (e.g. 'ZXS8An53T1bR...')
+
 window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyBbEQ1wV7MwJJjSC9_EalYxHMvTjHklwFY",
   authDomain: "purpl-crm.firebaseapp.com",

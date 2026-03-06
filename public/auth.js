@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════
-//  auth.js  —  Google Sign-In + app boot sequence
+//  auth.js  —  Email/Password Sign-In + app boot sequence
 // ═══════════════════════════════════════════════════════
 
 async function bootApp() {
   const { initializeApp } = window.FirebaseAppAPI;
-  const { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } = window.FirebaseAuthAPI;
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = window.FirebaseAuthAPI;
   const { getFirestore, enableIndexedDbPersistence } = window.FirestoreAPI;
 
   const app = initializeApp(window.FIREBASE_CONFIG);
@@ -15,29 +15,42 @@ async function bootApp() {
   try {
     await enableIndexedDbPersistence(db);
   } catch(e) {
-    // Will fail if multiple tabs open — that's fine
     if (e.code !== 'failed-precondition' && e.code !== 'unimplemented') {
       console.warn('Offline persistence unavailable:', e);
     }
   }
 
-  const authScreen   = document.getElementById('auth-screen');
+  const authScreen    = document.getElementById('auth-screen');
   const loadingScreen = document.getElementById('loading-screen');
-  const appShell     = document.getElementById('app-shell');
-  const authStatus   = document.getElementById('auth-status');
-  const signInBtn    = document.getElementById('sign-in-btn');
-  const signOutBtn   = document.getElementById('sign-out-btn');
+  const appShell      = document.getElementById('app-shell');
+  const authStatus    = document.getElementById('auth-status');
+  const signInBtn     = document.getElementById('sign-in-btn');
+  const emailInput    = document.getElementById('auth-email');
+  const passwordInput = document.getElementById('auth-password');
+  const signOutBtn    = document.getElementById('sign-out-btn');
 
   // Sign-in button
   signInBtn.addEventListener('click', async () => {
-    const provider = new GoogleAuthProvider();
-    authStatus.textContent = 'Opening Google sign-in…';
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) {
+      authStatus.textContent = 'Please enter your email and password.';
+      return;
+    }
+    authStatus.textContent = 'Signing in…';
+    signInBtn.disabled = true;
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithEmailAndPassword(auth, email, password);
     } catch(e) {
-      authStatus.textContent = 'Sign-in failed. Please try again.';
+      authStatus.textContent = 'Incorrect email or password.';
+      signInBtn.disabled = false;
       console.error(e);
     }
+  });
+
+  // Allow pressing Enter in password field to submit
+  passwordInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') signInBtn.click();
   });
 
   // Sign-out button (in sidebar)
@@ -51,29 +64,25 @@ async function bootApp() {
   // Auth state listener — runs on every page load
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      // Signed in — show loading, init DB, show app
       authScreen.style.display = 'none';
       loadingScreen.style.display = 'flex';
       appShell.style.display = 'none';
 
-      // Init DB with Firebase
       await DB.init(user.uid, db);
 
-      // Show migration banner if old localStorage data exists
       checkMigration();
 
       loadingScreen.style.display = 'none';
       appShell.style.display = 'flex';
 
-      // Boot the app
       window.onAppReady();
 
     } else {
-      // Signed out — show auth screen
       authScreen.style.display = 'flex';
       loadingScreen.style.display = 'none';
       appShell.style.display = 'none';
       authStatus.textContent = '';
+      signInBtn.disabled = false;
     }
   });
 }
