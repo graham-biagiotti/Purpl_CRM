@@ -15,7 +15,15 @@
 const ARRAY_KEYS = [
   'ac','pr','iv','ord','orders','inv_log_v2',
   'prod_hist','prod_sched','shipments','dist',
-  'rem','pack_types','runs'
+  'rem','pack_types','runs',
+  // Phase 4 — Distributors
+  'dist_profiles',   // distributor profiles
+  'dist_reps',       // sales reps per distributor
+  'dist_pricing',    // SKU pricing per distributor
+  'dist_pos',        // purchase orders from distributors
+  'dist_invoices',   // invoices sent to distributors
+  'dist_chains',     // store/chain coverage per distributor
+  'dist_imports',    // imported order records (CSV/webhook)
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run'];

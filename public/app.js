@@ -39,6 +39,7 @@ const skuBadge = (id) => {
 
 // ── Navigation ───────────────────────────────────────────
 let currentPage = 'dashboard';
+let _currentDistId = null;  // tracks which distributor detail is open
 function nav(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.sb-nav a').forEach(a => a.classList.remove('active'));
@@ -51,9 +52,9 @@ function nav(page) {
     a.classList.toggle('active', a.dataset.page===page);
   });
   const titles = {
-    dashboard:'Dashboard', accounts:'Accounts', prospects:'Prospects',
-    inventory:'Inventory', orders:'Orders', production:'Production',
-    delivery:'Today\'s Run', reports:'Reports', settings:'Settings'
+    dashboard:'Dashboard', accounts:'Accounts', distributors:'Distributors',
+    prospects:'Prospects', inventory:'Inventory', orders:'Orders',
+    production:'Production', delivery:'Today\'s Run', reports:'Reports', settings:'Settings'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -62,15 +63,16 @@ function nav(page) {
 }
 
 const renders = {
-  dashboard:  renderDash,
-  accounts:   renderAccounts,
-  prospects:  renderProspects,
-  inventory:  renderInventory,
-  orders:     renderOrders,
-  production: renderProduction,
-  delivery:   renderDelivery,
-  reports:    renderReports,
-  settings:   renderSettings
+  dashboard:    renderDash,
+  accounts:     renderAccounts,
+  distributors: renderDistributors,
+  prospects:    renderProspects,
+  inventory:    renderInventory,
+  orders:       renderOrders,
+  production:   renderProduction,
+  delivery:     renderDelivery,
+  reports:      renderReports,
+  settings:     renderSettings
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -153,6 +155,7 @@ function renderDash() {
   renderInvoiceStatus();
   renderProjections();
   renderVelocities();
+  renderDistDashKPIs();
 }
 
 function renderWelcomeHeader(ac, ord, inv) {
@@ -229,6 +232,13 @@ function renderAttention() {
 
   DB.a('pr').filter(p=>p.nextDate&&p.nextDate<today()&&!['won','lost'].includes(p.status)).forEach(p=>{
     items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`openProspect('${p.id}')`});
+  });
+
+  // Overdue distributor invoices
+  const todayStr = today();
+  DB.a('dist_invoices').filter(i=>i.status==='unpaid'&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
+    const d = DB.a('dist_profiles').find(x=>x.id===i.distId);
+    items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`$${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
   });
 
   const el = qs('#dash-attention');
@@ -1006,6 +1016,795 @@ function deleteProspect(id) {
 }
 
 // ══════════════════════════════════════════════════════════
+//  DISTRIBUTORS  (Phase 4)
+// ══════════════════════════════════════════════════════════
+
+const DIST_STATUS = {
+  active:      {label:'Active',      cls:'green'},
+  negotiating: {label:'Negotiating', cls:'amber'},
+  on_hold:     {label:'On Hold',     cls:'gray'},
+  inactive:    {label:'Inactive',    cls:'red'},
+};
+
+const DIST_PO_STATUS = {
+  pending:   {label:'Pending',   cls:'amber'},
+  fulfilled: {label:'Fulfilled', cls:'green'},
+  partial:   {label:'Partial',   cls:'blue'},
+  cancelled: {label:'Cancelled', cls:'red'},
+};
+
+const DIST_INV_STATUS = {
+  unpaid:  {label:'Unpaid',  cls:'amber'},
+  paid:    {label:'Paid',    cls:'green'},
+  partial: {label:'Partial', cls:'blue'},
+  overdue: {label:'Overdue', cls:'red'},
+};
+
+// ── List Page ─────────────────────────────────────────────
+function renderDistributors() {
+  let list   = DB.a('dist_profiles');
+  const search = qs('#dist-search')?.value?.toLowerCase().trim()||'';
+  const sf   = qs('#dist-status-filter')?.value||'';
+
+  if (search) list = list.filter(d=>
+    d.name?.toLowerCase().includes(search) ||
+    d.territory?.toLowerCase().includes(search));
+  if (sf) list = list.filter(d=>d.status===sf);
+
+  const cnt = qs('#dist-count');
+  if (cnt) cnt.textContent = `${list.length} distributor${list.length!==1?'s':''}`;
+
+  const el = qs('#dist-cards');
+  if (!el) return;
+
+  el.innerHTML = list.map(d=>{
+    const reps  = DB.a('dist_reps').filter(r=>r.distId===d.id);
+    const pos   = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
+    const invs  = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
+    const lastPO = pos[0]?.dateReceived || null;
+    const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
+    const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d.doorCount || 0;
+    const pendingVal = invs.reduce((s,i)=>s+(i.total||0),0);
+
+    return `<div class="ac-card">
+      <div class="ac-card-hdr">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <span class="ac-card-name">${d.name}</span>
+            <span class="badge gray">${d.platformType||'Other'}</span>
+          </div>
+          <div class="ac-card-sub">${d.territory||'No territory set'}</div>
+        </div>
+        <div class="ac-card-badges">
+          ${statusBadge(DIST_STATUS, d.status)}
+        </div>
+      </div>
+      <div class="ac-card-metrics" style="grid-template-columns:repeat(4,1fr)">
+        <div><div class="ac-metric-label">Total Doors</div><div class="ac-metric-val">${fmt(totalDoors)||'—'}</div></div>
+        <div><div class="ac-metric-label">Sales Reps</div><div class="ac-metric-val">${reps.length}</div></div>
+        <div><div class="ac-metric-label">Last PO</div><div class="ac-metric-val${lastPO&&daysAgo(lastPO)>60?' red':''}">${lastPO?fmtD(lastPO):'—'}</div></div>
+        <div><div class="ac-metric-label">Outstanding Inv.</div><div class="ac-metric-val${pendingVal>0?' red':' green'}">${pendingVal>0?fmtC(pendingVal):'Clear'}</div></div>
+      </div>
+      ${d.notes?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${d.notes}</div></div>`:''}
+      <div class="ac-card-actions">
+        <button class="btn sm primary" onclick="openDistributor('${d.id}')">View Details</button>
+        <button class="btn sm" onclick="editDistributor('${d.id}')">Edit</button>
+        <button class="btn sm" onclick="addDistPO('${d.id}')">+ Log PO</button>
+        <button class="btn sm" onclick="addDistInvoice('${d.id}')">+ Invoice</button>
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty">
+    <div class="empty-icon">🚚</div>
+    No distributors yet. Add your first distributor to get started.
+  </div>`;
+}
+
+// ── Detail Modal ──────────────────────────────────────────
+function openDistributor(id) {
+  const d = DB.a('dist_profiles').find(x=>x.id===id);
+  if (!d) return;
+  _currentDistId = id;
+
+  qs('#mdist-name').textContent = d.name;
+  qs('#mdist-status-badge').innerHTML = statusBadge(DIST_STATUS, d.status);
+
+  // Tab switching
+  document.querySelectorAll('#modal-distributor .tab[data-dtab]').forEach(t=>{
+    t.onclick = ()=>{
+      document.querySelectorAll('#modal-distributor .tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.dtab-pane').forEach(x=>x.style.display='none');
+      t.classList.add('active');
+      const pane = qs('#mdist-tab-'+t.dataset.dtab);
+      if (pane) pane.style.display='block';
+      renderDistTab(t.dataset.dtab, id);
+    };
+  });
+
+  // Footer buttons
+  if (qs('#mdist-edit-btn'))    qs('#mdist-edit-btn').onclick    = ()=>{ closeModal('modal-distributor'); editDistributor(id); };
+  if (qs('#mdist-po-btn'))      qs('#mdist-po-btn').onclick      = ()=>{ closeModal('modal-distributor'); addDistPO(id); };
+  if (qs('#mdist-invoice-btn')) qs('#mdist-invoice-btn').onclick = ()=>{ closeModal('modal-distributor'); addDistInvoice(id); };
+
+  // Default tab
+  document.querySelectorAll('#modal-distributor .tab[data-dtab]')[0]?.click();
+  openModal('modal-distributor');
+}
+
+function renderDistTab(tab, distId) {
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  const pane = qs('#mdist-tab-'+tab);
+  if (!d || !pane) return;
+  switch(tab) {
+    case 'overview':  pane.innerHTML = renderDistOverviewHTML(d); break;
+    case 'reps':      pane.innerHTML = renderDistRepsHTML(d); break;
+    case 'pricing':   pane.innerHTML = renderDistPricingHTML(d); break;
+    case 'orders':    pane.innerHTML = renderDistOrdersHTML(d); break;
+    case 'invoices':  pane.innerHTML = renderDistInvoicesHTML(d); break;
+    case 'stores':    pane.innerHTML = renderDistStoresHTML(d); break;
+    case 'imports':   pane.innerHTML = renderDistImportsHTML(d); break;
+  }
+}
+
+function renderDistOverviewHTML(d) {
+  const terms = d.paymentTerms==='custom' ? `Custom (${d.paymentTermsDays||'?'} days)` : d.paymentTerms||'Net 30';
+  return `
+  <div class="card-grid grid-2" style="margin-bottom:14px">
+    <div><span style="font-size:11px;color:var(--muted)">Platform Type</span><div>${d.platformType||'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Payment Terms</span><div>${terms}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Contract Start</span><div>${d.contractStart?fmtD(d.contractStart):'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Total Doors</span><div><strong>${fmt(d.doorCount||0)}</strong></div></div>
+  </div>
+  <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${d.territory||'—'}</div></div>
+  ${d.notes?`<div class="highlight-box" style="margin-bottom:0"><div class="ac-card-section-label">Internal Notes</div><div style="font-size:13px;margin-top:4px">${d.notes}</div></div>`:''}`;
+}
+
+function renderDistRepsHTML(d) {
+  const reps = DB.a('dist_reps').filter(r=>r.distId===d.id);
+  const rows = reps.map(r=>`
+    <div class="attn-item" style="flex-wrap:wrap;gap:8px">
+      <div class="attn-info" style="flex:1;min-width:180px">
+        <div class="attn-name">${r.name}</div>
+        <div class="attn-reason">${[r.title, r.territory].filter(Boolean).join(' · ')}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          ${r.phone?`📞 ${r.phone} &nbsp;`:''}
+          ${r.email?`✉ ${r.email}`:''}
+        </div>
+        ${r.lastContacted?`<div style="font-size:11px;color:var(--muted);margin-top:2px">Last contacted: ${fmtD(r.lastContacted)}</div>`:''}
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${r.email?`<a href="mailto:${r.email}?subject=purpl%20Beverages" class="btn xs">✉ Gmail</a>`:''}
+        <button class="btn xs" onclick="editDistRep('${r.id}','${d.id}')">Edit</button>
+      </div>
+    </div>`).join('');
+  return `
+    <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+      <button class="btn sm primary" onclick="addDistRep('${d.id}')">+ Add Rep</button>
+    </div>
+    ${rows || '<div class="empty">No sales reps added yet</div>'}`;
+}
+
+function renderDistPricingHTML(d) {
+  const costs  = DB.obj('costs',{cogs:{}});
+  const rows = SKUS.map(s=>{
+    const p = DB.a('dist_pricing').find(x=>x.distId===d.id&&x.sku===s.id);
+    const pricePerCase = p?.pricePerCase || null;
+    const pricePerCan  = pricePerCase ? pricePerCase/12 : null;
+    const costPerCan   = costs.cogs?.[s.id] || 0;
+    const gpPerCan     = pricePerCan ? pricePerCan - costPerCan : null;
+    const marginPct    = pricePerCan && pricePerCan>0 ? gpPerCan/pricePerCan : null;
+    const statusCls    = pricePerCase ? '' : 'amber';
+    const statusLabel  = pricePerCase ? '' : '<span class="badge amber">Pending</span>';
+    return `<tr>
+      <td>${skuBadge(s.id)}</td>
+      <td><input type="number" class="dist-price-input" data-sku="${s.id}" data-dist="${d.id}"
+           value="${pricePerCase||''}" placeholder="—" step="0.01" min="0" style="width:90px">
+          <small style="color:var(--muted);font-size:10px">/case</small>
+      </td>
+      <td>${pricePerCan?fmtC(pricePerCan):'—'}</td>
+      <td>${costPerCan?fmtC(costPerCan):'—'}</td>
+      <td>${gpPerCan!=null?`<span style="color:${gpPerCan>=0?'var(--green)':'var(--red)'}">${fmtC(gpPerCan)}</span>`:'—'}</td>
+      <td>${marginPct!=null?`<span class="badge ${marginPct>=.4?'green':marginPct>=.2?'amber':'red'}">${fmt(marginPct*100,1)}%</span>`:'—'}</td>
+      <td>${statusLabel}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="highlight-box" style="margin-bottom:14px">
+      <div style="font-size:13px">Set the price per case (12-pack) you charge this distributor for each SKU. Margins calculated against your COGS from Settings.</div>
+    </div>
+    <div class="tbl-wrap" style="margin-bottom:14px">
+      <table>
+        <thead><tr><th>SKU</th><th>Price/Case</th><th>Price/Can</th><th>My Cost/Can</th><th>Margin/Can</th><th>Margin %</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <button class="btn primary" onclick="saveDistPricing('${d.id}')">Save Pricing</button>
+    <small style="color:var(--muted);font-size:12px;margin-left:10px">Changes apply immediately and are saved to your account</small>`;
+}
+
+function renderDistOrdersHTML(d) {
+  const pos = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
+  const rows = pos.map(p=>{
+    const totalCases = (p.items||[]).reduce((s,i)=>s+i.cases,0);
+    return `<tr>
+      <td>${p.poNumber||'—'}</td>
+      <td>${fmtD(p.dateReceived)}</td>
+      <td>${p.expectedShipDate?fmtD(p.expectedShipDate):'—'}</td>
+      <td>${(p.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.cases}`).join(' ')}</td>
+      <td>${fmt(totalCases)} cases</td>
+      <td>${p.totalValue?fmtC(p.totalValue):'—'}</td>
+      <td>${statusBadge(DIST_PO_STATUS,p.status)}</td>
+      <td>
+        <button class="btn xs" onclick="cycleDistPOStatus('${p.id}','${d.id}')">→ Next</button>
+        <button class="btn xs red" onclick="deleteDistPO('${p.id}','${d.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
+      <button class="btn sm primary" onclick="addDistPOInModal('${d.id}')">+ Log PO</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>PO #</th><th>Received</th><th>Ship Date</th><th>Items</th><th>Cases</th><th>Value</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="8" class="empty">No purchase orders yet</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderDistInvoicesHTML(d) {
+  const invs = DB.a('dist_invoices').filter(i=>i.distId===d.id).sort((a,b)=>b.dateIssued>a.dateIssued?1:-1);
+  const totalOutstanding = invs.filter(i=>['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+
+  const rows = invs.map(inv=>`<tr>
+    <td>${inv.invoiceNumber||'—'}</td>
+    <td>${fmtD(inv.dateIssued)}</td>
+    <td>${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
+    <td>${fmtC(inv.total||0)}</td>
+    <td>${statusBadge(DIST_INV_STATUS,inv.status)}</td>
+    <td>${inv.externalRef?`<small style="color:var(--lavblue)">${inv.externalRef}</small>`:'—'}</td>
+    <td>
+      ${inv.status!=='paid'?`<button class="btn xs green" onclick="markDistInvoicePaid('${inv.id}','${d.id}')">Mark Paid</button>`:''}
+      <button class="btn xs red" onclick="deleteDistInvoice('${inv.id}','${d.id}')">✕</button>
+    </td>
+  </tr>`).join('');
+
+  return `
+    <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+      ${totalOutstanding>0?`<span style="font-size:13px;color:var(--red);font-weight:600">Outstanding: ${fmtC(totalOutstanding)}</span>`:'<span style="color:var(--green);font-size:13px">✓ No outstanding invoices</span>'}
+      <button class="btn sm primary" onclick="addDistInvoiceInModal('${d.id}')">+ Add Invoice</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Invoice #</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th><th>Ref</th><th></th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="7" class="empty">No invoices yet</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderDistStoresHTML(d) {
+  const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
+  const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0);
+  const rows = chains.map(c=>`
+    <div class="attn-item">
+      <div class="attn-info" style="flex:1">
+        <div class="attn-name">${c.chainName}</div>
+        <div class="attn-reason">${c.doorCount||0} doors &nbsp;·&nbsp; ${(c.authorizedSkus||[]).map(s=>skuBadge(s)).join(' ')}</div>
+        ${c.notes?`<div style="font-size:12px;color:var(--muted)">${c.notes}</div>`:''}
+      </div>
+      <button class="btn xs" onclick="editDistChain('${c.id}','${d.id}')">Edit</button>
+    </div>`).join('');
+
+  return `
+    <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:13px;color:var(--muted)">Total: <strong>${fmt(totalDoors)} doors</strong> across ${chains.length} chain${chains.length!==1?'s':''}</div>
+      <button class="btn sm primary" onclick="addDistChain('${d.id}')">+ Add Chain</button>
+    </div>
+    ${rows||'<div class="empty">No store coverage added yet</div>'}`;
+}
+
+function renderDistImportsHTML(d) {
+  const imports = DB.a('dist_imports').filter(i=>i.distId===d.id);
+  const byDate = {};
+  imports.forEach(r=>{
+    const key = r.importDate||'unknown';
+    if (!byDate[key]) byDate[key] = [];
+    byDate[key].push(r);
+  });
+  const importBatches = Object.entries(byDate).sort((a,b)=>b[0]>a[0]?1:-1);
+
+  return `
+    <div style="margin-bottom:16px">
+      <div class="highlight-box">
+        <strong style="font-size:13px">CSV Import — Local Line & other platforms</strong>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">
+          Import order data from Local Line CSV exports. Records are tagged by source and import date.
+          Duplicates are detected and skipped on re-import.
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn primary" onclick="openCSVImport('${d.id}')">📄 Import CSV</button>
+        ${d.webhookEnabled?'<span class="badge green">🔗 Webhook Active</span>':'<span class="badge gray">Webhook: Not configured</span>'}
+      </div>
+    </div>
+    ${importBatches.length ? importBatches.map(([date, recs])=>`
+      <div class="card" style="margin-bottom:10px;padding:14px 16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <strong style="font-size:13px">Import: ${fmtD(date)}</strong>
+          <span class="badge gray">${recs.length} records · ${recs[0]?.source||'CSV'}</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Buyer</th><th>SKU</th><th>Cases</th><th>Value</th></tr></thead>
+            <tbody>${recs.slice(0,5).map(r=>`<tr>
+              <td>${fmtD(r.orderDate)}</td><td>${r.buyerName||'—'}</td>
+              <td>${skuBadge(r.sku)}</td><td>${r.cases||r.qty||'—'}</td>
+              <td>${r.value?fmtC(r.value):'—'}</td></tr>`).join('')}
+            ${recs.length>5?`<tr><td colspan="5" style="color:var(--muted);font-size:12px">… and ${recs.length-5} more records</td></tr>`:''}</tbody>
+          </table>
+        </div>
+      </div>`).join('') : '<div class="empty">No imported data yet. Click "Import CSV" to get started.</div>'}`;
+}
+
+// ── Edit / Save Distributor ───────────────────────────────
+function editDistributor(id) {
+  const isNew = (id==='_new_');
+  const d = isNew ? {id:uid()} : (DB.a('dist_profiles').find(x=>x.id===id)||{id:uid()});
+
+  qs('#edist-title').textContent = isNew?'Add Distributor':'Edit Distributor';
+  qs('#edist-name').value     = d.name||'';
+  qs('#edist-platform').value = d.platformType||'Local Line';
+  qs('#edist-territory').value= d.territory||'';
+  qs('#edist-doors').value    = d.doorCount||'';
+  qs('#edist-contract').value = d.contractStart||'';
+  qs('#edist-status').value   = d.status||'active';
+  qs('#edist-terms').value    = d.paymentTerms||'Net 30';
+  qs('#edist-terms-days').value= d.paymentTermsDays||30;
+  qs('#edist-notes').value    = d.notes||'';
+
+  const delBtn = qs('#edist-delete-btn');
+  if (delBtn) { delBtn.style.display = isNew?'none':''; delBtn.onclick=()=>deleteDistributor(d.id); }
+  qs('#edist-save-btn').onclick = ()=>saveDistributor(d.id, isNew);
+  openModal('modal-edit-distributor');
+}
+
+function saveDistributor(id, isNew) {
+  const name = qs('#edist-name')?.value?.trim();
+  if (!name) { toast('Distributor name required'); return; }
+  const terms = qs('#edist-terms')?.value||'Net 30';
+  const rec = {
+    id, name,
+    platformType:    qs('#edist-platform')?.value||'other',
+    territory:       qs('#edist-territory')?.value?.trim()||'',
+    doorCount:       parseInt(qs('#edist-doors')?.value)||0,
+    contractStart:   qs('#edist-contract')?.value||'',
+    status:          qs('#edist-status')?.value||'active',
+    paymentTerms:    terms,
+    paymentTermsDays: terms==='custom'?(parseInt(qs('#edist-terms-days')?.value)||30):parseInt(terms.replace('Net ','')||30),
+    notes:           qs('#edist-notes')?.value?.trim()||'',
+    createdAt:       DB.a('dist_profiles').find(x=>x.id===id)?.createdAt || today(),
+  };
+  if (isNew) DB.push('dist_profiles', rec);
+  else DB.update('dist_profiles', id, ()=>rec);
+  closeModal('modal-edit-distributor');
+  renderDistributors();
+  toast(isNew?'Distributor added':'Distributor updated');
+}
+
+function deleteDistributor(id) {
+  if (!confirm2('Delete this distributor? This will also remove all associated reps, pricing, POs, and invoices.')) return;
+  DB.remove('dist_profiles', id);
+  // Clean up related records
+  ['dist_reps','dist_pricing','dist_pos','dist_invoices','dist_chains','dist_imports'].forEach(k=>{
+    DB.set(k, DB.a(k).filter(r=>r.distId!==id));
+  });
+  closeModal('modal-edit-distributor');
+  renderDistributors();
+  toast('Distributor deleted');
+}
+
+// ── Sales Reps ────────────────────────────────────────────
+function addDistRep(distId) { _editDistRepOpen(uid(), distId, true); }
+
+function editDistRep(repId, distId) {
+  _editDistRepOpen(repId, distId, false);
+}
+
+function _editDistRepOpen(repId, distId, isNew) {
+  const rep = DB.a('dist_reps').find(x=>x.id===repId) || {};
+  qs('#mrep-title').textContent = isNew?'Add Sales Rep':'Edit Sales Rep';
+  qs('#mrep-name').value         = rep.name||'';
+  qs('#mrep-title-field').value  = rep.title||'';
+  qs('#mrep-phone').value        = rep.phone||'';
+  qs('#mrep-email').value        = rep.email||'';
+  qs('#mrep-territory').value    = rep.territory||'';
+  qs('#mrep-last-contacted').value = rep.lastContacted||'';
+  qs('#mrep-notes').value        = rep.notes||'';
+
+  const delBtn = qs('#mrep-delete-btn');
+  if (delBtn) { delBtn.style.display=isNew?'none':''; delBtn.onclick=()=>deleteDistRep(repId,distId); }
+  qs('#mrep-save-btn').onclick = ()=>saveDistRep(repId, distId, isNew);
+  openModal('modal-add-rep');
+}
+
+function saveDistRep(repId, distId, isNew) {
+  const name = qs('#mrep-name')?.value?.trim();
+  if (!name) { toast('Rep name required'); return; }
+  const rec = {
+    id:repId, distId, name,
+    title:        qs('#mrep-title-field')?.value?.trim()||'',
+    phone:        qs('#mrep-phone')?.value?.trim()||'',
+    email:        qs('#mrep-email')?.value?.trim()||'',
+    territory:    qs('#mrep-territory')?.value?.trim()||'',
+    lastContacted:qs('#mrep-last-contacted')?.value||'',
+    notes:        qs('#mrep-notes')?.value?.trim()||'',
+  };
+  if (isNew) DB.push('dist_reps', rec);
+  else DB.update('dist_reps', repId, ()=>rec);
+  closeModal('modal-add-rep');
+  if (_currentDistId) openDistributor(_currentDistId);
+  toast(isNew?'Rep added':'Rep updated');
+}
+
+function deleteDistRep(repId, distId) {
+  if (!confirm2('Remove this rep?')) return;
+  DB.remove('dist_reps', repId);
+  closeModal('modal-add-rep');
+  if (_currentDistId) openDistributor(_currentDistId);
+  toast('Rep removed');
+}
+
+// ── Pricing ───────────────────────────────────────────────
+function saveDistPricing(distId) {
+  const inputs = document.querySelectorAll(`.dist-price-input[data-dist="${distId}"]`);
+  inputs.forEach(inp=>{
+    const sku = inp.dataset.sku;
+    const val = parseFloat(inp.value);
+    const existing = DB.a('dist_pricing').find(x=>x.distId===distId&&x.sku===sku);
+    if (val > 0) {
+      const rec = {id:(existing?.id||uid()), distId, sku, pricePerCase:val, updatedAt:today()};
+      if (existing) DB.update('dist_pricing', existing.id, ()=>rec);
+      else DB.push('dist_pricing', rec);
+    } else if (existing) {
+      DB.remove('dist_pricing', existing.id);
+    }
+  });
+  if (_currentDistId) {
+    const pane = qs('#mdist-tab-pricing');
+    if (pane && pane.style.display!=='none') {
+      const d = DB.a('dist_profiles').find(x=>x.id===distId);
+      if (d) pane.innerHTML = renderDistPricingHTML(d);
+    }
+  }
+  toast('Pricing saved');
+}
+
+// ── Purchase Orders ───────────────────────────────────────
+function addDistPO(distId) { _openDistPOModal(distId); }
+function addDistPOInModal(distId) { closeModal('modal-distributor'); _openDistPOModal(distId); }
+
+function _openDistPOModal(distId) {
+  const el = qs('#mpo-sku-inputs');
+  if (el) el.innerHTML = SKUS.map(s=>`
+    <div class="sku-row ${s.bg}" style="margin-bottom:4px">
+      ${skuBadge(s.id)}
+      <input type="number" id="mpo-cases-${s.id}" min="0" step="1" placeholder="0" style="width:80px">
+      <span style="font-size:12px;color:var(--muted)">cases</span>
+    </div>`).join('');
+
+  qs('#mpo-number').value    = '';
+  qs('#mpo-date').value      = today();
+  qs('#mpo-ship-date').value = '';
+  qs('#mpo-status').value    = 'pending';
+  qs('#mpo-notes').value     = '';
+  qs('#mpo-save-btn').onclick = ()=>saveDistPO(distId);
+  openModal('modal-add-po');
+}
+
+function saveDistPO(distId) {
+  const date = qs('#mpo-date')?.value;
+  if (!date) { toast('Date required'); return; }
+  const items = SKUS.map(s=>({sku:s.id, cases:parseInt(qs('#mpo-cases-'+s.id)?.value)||0})).filter(i=>i.cases>0);
+  if (!items.length) { toast('Enter at least one SKU quantity'); return; }
+
+  const costs = DB.obj('costs',{cogs:{}});
+  const pricing = DB.a('dist_pricing').filter(p=>p.distId===distId);
+  const totalCases = items.reduce((s,i)=>s+i.cases,0);
+  const totalValue = items.reduce((s,i)=>{
+    const p = pricing.find(x=>x.sku===i.sku);
+    return s + (p?.pricePerCase||0)*i.cases;
+  },0);
+
+  const rec = {
+    id:uid(), distId,
+    poNumber:       qs('#mpo-number')?.value?.trim()||'',
+    dateReceived:   date,
+    expectedShipDate: qs('#mpo-ship-date')?.value||'',
+    items, totalCases, totalValue,
+    status:  qs('#mpo-status')?.value||'pending',
+    notes:   qs('#mpo-notes')?.value?.trim()||'',
+  };
+  DB.push('dist_pos', rec);
+  closeModal('modal-add-po');
+  if (_currentDistId) openDistributor(_currentDistId);
+  renderDistributors();
+  toast('PO logged');
+}
+
+function cycleDistPOStatus(poId, distId) {
+  const seq = ['pending','fulfilled','partial','cancelled'];
+  DB.update('dist_pos', poId, p=>{ const i=seq.indexOf(p.status); return {...p, status:seq[Math.min(i+1,seq.length-1)]}; });
+  if (_currentDistId===distId) {
+    const d = DB.a('dist_profiles').find(x=>x.id===distId);
+    const pane = qs('#mdist-tab-orders');
+    if (d&&pane) pane.innerHTML = renderDistOrdersHTML(d);
+  }
+  toast('PO status updated');
+}
+
+function deleteDistPO(poId, distId) {
+  if (!confirm2('Delete this PO?')) return;
+  DB.remove('dist_pos', poId);
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  const pane = qs('#mdist-tab-orders');
+  if (d&&pane) pane.innerHTML = renderDistOrdersHTML(d);
+  toast('PO deleted');
+}
+
+// ── Invoices ──────────────────────────────────────────────
+function addDistInvoice(distId) { _openDistInvModal(distId); }
+function addDistInvoiceInModal(distId) { closeModal('modal-distributor'); _openDistInvModal(distId); }
+
+function _openDistInvModal(distId) {
+  const el = qs('#mdinv-sku-inputs');
+  if (el) el.innerHTML = SKUS.map(s=>`
+    <div class="sku-row ${s.bg}" style="margin-bottom:4px">
+      ${skuBadge(s.id)}
+      <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" style="width:80px">
+      <span style="font-size:12px;color:var(--muted)">cases</span>
+    </div>`).join('');
+
+  const now = today();
+  const terms = DB.a('dist_profiles').find(x=>x.id===distId)?.paymentTermsDays||30;
+  const dueDate = new Date(Date.now()+terms*864e5).toISOString().slice(0,10);
+
+  qs('#mdinv-number').value  = '';
+  qs('#mdinv-date').value    = now;
+  qs('#mdinv-due').value     = dueDate;
+  qs('#mdinv-po-ref').value  = '';
+  qs('#mdinv-ext-ref').value = '';
+  qs('#mdinv-status').value  = 'unpaid';
+  qs('#mdinv-notes').value   = '';
+  qs('#mdinv-save-btn').onclick = ()=>saveDistInvoice(distId);
+  openModal('modal-add-dist-invoice');
+}
+
+function saveDistInvoice(distId) {
+  const invNum = qs('#mdinv-number')?.value?.trim();
+  const date   = qs('#mdinv-date')?.value;
+  if (!invNum||!date) { toast('Invoice number and date required'); return; }
+
+  const pricing = DB.a('dist_pricing').filter(p=>p.distId===distId);
+  const items = SKUS.map(s=>({
+    sku:s.id,
+    cases: parseInt(qs('#mdinv-cases-'+s.id)?.value)||0,
+    pricePerCase: pricing.find(p=>p.sku===s.id)?.pricePerCase||0
+  })).filter(i=>i.cases>0);
+  if (!items.length) { toast('Enter at least one SKU quantity'); return; }
+
+  const total = items.reduce((s,i)=>s+i.cases*i.pricePerCase, 0);
+
+  const rec = {
+    id:uid(), distId,
+    invoiceNumber: invNum,
+    dateIssued:    date,
+    dueDate:       qs('#mdinv-due')?.value||'',
+    poRef:         qs('#mdinv-po-ref')?.value?.trim()||'',
+    externalRef:   qs('#mdinv-ext-ref')?.value?.trim()||'',
+    items, total,
+    status:  qs('#mdinv-status')?.value||'unpaid',
+    notes:   qs('#mdinv-notes')?.value?.trim()||'',
+  };
+  DB.push('dist_invoices', rec);
+  closeModal('modal-add-dist-invoice');
+  if (_currentDistId) openDistributor(_currentDistId);
+  renderDistributors();
+  toast('Invoice saved');
+}
+
+function markDistInvoicePaid(invId, distId) {
+  DB.update('dist_invoices', invId, i=>({...i, status:'paid', paidDate:today()}));
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  const pane = qs('#mdist-tab-invoices');
+  if (d&&pane) pane.innerHTML = renderDistInvoicesHTML(d);
+  toast('Marked as paid');
+}
+
+function deleteDistInvoice(invId, distId) {
+  if (!confirm2('Delete this invoice?')) return;
+  DB.remove('dist_invoices', invId);
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  const pane = qs('#mdist-tab-invoices');
+  if (d&&pane) pane.innerHTML = renderDistInvoicesHTML(d);
+  toast('Invoice deleted');
+}
+
+// ── Store / Chain Coverage ────────────────────────────────
+function addDistChain(distId) { _openChainModal(uid(), distId, true); }
+
+function editDistChain(chainId, distId) { _openChainModal(chainId, distId, false); }
+
+function _openChainModal(chainId, distId, isNew) {
+  const c = DB.a('dist_chains').find(x=>x.id===chainId)||{};
+  qs('#mchain-title').textContent = isNew?'Add Store Group / Chain':'Edit Store Group';
+  qs('#mchain-name').value  = c.chainName||'';
+  qs('#mchain-doors').value = c.doorCount||'';
+  qs('#mchain-notes').value = c.notes||'';
+
+  qs('#mchain-skus').innerHTML = SKUS.map(s=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${s.id}" ${(c.authorizedSkus||[]).includes(s.id)?'checked':''}> ${s.label}
+    </label>`).join('');
+
+  const delBtn = qs('#mchain-delete-btn');
+  if (delBtn) { delBtn.style.display=isNew?'none':''; delBtn.onclick=()=>deleteDistChain(chainId,distId); }
+  qs('#mchain-save-btn').onclick = ()=>saveDistChain(chainId, distId, isNew);
+  openModal('modal-add-chain');
+}
+
+function saveDistChain(chainId, distId, isNew) {
+  const name = qs('#mchain-name')?.value?.trim();
+  if (!name) { toast('Chain name required'); return; }
+  const rec = {
+    id:chainId, distId,
+    chainName:    name,
+    doorCount:    parseInt(qs('#mchain-doors')?.value)||0,
+    authorizedSkus: [...document.querySelectorAll('#mchain-skus input:checked')].map(x=>x.value),
+    notes:        qs('#mchain-notes')?.value?.trim()||'',
+  };
+  if (isNew) DB.push('dist_chains', rec);
+  else DB.update('dist_chains', chainId, ()=>rec);
+  closeModal('modal-add-chain');
+  if (_currentDistId) openDistributor(_currentDistId);
+  toast(isNew?'Store group added':'Store group updated');
+}
+
+function deleteDistChain(chainId, distId) {
+  if (!confirm2('Remove this chain?')) return;
+  DB.remove('dist_chains', chainId);
+  closeModal('modal-add-chain');
+  if (_currentDistId) openDistributor(_currentDistId);
+  toast('Chain removed');
+}
+
+// ── CSV Import (Phase 8 foundation) ──────────────────────
+function openCSVImport(distId) {
+  const inp = qs('#csv-file-input');
+  const preview = qs('#csv-preview');
+  if (preview) preview.style.display='none';
+  const confirmBtn = qs('#csv-import-confirm-btn');
+  if (confirmBtn) confirmBtn.style.display='none';
+
+  if (inp) {
+    inp.value = '';
+    inp.onchange = ()=>handleCSVFile(inp, distId);
+  }
+  openModal('modal-csv-import');
+}
+
+function handleCSVFile(input, distId) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try {
+      const rows = parseCSV(e.target.result);
+      showCSVPreview(rows, distId);
+    } catch(err) {
+      toast('Could not parse CSV — please check the file format');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (!lines.length) return [];
+  const headers = lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
+  return lines.slice(1).map(line=>{
+    const vals = line.split(',').map(v=>v.trim().replace(/"/g,''));
+    return Object.fromEntries(headers.map((h,i)=>[h, vals[i]||'']));
+  }).filter(r=>Object.values(r).some(v=>v));
+}
+
+function showCSVPreview(rows, distId) {
+  const preview = qs('#csv-preview');
+  const confirmBtn = qs('#csv-import-confirm-btn');
+  if (!preview||!rows.length) return;
+
+  const headers = Object.keys(rows[0]);
+  preview.style.display='block';
+  preview.innerHTML = `
+    <div style="margin-bottom:10px">
+      <strong>${rows.length} records found</strong>
+      <span style="color:var(--muted);font-size:13px;margin-left:8px">Preview (first 5 rows):</span>
+    </div>
+    <div class="tbl-wrap" style="margin-bottom:12px">
+      <table>
+        <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows.slice(0,5).map(r=>`<tr>${headers.map(h=>`<td>${r[h]||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+
+  if (confirmBtn) {
+    confirmBtn.style.display='';
+    confirmBtn.onclick = ()=>confirmCSVImport(rows, distId);
+  }
+}
+
+function confirmCSVImport(rows, distId) {
+  const importDate = today();
+  const existing = DB.a('dist_imports').filter(i=>i.distId===distId);
+
+  let imported=0, skipped=0;
+  rows.forEach(row=>{
+    // Map common column names to our fields
+    const orderDate = row['Order Date']||row['Date']||row['date']||row['order_date']||'';
+    const buyerName = row['Buyer']||row['Buyer Name']||row['buyer']||row['Account']||'';
+    const skuRaw    = row['Product']||row['SKU']||row['Item']||row['product']||'';
+    const qty       = parseFloat(row['Quantity']||row['Cases']||row['qty']||0)||0;
+    const value     = parseFloat(row['Total']||row['Value']||row['Amount']||row['Revenue']||0)||0;
+
+    // Map SKU name to our IDs
+    const skuLower = skuRaw.toLowerCase();
+    let sku = 'classic';
+    if (skuLower.includes('blue')) sku='blueberry';
+    else if (skuLower.includes('peach')) sku='peach';
+    else if (skuLower.includes('rasp')) sku='raspberry';
+    else if (skuLower.includes('var')) sku='variety';
+
+    // Dedup: skip if same date+buyer+sku+qty already imported
+    const dupe = existing.some(e=>e.orderDate===orderDate&&e.buyerName===buyerName&&e.sku===sku&&e.qty===qty);
+    if (dupe) { skipped++; return; }
+
+    DB.push('dist_imports', {
+      id:uid(), distId, orderDate, buyerName, sku, qty, cases:qty, value,
+      rawData: row, source:'CSV', importDate,
+    });
+    imported++;
+  });
+
+  closeModal('modal-csv-import');
+  if (_currentDistId) openDistributor(_currentDistId);
+  toast(`Imported ${imported} records${skipped?` (${skipped} duplicates skipped)`:''}`);
+}
+
+// ── Dashboard KPI Integration ─────────────────────────────
+function renderDistDashKPIs() {
+  const el = qs('#dash-dist-kpis');
+  if (!el) return;
+
+  const dists    = DB.a('dist_profiles');
+  const active   = dists.filter(d=>d.status==='active');
+  const chains   = DB.a('dist_chains');
+  const totalDoors = active.reduce((s,d)=>{
+    const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
+    return s + (dc||d.doorCount||0);
+  }, 0);
+  const outstandingInvs = DB.a('dist_invoices').filter(i=>['unpaid','overdue'].includes(i.status));
+  const outstandingVal  = outstandingInvs.reduce((s,i)=>s+(i.total||0),0);
+  const allPOs = DB.a('dist_pos').sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
+  const lastPO  = allPOs[0]?.dateReceived || null;
+
+  el.innerHTML = `
+    <div>${kpiHtml('Active Distributors', active.length, 'purple')}</div>
+    <div>${kpiHtml('Total Doors', fmt(totalDoors)||'—', 'blue')}</div>
+    <div>${kpiHtml('Outstanding Inv.', fmtC(outstandingVal), outstandingVal>0?'red':'green')}</div>
+    <div>${kpiHtml('Last PO', lastPO?fmtD(lastPO):'None', 'gray')}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════
 //  INVENTORY
 // ══════════════════════════════════════════════════════════
 function renderInventory() {
@@ -1526,6 +2325,11 @@ function setupFilters() {
   ['#pr-search','#pr-stage-filter','#pr-sort'].forEach(sel=>{
     const el = qs(sel);
     if (el) el.addEventListener('input', renderProspects);
+  });
+  // Distributors
+  ['#dist-search','#dist-status-filter'].forEach(sel=>{
+    const el = qs(sel);
+    if (el) el.addEventListener('input', renderDistributors);
   });
   // Global search (also feeds accounts)
   const gs = qs('#global-search');

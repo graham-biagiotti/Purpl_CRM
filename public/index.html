@@ -91,6 +91,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Accounts
       </a>
+      <a data-page="distributors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        Distributors
+      </a>
       <a data-page="prospects">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Prospects
@@ -197,6 +201,9 @@
         </div>
       </div>
 
+      <!-- Row 3b: Distributor KPIs -->
+      <div class="card-grid grid-4" id="dash-dist-kpis" style="margin-bottom:20px"></div>
+
       <!-- Row 4: Revenue Projections -->
       <div class="card" style="margin-bottom:20px">
         <div class="section-hdr">
@@ -276,6 +283,24 @@
         <button class="btn primary" onclick="editProspect(uid())">+ Add Prospect</button>
       </div>
       <div id="pr-cards"></div>
+    </div>
+
+    <!-- ═══════ DISTRIBUTORS ═══════ -->
+    <div class="page" id="page-distributors">
+      <div class="page-filter-bar">
+        <input id="dist-search" type="search" placeholder="Search distributors...">
+        <select id="dist-status-filter">
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="negotiating">Negotiating</option>
+          <option value="on_hold">On Hold</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <div class="spacer"></div>
+        <span id="dist-count" style="font-size:13px;color:var(--muted)"></span>
+        <button class="btn primary" onclick="editDistributor('_new_')">+ Add Distributor</button>
+      </div>
+      <div id="dist-cards"></div>
     </div>
 
     <!-- ═══════ INVENTORY ═══════ -->
@@ -720,6 +745,237 @@
     <div class="modal-footer">
       <button class="modal-close btn">Cancel</button>
       <button class="btn primary" id="save-ship-btn">Schedule Shipment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ DISTRIBUTOR MODALS ════════════════ -->
+
+<!-- Distributor detail (tabbed) -->
+<div class="overlay" id="modal-distributor">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-hdr">
+      <div>
+        <h2 id="mdist-name">Distributor</h2>
+        <div id="mdist-status-badge" style="margin-top:4px"></div>
+      </div>
+      <button class="modal-close btn sm">✕</button>
+    </div>
+    <div class="tabs" style="flex-wrap:wrap">
+      <button class="tab active" data-dtab="overview">Overview</button>
+      <button class="tab" data-dtab="reps">Sales Reps</button>
+      <button class="tab" data-dtab="pricing">Pricing</button>
+      <button class="tab" data-dtab="orders">Orders / POs</button>
+      <button class="tab" data-dtab="invoices">Invoices</button>
+      <button class="tab" data-dtab="stores">Store Coverage</button>
+      <button class="tab" data-dtab="imports">Imported Data</button>
+    </div>
+    <div id="mdist-tab-overview"  class="dtab-pane"></div>
+    <div id="mdist-tab-reps"      class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-pricing"   class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-orders"    class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-invoices"  class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-stores"    class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-imports"   class="dtab-pane" style="display:none"></div>
+    <div class="modal-footer">
+      <button class="btn" id="mdist-po-btn">+ Log PO</button>
+      <button class="btn" id="mdist-invoice-btn">+ Invoice</button>
+      <button class="btn primary" id="mdist-edit-btn">Edit Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit/Add Distributor -->
+<div class="overlay" id="modal-edit-distributor">
+  <div class="modal">
+    <div class="modal-hdr"><h2 id="edist-title">Add Distributor</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Distributor name *</label><input id="edist-name" placeholder="e.g. NESS, Local Line"></div>
+      <div class="form-group"><label>Platform type</label>
+        <select id="edist-platform">
+          <option value="Local Line">Local Line</option>
+          <option value="NESS">NESS</option>
+          <option value="direct">Direct</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px"><label>Territory description</label>
+      <textarea id="edist-territory" placeholder="e.g. Northeast — Price Chopper/Market 32 and Tops Markets" style="min-height:50px"></textarea>
+    </div>
+    <div class="form-row col3">
+      <div class="form-group"><label>Total doors / stores</label><input id="edist-doors" type="number" placeholder="280" min="0"></div>
+      <div class="form-group"><label>Contract start date</label><input id="edist-contract" type="date"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="edist-status">
+          <option value="active">Active</option>
+          <option value="negotiating">Negotiating</option>
+          <option value="on_hold">On Hold</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row col2" style="margin-bottom:10px">
+      <div class="form-group"><label>Payment terms</label>
+        <select id="edist-terms">
+          <option value="Net 30">Net 30</option>
+          <option value="Net 45">Net 45</option>
+          <option value="Net 60">Net 60</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Custom terms (days)</label>
+        <input id="edist-terms-days" type="number" placeholder="30" min="0">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Internal notes</label>
+      <textarea id="edist-notes" style="min-height:60px" placeholder="Pricing negotiations, contacts, context..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" id="edist-delete-btn" style="margin-right:auto;display:none">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="edist-save-btn">Save Distributor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Sales Rep -->
+<div class="overlay" id="modal-add-rep">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-hdr"><h2 id="mrep-title">Add Sales Rep</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Name *</label><input id="mrep-name"></div>
+      <div class="form-group"><label>Title</label><input id="mrep-title-field" placeholder="Sales Manager"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Phone</label><input id="mrep-phone" type="tel"></div>
+      <div class="form-group"><label>Email</label><input id="mrep-email" type="email"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Territory / Chain</label><input id="mrep-territory" placeholder="Price Chopper / Market 32"></div>
+      <div class="form-group"><label>Last contacted</label><input id="mrep-last-contacted" type="date"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
+      <textarea id="mrep-notes" style="min-height:50px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" id="mrep-delete-btn" style="margin-right:auto;display:none">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="mrep-save-btn">Save Rep</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Purchase Order -->
+<div class="overlay" id="modal-add-po">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-hdr"><h2>Log Purchase Order</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>PO number</label><input id="mpo-number" placeholder="PO-2024-001"></div>
+      <div class="form-group"><label>Date received *</label><input id="mpo-date" type="date"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Expected ship date</label><input id="mpo-ship-date" type="date"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="mpo-status">
+          <option value="pending">Pending</option>
+          <option value="fulfilled">Fulfilled</option>
+          <option value="partial">Partial</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cases per SKU (12-packs)</label>
+      <div id="mpo-sku-inputs"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
+      <input id="mpo-notes" placeholder="Any special instructions or context">
+    </div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="mpo-save-btn">Save PO</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Distributor Invoice -->
+<div class="overlay" id="modal-add-dist-invoice">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-hdr"><h2>Distributor Invoice</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Invoice number *</label><input id="mdinv-number" placeholder="INV-2024-001"></div>
+      <div class="form-group"><label>Date issued *</label><input id="mdinv-date" type="date"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Due date</label><input id="mdinv-due" type="date"></div>
+      <div class="form-group"><label>Linked PO number</label><input id="mdinv-po-ref" placeholder="Optional"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cases billed per SKU</label>
+      <div id="mdinv-sku-inputs"></div>
+    </div>
+    <div class="form-row col2" style="margin-bottom:10px">
+      <div class="form-group"><label>External invoice link / ref</label><input id="mdinv-ext-ref" placeholder="Wix INV# or URL"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="mdinv-status">
+          <option value="unpaid">Unpaid</option>
+          <option value="paid">Paid</option>
+          <option value="partial">Partial</option>
+          <option value="overdue">Overdue</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
+      <input id="mdinv-notes">
+    </div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="mdinv-save-btn">Save Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Store / Chain Coverage -->
+<div class="overlay" id="modal-add-chain">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hdr"><h2 id="mchain-title">Add Store Group / Chain</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Chain name *</label><input id="mchain-name" placeholder="Price Chopper / Market 32"></div>
+      <div class="form-group"><label>Door count</label><input id="mchain-doors" type="number" min="0" placeholder="150"></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Authorized SKUs</label>
+      <div id="mchain-skus" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
+      <textarea id="mchain-notes" style="min-height:50px"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" id="mchain-delete-btn" style="margin-right:auto;display:none">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="mchain-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV Import Modal (Phase 8 foundation) -->
+<div class="overlay" id="modal-csv-import">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-hdr"><h2>Import Data from CSV</h2><button class="modal-close btn sm">✕</button></div>
+    <div id="csv-import-body">
+      <div style="text-align:center;padding:32px;border:2px dashed var(--border);border-radius:10px;margin-bottom:16px">
+        <div style="font-size:32px;margin-bottom:8px">📄</div>
+        <div style="font-weight:600;margin-bottom:6px">Upload a CSV file</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px">Exported from Local Line or any compatible platform</div>
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none">
+        <button class="btn primary" onclick="qs('#csv-file-input').click()">Choose CSV File</button>
+      </div>
+      <div id="csv-preview" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="csv-import-confirm-btn" style="display:none">Confirm Import</button>
     </div>
   </div>
 </div>
