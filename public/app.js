@@ -46,10 +46,14 @@ function nav(page) {
   if (pg) pg.classList.add('active');
   const lnk = document.querySelector(`.sb-nav a[data-page="${page}"]`);
   if (lnk) lnk.classList.add('active');
+  // Sync mobile bottom nav
+  document.querySelectorAll('.mobile-bottom-nav a').forEach(a=>{
+    a.classList.toggle('active', a.dataset.page===page);
+  });
   const titles = {
     dashboard:'Dashboard', accounts:'Accounts', prospects:'Prospects',
     inventory:'Inventory', orders:'Orders', production:'Production',
-    delivery:'Delivery', reports:'Reports', settings:'Settings'
+    delivery:'Today\'s Run', reports:'Reports', settings:'Settings'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -142,12 +146,52 @@ function renderDash() {
   qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
+  renderWelcomeHeader(ac, ord, inv);
   renderAttention();
   renderFollowUps();
   renderPendingOrders();
   renderInvoiceStatus();
   renderProjections();
   renderVelocities();
+}
+
+function renderWelcomeHeader(ac, ord, inv) {
+  const el = qs('#dash-welcome-hdr');
+  if (!el) return;
+
+  const dateStr = new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+
+  // Today's run stops
+  const run = DB.obj('today_run', {stops:[]});
+  const stopsToday = (run.stops||[]).length;
+
+  // Overdue invoices
+  const terms = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const overdueInv = ord.filter(o=>o.status==='delivered'&&(o.invoiceStatus||'none')==='invoiced'&&daysAgo(o.invoiceDate||o.dueDate)>terms).length;
+
+  // Total can stock
+  const totalCans = SKUS.reduce((sum,s)=>{
+    const ins  = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+    return sum + Math.max(0, ins-outs);
+  }, 0);
+
+  const summaryParts = [];
+  if (stopsToday > 0) summaryParts.push(`<strong>${stopsToday} stop${stopsToday!==1?'s':''}</strong> on today's run`);
+  if (overdueInv > 0) summaryParts.push(`<strong>${overdueInv} invoice${overdueInv!==1?'s':''}</strong> overdue`);
+  if (totalCans > 0)  summaryParts.push(`<strong>${fmt(totalCans)}</strong> cans in stock`);
+  const summary = summaryParts.length ? summaryParts.join(' &nbsp;·&nbsp; ') : 'Everything looks good — have a great day!';
+
+  el.innerHTML = `
+    <div class="dash-welcome">
+      <div class="dash-welcome-left">
+        <div class="dw-date">${dateStr}</div>
+        <div class="dw-greeting">Welcome back to purpl CRM</div>
+      </div>
+      <div class="dash-welcome-right">
+        <div class="dw-summary">${summary}</div>
+      </div>
+    </div>`;
 }
 
 function kpiHtml(label, val, color) {
@@ -742,7 +786,7 @@ function renderProspects() {
       ? `<span style="color:${p.nextDate<today()?'var(--red)':'var(--blue)'}">${fmtD(p.nextDate)}</span>`
       : '<span style="color:var(--muted)">—</span>';
 
-    return `<div class="pr-card">
+    return `<div class="pr-card stage-${p.status||'lead'}">
       <div class="pr-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
@@ -1526,6 +1570,31 @@ window.onAppReady = function() {
   }
 
   setupFilters();
+
+  // ── Mobile hamburger + sidebar overlay ──────────────────
+  const hamburger = qs('#topbar-hamburger');
+  const sidebar   = qs('.sidebar');
+  const overlay   = qs('#sidebar-overlay');
+  function openMobileSidebar()  { sidebar?.classList.add('mobile-open');  overlay?.classList.add('open'); }
+  function closeMobileSidebar() { sidebar?.classList.remove('mobile-open'); overlay?.classList.remove('open'); }
+  if (hamburger) hamburger.addEventListener('click', openMobileSidebar);
+  if (overlay)   overlay.addEventListener('click', closeMobileSidebar);
+  // Close sidebar after navigating on mobile
+  document.querySelectorAll('.sb-nav a[data-page]').forEach(a=>{
+    a.addEventListener('click', ()=>{ if(window.innerWidth<768) closeMobileSidebar(); });
+  });
+
+  // ── Mobile bottom nav ────────────────────────────────────
+  document.querySelectorAll('.mobile-bottom-nav a[data-page]').forEach(a=>{
+    a.addEventListener('click', ()=>{
+      document.querySelectorAll('.mobile-bottom-nav a').forEach(x=>x.classList.remove('active'));
+      a.classList.add('active');
+      nav(a.dataset.page);
+    });
+  });
+
+  // Sync mobile bottom nav active state with sidebar nav
+  const _originalNav = nav;
 
   // Navigate to dashboard
   nav('dashboard');

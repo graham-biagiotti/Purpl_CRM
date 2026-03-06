@@ -261,3 +261,223 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .ac-card-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px}
 .btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
 .btn.run:hover{background:var(--brand-purple-hover)}
+
+/* ══════════════════════════════════════════════════════════
+   PHASE 2 — COMPREHENSIVE UI POLISH
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Global Typography ──────────────────────────────────── */
+body{font-size:15px;line-height:1.5}
+
+/* ── Enhanced Cards ─────────────────────────────────────── */
+.card{
+  box-shadow:0 1px 4px rgba(75,32,130,.05),0 2px 12px rgba(0,0,0,.04);
+  border-color:#ede8f5;
+}
+
+/* ── Enhanced Buttons ───────────────────────────────────── */
+.btn{border-radius:8px;transition:all .15s ease;font-size:13.5px}
+.btn:focus-visible{outline:2px solid var(--brand-purple);outline-offset:2px}
+
+/* ── KPI Cards Enhanced ─────────────────────────────────── */
+.kpi{
+  padding:20px 18px;
+  box-shadow:0 2px 8px rgba(75,32,130,.08);
+  border-color:#ede8f5;
+}
+.kpi .num{font-size:32px}
+.kpi.purple{background:linear-gradient(135deg,#f5eeff,#ede4f5);border-color:#c4a8e8}
+.kpi.green{background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-color:#86efac}
+.kpi.red{background:linear-gradient(135deg,#fff1f2,#fee2e2);border-color:#fca5a5}
+.kpi.amber{background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:#fcd34d}
+.kpi.blue{background:linear-gradient(135deg,#eff6ff,#dbeafe);border-color:#93c5fd}
+.kpi.gray{background:#f9fafb}
+
+/* ── Dashboard Welcome Header ───────────────────────────── */
+.dash-welcome{
+  background:linear-gradient(135deg,var(--brand-purple),#6a3a9e);
+  border-radius:12px;
+  padding:20px 24px;
+  margin-bottom:20px;
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  box-shadow:0 4px 20px rgba(75,32,130,.3);
+}
+.dash-welcome-left .dw-date{font-size:12px;opacity:.7;margin-bottom:4px;letter-spacing:.03em}
+.dash-welcome-left .dw-greeting{font-family:var(--font-brand);font-size:22px;font-weight:700;line-height:1.2}
+.dash-welcome-right{text-align:right;flex-shrink:0}
+.dash-welcome-right .dw-summary{font-size:13px;opacity:.85;line-height:1.8}
+.dash-welcome-right .dw-summary strong{color:#e2ccff;font-weight:600}
+
+/* ── Sidebar nav enhanced ───────────────────────────────── */
+.sb-nav a{border-radius:0 8px 8px 0;margin-right:8px}
+.sb-nav a:hover{transform:translateX(2px)}
+.sb-nav .section{font-weight:700;border-top:1px solid #1a1030;padding-top:14px;margin-top:4px}
+/* First section has no top border */
+.sb-nav > .section:first-child{border-top:none;padding-top:10px}
+
+/* ── Table Rows Enhanced ────────────────────────────────── */
+td{padding:12px 14px;font-size:14px}
+th{padding:11px 14px}
+
+/* ── Attention Items Enhanced ───────────────────────────── */
+.attn-item{border-radius:10px;transition:all .15s}
+.attn-item:hover{background:#faf8ff;border-color:#c4a8e8}
+
+/* ── Overdue pill ───────────────────────────────────────── */
+.overdue-pill{
+  background:#fee2e2;color:#991b1b;border-radius:20px;
+  padding:2px 8px;font-size:11px;font-weight:600;display:inline-block;
+}
+
+/* ── Prospect stage border colors ───────────────────────── */
+.pr-card{border-left:4px solid #d1d5db}
+.pr-card.stage-lead       {border-left-color:#9ca3af}
+.pr-card.stage-contacted  {border-left-color:#3b82f6}
+.pr-card.stage-sampling   {border-left-color:var(--brand-purple)}
+.pr-card.stage-negotiating{border-left-color:#f59e0b}
+.pr-card.stage-won        {border-left-color:#22c55e}
+.pr-card.stage-lost       {border-left-color:#ef4444}
+
+/* Prospect name — larger, bolder */
+.pr-card-name{font-size:18px;font-weight:800;font-family:var(--font-brand)}
+
+/* ── Account card actions — hover only on desktop ───────── */
+@media(min-width:768px){
+  .ac-card-actions{opacity:0;transition:opacity .15s}
+  .ac-card:hover .ac-card-actions{opacity:1}
+}
+
+/* ── Badges ─────────────────────────────────────────────── */
+.badge{padding:3px 10px;font-size:11.5px}
+
+/* ── Empty States ───────────────────────────────────────── */
+.empty{padding:48px 20px;color:var(--muted);font-size:14px;text-align:center}
+
+/* ── Toast — slide in from bottom-right with checkmark ─── */
+#toast{
+  bottom:28px;right:28px;
+  padding:12px 20px;border-radius:10px;font-size:14px;
+  background:#1a1033;color:#fff;
+  box-shadow:0 8px 32px rgba(0,0,0,.25);
+  transform:translateY(16px);opacity:0;
+  transition:transform .25s ease,opacity .25s ease;
+  display:flex;align-items:center;gap:10px;
+  min-width:200px;max-width:340px;
+  pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast::before{
+  content:'✓';
+  width:20px;height:20px;min-width:20px;
+  background:var(--brand-purple);
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;
+}
+
+/* ── Focus rings ────────────────────────────────────────── */
+:focus-visible{outline:2px solid var(--brand-purple);outline-offset:2px;border-radius:4px}
+
+/* ── Topbar hamburger button (mobile only) ──────────────── */
+.topbar-hamburger{
+  display:none;background:none;border:none;cursor:pointer;
+  padding:6px;color:var(--brand-purple);margin-right:4px;
+}
+.topbar-hamburger svg{width:22px;height:22px}
+
+/* ── Sidebar overlay (mobile) ───────────────────────────── */
+.sidebar-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:90;
+}
+.sidebar-overlay.open{display:block}
+
+/* ── Mobile bottom navigation ───────────────────────────── */
+.mobile-bottom-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;z-index:150;
+  background:var(--sidebar);
+  border-top:1px solid #1e1535;
+  padding:6px 0 max(8px,env(safe-area-inset-bottom));
+  box-shadow:0 -4px 20px rgba(0,0,0,.35);
+}
+.mobile-bottom-nav a{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  flex:1;color:#9080b0;text-decoration:none;
+  font-size:10px;font-weight:500;padding:4px 6px;cursor:pointer;
+  transition:color .15s;-webkit-tap-highlight-color:transparent;
+  border:none;background:none;
+}
+.mobile-bottom-nav a.active,.mobile-bottom-nav a:active{color:#fff}
+.mobile-bottom-nav a svg{width:22px;height:22px}
+
+/* ── RESPONSIVE — MOBILE (≤767px) ──────────────────────── */
+@media(max-width:767px){
+
+  .sidebar{
+    transform:translateX(-100%);
+    transition:transform .25s ease;
+    z-index:100;
+    box-shadow:4px 0 24px rgba(0,0,0,.4);
+  }
+  .sidebar.mobile-open{transform:translateX(0)}
+
+  .main{margin-left:0;padding-bottom:80px}
+
+  .mobile-bottom-nav{display:flex}
+  .topbar-hamburger{display:flex;align-items:center;justify-content:center}
+
+  /* KPIs: 2×2 grid */
+  .grid-4{grid-template-columns:1fr 1fr}
+  .grid-3{grid-template-columns:1fr 1fr}
+
+  /* Stacked panels */
+  .card-grid.grid-2{grid-template-columns:1fr}
+
+  /* Form rows collapse */
+  .form-row.col2,.form-row.col3{grid-template-columns:1fr}
+
+  /* Stop cards */
+  .order-card{padding:18px 16px;margin-bottom:12px}
+  .order-card input[type="checkbox"]{width:22px;height:22px;cursor:pointer}
+
+  /* Touch targets */
+  .btn{min-height:44px}
+  .btn.sm{min-height:36px}
+  .btn.xs{min-height:32px}
+
+  /* Topbar */
+  .topbar{padding:0 12px}
+
+  /* Page padding */
+  .page{padding:16px}
+
+  /* Modals as bottom sheets */
+  .overlay{align-items:flex-end;padding:0}
+  .modal{
+    border-radius:20px 20px 0 0;max-height:92vh;
+    width:100%;max-width:100%;
+    padding:20px 20px max(24px,env(safe-area-inset-bottom));
+  }
+  .modal::before{
+    content:'';display:block;
+    width:40px;height:4px;background:#e5e7eb;
+    border-radius:2px;margin:0 auto 16px;
+  }
+
+  /* Welcome header stack */
+  .dash-welcome{flex-direction:column;gap:12px}
+  .dash-welcome-right{text-align:left;width:100%}
+
+  /* Account actions always visible on mobile */
+  .ac-card-actions{opacity:1!important}
+  .ac-card-actions .btn{min-height:44px;padding:8px 14px}
+
+  /* Global search hidden */
+  #global-search{display:none}
+
+  /* Delivery page progress bar */
+  #del-progress{font-size:14px;font-weight:600}
+}

@@ -135,7 +135,14 @@
   <div class="main">
     <!-- TOP BAR -->
     <div class="topbar">
-      <h1 id="topbar-title">Dashboard</h1>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="topbar-hamburger" id="topbar-hamburger" aria-label="Open menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <h1 id="topbar-title">Dashboard</h1>
+      </div>
       <div class="topbar-right">
         <input id="global-search" type="search" placeholder="Search accounts…" style="width:200px">
         <button class="btn primary" onclick="editAccount(uid())">+ Account</button>
@@ -145,6 +152,9 @@
 
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page" id="page-dashboard">
+
+      <!-- Welcome header (populated by JS) -->
+      <div id="dash-welcome-hdr"></div>
 
       <!-- Row 1: KPIs -->
       <div class="card-grid grid-4" id="dash-kpis" style="margin-bottom:20px">
@@ -716,6 +726,33 @@
 
 <!-- TOAST -->
 <div id="toast"></div>
+
+<!-- MOBILE: sidebar overlay backdrop -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- MOBILE: bottom navigation (5 core pages) -->
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile navigation">
+  <a data-page="dashboard" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    <span>Home</span>
+  </a>
+  <a data-page="accounts">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span>Accounts</span>
+  </a>
+  <a data-page="prospects">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <span>Prospects</span>
+  </a>
+  <a data-page="delivery">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+    <span>Today</span>
+  </a>
+  <a data-page="inventory">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+    <span>Inventory</span>
+  </a>
+</nav>
 
 <!-- ═══════════════════════ SCRIPTS ══════════════════════ -->
 
