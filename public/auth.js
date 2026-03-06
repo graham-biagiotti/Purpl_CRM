@@ -4,7 +4,7 @@
 
 async function bootApp() {
   const { initializeApp } = window.FirebaseAppAPI;
-  const { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } = window.FirebaseAuthAPI;
+  const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = window.FirebaseAuthAPI;
   const { getFirestore, enableIndexedDbPersistence } = window.FirestoreAPI;
 
   const app = initializeApp(window.FIREBASE_CONFIG);
@@ -28,17 +28,30 @@ async function bootApp() {
   const signInBtn    = document.getElementById('sign-in-btn');
   const signOutBtn   = document.getElementById('sign-out-btn');
 
-  // Sign-in button
-  signInBtn.addEventListener('click', async () => {
-    const provider = new GoogleAuthProvider();
-    authStatus.textContent = 'Opening Google sign-in…';
+  // Sign-in button — email + password
+  const doSignIn = async () => {
+    const email    = document.getElementById('auth-email')?.value?.trim();
+    const password = document.getElementById('auth-password')?.value;
+    if (!email || !password) { authStatus.textContent = 'Enter your email and password.'; return; }
+    authStatus.textContent = 'Signing in…';
+    signInBtn.disabled = true;
     try {
-      await signInWithPopup(auth, provider);
+      await signInWithEmailAndPassword(auth, email, password);
     } catch(e) {
-      authStatus.textContent = 'Sign-in failed. Please try again.';
-      console.error(e);
+      const msgs = {
+        'auth/invalid-credential':   'Incorrect email or password.',
+        'auth/user-not-found':       'No account found with that email.',
+        'auth/wrong-password':       'Incorrect password.',
+        'auth/too-many-requests':    'Too many attempts — try again later.',
+        'auth/invalid-email':        'Please enter a valid email address.',
+      };
+      authStatus.textContent = msgs[e.code] || 'Sign-in failed. Please try again.';
+      signInBtn.disabled = false;
     }
-  });
+  };
+  signInBtn.addEventListener('click', doSignIn);
+  // Allow pressing Enter in the password field
+  document.getElementById('auth-password')?.addEventListener('keydown', e => { if (e.key === 'Enter') doSignIn(); });
 
   // Sign-out button (in sidebar)
   if (signOutBtn) {
