@@ -310,21 +310,235 @@
 
     <!-- ═══════ INVENTORY ═══════ -->
     <div class="page" id="page-inventory">
-      <div class="section-hdr" style="margin-bottom:16px">
-        <h2>Current Stock</h2>
+      <!-- Tab Bar -->
+      <div class="tabs" id="inv-tabs" style="margin-bottom:16px">
+        <button class="tab active" data-inv-tab="summary">Stock Summary</button>
+        <button class="tab" data-inv-tab="receive">Receive</button>
+        <button class="tab" data-inv-tab="repack">Repack Jobs</button>
+        <button class="tab" data-inv-tab="pallets">Pallets</button>
+        <button class="tab" data-inv-tab="supplies">Supplies</button>
+        <button class="tab" data-inv-tab="log">Log</button>
       </div>
-      <div class="tbl-wrap" style="margin-bottom:20px">
-        <table>
-          <thead><tr><th>SKU</th><th>On Hand</th><th>Total In</th><th>Total Out</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="inv-table-body"></tbody>
-        </table>
+
+      <!-- Stock Summary -->
+      <div id="inv-pane-summary">
+        <div class="card-grid grid-4" id="inv-stock-cards" style="margin-bottom:16px"></div>
+        <div class="card">
+          <div class="section-hdr"><h2>Stock by SKU</h2></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>SKU</th><th>Loose Cans</th><th>Finished Packs</th><th>On Pallets</th><th>COGS Value</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="inv-table-body"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div class="section-hdr"><h2>Inventory Log</h2></div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>Date</th><th>SKU</th><th>Type</th><th>Qty</th><th>Note</th><th></th></tr></thead>
-          <tbody id="inv-log-body"></tbody>
-        </table>
+
+      <!-- Receive -->
+      <div id="inv-pane-receive" style="display:none">
+        <div class="card-grid grid-2">
+          <div class="card">
+            <div class="section-hdr"><h2>Receive Loose Cans</h2></div>
+            <div class="form-group"><label>SKU</label>
+              <select id="recv-loose-sku" class="input">
+                <option value="">— Select SKU —</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Quantity (cans)</label>
+              <input type="number" id="recv-loose-qty" class="input" min="1" placeholder="e.g. 288">
+            </div>
+            <div class="form-group"><label>Source / Lot</label>
+              <input type="text" id="recv-loose-source" class="input" placeholder="e.g. Canner run #12">
+            </div>
+            <div class="form-group"><label>Note</label>
+              <input type="text" id="recv-loose-note" class="input" placeholder="Optional">
+            </div>
+            <button class="btn primary" onclick="receiveLooseCans()">Log Receipt</button>
+          </div>
+          <div class="card">
+            <div class="section-hdr"><h2>Receive Finished Packs</h2></div>
+            <div class="form-group"><label>SKU</label>
+              <select id="recv-pack-sku" class="input">
+                <option value="">— Select SKU —</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Pack type</label>
+              <select id="recv-pack-type" class="input">
+                <option value="6pack">6-Pack</option>
+                <option value="12pack">12-Pack</option>
+                <option value="24pack">24-Pack (case)</option>
+                <option value="single">Singles</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Quantity (units/packs)</label>
+              <input type="number" id="recv-pack-qty" class="input" min="1" placeholder="e.g. 48">
+            </div>
+            <div class="form-group"><label>Note</label>
+              <input type="text" id="recv-pack-note" class="input" placeholder="Optional">
+            </div>
+            <button class="btn primary" onclick="receiveFinishedPacks()">Log Receipt</button>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="section-hdr"><h2>Recent Receipts</h2></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Date</th><th>Type</th><th>SKU</th><th>Qty</th><th>Source/Note</th><th></th></tr></thead>
+            <tbody id="inv-recv-log"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Repack Jobs -->
+      <div id="inv-pane-repack" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>Log Repack Job</h2>
+            <button class="btn primary" onclick="openRepackModal()">+ New Repack Job</button>
+          </div>
+          <p style="color:var(--muted);font-size:13px;margin-bottom:0">Convert loose cans into finished packs. Variety pack recipe can be set in Settings.</p>
+        </div>
+        <div class="card">
+          <div class="section-hdr"><h2>Repack History</h2></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Date</th><th>Inputs (loose cans)</th><th>Output (packs)</th><th>Note</th><th></th></tr></thead>
+            <tbody id="inv-repack-body"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Pallets -->
+      <div id="inv-pane-pallets" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>Pallet Tracker</h2>
+            <button class="btn primary" onclick="openPalletModal()">+ Build Pallet</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Pallet ID</th><th>Built</th><th>Contents</th><th>Status</th><th>Ship To</th><th>Ship Date</th><th>Actions</th></tr></thead>
+            <tbody id="inv-pallets-body"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Supplies -->
+      <div id="inv-pane-supplies" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>Packaging Supplies</h2>
+            <button class="btn primary" onclick="openSupplyModal()">+ Add / Restock</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Item</th><th>Category</th><th>On Hand</th><th>Unit</th><th>Last Restocked</th><th>Note</th><th></th></tr></thead>
+            <tbody id="inv-supply-body"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div id="inv-pane-log" style="display:none">
+        <div class="card">
+          <div class="section-hdr"><h2>Full Inventory Log</h2>
+            <button class="btn secondary" onclick="invAdjust(null,'in')" style="font-size:12px;padding:4px 10px">+ Manual Entry</button>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>SKU</th><th>Type</th><th>Qty</th><th>Note</th><th></th></tr></thead>
+              <tbody id="inv-log-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Repack modal -->
+    <div class="overlay" id="modal-repack">
+      <div class="modal" style="max-width:560px">
+        <div class="modal-header"><h3>Log Repack Job</h3><button class="modal-close">✕</button></div>
+        <div class="modal-body">
+          <div class="form-group"><label>Date</label><input type="date" id="repack-date" class="input"></div>
+          <div class="section-hdr" style="margin-bottom:8px"><h4>Loose Cans Used (inputs)</h4></div>
+          <div id="repack-inputs"></div>
+          <div class="section-hdr" style="margin-top:12px;margin-bottom:8px"><h4>Output</h4></div>
+          <div class="form-row col2">
+            <div class="form-group"><label>SKU</label>
+              <select id="repack-out-sku" class="input"></select>
+            </div>
+            <div class="form-group"><label>Pack Qty (units)</label>
+              <input type="number" id="repack-out-qty" class="input" min="1" placeholder="e.g. 48">
+            </div>
+          </div>
+          <div class="form-group"><label>Note</label><input type="text" id="repack-note" class="input" placeholder="Optional"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="closeModal('modal-repack')">Cancel</button>
+          <button class="btn primary" id="repack-save-btn">Save Repack Job</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pallet modal -->
+    <div class="overlay" id="modal-pallet">
+      <div class="modal" style="max-width:500px">
+        <div class="modal-header"><h3 id="pallet-modal-title">Build Pallet</h3><button class="modal-close">✕</button></div>
+        <div class="modal-body">
+          <div class="form-row col2">
+            <div class="form-group"><label>Pallet Label / ID</label><input type="text" id="pallet-label" class="input" placeholder="e.g. PLT-001"></div>
+            <div class="form-group"><label>Build Date</label><input type="date" id="pallet-date" class="input"></div>
+          </div>
+          <div class="section-hdr" style="margin-bottom:8px"><h4>Contents</h4></div>
+          <div id="pallet-sku-inputs"></div>
+          <div class="form-group" style="margin-top:8px"><label>Ship To</label><input type="text" id="pallet-ship-to" class="input" placeholder="Distributor or account name"></div>
+          <div class="form-group"><label>Notes</label><textarea id="pallet-notes" class="input" style="min-height:50px" placeholder="Optional"></textarea></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="closeModal('modal-pallet')">Cancel</button>
+          <button class="btn primary" id="pallet-save-btn">Save Pallet</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Supply modal -->
+    <div class="overlay" id="modal-supply">
+      <div class="modal" style="max-width:480px">
+        <div class="modal-header"><h3 id="supply-modal-title">Add / Restock Supply</h3><button class="modal-close">✕</button></div>
+        <div class="modal-body">
+          <div class="form-group"><label>Item Name</label><input type="text" id="supply-item" class="input" placeholder="e.g. Classic Labels, 12-pack cartons"></div>
+          <div class="form-row col2">
+            <div class="form-group"><label>Category</label>
+              <select id="supply-category" class="input">
+                <option value="labels">Labels</option>
+                <option value="cartons">Cartons / Trays</option>
+                <option value="film">Shrink Film</option>
+                <option value="cans">Cans (unfilled)</option>
+                <option value="lids">Lids</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Unit</label>
+              <select id="supply-unit" class="input">
+                <option value="units">Units</option>
+                <option value="rolls">Rolls</option>
+                <option value="cases">Cases</option>
+                <option value="sheets">Sheets</option>
+                <option value="lbs">lbs</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row col2">
+            <div class="form-group"><label>Quantity On Hand</label><input type="number" id="supply-qty" class="input" min="0" placeholder="0"></div>
+            <div class="form-group"><label>Reorder Point</label><input type="number" id="supply-reorder" class="input" min="0" placeholder="0"></div>
+          </div>
+          <div class="form-group"><label>Note</label><input type="text" id="supply-note" class="input" placeholder="Optional"></div>
+          <input type="hidden" id="supply-id">
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="closeModal('modal-supply')">Cancel</button>
+          <button class="btn primary" id="supply-save-btn">Save</button>
+        </div>
       </div>
     </div>
 

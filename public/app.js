@@ -2003,37 +2003,371 @@ function renderDistDashKPIs() {
 // ══════════════════════════════════════════════════════════
 //  INVENTORY
 // ══════════════════════════════════════════════════════════
+// ── Inventory Tab State ───────────────────────────────────
+let _invTab = 'summary';
+
 function renderInventory() {
-  const inv = DB.a('iv');
+  // Wire tabs once
+  const tabBar = qs('#inv-tabs');
+  if (tabBar && !tabBar.dataset.wired) {
+    tabBar.dataset.wired = '1';
+    tabBar.querySelectorAll('.tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        tabBar.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        _invTab = t.dataset.invTab;
+        _renderInvPane();
+      });
+    });
+    // Populate SKU dropdowns
+    ['#recv-loose-sku','#recv-pack-sku'].forEach(sel=>{
+      const el = qs(sel);
+      if (el) el.innerHTML = '<option value="">— Select SKU —</option>'+SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+    });
+  }
+  _renderInvPane();
+}
+
+function _renderInvPane() {
+  // Show/hide panes
+  ['summary','receive','repack','pallets','supplies','log'].forEach(t=>{
+    const p = qs(`#inv-pane-${t}`);
+    if (p) p.style.display = t===_invTab ? '' : 'none';
+  });
+  const handlers = {
+    summary:  _invSummary,
+    receive:  _invReceive,
+    repack:   _invRepack,
+    pallets:  _invPallets,
+    supplies: _invSupplies,
+    log:      _invLog,
+  };
+  (handlers[_invTab]||_invSummary)();
+}
+
+// ── Stock Summary ─────────────────────────────────────────
+function _invSummary() {
+  const iv      = DB.a('iv');
+  const loose   = DB.a('loose_cans');
+  const pallets = DB.a('pallets');
+  const costs   = DB.obj('costs',{cogs:{}});
+
+  // KPI cards
+  const cards = qs('#inv-stock-cards');
+  if (cards) {
+    const totalPacks = SKUS.reduce((s,sk)=>{
+      const ins  = iv.filter(i=>i.sku===sk.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+      return s + Math.max(0, ins-outs);
+    },0);
+    const totalLoose = SKUS.reduce((s,sk)=>s+loose.filter(l=>l.sku===sk.id).reduce((t,l)=>t+l.qty,0),0);
+    const activePallets = pallets.filter(p=>p.status==='ready').length;
+    const totalVal = SKUS.reduce((s,sk)=>{
+      const ins  = iv.filter(i=>i.sku===sk.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+      return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15);
+    },0);
+    cards.innerHTML = `
+      <div>${kpiHtml('Finished Packs', fmt(totalPacks)+' units', 'green')}</div>
+      <div>${kpiHtml('Loose Cans', fmt(totalLoose), 'purple')}</div>
+      <div>${kpiHtml('Ready Pallets', activePallets, 'blue')}</div>
+      <div>${kpiHtml('Stock Value (COGS)', fmtC(totalVal), 'amber')}</div>`;
+  }
+
   const el = qs('#inv-table-body');
   if (!el) return;
-
-  const rows = SKUS.map(s=>{
-    const ins  = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
-    const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    const on_hand = ins - outs;
-    const status = on_hand < 24 ? {label:'Critical',cls:'red'} : on_hand < 48 ? {label:'Low',cls:'amber'} : {label:'OK',cls:'green'};
+  el.innerHTML = SKUS.map(s=>{
+    const ins      = iv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const outs     = iv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+    const packs    = Math.max(0, ins-outs);
+    const looseCt  = loose.filter(l=>l.sku===s.id).reduce((t,l)=>t+l.qty,0);
+    const palletCt = pallets.filter(p=>p.status==='ready').reduce((t,p)=>t+(p.contents?.[s.id]||0),0);
+    const val      = packs*(costs.cogs[s.id]||2.15);
+    const status   = packs<24?{label:'Critical',cls:'red'}:packs<48?{label:'Low',cls:'amber'}:{label:'OK',cls:'green'};
     return `<tr>
       <td>${skuBadge(s.id)}</td>
-      <td><strong>${fmt(on_hand)}</strong></td>
-      <td>${fmt(ins)}</td>
-      <td>${fmt(outs)}</td>
+      <td>${fmt(looseCt)}</td>
+      <td><strong>${fmt(packs)}</strong></td>
+      <td>${fmt(palletCt)}</td>
+      <td>${fmtC(val)}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>
-        <button class="btn xs primary" onclick="invAdjust('${s.id}','in')">+ Receive</button>
-        <button class="btn xs" onclick="invAdjust('${s.id}','out')">– Use</button>
+        <button class="btn xs primary" onclick="invAdjust('${s.id}','in')">+ Add</button>
+        <button class="btn xs" onclick="invAdjust('${s.id}','out')">− Use</button>
       </td>
     </tr>`;
-  });
-  el.innerHTML = rows.join('');
+  }).join('');
+}
 
-  // Recent log
-  const log = inv.slice().sort((a,b)=>b.date>a.date?1:-1).slice(0,20);
-  qs('#inv-log-body').innerHTML = log.map(entry=>`
+// ── Receive Tab ───────────────────────────────────────────
+function _invReceive() {
+  const allReceipts = [
+    ...DB.a('loose_cans').map(l=>({...l, form:'Loose Cans'})),
+    ...DB.a('iv').filter(i=>i.type==='in').map(i=>({...i, form:'Finished Packs'})),
+  ].sort((a,b)=>b.date>a.date?1:-1).slice(0,25);
+
+  const log = qs('#inv-recv-log');
+  if (log) log.innerHTML = allReceipts.map(r=>`<tr>
+    <td>${fmtD(r.date)}</td>
+    <td><span class="badge ${r.form==='Loose Cans'?'amber':'green'}">${r.form}</span></td>
+    <td>${skuBadge(r.sku)}</td>
+    <td>${fmt(r.qty)}</td>
+    <td>${r.source||r.note||'—'}</td>
+    <td><button class="btn xs red" onclick="delLooseCan('${r.id}','${r.form}')">✕</button></td>
+  </tr>`).join('') || '<tr><td colspan="6" class="empty">No receipts yet</td></tr>';
+}
+
+function receiveLooseCans() {
+  const sku = qs('#recv-loose-sku')?.value;
+  const qty = parseInt(qs('#recv-loose-qty')?.value);
+  if (!sku) { toast('Select a SKU'); return; }
+  if (!qty||qty<=0) { toast('Enter a valid quantity'); return; }
+  DB.push('loose_cans', {id:uid(), date:today(), sku, qty, source:qs('#recv-loose-source')?.value?.trim()||'', note:qs('#recv-loose-note')?.value?.trim()||''});
+  qs('#recv-loose-qty').value=''; qs('#recv-loose-source').value=''; qs('#recv-loose-note').value='';
+  _invReceive();
+  toast('Loose cans logged');
+}
+
+function receiveFinishedPacks() {
+  const sku = qs('#recv-pack-sku')?.value;
+  const qty = parseInt(qs('#recv-pack-qty')?.value);
+  const packType = qs('#recv-pack-type')?.value||'6pack';
+  if (!sku) { toast('Select a SKU'); return; }
+  if (!qty||qty<=0) { toast('Enter a valid quantity'); return; }
+  DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, note:`${packType} receipt — ${qs('#recv-pack-note')?.value?.trim()||''}`});
+  qs('#recv-pack-qty').value=''; qs('#recv-pack-note').value='';
+  _invReceive();
+  toast('Finished packs logged');
+}
+
+function delLooseCan(id, form) {
+  if (!confirm2('Remove this receipt?')) return;
+  if (form==='Loose Cans') DB.remove('loose_cans', id);
+  else DB.remove('iv', id);
+  _invReceive();
+  toast('Receipt removed');
+}
+
+// ── Repack Jobs ───────────────────────────────────────────
+function _invRepack() {
+  const jobs = DB.a('repack_jobs').slice().sort((a,b)=>b.date>a.date?1:-1);
+  const tbody = qs('#inv-repack-body');
+  if (!tbody) return;
+  tbody.innerHTML = jobs.map(j=>{
+    const inputs = Object.entries(j.inputs||{}).map(([sku,qty])=>`${skuBadge(sku)} ×${qty}`).join(' ');
+    return `<tr>
+      <td>${fmtD(j.date)}</td>
+      <td>${inputs||'—'}</td>
+      <td>${skuBadge(j.outputSku)} ×${j.outputQty} packs</td>
+      <td>${j.note||'—'}</td>
+      <td><button class="btn xs red" onclick="deleteRepackJob('${j.id}')">✕</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" class="empty">No repack jobs yet</td></tr>';
+}
+
+function openRepackModal() {
+  qs('#repack-date').value = today();
+  const inputsEl = qs('#repack-inputs');
+  if (inputsEl) {
+    inputsEl.innerHTML = SKUS.map(s=>`
+      <div class="form-row col2" style="margin-bottom:6px">
+        <div>${skuBadge(s.id)}</div>
+        <div><input type="number" class="input repack-input" data-sku="${s.id}" min="0" placeholder="0 cans" style="width:100%"></div>
+      </div>`).join('');
+  }
+  const outSku = qs('#repack-out-sku');
+  if (outSku) outSku.innerHTML = SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+  qs('#repack-out-qty').value='';
+  qs('#repack-note').value='';
+  qs('#repack-save-btn').onclick = saveRepackJob;
+  openModal('modal-repack');
+}
+
+function saveRepackJob() {
+  const date = qs('#repack-date')?.value || today();
+  const outSku = qs('#repack-out-sku')?.value;
+  const outQty = parseInt(qs('#repack-out-qty')?.value);
+  if (!outSku||!outQty||outQty<=0) { toast('Output SKU and quantity required'); return; }
+  const inputs = {};
+  document.querySelectorAll('.repack-input').forEach(el=>{
+    const q = parseInt(el.value);
+    if (q>0) inputs[el.dataset.sku] = q;
+  });
+  const job = {id:uid(), date, inputs, outputSku:outSku, outputQty:outQty, note:qs('#repack-note')?.value?.trim()||''};
+  DB.push('repack_jobs', job);
+  // Deduct loose cans (best-effort)
+  Object.entries(inputs).forEach(([sku,qty])=>{
+    const loose = DB.a('loose_cans').filter(l=>l.sku===sku);
+    let remaining = qty;
+    loose.sort((a,b)=>a.date>b.date?1:-1).forEach(l=>{
+      if (remaining<=0) return;
+      const use = Math.min(l.qty, remaining);
+      remaining -= use;
+      if (use===l.qty) DB.remove('loose_cans', l.id);
+      else DB.update('loose_cans', l.id, x=>({...x, qty:x.qty-use}));
+    });
+  });
+  // Add to finished packs inventory
+  DB.push('iv', {id:uid(), date, sku:outSku, type:'in', qty:outQty, note:`Repack job — ${Object.entries(inputs).map(([s,q])=>`${q} ${s}`).join(', ')}`});
+  closeModal('modal-repack');
+  _invRepack();
+  toast('Repack job saved');
+}
+
+function deleteRepackJob(id) {
+  if (!confirm2('Delete this repack job? (inventory changes are not reversed)')) return;
+  DB.remove('repack_jobs', id);
+  _invRepack();
+  toast('Job deleted');
+}
+
+// ── Pallets ───────────────────────────────────────────────
+function _invPallets() {
+  const pallets = DB.a('pallets').slice().sort((a,b)=>b.created>a.created?1:-1);
+  const tbody = qs('#inv-pallets-body');
+  if (!tbody) return;
+  tbody.innerHTML = pallets.map(p=>{
+    const contents = Object.entries(p.contents||{}).map(([sku,qty])=>`${skuBadge(sku)} ×${qty}`).join(' ');
+    const statusCls = p.status==='shipped'?'green':p.status==='ready'?'blue':'amber';
+    return `<tr>
+      <td><strong>${p.label||p.id.slice(-6)}</strong></td>
+      <td>${fmtD(p.created)}</td>
+      <td>${contents||'—'}</td>
+      <td><span class="badge ${statusCls}">${p.status||'building'}</span></td>
+      <td>${p.shipTo||'—'}</td>
+      <td>${p.shipDate?fmtD(p.shipDate):'—'}</td>
+      <td>
+        ${p.status!=='shipped'?`<button class="btn xs primary" onclick="shipPallet('${p.id}')">Ship</button>`:''}
+        <button class="btn xs" onclick="openPalletModal('${p.id}')">Edit</button>
+        <button class="btn xs red" onclick="deletePallet('${p.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty">No pallets tracked yet</td></tr>';
+}
+
+function openPalletModal(palletId) {
+  const p = palletId ? DB.a('pallets').find(x=>x.id===palletId)||{} : {};
+  const isNew = !palletId;
+  qs('#pallet-modal-title').textContent = isNew ? 'Build Pallet' : 'Edit Pallet';
+  qs('#pallet-label').value  = p.label||'';
+  qs('#pallet-date').value   = p.created||today();
+  qs('#pallet-ship-to').value= p.shipTo||'';
+  qs('#pallet-notes').value  = p.notes||'';
+  const skuInputs = qs('#pallet-sku-inputs');
+  if (skuInputs) {
+    skuInputs.innerHTML = SKUS.map(s=>`
+      <div class="form-row col2" style="margin-bottom:6px">
+        <div>${skuBadge(s.id)}</div>
+        <input type="number" class="input pallet-sku-input" data-sku="${s.id}" min="0" placeholder="0 units" value="${p.contents?.[s.id]||''}" style="width:100%">
+      </div>`).join('');
+  }
+  qs('#pallet-save-btn').onclick = ()=>savePallet(palletId||uid(), isNew);
+  openModal('modal-pallet');
+}
+
+function savePallet(palletId, isNew) {
+  const label = qs('#pallet-label')?.value?.trim();
+  if (!label) { toast('Pallet label required'); return; }
+  const contents = {};
+  document.querySelectorAll('.pallet-sku-input').forEach(el=>{
+    const q = parseInt(el.value);
+    if (q>0) contents[el.dataset.sku] = q;
+  });
+  const rec = {id:palletId, label, created:qs('#pallet-date')?.value||today(), contents, status:'ready', shipTo:qs('#pallet-ship-to')?.value?.trim()||'', notes:qs('#pallet-notes')?.value?.trim()||''};
+  if (isNew) DB.push('pallets', rec);
+  else DB.update('pallets', palletId, ()=>rec);
+  closeModal('modal-pallet');
+  _invPallets();
+  toast(isNew?'Pallet created':'Pallet updated');
+}
+
+function shipPallet(palletId) {
+  const dest = prompt('Ship to (distributor / account):') || '';
+  const shipDate = prompt('Ship date (YYYY-MM-DD):', today()) || today();
+  DB.update('pallets', palletId, p=>({...p, status:'shipped', shipTo:dest||p.shipTo, shipDate}));
+  // Deduct from inventory
+  const p = DB.a('pallets').find(x=>x.id===palletId);
+  Object.entries(p?.contents||{}).forEach(([sku,qty])=>{
+    DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
+  });
+  _invPallets();
+  toast('Pallet marked as shipped');
+}
+
+function deletePallet(palletId) {
+  if (!confirm2('Delete this pallet record?')) return;
+  DB.remove('pallets', palletId);
+  _invPallets();
+  toast('Pallet deleted');
+}
+
+// ── Packaging Supplies ────────────────────────────────────
+function _invSupplies() {
+  const supplies = DB.a('pack_supply');
+  const tbody = qs('#inv-supply-body');
+  if (!tbody) return;
+  tbody.innerHTML = supplies.map(s=>{
+    const low = s.reorderPoint && s.qty <= s.reorderPoint;
+    return `<tr>
+      <td><strong>${s.item}</strong></td>
+      <td>${s.category||'—'}</td>
+      <td ${low?'style="color:var(--red);font-weight:600"':''}>${fmt(s.qty)}</td>
+      <td>${s.unit||'units'}</td>
+      <td>${s.lastRestocked?fmtD(s.lastRestocked):'—'}</td>
+      <td>${s.note||'—'}</td>
+      <td>
+        <button class="btn xs" onclick="openSupplyModal('${s.id}')">Edit</button>
+        <button class="btn xs red" onclick="deleteSupply('${s.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty">No supplies tracked — add packaging materials to monitor stock</td></tr>';
+}
+
+function openSupplyModal(supplyId) {
+  const s = supplyId ? DB.a('pack_supply').find(x=>x.id===supplyId)||{} : {};
+  const isNew = !supplyId;
+  qs('#supply-modal-title').textContent = isNew?'Add Supply':'Edit Supply';
+  qs('#supply-id').value       = supplyId||'';
+  qs('#supply-item').value     = s.item||'';
+  qs('#supply-qty').value      = s.qty||'';
+  qs('#supply-reorder').value  = s.reorderPoint||'';
+  qs('#supply-note').value     = s.note||'';
+  if(qs('#supply-category')) qs('#supply-category').value = s.category||'labels';
+  if(qs('#supply-unit'))     qs('#supply-unit').value     = s.unit||'units';
+  qs('#supply-save-btn').onclick = ()=>saveSupply(isNew);
+  openModal('modal-supply');
+}
+
+function saveSupply(isNew) {
+  const item = qs('#supply-item')?.value?.trim();
+  if (!item) { toast('Item name required'); return; }
+  const id = qs('#supply-id')?.value||uid();
+  const rec = {id, item, category:qs('#supply-category')?.value||'other', qty:parseInt(qs('#supply-qty')?.value)||0, reorderPoint:parseInt(qs('#supply-reorder')?.value)||0, unit:qs('#supply-unit')?.value||'units', lastRestocked:today(), note:qs('#supply-note')?.value?.trim()||''};
+  if (isNew) DB.push('pack_supply', rec);
+  else DB.update('pack_supply', id, ()=>rec);
+  closeModal('modal-supply');
+  _invSupplies();
+  toast(isNew?'Supply added':'Supply updated');
+}
+
+function deleteSupply(id) {
+  if (!confirm2('Remove this supply item?')) return;
+  DB.remove('pack_supply', id);
+  _invSupplies();
+  toast('Supply removed');
+}
+
+// ── Log Tab ───────────────────────────────────────────────
+function _invLog() {
+  const inv = DB.a('iv');
+  const log = inv.slice().sort((a,b)=>b.date>a.date?1:-1).slice(0,40);
+  const tbody = qs('#inv-log-body');
+  if (!tbody) return;
+  tbody.innerHTML = log.map(entry=>`
     <tr>
       <td>${fmtD(entry.date)}</td>
       <td>${skuBadge(entry.sku)}</td>
-      <td><span class="badge ${entry.type==='in'?'green':'red'}">${entry.type==='in'?'+Received':'−Used'}</span></td>
+      <td><span class="badge ${entry.type==='in'?'green':'red'}">${entry.type==='in'?'+In':'−Out'}</span></td>
       <td>${fmt(entry.qty)}</td>
       <td>${entry.note||'—'}</td>
       <td><button class="btn xs red" onclick="delInvEntry('${entry.id}')">✕</button></td>
@@ -2041,18 +2375,20 @@ function renderInventory() {
 }
 
 function invAdjust(sku, type) {
-  const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[sku]?.label}:`));
+  const skuVal = sku || prompt('SKU (classic/blueberry/peach/raspberry/variety):');
+  if (!skuVal || !SKU_MAP[skuVal]) { if(skuVal) toast('Unknown SKU'); return; }
+  const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
   if (!qty || qty <= 0) return;
   const note = prompt('Note (optional):') || '';
-  DB.push('iv', {id:uid(), date:today(), sku, type, qty, note});
-  renderInventory();
-  toast(`Inventory updated`);
+  DB.push('iv', {id:uid(), date:today(), sku:skuVal, type, qty, note});
+  _invSummary();
+  toast('Inventory updated');
 }
 
 function delInvEntry(id) {
   if (!confirm2('Remove this entry?')) return;
   DB.remove('iv', id);
-  renderInventory();
+  _invLog();
   toast('Entry removed');
 }
 

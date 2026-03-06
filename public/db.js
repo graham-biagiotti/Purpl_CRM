@@ -26,6 +26,11 @@ const ARRAY_KEYS = [
   'dist_imports',    // imported order records (CSV/webhook)
   // Phase 6 — Reports
   'saved_reports',   // saved report configurations
+  // Phase 7 — Inventory
+  'loose_cans',      // raw can receipts (pre-pack)
+  'repack_jobs',     // loose cans → finished packs conversion jobs
+  'pallets',         // pallet tracking records
+  'pack_supply',     // packaging supplies (labels, cartons, films, etc.)
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run'];
