@@ -77,6 +77,8 @@ const DB = {
         }
       }, (err) => {
         console.warn('Firestore snapshot error:', err);
+        this._updateSyncUI('error');
+        if (window.toast) toast('⚠️ Could not connect to database: ' + (err.code || err.message));
         ARRAY_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = []; });
         OBJ_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = null; });
         if (!initialized) { initialized = true; resolve(); }
@@ -135,7 +137,11 @@ const DB = {
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
     setDoc(ref, payload)
       .then(() => this._updateSyncUI('synced'))
-      .catch(e => { console.error('Firestore save error:', e); this._updateSyncUI('error'); });
+      .catch(e => {
+        console.error('Firestore save error:', e);
+        this._updateSyncUI('error');
+        if (window.toast) toast('⚠️ Save failed — check your connection. Changes may be lost on reload.');
+      });
   },
 
   _updateSyncUI(status) {

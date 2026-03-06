@@ -1482,7 +1482,7 @@ window.FirestoreAPI = {
   doc:                        (db,...p)  => db.doc(p.join('/')),
   getDoc:                     (ref)      => ref.get(),
   setDoc:                     (ref, d)   => ref.set(d),
-  onSnapshot:                 (ref, cb)  => ref.onSnapshot(cb),
+  onSnapshot:                 (ref, ...args) => ref.onSnapshot(...args),
 };
 </script>
 
