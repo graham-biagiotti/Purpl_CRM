@@ -53,7 +53,7 @@ async function bootApp() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch(e) {
-      authStatus.textContent = 'Incorrect email or password.';
+      authStatus.textContent = 'Error: ' + (e.code || e.message);
       signInBtn.disabled = false;
       console.error(e);
     }
