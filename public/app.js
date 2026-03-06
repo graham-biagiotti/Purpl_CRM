@@ -54,7 +54,8 @@ function nav(page) {
   const titles = {
     dashboard:'Dashboard', accounts:'Accounts', distributors:'Distributors',
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
-    production:'Production', delivery:'Today\'s Run', reports:'Reports', settings:'Settings'
+    production:'Production', delivery:'Today\'s Run', projections:'Projections',
+    reports:'Reports', settings:'Settings'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -71,6 +72,7 @@ const renders = {
   orders:       renderOrders,
   production:   renderProduction,
   delivery:     renderDelivery,
+  projections:  renderProjectionsPage,
   reports:      renderReports,
   settings:     renderSettings
 };
@@ -469,6 +471,200 @@ function renderVelocities() {
       <td>${v.avgOrderValue ? fmtC(v.avgOrderValue) : '<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
   }).join('') : '<tr><td colspan="10" class="empty">No active accounts</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════
+//  PROJECTIONS PAGE (Phase 5)
+// ══════════════════════════════════════════════════════════
+function renderProjectionsPage() {
+  // Read velocity window setting from dropdown
+  const windowDays = parseInt(qs('#proj-velocity-source')?.value || '90') || 90;
+  const {proj30, proj60, proj90, accountsWithData, velocities} = calcProjectionsWindow(windowDays);
+
+  // ── Revenue Scenarios ──────────────────────────────────
+  const scenarios = [
+    {label:'Conservative', pct:0.75, color:'amber'},
+    {label:'Expected',     pct:1.00, color:'blue'},
+    {label:'Optimistic',   pct:1.25, color:'green'},
+  ];
+  const cards = qs('#proj-scenario-cards');
+  if (cards) {
+    cards.innerHTML = scenarios.map(sc=>`
+      <div>${kpiHtml(sc.label+' 90d', fmtC(proj90*sc.pct), sc.color)}</div>`).join('');
+  }
+  const tbody = qs('#proj-scenario-body');
+  if (tbody) {
+    tbody.innerHTML = scenarios.map(sc=>`
+      <tr>
+        <td><strong>${sc.label}</strong></td>
+        <td>${fmtC(proj30*sc.pct)}</td>
+        <td>${fmtC(proj60*sc.pct)}</td>
+        <td>${fmtC(proj90*sc.pct)}</td>
+        <td style="color:var(--muted);font-size:12px">${Math.round(sc.pct*100)}% of expected velocity</td>
+      </tr>`).join('');
+  }
+  const notes = qs('#proj-notes');
+  if (notes) notes.textContent = `Based on ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders, using last ${windowDays==='all'?'all':windowDays} days of history.`;
+
+  // ── SKU Demand Forecast ────────────────────────────────
+  const weeklyBySku = Object.fromEntries(SKUS.map(s=>[s.id,0]));
+  velocities.forEach(v=>{ SKUS.forEach(s=>{ weeklyBySku[s.id] += (v.weeklyUnits[s.id]||0); }); });
+
+  const inv = DB.a('iv');
+  function stockFor(skuId) {
+    const ins  = inv.filter(i=>i.sku===skuId&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const outs = inv.filter(i=>i.sku===skuId&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+    return Math.max(0, ins-outs);
+  }
+
+  const skuTbody = qs('#proj-sku-body');
+  if (skuTbody) {
+    skuTbody.innerHTML = SKUS.map(s=>{
+      const wk = Math.round(weeklyBySku[s.id]*10)/10;
+      const d30u = Math.round(wk*(30/7));
+      const d60u = Math.round(wk*(60/7));
+      const d90u = Math.round(wk*(90/7));
+      return `<tr>
+        <td>${skuBadge(s.id)}</td>
+        <td>${wk}/wk</td>
+        <td>${fmt(d30u)}</td>
+        <td>${fmt(d60u)}</td>
+        <td>${fmt(d90u)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Production Planning ────────────────────────────────
+  const prodTbody = qs('#proj-prod-body');
+  if (prodTbody) {
+    let prodNotes = [];
+    prodTbody.innerHTML = SKUS.map(s=>{
+      const wk    = Math.round(weeklyBySku[s.id]*10)/10;
+      const stock = stockFor(s.id);
+      const d30u  = Math.round(wk*(30/7));
+      const gap   = d30u - stock;
+      const daysSupply = wk > 0 ? Math.round(stock/(wk/7)) : null;
+      const gapCls = gap > 0 ? 'color:var(--red);font-weight:600' : 'color:var(--green)';
+      if (gap > 0) prodNotes.push(`${s.label}: need ${fmt(gap)} more units for 30d demand`);
+      return `<tr>
+        <td>${skuBadge(s.id)}</td>
+        <td>${fmt(stock)}</td>
+        <td>${fmt(d30u)}</td>
+        <td style="${gapCls}">${gap > 0 ? '+'+fmt(gap)+' short' : 'Covered'}</td>
+        <td>${daysSupply !== null ? daysSupply+'d' : '—'}</td>
+      </tr>`;
+    }).join('');
+    const pn = qs('#proj-prod-notes');
+    if (pn) pn.textContent = prodNotes.length ? prodNotes.join(' · ') : 'Current stock covers 30-day demand for all SKUs.';
+  }
+
+  // ── Account Velocity Table ─────────────────────────────
+  const acctTbody = qs('#proj-acct-body');
+  if (acctTbody) {
+    const sorted = [...velocities].sort((a,b)=>(b.avgOrderValue||0)-(a.avgOrderValue||0));
+    acctTbody.innerHTML = sorted.length ? sorted.map(v=>{
+      const totalWk = Math.round(SKUS.reduce((s,sk)=>s+(v.weeklyUnits[sk.id]||0),0)*10)/10;
+      const nextCls = v.nextProjected && v.nextProjected < today() ? 'color:var(--red)' : 'color:var(--blue)';
+      return `<tr onclick="openAccount('${v.account.id}')" style="cursor:pointer">
+        <td><strong>${v.account.name}</strong><small style="display:block;color:var(--muted)">${v.account.territory||''}</small></td>
+        <td>${v.avgDays ? v.avgDays+'d' : '—'}</td>
+        <td>${v.avgOrderValue ? fmtC(v.avgOrderValue) : '—'}</td>
+        <td>${v.nextProjected ? `<span style="${nextCls}">${fmtD(v.nextProjected)}</span>` : '—'}</td>
+        <td>${totalWk}/wk</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" class="empty">No active accounts with order history</td></tr>';
+  }
+
+  // ── Distributor Demand ─────────────────────────────────
+  const distTbody = qs('#proj-dist-body');
+  if (distTbody) {
+    const dists  = DB.a('dist_profiles').filter(d=>d.status==='active');
+    const allPOs = DB.a('dist_pos');
+    const now    = Date.now();
+
+    distTbody.innerHTML = dists.length ? dists.map(d=>{
+      const pos = allPOs.filter(p=>p.distId===d.id).sort((a,b)=>a.dateReceived>b.dateReceived?1:-1);
+      if (!pos.length) return `<tr><td onclick="openDistributor('${d.id}')" style="cursor:pointer"><strong>${d.name}</strong></td><td colspan="4" style="color:var(--muted)">No PO history</td></tr>`;
+
+      const avgVal = pos.reduce((s,p)=>s+(p.total||0),0)/pos.length;
+      let avgFreq = null, nextEst = null;
+      if (pos.length >= 2) {
+        const intervals = [];
+        for (let i=1;i<pos.length;i++) {
+          const diff = (new Date(pos[i].dateReceived+'T12:00:00')-new Date(pos[i-1].dateReceived+'T12:00:00'))/864e5;
+          if (diff>0) intervals.push(diff);
+        }
+        if (intervals.length) {
+          avgFreq = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
+          const lastMs = new Date(pos[pos.length-1].dateReceived+'T12:00:00').getTime();
+          nextEst = new Date(lastMs + avgFreq*864e5).toISOString().slice(0,10);
+        }
+      }
+      const proj30dist = avgFreq ? Math.round(30/avgFreq)*avgVal : (avgVal||0);
+      const nextCls    = nextEst && nextEst < today() ? 'color:var(--red)' : 'color:var(--blue)';
+      return `<tr onclick="openDistributor('${d.id}')" style="cursor:pointer">
+        <td><strong>${d.name}</strong></td>
+        <td>${fmtC(avgVal)}</td>
+        <td>${avgFreq ? avgFreq+'d' : '—'}</td>
+        <td>${fmtC(proj30dist)}</td>
+        <td>${nextEst ? `<span style="${nextCls}">${fmtD(nextEst)}</span>` : '—'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" class="empty">No active distributors</td></tr>';
+
+    const dn = qs('#proj-dist-notes');
+    if (dn) dn.textContent = dists.length ? `${dists.length} active distributor${dists.length!==1?'s':''} · 30-day projections based on PO frequency.` : '';
+  }
+}
+
+// Variant of calcProjections that accepts a custom day window
+function calcProjectionsWindow(windowDays) {
+  const allOrders = DB.a('orders').filter(o=>o.status!=='cancelled');
+  const accounts  = DB.a('ac').filter(a=>a.status==='active');
+  const now = Date.now();
+  const d30 = now+30*864e5, d60 = now+60*864e5, d90 = now+90*864e5;
+  const win = windowDays==='all' ? Infinity : (parseInt(windowDays)||90);
+
+  let proj30=0, proj60=0, proj90=0, accountsWithData=0;
+  const velocities = [];
+
+  accounts.forEach(ac=>{
+    const acOrds = allOrders.filter(o=>o.accountId===ac.id).sort((a,b)=>a.dueDate>b.dueDate?1:-1);
+    const windowOrds = win===Infinity ? acOrds : acOrds.filter(o=>daysAgo(o.dueDate)<=win);
+
+    const totalUnits = Object.fromEntries(SKUS.map(s=>[s.id,0]));
+    windowOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+i.qty; }));
+
+    const periodDays = Math.max(7, Math.min(win===Infinity?90:win, acOrds.length>0 ? Math.max(1, daysAgo(acOrds[0].dueDate)) : 90));
+    const weeklyUnits = Object.fromEntries(SKUS.map(s=>[s.id, Math.round((totalUnits[s.id]||0)/(periodDays/7)*10)/10]));
+
+    let avgDays=null, nextProjected=null, avgOrderValue=0;
+    if (acOrds.length >= 2) {
+      const intervals = [];
+      for (let i=1;i<acOrds.length;i++) {
+        const diff = (new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
+        if (diff>0) intervals.push(diff);
+      }
+      if (intervals.length) {
+        avgDays       = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
+        avgOrderValue = acOrds.reduce((s,o)=>s+calcOrderValue(o),0)/acOrds.length;
+        accountsWithData++;
+        const lastMs  = new Date(acOrds[acOrds.length-1].dueDate+'T12:00:00').getTime();
+        let next = lastMs + avgDays*864e5;
+        while (next <= d90) {
+          if (next > now) {
+            if (next<=d30) proj30+=avgOrderValue;
+            if (next<=d60) proj60+=avgOrderValue;
+            proj90+=avgOrderValue;
+            if (!nextProjected) nextProjected = new Date(next).toISOString().slice(0,10);
+          }
+          next += avgDays*864e5;
+        }
+      }
+    }
+    velocities.push({account:ac, avgDays, avgOrderValue, nextProjected, weeklyUnits, ordCount:acOrds.length});
+  });
+
+  return {proj30, proj60, proj90, accountsWithData, velocities};
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2331,6 +2527,9 @@ function setupFilters() {
     const el = qs(sel);
     if (el) el.addEventListener('input', renderDistributors);
   });
+  // Projections velocity window
+  const projVelSrc = qs('#proj-velocity-source');
+  if (projVelSrc) projVelSrc.addEventListener('change', renderProjectionsPage);
   // Global search (also feeds accounts)
   const gs = qs('#global-search');
   if (gs) gs.addEventListener('input', ()=>{
