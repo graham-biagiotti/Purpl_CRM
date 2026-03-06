@@ -51,38 +51,46 @@ const DB = {
   async init(uid, firestoreDb) {
     this._uid = uid;
     this._db = firestoreDb;
-    await this._loadAll();
+    await this._subscribe();
     this._updateSyncUI('synced');
   },
 
-  // ── Load all data from Firestore into memory ────────
-  async _loadAll() {
-    const { getDoc } = window.FirestoreAPI;
-    const ref = this._ref();
-    try {
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data();
-        ARRAY_KEYS.forEach(k => {
-          this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
-        });
-        OBJ_KEYS.forEach(k => {
-          this._cache[k] = data[k] || null;
-        });
-        // One-time migration from old UID path if workspace was just populated
-        return;
-      }
-      // Workspace empty — try migrating from this user's old UID path automatically
-      await this._migrateFromLegacyPath(this._uid);
-      return;
-      // Fresh start
-      ARRAY_KEYS.forEach(k => this._cache[k] = []);
-      OBJ_KEYS.forEach(k => this._cache[k] = null);
-    } catch(e) {
-      console.warn('Firestore load failed, using cached/empty data:', e);
-      ARRAY_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = []; });
-      OBJ_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = null; });
-    }
+  // ── Real-time listener (replaces one-shot _loadAll) ─
+  _subscribe() {
+    return new Promise((resolve) => {
+      const { onSnapshot } = window.FirestoreAPI;
+      const ref = this._ref();
+      let initialized = false;
+      this._unsubscribe = onSnapshot(ref, async (snap) => {
+        if (!initialized) {
+          initialized = true;
+          if (snap.exists()) {
+            this._applyData(snap.data());
+          } else {
+            await this._migrateFromLegacyPath(this._uid);
+          }
+          resolve();
+        } else if (snap.exists() && !snap.metadata.hasPendingWrites) {
+          // Remote change from another user — update cache and refresh UI
+          this._applyData(snap.data());
+          if (window.refreshCurrentPage) window.refreshCurrentPage();
+        }
+      }, (err) => {
+        console.warn('Firestore snapshot error:', err);
+        ARRAY_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = []; });
+        OBJ_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = null; });
+        if (!initialized) { initialized = true; resolve(); }
+      });
+    });
+  },
+
+  _applyData(data) {
+    ARRAY_KEYS.forEach(k => {
+      this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
+    });
+    OBJ_KEYS.forEach(k => {
+      this._cache[k] = data[k] || null;
+    });
   },
 
   // ── One-time migration from old per-user path ───────

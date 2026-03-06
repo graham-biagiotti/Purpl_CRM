@@ -1477,11 +1477,12 @@ window.FirebaseAuthAPI = {
   signOut:                    (auth)     => auth.signOut(),
 };
 window.FirestoreAPI = {
-  getFirestore:               (app)     => app.firestore(),
-  enableIndexedDbPersistence: (db)      => db.enablePersistence(),
-  doc:                        (db,...p) => db.doc(p.join('/')),
-  getDoc:                     (ref)     => ref.get(),
-  setDoc:                     (ref, d)  => ref.set(d),
+  getFirestore:               (app)      => app.firestore(),
+  enableIndexedDbPersistence: (db)       => db.enablePersistence(),
+  doc:                        (db,...p)  => db.doc(p.join('/')),
+  getDoc:                     (ref)      => ref.get(),
+  setDoc:                     (ref, d)   => ref.set(d),
+  onSnapshot:                 (ref, cb)  => ref.onSnapshot(cb),
 };
 </script>
 

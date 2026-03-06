@@ -3331,6 +3331,9 @@ function setupFilters() {
 window.onAppReady = function() {
   seedIfEmpty();
 
+  // Allow db.js real-time listener to refresh whichever page is open
+  window.refreshCurrentPage = () => renders[currentPage]?.();
+
   // Initialize address autocomplete (Phase 3)
   // Fires async — no blocking. Silent if no API key set.
   if (window.PlacesAC) PlacesAC.initAll();
