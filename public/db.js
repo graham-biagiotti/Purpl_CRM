@@ -24,6 +24,8 @@ const ARRAY_KEYS = [
   'dist_invoices',   // invoices sent to distributors
   'dist_chains',     // store/chain coverage per distributor
   'dist_imports',    // imported order records (CSV/webhook)
+  // Phase 6 — Reports
+  'saved_reports',   // saved report configurations
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run'];

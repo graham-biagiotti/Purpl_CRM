@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="manifest" href="manifest.json">
   <!-- SVG Favicon — purpl sprig on brand purple -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234B2082'/><path d='M18 29 C18 24 17 19 16 14 C15 10 15 6 16.5 3' stroke='white' stroke-width='1.2' fill='none' stroke-linecap='round'/><ellipse cx='13' cy='4' rx='3' ry='1.4' transform='rotate(-42 13 4)' fill='white'/><ellipse cx='19' cy='3' rx='2.8' ry='1.3' transform='rotate(12 19 3)' fill='white'/><ellipse cx='11' cy='9' rx='3.5' ry='1.5' transform='rotate(-50 11 9)' fill='white'/><ellipse cx='20' cy='8' rx='3.2' ry='1.4' transform='rotate(24 20 8)' fill='white'/><ellipse cx='9' cy='15' rx='4' ry='1.7' transform='rotate(-53 9 15)' fill='white'/><ellipse cx='21' cy='14' rx='3.8' ry='1.6' transform='rotate(27 21 14)' fill='white'/><ellipse cx='9' cy='21' rx='3.8' ry='1.6' transform='rotate(-45 9 21)' fill='white'/><ellipse cx='20' cy='20' rx='3.5' ry='1.5' transform='rotate(20 20 20)' fill='white'/></svg>">
@@ -498,31 +499,59 @@
 
     <!-- ═══════ REPORTS ═══════ -->
     <div class="page" id="page-reports">
-      <!-- KPI summary -->
-      <div class="card-grid grid-4" style="margin-bottom:20px">
+      <!-- Controls bar -->
+      <div class="card" style="margin-bottom:16px;padding:12px 16px">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+          <div class="tab-bar" id="rep-type-tabs" style="flex-wrap:wrap">
+            <button class="tab active" data-rep="revenue">Revenue &amp; Sales</button>
+            <button class="tab" data-rep="accounts">Account Performance</button>
+            <button class="tab" data-rep="inventory">Inventory</button>
+            <button class="tab" data-rep="distributor">Distributor</button>
+            <button class="tab" data-rep="profit">Gross Profit</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="date" id="rep-date-from" class="input" style="width:130px;padding:4px 8px;font-size:13px">
+            <span style="color:var(--muted);font-size:12px">to</span>
+            <input type="date" id="rep-date-to" class="input" style="width:130px;padding:4px 8px;font-size:13px">
+            <button class="btn secondary" onclick="exportReportCSV()" style="padding:4px 10px;font-size:12px">⬇ CSV</button>
+            <button class="btn secondary" onclick="window.print()" style="padding:4px 10px;font-size:12px">🖨 Print</button>
+            <button class="btn secondary" onclick="saveReport()" style="padding:4px 10px;font-size:12px">💾 Save</button>
+          </div>
+        </div>
+      </div>
+      <!-- KPI Summary -->
+      <div class="card-grid grid-4" style="margin-bottom:16px" id="rep-kpi-row">
         <div class="kpi green"><div class="num" id="rep-total-rev">—</div><div class="label">Total Revenue</div></div>
         <div class="kpi purple"><div class="num" id="rep-total-qty">—</div><div class="label">Units Sold</div></div>
         <div class="kpi blue"><div class="num" id="rep-total-gp">—</div><div class="label">Gross Profit</div></div>
         <div class="kpi amber"><div class="num" id="rep-margin">—</div><div class="label">Avg Margin</div></div>
       </div>
-      <div class="card-grid grid-2">
+      <div class="card-grid grid-2" style="margin-bottom:16px">
+        <!-- Chart -->
         <div class="card">
-          <div class="section-hdr"><h2>Sales by SKU</h2></div>
-          <div class="tbl-wrap">
+          <div class="section-hdr"><h2 id="rep-chart-title">Chart</h2></div>
+          <div style="position:relative;height:280px">
+            <canvas id="rep-chart"></canvas>
+          </div>
+        </div>
+        <!-- Data Table -->
+        <div class="card">
+          <div class="section-hdr"><h2 id="rep-table-title">Data</h2></div>
+          <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
             <table>
-              <thead><tr><th>SKU</th><th>Units</th><th>Revenue</th><th>COGS</th><th>Gross Profit</th><th>Margin</th></tr></thead>
-              <tbody id="rep-sku-body"></tbody>
+              <thead id="rep-table-head"></thead>
+              <tbody id="rep-table-body"></tbody>
             </table>
           </div>
         </div>
-        <div class="card">
-          <div class="section-hdr"><h2>Inventory Snapshot</h2></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>SKU</th><th>In</th><th>Out</th><th>On Hand</th><th>Value</th><th>Status</th></tr></thead>
-              <tbody id="rep-inv-body"></tbody>
-            </table>
-          </div>
+      </div>
+      <!-- Saved Reports -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>Saved Reports</h2>
+        </div>
+        <div id="rep-saved-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:36px">
+          <span style="color:var(--muted);font-size:13px">No saved reports yet. Configure a report and click 💾 Save.</span>
         </div>
       </div>
     </div>

@@ -2391,74 +2391,328 @@ function clearRoute() {
 // ══════════════════════════════════════════════════════════
 //  REPORTS
 // ══════════════════════════════════════════════════════════
+// ── Report Builder (Phase 6) ──────────────────────────────
+let _reportChart = null;
+let _reportType  = 'revenue';
+let _reportData  = null; // cached for CSV export
+
 function renderReports() {
-  renderSalesReport();
-  renderInventoryReport();
+  // Set default date range if blank (last 90 days)
+  const fromEl = qs('#rep-date-from');
+  const toEl   = qs('#rep-date-to');
+  if (fromEl && !fromEl.value) fromEl.value = new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+  if (toEl   && !toEl.value)   toEl.value   = today();
+
+  // Wire tabs (once — guard with dataset flag)
+  const tabs = qs('#rep-type-tabs');
+  if (tabs && !tabs.dataset.wired) {
+    tabs.dataset.wired = '1';
+    tabs.querySelectorAll('.tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        _reportType = t.dataset.rep;
+        renderReportContent();
+      });
+    });
+    fromEl?.addEventListener('change', renderReportContent);
+    toEl?.addEventListener('change', renderReportContent);
+  }
+
+  _reportType = tabs?.querySelector('.tab.active')?.dataset.rep || 'revenue';
+  renderReportContent();
+  renderSavedReports();
 }
 
-function renderSalesReport() {
-  const orders = DB.a('orders').filter(o=>o.status!=='cancelled');
-  const costs = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
+function _repDateRange() {
+  const from = qs('#rep-date-from')?.value || new Date(Date.now()-90*864e5).toISOString().slice(0,10);
+  const to   = qs('#rep-date-to')?.value   || today();
+  return {from, to};
+}
 
-  // Revenue by SKU
-  const bySkuRev = {};
-  const bySkuQty = {};
+function _repFilterOrders(orders) {
+  const {from, to} = _repDateRange();
+  return orders.filter(o=>o.status!=='cancelled'&&o.dueDate>=from&&o.dueDate<=to);
+}
+
+function _drawChart(type, labels, datasets, title) {
+  const ct = qs('#rep-chart-title');
+  if (ct) ct.textContent = title;
+  const canvas = qs('#rep-chart');
+  if (!canvas) return;
+  if (_reportChart) { _reportChart.destroy(); _reportChart = null; }
+  if (!window.Chart) return;
+  _reportChart = new Chart(canvas, {
+    type,
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } },
+      scales: type==='pie'||type==='doughnut' ? {} : {
+        y:{ beginAtZero:true, ticks:{ font:{size:11} } },
+        x:{ ticks:{ font:{size:11}, maxRotation:40 } }
+      }
+    }
+  });
+}
+
+function renderReportContent() {
+  const handlers = {
+    revenue:     repRevenue,
+    accounts:    repAccounts,
+    inventory:   repInventory,
+    distributor: repDistributor,
+    profit:      repProfit,
+  };
+  (handlers[_reportType]||repRevenue)();
+}
+
+// ── Revenue & Sales ────────────────────────────────────────
+function repRevenue() {
+  const orders = _repFilterOrders(DB.a('orders'));
+  const costs  = DB.obj('costs', {cogs:{}});
+
+  const bySkuRev={}, bySkuQty={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuQty[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     (o.items||[]).forEach(i=>{
-      const price = ac2?.pricing?.[i.sku] || (costs.cogs[i.sku]||2.15)*2.2;
+      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
       bySkuRev[i.sku]=(bySkuRev[i.sku]||0)+price*i.qty;
       bySkuQty[i.sku]=(bySkuQty[i.sku]||0)+i.qty;
     });
   });
 
-  const el = qs('#rep-sku-body');
-  if (el) el.innerHTML = SKUS.map(s=>{
-    const rev = bySkuRev[s.id]||0;
-    const qty = bySkuQty[s.id]||0;
-    const cogs = (costs.cogs[s.id]||2.15)*qty;
-    const gp = rev-cogs;
-    const margin = rev>0?gp/rev:0;
-    return `<tr>
-      <td>${skuBadge(s.id)}</td>
-      <td>${fmt(qty)}</td>
-      <td>${fmtC(rev)}</td>
-      <td>${fmtC(cogs)}</td>
-      <td>${fmtC(gp)}</td>
-      <td><span class="badge ${margin>=.5?'green':margin>=.3?'amber':'red'}">${fmt(margin*100,1)}%</span></td>
-    </tr>`;
-  }).join('');
+  const totalRev  = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
+  const totalQty  = Object.values(bySkuQty).reduce((a,b)=>a+b,0);
+  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*(bySkuQty[sk.id]||0),0);
+  const totalGP   = totalRev-totalCogs;
 
-  const totalRev = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
-  const totalQty = Object.values(bySkuQty).reduce((a,b)=>a+b,0);
-  const totalCogs = SKUS.reduce((s,sk)=>(s+(costs.cogs[sk.id]||2.15)*(bySkuQty[sk.id]||0)),0);
-  const totalGP = totalRev-totalCogs;
-  if(qs('#rep-total-rev')) qs('#rep-total-rev').textContent = fmtC(totalRev);
-  if(qs('#rep-total-qty')) qs('#rep-total-qty').textContent = fmt(totalQty)+' units';
-  if(qs('#rep-total-gp')) qs('#rep-total-gp').textContent = fmtC(totalGP);
-  if(qs('#rep-margin')) qs('#rep-margin').textContent = totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—';
+  _setKPIs(fmtC(totalRev), fmt(totalQty)+' units', fmtC(totalGP), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
+
+  _drawChart('bar',
+    SKUS.map(s=>s.label),
+    [{label:'Revenue', data:SKUS.map(s=>+(bySkuRev[s.id]||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
+    'Revenue by SKU'
+  );
+
+  const rows = SKUS.map(s=>{
+    const rev=bySkuRev[s.id]||0, qty=bySkuQty[s.id]||0;
+    const cogs=(costs.cogs[s.id]||2.15)*qty, gp=rev-cogs, margin=rev>0?gp/rev:0;
+    return [s.label, fmt(qty), fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
+  });
+  _setTable(['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows, 'Revenue by SKU');
+  _reportData = {headers:['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows};
 }
 
-function renderInventoryReport() {
-  const inv = DB.a('iv');
-  const el = qs('#rep-inv-body');
-  if (!el) return;
-  el.innerHTML = SKUS.map(s=>{
+// ── Account Performance ────────────────────────────────────
+function repAccounts() {
+  const orders = _repFilterOrders(DB.a('orders'));
+  const costs  = DB.obj('costs', {cogs:{}});
+  const acMap  = {};
+  DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
+
+  orders.forEach(o=>{
+    if (!acMap[o.accountId]) return;
+    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    acMap[o.accountId].orderCount++;
+    (o.items||[]).forEach(i=>{
+      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
+      acMap[o.accountId].rev += price*i.qty;
+      acMap[o.accountId].qty += i.qty;
+    });
+  });
+
+  const sorted = Object.values(acMap).sort((a,b)=>b.rev-a.rev);
+  const totalRev = sorted.reduce((s,a)=>s+a.rev,0);
+
+  _setKPIs(fmtC(totalRev), sorted.filter(a=>a.orderCount>0).length+' accounts', fmt(sorted.reduce((s,a)=>s+a.qty,0))+' units', sorted.reduce((s,a)=>s+a.orderCount,0)+' orders');
+
+  const colors=['#4B2082','#7B5CA7','#A78BD4','#D4BEF0','#EDE4F5','#805074818841'];
+  _drawChart('doughnut',
+    sorted.slice(0,8).map(a=>a.name),
+    [{data:sorted.slice(0,8).map(a=>+a.rev.toFixed(2)), backgroundColor:sorted.slice(0,8).map((_,i)=>`hsl(${270+i*18},60%,${40+i*5}%)`)}],
+    'Revenue by Account'
+  );
+
+  const rows = sorted.map(a=>[a.name, fmt(a.orderCount), fmt(a.qty), fmtC(a.rev), totalRev>0?fmt((a.rev/totalRev)*100,1)+'%':'—']);
+  _setTable(['Account','Orders','Units','Revenue','% of Total'], rows, 'Account Performance');
+  _reportData = {headers:['Account','Orders','Units','Revenue','% of Total'], rows};
+}
+
+// ── Inventory ──────────────────────────────────────────────
+function repInventory() {
+  const inv   = DB.a('iv');
+  const costs = DB.obj('costs', {cogs:{}});
+
+  const rows = SKUS.map(s=>{
     const ins  = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
     const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    const on_hand = ins-outs;
-    const val = on_hand*(DB.obj('costs').cogs?.[s.id]||2.15);
-    const status = on_hand<24?'red':on_hand<48?'amber':'green';
-    return `<tr>
-      <td>${skuBadge(s.id)}</td>
-      <td>${fmt(ins)}</td>
-      <td>${fmt(outs)}</td>
-      <td><strong>${fmt(on_hand)}</strong></td>
-      <td>${fmtC(val)}</td>
-      <td><span class="badge ${status}">${on_hand<24?'Critical':on_hand<48?'Low':'OK'}</span></td>
-    </tr>`;
-  }).join('');
+    const oh   = Math.max(0, ins-outs);
+    const val  = oh*(costs.cogs[s.id]||2.15);
+    const status = oh<24?'Critical':oh<48?'Low':'OK';
+    return [s.label, fmt(ins), fmt(outs), fmt(oh), fmtC(val), status];
+  });
+  const totalOH = SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs); },0);
+  const totalVal= SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15); },0);
+
+  _setKPIs(fmt(totalOH)+' units', fmtC(totalVal), rows.filter(r=>r[5]==='Low').length+' low', rows.filter(r=>r[5]==='Critical').length+' critical');
+
+  _drawChart('bar',
+    SKUS.map(s=>s.label),
+    [{label:'On Hand', data:rows.map(r=>parseInt(r[3].replace(/,/g,''))||0), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
+    'Inventory On Hand'
+  );
+
+  _setTable(['SKU','Received','Shipped','On Hand','COGS Value','Status'], rows, 'Inventory Snapshot');
+  _reportData = {headers:['SKU','Received','Shipped','On Hand','COGS Value','Status'], rows};
+}
+
+// ── Distributor ────────────────────────────────────────────
+function repDistributor() {
+  const dists  = DB.a('dist_profiles');
+  const allPOs = DB.a('dist_pos');
+  const allInv = DB.a('dist_invoices');
+  const {from, to} = _repDateRange();
+
+  const rows = dists.map(d=>{
+    const pos = allPOs.filter(p=>p.distId===d.id&&p.dateReceived>=from&&p.dateReceived<=to);
+    const inv = allInv.filter(i=>i.distId===d.id&&i.date>=from&&i.date<=to);
+    const poTotal  = pos.reduce((s,p)=>s+(p.total||0),0);
+    const invTotal = inv.reduce((s,i)=>s+(i.total||0),0);
+    const paid     = inv.filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
+    return [d.name, d.status, pos.length, fmtC(poTotal), fmtC(invTotal), fmtC(paid), fmtC(invTotal-paid)];
+  });
+
+  const totalPOs = rows.reduce((s,r)=>s+parseInt(r[2])||0,0);
+  const totalOut = allInv.filter(i=>['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+
+  _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.total||0),0)), fmtC(totalOut)+' outstanding');
+
+  _drawChart('bar',
+    dists.map(d=>d.name),
+    [{label:'PO Value', data:dists.map(d=>allPOs.filter(p=>p.distId===d.id&&p.dateReceived>=from&&p.dateReceived<=to).reduce((s,p)=>s+(p.total||0),0)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
+    'PO Value by Distributor'
+  );
+
+  _setTable(['Distributor','Status','POs','PO Total','Invoiced','Paid','Outstanding'], rows, 'Distributor Performance');
+  _reportData = {headers:['Distributor','Status','POs','PO Total','Invoiced','Paid','Outstanding'], rows};
+}
+
+// ── Gross Profit ───────────────────────────────────────────
+function repProfit() {
+  const orders = _repFilterOrders(DB.a('orders'));
+  const costs  = DB.obj('costs', {cogs:{}});
+
+  const bySkuRev={}, bySkuQty={};
+  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuQty[s.id]=0;});
+  orders.forEach(o=>{
+    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    (o.items||[]).forEach(i=>{
+      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
+      bySkuRev[i.sku]=(bySkuRev[i.sku]||0)+price*i.qty;
+      bySkuQty[i.sku]=(bySkuQty[i.sku]||0)+i.qty;
+    });
+  });
+
+  const rows = SKUS.map(s=>{
+    const rev=bySkuRev[s.id]||0, qty=bySkuQty[s.id]||0;
+    const cogs=(costs.cogs[s.id]||2.15)*qty, gp=rev-cogs, margin=rev>0?gp/rev:0;
+    return [s.label, fmt(qty), fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
+  });
+
+  const totalRev  = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
+  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*(bySkuQty[sk.id]||0),0);
+  const totalGP   = totalRev-totalCogs;
+  const overhead  = costs.overhead_monthly||1200;
+
+  _setKPIs(fmtC(totalRev), fmtC(totalGP), fmtC(totalGP-overhead), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
+
+  _drawChart('bar',
+    SKUS.map(s=>s.label),
+    [
+      {label:'Revenue', data:SKUS.map(s=>+(bySkuRev[s.id]||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.5)', borderRadius:4},
+      {label:'Gross Profit', data:SKUS.map(s=>{ const qty=bySkuQty[s.id]||0; return +((bySkuRev[s.id]||0)-(costs.cogs[s.id]||2.15)*qty).toFixed(2); }), backgroundColor:'rgba(0,180,100,0.7)', borderRadius:4},
+    ],
+    'Revenue vs Gross Profit by SKU'
+  );
+
+  _setTable(['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows, 'Gross Profit by SKU');
+  _reportData = {headers:['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows};
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function _setKPIs(rev, qty, gp, margin) {
+  if(qs('#rep-total-rev')) qs('#rep-total-rev').textContent = rev;
+  if(qs('#rep-total-qty')) qs('#rep-total-qty').textContent = qty;
+  if(qs('#rep-total-gp'))  qs('#rep-total-gp').textContent  = gp;
+  if(qs('#rep-margin'))    qs('#rep-margin').textContent    = margin;
+}
+
+function _setTable(headers, rows, title) {
+  const tt = qs('#rep-table-title');
+  if (tt) tt.textContent = title;
+  const th = qs('#rep-table-head');
+  if (th) th.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  const tb = qs('#rep-table-body');
+  if (tb) tb.innerHTML = rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('') ||
+    `<tr><td colspan="${headers.length}" class="empty">No data in selected range</td></tr>`;
+}
+
+// ── Export CSV ─────────────────────────────────────────────
+function exportReportCSV() {
+  if (!_reportData) return;
+  const {from, to} = _repDateRange();
+  const lines = [_reportData.headers.join(','), ..._reportData.rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(','))];
+  const blob  = new Blob([lines.join('\n')], {type:'text/csv'});
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href = url; a.download = `purpl-report-${_reportType}-${from}-${to}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('CSV downloaded');
+}
+
+// ── Save Report ────────────────────────────────────────────
+function saveReport() {
+  const {from, to} = _repDateRange();
+  const name = prompt(`Name this report (${_reportType}, ${from} → ${to}):`);
+  if (!name?.trim()) return;
+  const rec = { id: uid(), name: name.trim(), type: _reportType, from, to, savedAt: today() };
+  DB.push('saved_reports', rec);
+  renderSavedReports();
+  toast('Report saved');
+}
+
+function renderSavedReports() {
+  const el = qs('#rep-saved-list');
+  if (!el) return;
+  const saved = DB.a('saved_reports');
+  if (!saved.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:13px">No saved reports yet. Configure a report and click 💾 Save.</span>';
+    return;
+  }
+  el.innerHTML = saved.map(r=>`
+    <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-purple-soft);border-radius:6px;padding:6px 10px;font-size:13px">
+      <span style="cursor:pointer" onclick="loadSavedReport('${r.id}')"><strong>${r.name}</strong> <span style="color:var(--muted)">${r.type} · ${r.from} to ${r.to}</span></span>
+      <span style="cursor:pointer;color:var(--muted);margin-left:4px" onclick="deleteSavedReport('${r.id}')">✕</span>
+    </div>`).join('');
+}
+
+function loadSavedReport(id) {
+  const r = DB.a('saved_reports').find(x=>x.id===id);
+  if (!r) return;
+  const fromEl = qs('#rep-date-from'), toEl = qs('#rep-date-to');
+  if (fromEl) fromEl.value = r.from;
+  if (toEl)   toEl.value   = r.to;
+  _reportType = r.type;
+  const tabs = qs('#rep-type-tabs');
+  tabs?.querySelectorAll('.tab').forEach(t=>{ t.classList.toggle('active', t.dataset.rep===r.type); });
+  renderReportContent();
+}
+
+function deleteSavedReport(id) {
+  DB.remove('saved_reports', id);
+  renderSavedReports();
 }
 
 // ══════════════════════════════════════════════════════════
