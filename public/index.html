@@ -313,6 +313,13 @@
         <span id="dist-count" style="font-size:13px;color:var(--muted)"></span>
         <button class="btn primary" onclick="editDistributor('_new_')">+ Add Distributor</button>
       </div>
+      <!-- Distributor KPIs (Phase 4) -->
+      <div class="card-grid grid-4" id="dist-list-kpis" style="margin-bottom:16px"></div>
+      <!-- Needs Attention (Phase 4) -->
+      <div class="card" id="dist-list-attention" style="margin-bottom:16px;display:none">
+        <div class="section-hdr" style="margin-bottom:10px"><h2>⚠ Needs Attention</h2></div>
+        <div id="dist-attention-items"></div>
+      </div>
       <div id="dist-cards"></div>
     </div>
 
@@ -634,7 +641,7 @@
             <div class="form-group"><label>Address</label><input id="del-stop-addr" placeholder="123 Main St"></div>
           </div>
           <div style="margin-bottom:10px">
-            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Quantities</label>
+            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Quantities (cases — 1 case = 12 cans)</label>
             <div id="del-qty-inputs">
               <!-- Filled by JS via SKUS -->
             </div>
@@ -900,24 +907,31 @@
 
     <!-- ═══════ SETTINGS ═══════ -->
     <div class="page" id="page-settings">
-      <div class="card-grid grid-2">
+      <div class="card-grid grid-2" style="margin-bottom:16px">
+        <!-- Company & Payment -->
         <div class="card">
           <div class="section-hdr"><h2>Company</h2></div>
           <div class="form-group" style="margin-bottom:12px">
             <label>Company name</label>
             <input id="set-company" placeholder="purpl Beverages">
           </div>
-          <div class="form-group" style="margin-bottom:20px">
+          <div class="form-group" style="margin-bottom:12px">
             <label>Payment terms (days)</label>
             <input id="set-payment-terms" type="number" value="30">
           </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Production lead time (days)</label>
+            <input id="set-lead-time" type="number" placeholder="14" min="1" max="365">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Used by production planning projections</div>
+          </div>
           <button class="btn primary" id="save-settings-btn">Save Settings</button>
         </div>
+
+        <!-- COGS & Margins -->
         <div class="card">
           <div class="section-hdr"><h2>COGS &amp; Margins</h2></div>
           <div style="margin-bottom:12px">
-            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cost per unit by SKU</label>
-            <!-- Filled by JS -->
+            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cost per can by SKU</label>
             <div id="sku-cost-inputs">
               <div class="sku-row classic-bg"><div><span class="badge sku-classic">Classic</span></div><input type="number" id="cost-classic" step="0.01" placeholder="2.10" style="width:90px"></div>
               <div class="sku-row blueberry-bg"><div><span class="badge sku-blueberry">Blueberry</span></div><input type="number" id="cost-blueberry" step="0.01" placeholder="2.20" style="width:90px"></div>
@@ -937,6 +951,68 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="card-grid grid-2" style="margin-bottom:16px">
+        <!-- Territory Defaults -->
+        <div class="card">
+          <div class="section-hdr"><h2>Territory Defaults</h2></div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label>Default state / region</label>
+            <input id="set-default-state" placeholder="IL">
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label>Default account type</label>
+            <select id="set-default-account-type">
+              <option value="Grocery">Grocery</option>
+              <option value="Gym">Gym</option>
+              <option value="Café">Café</option>
+              <option value="Restaurant">Restaurant</option>
+              <option value="Spa / Wellness">Spa / Wellness</option>
+              <option value="Specialty / Gift">Specialty / Gift</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Default payment terms (days)</label>
+            <input id="set-default-terms" type="number" placeholder="30" min="0">
+          </div>
+        </div>
+
+        <!-- Units Info Panel (read-only) -->
+        <div class="card">
+          <div class="section-hdr"><h2>Units &amp; Display</h2></div>
+          <div class="highlight-box" style="margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px">Unit Reference</div>
+            <div style="font-size:13px;display:grid;gap:4px">
+              <div>📦 <strong>1 case</strong> = <strong id="set-cans-per-case">12</strong> cans</div>
+              <div>📋 <strong>Orders</strong> are entered and tracked in <strong>cases</strong></div>
+              <div>🏭 <strong>Inventory</strong> is tracked in individual <strong>cans</strong></div>
+              <div>🚚 <strong>Deliveries</strong> are confirmed in <strong>cases</strong></div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">These values are fixed constants used throughout the app to ensure consistent unit conversion.</div>
+        </div>
+      </div>
+
+      <!-- Variety Pack Recipe -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr"><h2>Variety Pack Recipe</h2></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Define how many cans of each flavor go into one variety pack. Total must equal <strong>12 cans</strong>.</div>
+        <div id="set-variety-recipe" style="display:grid;gap:8px;margin-bottom:12px">
+          <!-- Filled by JS -->
+        </div>
+        <div id="set-variety-total" style="font-size:13px;font-weight:600;margin-bottom:12px"></div>
+      </div>
+
+      <!-- User Management (read-only) -->
+      <div class="card">
+        <div class="section-hdr"><h2>Team Access</h2></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">All team members share the same workspace. Users who have signed in are listed below.</div>
+        <div id="set-users-list">
+          <div style="font-size:13px;color:var(--muted)">User tracking available after multiple sign-ins.</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
       </div>
     </div>
 
@@ -1131,7 +1207,7 @@
       <div class="form-group"><label>Due date *</label><input type="date" id="nord-due"></div>
     </div>
     <div style="margin-bottom:12px">
-      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Items</label>
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Items (quantities in cases — 1 case = 12 cans)</label>
       <div id="nord-items"></div>
     </div>
     <div class="form-group" style="margin-bottom:16px"><label>Notes</label><input id="nord-notes" placeholder="Any special instructions…"></div>
@@ -1508,7 +1584,8 @@ document.addEventListener('DOMContentLoaded', () => {
     el.innerHTML = SKUS_DEF.map(s=>`
       <div class="sku-row ${s.bg}" style="margin-bottom:4px">
         <span class="badge ${s.cls}">${s.label}</span>
-        <input type="number" id="del-qty-${s.id}" min="0" step="6" placeholder="0" style="width:80px">
+        <input type="number" id="del-qty-${s.id}" min="0" step="1" placeholder="0" style="width:80px">
+        <span style="font-size:11px;color:#6b7280">cs</span>
       </div>`).join('');
   }
 });

@@ -167,6 +167,14 @@ const DB = {
   },
   remove(k, id) { this.set(k, this.a(k).filter(x => x.id !== id)); },
 
+  // ── Atomic multi-key update (single Firestore write) ─
+  // Apply fn(cache) which may mutate multiple keys,
+  // then persist once. Safe because all data is one doc.
+  atomicUpdate(fn) {
+    fn(this._cache);
+    this._save();
+  },
+
   // ── Import from localStorage (one-time migration) ───
   async importFromLocalStorage() {
     const PFX = 'pcrm5_';

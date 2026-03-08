@@ -3,6 +3,12 @@
 //  Called via window.onAppReady() after auth + DB init
 // ═══════════════════════════════════════════════════════
 
+// ── Unit conversion constant ─────────────────────────────
+// Orders and deliveries are tracked in CASES.
+// Inventory (iv collection) is tracked in individual CANS.
+// Always use CANS_PER_CASE when converting between them.
+const CANS_PER_CASE = 12;
+
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -204,13 +210,17 @@ function kpiHtml(label, val, color) {
   return `<div class="kpi ${color}"><div class="num">${val}</div><div class="label">${label}</div></div>`;
 }
 
-// Price an order based on COGS*2.2 (or account-specific pricing if set)
+// Price an order. Items qty is in CASES.
+// Account pricing (ac.pricing[sku]) should be price-per-case.
+// Fallback: COGS per can × 2.2 markup × CANS_PER_CASE = price per case.
 function calcOrderValue(o) {
   const costs = DB.obj('costs', {cogs:{}});
   const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
   return (o.items||[]).reduce((s,i)=>{
-    const price = ac2?.pricing?.[i.sku] || (costs.cogs[i.sku]||2.15)*2.2;
-    return s + price*i.qty;
+    // pricePerCase: account-specific or default (COGS × markup × cans per case)
+    const pricePerCase = ac2?.pricing?.[i.sku]
+      || (costs.cogs[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+    return s + pricePerCase * i.qty; // i.qty = cases
   }, 0);
 }
 
@@ -1088,16 +1098,46 @@ function addProspectNote(id) {
 function convertProspect(id) {
   const p = DB.a('pr').find(x=>x.id===id);
   if (!p) return;
-  DB.update('pr', id, x=>({...x, status:'won'}));
+
+  // Build new account preserving ALL prospect fields
   const newAc = {
-    id:uid(), name:p.name, contact:p.contact||'', phone:p.phone||'', email:p.email||'',
-    type:p.type||'Grocery', territory:p.territory||'', status:'active',
-    since:today(), skus:[], par:{}, notes:[], lastOrder:null
+    id:         uid(),
+    name:       p.name,
+    contact:    p.contact||'',
+    phone:      p.phone||'',
+    email:      p.email||'',
+    address:    p.address||'',
+    lat:        p.lat||null,
+    lng:        p.lng||null,
+    type:       p.type||'Grocery',
+    territory:  p.territory||'',
+    status:     'active',
+    since:      today(),
+    // Preserve prospect metadata as account context
+    source:     p.source||'',
+    priority:   p.priority||'',
+    nextAction: p.nextAction||'',
+    nextDate:   p.nextDate||'',
+    skus:       [],
+    par:        {},
+    // Carry over all notes and outreach history
+    notes:      p.notes||[],
+    outreach:   p.outreach||[],
+    lastOrder:  null,
+    // Record conversion
+    convertedFrom: 'prospect',
+    convertedDate: today(),
   };
-  DB.push('ac', newAc);
+
+  // Atomic: mark prospect won + create account in one Firestore write
+  DB.atomicUpdate(cache => {
+    cache['pr'] = (cache['pr']||[]).map(x => x.id===id ? {...x, status:'won'} : x);
+    cache['ac'] = [...(cache['ac']||[]), newAc];
+  });
+
   closeModal('modal-prospect');
   renderProspects();
-  toast('Converted to account! Edit the account to add SKUs & par.');
+  toast('Converted to account! Edit to add SKUs & par levels.');
 }
 
 function editProspect(id) {
@@ -1237,6 +1277,69 @@ const DIST_INV_STATUS = {
   overdue: {label:'Overdue', cls:'red'},
 };
 
+// ── Distributor List KPIs + Needs Attention (Phase 4) ────
+function _renderDistListKPIs() {
+  const kpiEl  = qs('#dist-list-kpis');
+  const attnEl = qs('#dist-list-attention');
+  if (!kpiEl && !attnEl) return;
+
+  const all      = DB.a('dist_profiles');
+  const active   = all.filter(d=>d.status==='active');
+  const chains   = DB.a('dist_chains');
+  const allPOs   = DB.a('dist_pos');
+  const allInvs  = DB.a('dist_invoices');
+
+  const totalDoors = all.reduce((s,d)=>{
+    const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
+    return s + (dc||d.doorCount||0);
+  }, 0);
+  const outstanding = allInvs.filter(i=>['unpaid','overdue'].includes(i.status));
+  const outstandingVal = outstanding.reduce((s,i)=>s+(i.total||0),0);
+  const lastPO  = allPOs.sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0]?.dateReceived||null;
+
+  if (kpiEl) {
+    kpiEl.innerHTML = `
+      <div>${kpiHtml('Active Distributors', active.length, 'purple')}</div>
+      <div>${kpiHtml('Total Doors', fmt(totalDoors)||'—', 'blue')}</div>
+      <div>${kpiHtml('Outstanding Inv.', fmtC(outstandingVal), outstandingVal>0?'red':'green')}</div>
+      <div>${kpiHtml('Last PO', lastPO?fmtD(lastPO):'None', 'gray')}</div>`;
+  }
+
+  if (attnEl) {
+    const items = [];
+    // Overdue invoices
+    outstanding.filter(i=>i.dueDate&&i.dueDate<today()).forEach(i=>{
+      const d = all.find(x=>x.id===i.distId);
+      items.push(`<div class="attn-item" onclick="openDistributor('${i.distId}')" style="cursor:pointer">
+        <div class="attn-icon">💸</div>
+        <div class="attn-info">
+          <div class="attn-name">${d?.name||'Distributor'}</div>
+          <div class="attn-reason">Invoice overdue: ${fmtC(i.total||0)} — due ${fmtD(i.dueDate)}</div>
+        </div>
+        <span class="badge red">Overdue</span>
+      </div>`);
+    });
+    // No PO in 60+ days (active only)
+    active.forEach(d=>{
+      const pos = allPOs.filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
+      const lastDist = pos[0]?.dateReceived||null;
+      if (!lastDist || daysAgo(lastDist) >= 60) {
+        items.push(`<div class="attn-item" onclick="openDistributor('${d.id}')" style="cursor:pointer">
+          <div class="attn-icon">📦</div>
+          <div class="attn-info">
+            <div class="attn-name">${d.name}</div>
+            <div class="attn-reason">${lastDist?`No PO in ${daysAgo(lastDist)} days`:'No POs on record'}</div>
+          </div>
+          <span class="badge amber">No PO 60d+</span>
+        </div>`);
+      }
+    });
+    attnEl.style.display = items.length ? '' : 'none';
+    const inner = attnEl.querySelector('#dist-attention-items');
+    if (inner) inner.innerHTML = items.join('') || '<div class="empty">All clear</div>';
+  }
+}
+
 // ── List Page ─────────────────────────────────────────────
 function renderDistributors() {
   let list   = DB.a('dist_profiles');
@@ -1250,6 +1353,9 @@ function renderDistributors() {
 
   const cnt = qs('#dist-count');
   if (cnt) cnt.textContent = `${list.length} distributor${list.length!==1?'s':''}`;
+
+  // ── KPI Cards (Phase 4) ──────────────────────────────────
+  _renderDistListKPIs();
 
   const el = qs('#dist-cards');
   if (!el) return;
@@ -2403,13 +2509,23 @@ function renderOrders() {
 
   const tbody = qs('#orders-tbody');
   if (!tbody) return;
+  const SOURCE_BADGE = {
+    run:         '<span class="badge purple" style="font-size:10px">Run</span>',
+    manual:      '<span class="badge gray"   style="font-size:10px">Manual</span>',
+    import:      '<span class="badge blue"   style="font-size:10px">Import</span>',
+    local_line:  '<span class="badge blue"   style="font-size:10px">Local Line</span>',
+    distributor: '<span class="badge amber"  style="font-size:10px">Distributor</span>',
+  };
+
   tbody.innerHTML = list.map(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     const isOverdue = o.status==='pending' && o.dueDate < today();
-    return `<tr class="${isOverdue?'':''}">
+    const srcBadge  = SOURCE_BADGE[o.source] || '';
+    // qty in items is CASES; show with 'cs' label
+    return `<tr class="${isOverdue?'overdue-row':''}">
       <td>${fmtD(o.created)}</td>
-      <td>${ac2?.name||'Unknown'}</td>
-      <td>${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}`).join(' ')}</td>
+      <td>${ac2?.name||'Unknown'} ${srcBadge}</td>
+      <td>${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}cs`).join(' ')}</td>
       <td>${fmtD(o.dueDate)}${isOverdue?' <span class="badge red">Overdue</span>':''}</td>
       <td>${statusBadge(ORD_STATUS, o.status)}</td>
       <td>
@@ -2427,12 +2543,15 @@ function openNewOrder(accountId) {
   if (!m) return;
   const sel = qs('#nord-account');
   if (sel) {
-    sel.innerHTML = DB.a('ac').map(a=>`<option value="${a.id}" ${a.id===accountId?'selected':''}>${a.name}</option>`).join('');
+    // Blank first option so user must choose
+    sel.innerHTML = '<option value="">— Select account —</option>' +
+      DB.a('ac').filter(a=>a.status==='active').map(a=>`<option value="${a.id}" ${a.id===accountId?'selected':''}>${a.name}</option>`).join('');
     if (accountId) sel.value = accountId;
     populateOrderSkus();
   }
-  qs('#nord-due').value = '';
-  qs('#nord-notes').value = '';
+  // Pre-fill today's date as default
+  if (qs('#nord-due')) qs('#nord-due').value = today();
+  if (qs('#nord-notes')) qs('#nord-notes').value = '';
   qs('#nord-save-btn').onclick = saveNewOrder;
   openModal('modal-new-order');
 }
@@ -2443,35 +2562,68 @@ function populateOrderSkus() {
   const skus = ac2?.skus?.length ? ac2.skus : SKUS.map(s=>s.id);
   const el = qs('#nord-items');
   if (!el) return;
-  el.innerHTML = skus.map(s=>`
+  // par is stored in CANS; convert to CASES for display
+  el.innerHTML = skus.map(s=>{
+    const parCans  = ac2?.par?.[s] || 0;
+    const parCases = parCans > 0 ? Math.ceil(parCans / CANS_PER_CASE) : null;
+    return `
     <div class="order-item-row">
       ${skuBadge(s)}
-      <input type="number" id="nord-qty-${s}" placeholder="qty" min="0" step="6" style="width:80px">
-      <span style="font-size:12px;color:var(--muted)">units (par: ${ac2?.par?.[s]||'—'})</span>
-      ${ac2?.par?.[s]?`<button class="btn xs" onclick="qs('#nord-qty-${s}').value=${ac2.par[s]}">Fill par</button>`:''}
-    </div>`).join('');
+      <input type="number" id="nord-qty-${s}" placeholder="0" min="0" step="1" style="width:80px">
+      <span style="font-size:12px;color:var(--muted)">cases${parCases?' (par: '+parCases+'cs)':''}</span>
+      ${parCases?`<button class="btn xs" onclick="qs('#nord-qty-${s}').value=${parCases}">Fill par</button>`:''}
+    </div>`;
+  }).join('');
+  // Add footnote
+  el.insertAdjacentHTML('beforeend', `<div style="font-size:11px;color:var(--muted);margin-top:8px">1 case = ${CANS_PER_CASE} cans</div>`);
+}
+
+// ── Consolidated order creation (Phase 6) ────────────────
+// All order creation paths use this one function.
+// items: [{sku, qty}] where qty is in CASES.
+// canCount is computed automatically (qty × CANS_PER_CASE).
+function createOrder({accountId, dueDate, notes='', items, source='manual', status='pending'}) {
+  if (!accountId || !dueDate || !items?.length) return null;
+  const canCount = items.reduce((s,i) => s + (i.qty * CANS_PER_CASE), 0);
+  const ord = {
+    id: uid(), accountId, dueDate, notes, items, status,
+    source, // 'manual' | 'run' | 'import' | 'distributor'
+    canCount, // total cans — for reference only, derived from items × CANS_PER_CASE
+    created: today(),
+  };
+  DB.atomicUpdate(cache => {
+    cache['orders'] = [...(cache['orders']||[]), ord];
+    cache['ac'] = (cache['ac']||[]).map(a => a.id===accountId ? {...a, lastOrder:today()} : a);
+  });
+  return ord;
 }
 
 function saveNewOrder() {
   const accountId = qs('#nord-account')?.value;
-  const dueDate   = qs('#nord-due')?.value;
+  const dueDate   = qs('#nord-due')?.value || today();
   const notes     = qs('#nord-notes')?.value?.trim()||'';
-  if (!accountId || !dueDate) { toast('Account and due date required'); return; }
+  if (!accountId) { toast('Select an account'); return; }
+  if (!dueDate)   { toast('Due date required'); return; }
 
+  // qty entered in CASES
   const items = [];
   SKUS.forEach(s=>{
     const qty = parseInt(qs('#nord-qty-'+s.id)?.value)||0;
-    if (qty > 0) items.push({sku:s.id, qty});
+    if (qty > 0) items.push({sku:s.id, qty}); // qty = cases
   });
   if (!items.length) { toast('Add at least one SKU quantity'); return; }
 
-  const ord = {id:uid(), accountId, dueDate, notes, items, status:'pending', created:today()};
-  DB.push('orders', ord);
-  DB.update('ac', accountId, a=>({...a, lastOrder:today()}));
+  const ord = createOrder({accountId, dueDate, notes, items, source:'manual'});
 
   closeModal('modal-new-order');
   renderOrders();
   toast('Order created');
+
+  // Offer to create invoice immediately
+  if (ord && confirm2('Create an invoice for this order now?')) {
+    setInvStatus(ord.id, 'invoiced');
+    toast('Marked as invoiced');
+  }
 }
 
 function openOrderDetail(id) {
@@ -2484,7 +2636,11 @@ function openOrderDetail(id) {
   qs('#mod-due').textContent = fmtD(o.dueDate);
   qs('#mod-status').innerHTML = statusBadge(ORD_STATUS, o.status);
   qs('#mod-notes').textContent = o.notes||'—';
-  qs('#mod-items').innerHTML = (o.items||[]).map(i=>`<div>${skuBadge(i.sku)} × <strong>${i.qty}</strong></div>`).join('');
+  // i.qty = cases; show with 'cs' label and can equivalent
+  qs('#mod-items').innerHTML = (o.items||[]).map(i=>`<div>${skuBadge(i.sku)} × <strong>${i.qty} cs</strong> <span style="font-size:11px;color:var(--muted)">(${i.qty*CANS_PER_CASE} cans)</span></div>`).join('');
+  if (o.canCount) {
+    qs('#mod-items').insertAdjacentHTML('beforeend', `<div style="font-size:12px;color:var(--muted);margin-top:4px">Total: ${o.canCount} cans</div>`);
+  }
 
   // Invoice status
   const invEl = qs('#mod-invoice-status');
@@ -2632,19 +2788,29 @@ function renderDelivery() {
 
   const el = qs('#del-stops');
   if (!el) return;
-  el.innerHTML = stops.length ? stops.map((s,i)=>`
-    <div class="order-card ${s.done?'':''}">
+  el.innerHTML = stops.length ? stops.map((s,i)=>{
+    // Look up account for dropOffRules (by stored accountId, then by name fallback)
+    const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
+             || DB.a('ac').find(a=>a.name===s.name);
+    const rules = ac?.dropOffRules || '';
+    return `
+    <div class="order-card ${s.done?'done':''}">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <input type="checkbox" ${s.done?'checked':''} onchange="toggleStop(${i})" style="width:16px;height:16px;margin-top:2px;cursor:pointer">
         <div style="flex:1">
-          <div style="font-size:13px;font-weight:600;${s.done?'text-decoration:line-through;opacity:.5':''}">${s.name}</div>
+          <div style="font-size:14px;font-weight:700;${s.done?'text-decoration:line-through;opacity:.5':''}">${s.name}</div>
+          ${rules && !s.done ? `<div class="delivery-rules-box">
+            <div class="delivery-rules-label">⚠ Delivery Instructions:</div>
+            <div class="delivery-rules-text">${rules}</div>
+          </div>` : ''}
           <div style="font-size:12px;color:var(--muted)">${s.address||''}</div>
-          <div style="margin-top:6px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]}`:'').filter(Boolean).join(' ')}</div>
+          <div style="margin-top:6px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]} cs`:'').filter(Boolean).join(' ')}</div>
           ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
         </div>
-        <button class="btn xs red" onclick="removeStop(${i})">✕</button>
+        <button class="btn xs red no-print" onclick="removeStop(${i})">✕</button>
       </div>
-    </div>`).join('') : '<div class="empty">No stops on today\'s route. Add stops below.</div>';
+    </div>`;
+  }).join('') : '<div class="empty">No stops on today\'s route. Add stops below.</div>';
 
   // Stats
   const done = stops.filter(s=>s.done).length;
@@ -2664,15 +2830,23 @@ function prefillStop(accountId) {
   const ac2 = DB.a('ac').find(a=>a.id===accountId);
   if (!ac2) return;
   if (qs('#del-stop-name')) qs('#del-stop-name').value = ac2.name;
+  if (qs('#del-stop-addr')) qs('#del-stop-addr').value = ac2.address||'';
+  if (qs('#del-stop-notes') && ac2.dropOffRules) qs('#del-stop-notes').value = ac2.dropOffRules;
   SKUS.forEach(s=>{
-    if(qs('#del-qty-'+s.id)) qs('#del-qty-'+s.id).value = ac2.par?.[s.id]||0;
+    const el = qs('#del-qty-'+s.id);
+    if (el) {
+      // par stored in CANS; convert to CASES for delivery quantity entry
+      const parCans  = ac2.par?.[s.id] || 0;
+      el.value = parCans > 0 ? Math.ceil(parCans / CANS_PER_CASE) : 0;
+    }
   });
 }
 
 function addStop() {
   const name = qs('#del-stop-name')?.value?.trim();
   if (!name) { toast('Name required'); return; }
-  const stop = {name, address:qs('#del-stop-addr')?.value?.trim()||'', notes:qs('#del-stop-notes')?.value?.trim()||'', done:false};
+  const accountId = qs('#del-account-sel')?.value || null;
+  const stop = {name, address:qs('#del-stop-addr')?.value?.trim()||'', notes:qs('#del-stop-notes')?.value?.trim()||'', done:false, accountId};
   SKUS.forEach(s=>{ stop[s.id]=parseInt(qs('#del-qty-'+s.id)?.value)||0; });
 
   const run = DB.obj('today_run', {date:today(), stops:[]});
@@ -2692,21 +2866,178 @@ function addStop() {
 
 function toggleStop(i) {
   const run = DB.obj('today_run', {date:today(), stops:[]});
-  if (run.stops[i]) run.stops[i].done = !run.stops[i].done;
-  DB.setObj('today_run', run);
-
-  // Update last order date for the account
+  if (!run.stops[i]) { renderDelivery(); return; }
+  const wasDone = run.stops[i].done;
+  run.stops[i].done = !wasDone;
   const stop = run.stops[i];
-  const ac2 = DB.a('ac').find(a=>a.name===stop.name);
-  if (ac2 && stop.done) {
-    DB.update('ac', ac2.id, a=>({...a, lastOrder:today()}));
-    // Deduct inventory
-    SKUS.forEach(s=>{
-      if(stop[s.id]>0) DB.push('iv', {id:uid(), date:today(), sku:s.id, type:'out', qty:stop[s.id], note:'Delivery: '+stop.name});
+
+  // Look up account (prefer stored accountId, fallback to name match)
+  const ac2 = (stop.accountId ? DB.a('ac').find(a=>a.id===stop.accountId) : null)
+            || DB.a('ac').find(a=>a.name===stop.name);
+
+  if (!wasDone && stop.done && ac2) {
+    // ── Atomic delivery confirmation ──────────────────────
+    // All four side-effects in one Firestore write:
+    //  1. today_run updated above (done flag)
+    //  2. account lastOrder
+    //  3. inventory deduction in CANS (stop qty × CANS_PER_CASE)
+    //  4. delivery order record in CASES
+    const ordItems = SKUS.filter(s=>stop[s.id]>0).map(s=>({sku:s.id, qty:stop[s.id]}));
+    const canCount = ordItems.reduce((sum,i)=>sum + i.qty * CANS_PER_CASE, 0);
+    const newOrd = {
+      id: uid(), accountId: ac2.id, created: today(), dueDate: today(),
+      status: 'delivered', source: 'run', items: ordItems, canCount,
+      notes: stop.notes||'',
+    };
+    const newIvEntries = ordItems.map(i=>({
+      id: uid(), date: today(), sku: i.sku, type: 'out',
+      // inventory is in CANS — multiply cases × CANS_PER_CASE
+      qty: i.qty * CANS_PER_CASE,
+      note: 'Delivery: ' + stop.name,
+    }));
+
+    DB.atomicUpdate(cache => {
+      cache['today_run'] = run;
+      cache['ac'] = (cache['ac']||[]).map(a => a.id===ac2.id ? {...a, lastOrder:today()} : a);
+      cache['iv'] = [...(cache['iv']||[]), ...newIvEntries];
+      cache['orders'] = [...(cache['orders']||[]), newOrd];
     });
+
+    // Offer invoice (non-blocking — renders after DB write)
+    setTimeout(()=>offerDeliveryInvoice(stop, ac2, newOrd.id), 200);
+
+    // Check if all stops are now done — offer batch invoicing
+    const updatedRun = DB.obj('today_run', {stops:[]});
+    const allDone = updatedRun.stops.length > 0 && updatedRun.stops.every(s=>s.done);
+    if (allDone) setTimeout(()=>offerBatchInvoice(updatedRun.stops), 800);
+
+  } else {
+    // Just toggling undone — simple update, no side-effects
+    DB.setObj('today_run', run);
   }
 
   renderDelivery();
+}
+
+// ── Post-stop invoice offer (Phase 3) ────────────────────
+function offerDeliveryInvoice(stop, ac, ordId) {
+  // Show a non-blocking banner at top of delivery page
+  const existing = document.getElementById('del-invoice-offer');
+  if (existing) existing.remove();
+
+  const items = SKUS.filter(s=>stop[s.id]>0);
+  if (!items.length || !ac) return;
+
+  const costs  = DB.obj('costs', {cogs:{}});
+  const terms  = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
+
+  const banner = document.createElement('div');
+  banner.id = 'del-invoice-offer';
+  banner.className = 'invoice-offer-banner';
+  banner.innerHTML = `
+    <div class="invoice-offer-text">
+      <strong>Create invoice for ${ac.name}?</strong>
+      <span style="font-size:12px;color:var(--muted)">Due ${fmtD(dueDate)}</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <button class="btn sm primary" onclick="createDeliveryInvoice('${ac.id}','${ordId}')">Create Invoice</button>
+      <button class="btn sm" onclick="document.getElementById('del-invoice-offer')?.remove()">Skip</button>
+    </div>`;
+
+  const page = document.getElementById('page-delivery');
+  if (page) page.insertBefore(banner, page.firstChild);
+}
+
+function createDeliveryInvoice(accountId, ordId) {
+  const ac      = DB.a('ac').find(a=>a.id===accountId);
+  const ord     = DB.a('orders').find(o=>o.id===ordId);
+  if (!ac || !ord) return;
+
+  const costs   = DB.obj('costs', {cogs:{}});
+  const terms   = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
+
+  // Auto-increment invoice number
+  const existing = DB.a('inv_log_v2');
+  const lastNum  = existing.reduce((max,inv)=>{
+    const n = parseInt((inv.invoiceNumber||'').replace(/\D/g,'')) || 0;
+    return Math.max(max, n);
+  }, 0);
+  const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
+
+  // Build line items in CASES with pricing
+  // pricePerCase = account-specific rate OR (COGS per can × 2.2 markup × CANS_PER_CASE)
+  const lineItems = (ord.items||[]).map(i=>{
+    const pricePerCase = ac.pricing?.[i.sku] || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+    return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
+  });
+  const total = lineItems.reduce((s,l)=>s+l.amount, 0);
+
+  const invoice = {
+    id: uid(), accountId, orderId: ordId, invoiceNumber,
+    date: today(), dueDate, lineItems, total,
+    status: 'pending', source: 'delivery_run', notes: '',
+    accountName: ac.name,
+  };
+
+  DB.push('inv_log_v2', invoice);
+  // Mark the order as invoiced
+  DB.update('orders', ordId, o=>({...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber}));
+
+  document.getElementById('del-invoice-offer')?.remove();
+  toast(`Invoice ${invoiceNumber} created for ${ac.name}`);
+}
+
+// ── After full run — offer batch invoicing ────────────────
+function offerBatchInvoice(stops) {
+  const existing = document.getElementById('del-batch-invoice-offer');
+  if (existing) return; // already showing
+
+  const uninvoiced = stops.filter(s=>{
+    const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
+             || DB.a('ac').find(a=>a.name===s.name);
+    return ac && s.done;
+  });
+  if (!uninvoiced.length) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'del-batch-invoice-offer';
+  banner.className = 'invoice-offer-banner';
+  banner.style.cssText = 'background:#f0fdf4;border-color:#16a34a';
+  banner.innerHTML = `
+    <div class="invoice-offer-text">
+      <strong>Run complete! 🎉</strong>
+      <span style="font-size:12px;color:var(--muted)">Create invoices for all ${uninvoiced.length} stops?</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0">
+      <button class="btn sm primary" onclick="createBatchDeliveryInvoices()">Create All Invoices</button>
+      <button class="btn sm" onclick="document.getElementById('del-batch-invoice-offer')?.remove()">Skip</button>
+    </div>`;
+
+  const page = document.getElementById('page-delivery');
+  if (page) page.insertBefore(banner, page.firstChild);
+}
+
+function createBatchDeliveryInvoices() {
+  const run  = DB.obj('today_run', {stops:[]});
+  const stops = run.stops.filter(s=>s.done);
+  let created = 0;
+  stops.forEach(s=>{
+    const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
+             || DB.a('ac').find(a=>a.name===s.name);
+    if (!ac) return;
+    // Find the delivery order for this stop (most recent run order for this account today)
+    const ord = DB.a('orders').filter(o=>o.accountId===ac.id&&o.source==='run'&&o.created===today())
+                               .sort((a,b)=>b.id>a.id?1:-1)[0];
+    if (!ord) return;
+    // Skip if already invoiced
+    if (ord.invoiceStatus==='invoiced'||ord.invoiceStatus==='paid') return;
+    createDeliveryInvoice(ac.id, ord.id);
+    created++;
+  });
+  document.getElementById('del-batch-invoice-offer')?.remove();
+  toast(`Created ${created} invoice${created!==1?'s':''}`);
 }
 
 function removeStop(i) {
@@ -2809,23 +3140,25 @@ function repRevenue() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
 
-  const bySkuRev={}, bySkuQty={};
-  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuQty[s.id]=0;});
+  const bySkuRev={}, bySkuCases={};
+  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     (o.items||[]).forEach(i=>{
-      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
-      bySkuRev[i.sku]=(bySkuRev[i.sku]||0)+price*i.qty;
-      bySkuQty[i.sku]=(bySkuQty[i.sku]||0)+i.qty;
+      // i.qty = cases; pricePerCase = account pricing or COGS × markup × CANS_PER_CASE
+      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
+      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
   });
 
-  const totalRev  = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
-  const totalQty  = Object.values(bySkuQty).reduce((a,b)=>a+b,0);
-  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*(bySkuQty[sk.id]||0),0);
-  const totalGP   = totalRev-totalCogs;
+  const totalRev   = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
+  const totalCases = Object.values(bySkuCases).reduce((a,b)=>a+b,0);
+  // COGS is per-can; total COGS = cans = cases × CANS_PER_CASE
+  const totalCogs  = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*((bySkuCases[sk.id]||0)*CANS_PER_CASE),0);
+  const totalGP    = totalRev - totalCogs;
 
-  _setKPIs(fmtC(totalRev), fmt(totalQty)+' units', fmtC(totalGP), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
+  _setKPIs(fmtC(totalRev), fmt(totalCases)+' cases', fmtC(totalGP), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
 
   _drawChart('bar',
     SKUS.map(s=>s.label),
@@ -2834,12 +3167,13 @@ function repRevenue() {
   );
 
   const rows = SKUS.map(s=>{
-    const rev=bySkuRev[s.id]||0, qty=bySkuQty[s.id]||0;
-    const cogs=(costs.cogs[s.id]||2.15)*qty, gp=rev-cogs, margin=rev>0?gp/rev:0;
-    return [s.label, fmt(qty), fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
+    const rev=bySkuRev[s.id]||0, cases=bySkuCases[s.id]||0;
+    const cogs=(costs.cogs[s.id]||2.15)*cases*CANS_PER_CASE; // COGS in cans
+    const gp=rev-cogs, margin=rev>0?gp/rev:0;
+    return [s.label, fmt(cases)+' cs', fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
   });
-  _setTable(['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows, 'Revenue by SKU');
-  _reportData = {headers:['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows};
+  _setTable(['SKU','Cases','Revenue','COGS','Gross Profit','Margin'], rows, 'Revenue by SKU');
+  _reportData = {headers:['SKU','Cases','Revenue','COGS','Gross Profit','Margin'], rows};
 }
 
 // ── Account Performance ────────────────────────────────────
@@ -2854,9 +3188,10 @@ function repAccounts() {
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
-      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
-      acMap[o.accountId].rev += price*i.qty;
-      acMap[o.accountId].qty += i.qty;
+      // i.qty = cases; price per case
+      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      acMap[o.accountId].rev += pricePerCase * i.qty;
+      acMap[o.accountId].qty += i.qty; // cases
     });
   });
 
@@ -2941,25 +3276,28 @@ function repProfit() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
 
-  const bySkuRev={}, bySkuQty={};
-  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuQty[s.id]=0;});
+  const bySkuRev={}, bySkuCases={};
+  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     (o.items||[]).forEach(i=>{
-      const price = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2;
-      bySkuRev[i.sku]=(bySkuRev[i.sku]||0)+price*i.qty;
-      bySkuQty[i.sku]=(bySkuQty[i.sku]||0)+i.qty;
+      // i.qty = cases; price per case
+      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
+      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
   });
 
   const rows = SKUS.map(s=>{
-    const rev=bySkuRev[s.id]||0, qty=bySkuQty[s.id]||0;
-    const cogs=(costs.cogs[s.id]||2.15)*qty, gp=rev-cogs, margin=rev>0?gp/rev:0;
-    return [s.label, fmt(qty), fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
+    const rev=bySkuRev[s.id]||0, cases=bySkuCases[s.id]||0;
+    // COGS per can × cans = COGS per case × cases
+    const cogs=(costs.cogs[s.id]||2.15)*cases*CANS_PER_CASE;
+    const gp=rev-cogs, margin=rev>0?gp/rev:0;
+    return [s.label, fmt(cases)+' cs', fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
   });
 
   const totalRev  = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
-  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*(bySkuQty[sk.id]||0),0);
+  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*((bySkuCases[sk.id]||0)*CANS_PER_CASE),0);
   const totalGP   = totalRev-totalCogs;
   const overhead  = costs.overhead_monthly||1200;
 
@@ -3209,11 +3547,13 @@ function importLLOrders(orders) {
       return 'classic'; // default
     };
 
+    // items.qty = cases (imported quantity treated as cases)
     const items = o.items.map(i=>({sku:mapSku(i.product,i.variant), qty:i.qty||1}));
+    const canCount = items.reduce((s,i)=>s + i.qty * CANS_PER_CASE, 0);
     const ord = {
       id:uid(), accountId:acct.id, created:o.date, dueDate:o.date,
       status: o.status.toLowerCase().includes('complet')||o.status.toLowerCase().includes('deliver') ? 'delivered' : 'pending',
-      items, source:'local_line', externalId:o.orderId||'', importedAt:today(),
+      items, canCount, source:'local_line', externalId:o.orderId||'', importedAt:today(),
     };
     DB.push('orders', ord);
     newOrders++;
@@ -3251,19 +3591,89 @@ function deleteLLImportLog(id) {
 function renderSettings() {
   const s = DB.obj('settings', {});
   const c = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
-  if(qs('#set-company')) qs('#set-company').value = s.company||'';
+
+  // Company
+  if(qs('#set-company'))       qs('#set-company').value       = s.company||'';
   if(qs('#set-payment-terms')) qs('#set-payment-terms').value = s.payment_terms||30;
+  if(qs('#set-lead-time'))     qs('#set-lead-time').value     = s.production_lead_time||14;
+
+  // COGS
   SKUS.forEach(sk=>{
     if(qs('#cost-'+sk.id)) qs('#cost-'+sk.id).value = c.cogs?.[sk.id]||'';
   });
-  if(qs('#cost-overhead')) qs('#cost-overhead').value = c.overhead_monthly||1200;
+  if(qs('#cost-overhead'))      qs('#cost-overhead').value      = c.overhead_monthly||1200;
   if(qs('#cost-target-margin')) qs('#cost-target-margin').value = (c.target_margin||.6)*100;
+
+  // Territory defaults
+  if(qs('#set-default-state'))        qs('#set-default-state').value        = s.default_state||'';
+  if(qs('#set-default-account-type')) qs('#set-default-account-type').value = s.default_account_type||'Grocery';
+  if(qs('#set-default-terms'))        qs('#set-default-terms').value        = s.default_payment_terms||30;
+
+  // Units info panel — update display
+  if(qs('#set-cans-per-case')) qs('#set-cans-per-case').textContent = CANS_PER_CASE;
+
+  // Variety pack recipe
+  const recipe = s.variety_recipe || {};
+  const recipeEl = qs('#set-variety-recipe');
+  if (recipeEl) {
+    recipeEl.innerHTML = SKUS.filter(sk=>sk.id!=='variety').map(sk=>`
+      <div style="display:flex;align-items:center;gap:10px">
+        ${skuBadge(sk.id)}
+        <input type="number" id="variety-recipe-${sk.id}" value="${recipe[sk.id]||0}" min="0" max="${CANS_PER_CASE}" step="1" style="width:70px" oninput="_updateVarietyTotal()">
+        <span style="font-size:12px;color:var(--muted)">cans</span>
+      </div>`).join('');
+    _updateVarietyTotal();
+  }
+
+  // User list (read-only — show known signed-in users from settings)
+  const usersEl = qs('#set-users-list');
+  if (usersEl && s.known_users?.length) {
+    usersEl.innerHTML = `<div class="tbl-wrap"><table>
+      <thead><tr><th>Email / Name</th><th>Last Seen</th><th>Provider</th></tr></thead>
+      <tbody>${s.known_users.map(u=>`<tr>
+        <td>${u.email||u.displayName||u.uid}</td>
+        <td>${u.lastSeen?fmtD(u.lastSeen):'—'}</td>
+        <td><span class="badge gray">${u.provider||'email'}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+}
+
+function _updateVarietyTotal() {
+  const total = SKUS.filter(sk=>sk.id!=='variety')
+    .reduce((s,sk)=>s+(parseInt(qs('#variety-recipe-'+sk.id)?.value)||0), 0);
+  const el = qs('#set-variety-total');
+  if (!el) return;
+  const ok = total === CANS_PER_CASE;
+  el.innerHTML = `Total: <strong style="color:${ok?'var(--green)':'var(--red)'}">${total} / ${CANS_PER_CASE} cans</strong>${ok?' ✓':' (must equal '+CANS_PER_CASE+')'}`;
 }
 
 function saveSettings() {
+  // Variety pack recipe validation
+  const recipe = {};
+  let recipeTotal = 0;
+  SKUS.filter(sk=>sk.id!=='variety').forEach(sk=>{
+    const v = parseInt(qs('#variety-recipe-'+sk.id)?.value)||0;
+    recipe[sk.id] = v;
+    recipeTotal += v;
+  });
+  if (recipeTotal > 0 && recipeTotal !== CANS_PER_CASE) {
+    toast(`Variety recipe must total ${CANS_PER_CASE} cans (currently ${recipeTotal})`);
+    return;
+  }
+
   const s = {
-    company: qs('#set-company')?.value?.trim()||'',
-    payment_terms: parseInt(qs('#set-payment-terms')?.value)||30,
+    company:               qs('#set-company')?.value?.trim()||'',
+    payment_terms:         parseInt(qs('#set-payment-terms')?.value)||30,
+    production_lead_time:  parseInt(qs('#set-lead-time')?.value)||14,
+    default_state:         qs('#set-default-state')?.value?.trim()||'',
+    default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
+    default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
+    variety_recipe:        recipeTotal === CANS_PER_CASE ? recipe : (DB.obj('settings',{}).variety_recipe||{}),
+    // Preserve existing fields (known_users etc.)
+    ...Object.fromEntries(
+      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe'].includes(k))
+    ),
   };
   DB.setObj('settings', s);
 
@@ -3272,7 +3682,7 @@ function saveSettings() {
   const c = {
     cogs,
     overhead_monthly: parseFloat(qs('#cost-overhead')?.value)||1200,
-    target_margin: (parseFloat(qs('#cost-target-margin')?.value)||60)/100,
+    target_margin:    (parseFloat(qs('#cost-target-margin')?.value)||60)/100,
   };
   DB.setObj('costs', c);
   toast('Settings saved');
