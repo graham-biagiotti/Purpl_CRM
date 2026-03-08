@@ -200,6 +200,13 @@ const DB = {
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
-    await setDoc(this._ref(), payload);
+    try {
+      await setDoc(this._ref(), payload);
+    } catch(e) {
+      console.error('Firestore _forceSave error:', e);
+      this._updateSyncUI('error');
+      if (window.toast) toast('⚠️ Save failed — check your connection. Changes may be lost on reload.');
+      throw e;
+    }
   }
 };
