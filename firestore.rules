@@ -1,14 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Shared workspace — any authenticated user can read/write
-    match /workspace/{document=**} {
+    match /{document=**} {
       allow read, write: if request.auth != null;
-    }
-    // Legacy user paths — readable by any authenticated user for one-time migration
-    match /users/{userId}/{document=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
