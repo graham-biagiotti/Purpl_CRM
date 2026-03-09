@@ -144,7 +144,8 @@
   const ADDRESS_FIELD_IDS = [
     'eac-address',     // Edit Account form
     'epr-address',     // Edit Prospect form
-    'del-stop-addr',   // Today's Run — add stop
+    'del-stop-addr',   // Orders & Delivery — Route Builder add stop
+    'loc-address',     // Inventory Locations — add location form
   ];
 
   // ── Attach to all known address fields ───────────────
