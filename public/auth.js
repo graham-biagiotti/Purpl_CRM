@@ -71,6 +71,7 @@ async function bootApp() {
   }
 
   onAuthStateChanged(auth, async (user) => {
+    window._currentUser = user || null;
     if (user) {
       authScreen.style.display = 'none';
       loadingScreen.style.display = 'flex';
