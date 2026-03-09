@@ -392,7 +392,7 @@ th{padding:11px 14px}
 /* ── Account card actions — hover only on desktop ───────── */
 @media(min-width:768px){
   .ac-card-actions{opacity:0;transition:opacity .15s}
-  .ac-card:hover .ac-card-actions{opacity:1}
+  .ac-card:hover .ac-card-actions,.pr-card:hover .ac-card-actions{opacity:1}
 }
 
 /* ── Badges ─────────────────────────────────────────────── */
