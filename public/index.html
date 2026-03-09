@@ -1399,6 +1399,7 @@
       <button class="tab" data-dtab="invoices">Invoices</button>
       <button class="tab" data-dtab="stores">Store Coverage</button>
       <button class="tab" data-dtab="imports">Imported Data</button>
+      <button class="tab" data-dtab="outreach">Outreach Log</button>
     </div>
     <div id="mdist-tab-overview"  class="dtab-pane"></div>
     <div id="mdist-tab-reps"      class="dtab-pane" style="display:none"></div>
@@ -1407,7 +1408,9 @@
     <div id="mdist-tab-invoices"  class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-stores"    class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-imports"   class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-outreach"  class="dtab-pane" style="display:none"></div>
     <div class="modal-footer">
+      <button class="btn" onclick="logDistContact(_currentDistId)">📞 Log Contact</button>
       <button class="btn" id="mdist-po-btn">+ Log PO</button>
       <button class="btn" id="mdist-invoice-btn">+ Invoice</button>
       <button class="btn primary" id="mdist-edit-btn">Edit Profile</button>

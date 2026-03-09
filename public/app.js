@@ -300,6 +300,20 @@ function renderAttention() {
     items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`$${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
   });
 
+  // Distributors with no contact in 60+ days
+  DB.a('dist_profiles').filter(d=>d.status==='active').forEach(d=>{
+    const out = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+    const lastDate = out[0]?.date || null;
+    if (daysAgo(lastDate) >= 60) {
+      items.push({icon:'🚚', name:`${d.name} — No Recent Contact`, reason:`Last contacted ${lastDate?daysAgo(lastDate)+' days ago':'never'}`, action:`openDistributor('${d.id}')`});
+    }
+  });
+
+  // Overdue distributor follow-ups
+  DB.a('dist_profiles').filter(d=>d.nextFollowup&&d.nextFollowup<todayStr).forEach(d=>{
+    items.push({icon:'📅', name:`${d.name} — Follow-Up Overdue`, reason:`Scheduled ${fmtD(d.nextFollowup)}`, action:`openDistributor('${d.id}')`});
+  });
+
   const el = qs('#dash-attention');
   if (!el) return;
   el.innerHTML = items.length ? items.slice(0,10).map(i=>`
@@ -1313,6 +1327,13 @@ function saveLogOutreach() {
   if (kind === 'ac') {
     DB.update('ac', id, a=>({...a, outreach:[...(a.outreach||[]),entry]}));
     renderAccounts();
+  } else if (kind === 'dist') {
+    DB.update('dist_profiles', id, d=>({
+      ...d,
+      outreach:[...(d.outreach||[]),entry],
+      ...(nextDate ? {nextFollowup: nextDate} : {}),
+    }));
+    renderDistributors();
   } else {
     DB.update('pr', id, p=>({
       ...p,
@@ -1450,8 +1471,13 @@ function renderDistributors() {
     const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
     const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d.doorCount || 0;
     const pendingVal = invs.reduce((s,i)=>s+(i.total||0),0);
+    // Outreach
+    const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+    const lastContact = outreach[0]?.date || null;
+    const lastContactDays = lastContact ? daysAgo(lastContact) : null;
+    const nextFollowup = d.nextFollowup || null;
 
-    return `<div class="ac-card">
+    return `<div class="ac-card${lastContactDays!==null&&lastContactDays>60?' needs-attention':''}">
       <div class="ac-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
@@ -1462,26 +1488,47 @@ function renderDistributors() {
         </div>
         <div class="ac-card-badges">
           ${statusBadge(DIST_STATUS, d.status)}
+          ${lastContactDays!==null&&lastContactDays>60?'<span class="badge amber">⚠ Needs Attention</span>':''}
         </div>
       </div>
-      <div class="ac-card-metrics" style="grid-template-columns:repeat(4,1fr)">
+      <div class="ac-card-metrics" style="grid-template-columns:repeat(${nextFollowup?5:4},1fr)">
         <div><div class="ac-metric-label">Total Doors</div><div class="ac-metric-val">${fmt(totalDoors)||'—'}</div></div>
         <div><div class="ac-metric-label">Sales Reps</div><div class="ac-metric-val">${reps.length}</div></div>
+        <div><div class="ac-metric-label">Last Contacted</div><div class="ac-metric-val${lastContactDays!==null&&lastContactDays>60?' red':''}">${lastContact?`${fmtD(lastContact)} (${lastContactDays}d)`:'—'}</div></div>
         <div><div class="ac-metric-label">Last PO</div><div class="ac-metric-val${lastPO&&daysAgo(lastPO)>60?' red':''}">${lastPO?fmtD(lastPO):'—'}</div></div>
-        <div><div class="ac-metric-label">Outstanding Inv.</div><div class="ac-metric-val${pendingVal>0?' red':' green'}">${pendingVal>0?fmtC(pendingVal):'Clear'}</div></div>
+        ${nextFollowup?`<div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val${nextFollowup<today()?' red':''}">${fmtD(nextFollowup)}</div></div>`:''}
       </div>
+      ${outreach[0]?`<div class="ac-card-section"><div class="ac-card-section-label">Last Contact</div><div style="font-size:13px">${outreach[0].type} · ${fmtD(outreach[0].date)}${outreach[0].note?' — '+outreach[0].note:''}</div></div>`:''}
+      ${pendingVal>0?`<div class="ac-card-section"><div class="ac-card-section-label">Outstanding Invoices</div><div style="font-size:13px;color:var(--red)">${fmtC(pendingVal)}</div></div>`:''}
       ${d.notes?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${d.notes}</div></div>`:''}
       <div class="ac-card-actions">
-        <button class="btn sm primary" onclick="openDistributor('${d.id}')">View Details</button>
+        <button class="btn sm primary" onclick="logDistContact('${d.id}')">📞 Log Contact</button>
+        <button class="btn sm" onclick="openDistributor('${d.id}')">View Details</button>
         <button class="btn sm" onclick="editDistributor('${d.id}')">Edit</button>
         <button class="btn sm" onclick="addDistPO('${d.id}')">+ Log PO</button>
-        <button class="btn sm" onclick="addDistInvoice('${d.id}')">+ Invoice</button>
       </div>
     </div>`;
   }).join('') || `<div class="empty">
     <div class="empty-icon">🚚</div>
     No distributors yet. Add your first distributor to get started.
   </div>`;
+}
+
+// ── Log Contact (Phase 6) ─────────────────────────────────
+function logDistContact(id) {
+  const d = DB.a('dist_profiles').find(x=>x.id===id);
+  if (!d) return;
+  qs('#mlo-title').textContent = `Log Contact — ${d.name}`;
+  qs('#mlo-id').value = id;
+  qs('#mlo-kind').value = 'dist';
+  qs('#mlo-type').value = 'Call';
+  qs('#mlo-date').value = today();
+  qs('#mlo-note').value = '';
+  qs('#mlo-nextsteps').value = '';
+  qs('#mlo-nextdate').value = d.nextFollowup || '';
+  qs('#mlo-nextsteps-row').style.display = '';
+  qs('#mlo-nextdate-row').style.display  = '';
+  openModal('modal-log-outreach');
 }
 
 // ── Detail Modal ──────────────────────────────────────────
@@ -1527,6 +1574,7 @@ function renderDistTab(tab, distId) {
     case 'invoices':  pane.innerHTML = renderDistInvoicesHTML(d); break;
     case 'stores':    pane.innerHTML = renderDistStoresHTML(d); break;
     case 'imports':   pane.innerHTML = renderDistImportsHTML(d); break;
+    case 'outreach':  pane.innerHTML = renderDistOutreachHTML(d); break;
   }
 }
 
@@ -1730,6 +1778,24 @@ function renderDistImportsHTML(d) {
           </table>
         </div>
       </div>`).join('') : '<div class="empty">No imported data yet. Click "Import CSV" to get started.</div>'}`;
+}
+
+function renderDistOutreachHTML(d) {
+  const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+  const nextFollowup = d.nextFollowup;
+  return `
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+      ${nextFollowup?`<span class="badge ${nextFollowup<today()?'red':'blue'}">Next follow-up: ${fmtD(nextFollowup)}</span>`:''}
+      <button class="btn sm primary" onclick="logDistContact('${d.id}')">📞 Log Contact</button>
+    </div>
+    ${outreach.length ? `<div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>${outreach.map(e=>`<tr>
+        <td>${fmtD(e.date)}</td>
+        <td><span class="badge gray">${e.type}</span></td>
+        <td>${e.note||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div class="empty">No outreach logged yet.</div>'}`;
 }
 
 // ── Edit / Save Distributor ───────────────────────────────
