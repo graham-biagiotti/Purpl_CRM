@@ -113,6 +113,10 @@ function statusBadge(map, val) {
 
 // ── Default demo data (first run only) ──────────────────
 function seedIfEmpty() {
+  // Only seed on the very first run — never again, even if all data is deleted
+  const _s = DB.obj('settings', null);
+  if (_s !== null && !_s.seeded) { DB.setObj('settings', {..._s, seeded:true}); return; }
+  if (_s?.seeded) return;
   if (DB.a('ac').length || DB.a('pr').length) return;
   const accs = [
     {id:uid(),name:'Whole Foods Market – Oak Park',contact:'Lisa Park',phone:'708-555-0100',email:'lisa@wf-oakpark.com',type:'Grocery',status:'active',skus:['classic','blueberry'],par:{classic:48,blueberry:24},territory:'North',since:'2023-03-01',notes:[],lastOrder:today()},
@@ -129,7 +133,7 @@ function seedIfEmpty() {
 
   const costs = {cogs:{classic:2.10,blueberry:2.20,peach:2.15,raspberry:2.18,variety:2.25},overhead_monthly:1200,target_margin:0.60};
   DB.setObj('costs', costs);
-  const settings = {company:'purpl Beverages',currency:'USD',territory_labels:['North','South','Central','West'],payment_terms:30};
+  const settings = {company:'purpl Beverages',currency:'USD',territory_labels:['North','South','Central','West'],payment_terms:30,seeded:true};
   DB.setObj('settings', settings);
 }
 
