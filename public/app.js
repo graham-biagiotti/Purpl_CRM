@@ -70,18 +70,20 @@ function nav(page) {
 }
 
 const renders = {
-  dashboard:    renderDash,
-  accounts:     renderAccounts,
-  distributors: renderDistributors,
-  prospects:    renderProspects,
-  inventory:    renderInventory,
-  orders:       renderOrders,
-  production:   renderProduction,
-  delivery:     renderDelivery,
-  projections:  renderProjectionsPage,
-  reports:      renderReports,
-  integrations: renderIntegrations,
-  settings:     renderSettings
+  dashboard:        renderDash,
+  accounts:         renderAccounts,
+  distributors:     renderDistributors,
+  prospects:        renderProspects,
+  inventory:        renderInventory,
+  'orders-delivery':renderOrdersDelivery,
+  // legacy redirects — keep so any deep-link or old nav still works
+  orders:           ()=>nav('orders-delivery'),
+  delivery:         ()=>{ nav('orders-delivery'); switchODTab('route-builder'); },
+  production:       renderProduction,
+  projections:      renderProjectionsPage,
+  reports:          renderReports,
+  integrations:     renderIntegrations,
+  settings:         renderSettings
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -2577,6 +2579,80 @@ function delInvEntry(id) {
   DB.remove('iv', id);
   _invLog();
   toast('Entry removed');
+}
+
+// ══════════════════════════════════════════════════════════
+//  ORDERS & DELIVERY  (Phase 4 combined page)
+// ══════════════════════════════════════════════════════════
+
+let _odCurrentTab = 'all-orders';
+
+function renderOrdersDelivery() {
+  // Wire top-level tabs
+  const mainTabs = qs('#od-main-tabs');
+  if (mainTabs && !mainTabs._wired) {
+    mainTabs._wired = true;
+    mainTabs.querySelectorAll('[data-od-tab]').forEach(btn=>{
+      btn.addEventListener('click', ()=>switchODTab(btn.dataset.odTab));
+    });
+  }
+  switchODTab(_odCurrentTab);
+  // Also wire orders status filter tabs once
+  const filterTabs = qs('#orders-filter');
+  if (filterTabs && !filterTabs._wired) {
+    filterTabs._wired = true;
+    filterTabs.querySelectorAll('[data-status]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        filterTabs.querySelectorAll('[data-status]').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        ordFilter = btn.dataset.status;
+        renderOrders();
+      });
+    });
+  }
+  const newOrdBtn = qs('#new-order-btn');
+  if (newOrdBtn && !newOrdBtn._wired) {
+    newOrdBtn._wired = true;
+    newOrdBtn.addEventListener('click', ()=>openNewOrder(null));
+  }
+}
+
+function switchODTab(tab) {
+  _odCurrentTab = tab;
+  ['all-orders','route-builder','dist-orders'].forEach(t=>{
+    const el = qs(`#od-tab-${t}`);
+    if (el) el.style.display = t===tab ? '' : 'none';
+  });
+  const mainTabs = qs('#od-main-tabs');
+  if (mainTabs) {
+    mainTabs.querySelectorAll('[data-od-tab]').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.odTab===tab);
+    });
+  }
+  if (tab==='all-orders')    renderOrders();
+  if (tab==='route-builder') renderDelivery();
+  if (tab==='dist-orders')   renderDistOrders();
+}
+
+function renderDistOrders() {
+  const el = qs('#od-dist-orders-content');
+  if (!el) return;
+  const pos = DB.a('dist_pos').slice().sort((a,b)=>b.created>a.created?1:-1);
+  if (!pos.length) { el.innerHTML='<div class="empty">No distributor orders yet.</div>'; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Date</th><th>Distributor</th><th>Items</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${pos.map(po=>{
+      const dist = DB.a('dist_profiles').find(d=>d.id===po.distId);
+      const itemSummary = (po.items||[]).map(i=>`${i.qty}cs ${i.sku}`).join(', ');
+      return `<tr>
+        <td>${fmtD(po.created)}</td>
+        <td>${dist?.name||po.distId||'—'}</td>
+        <td>${itemSummary||'—'}</td>
+        <td>${statusBadge(DIST_PO_STATUS, po.status)}</td>
+        <td><button class="btn xs" onclick="openDistPO('${po.id}')">View</button></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
 }
 
 // ══════════════════════════════════════════════════════════

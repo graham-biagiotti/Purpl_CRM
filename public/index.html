@@ -104,9 +104,9 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Prospects
       </a>
-      <a data-page="orders">
+      <a data-page="orders-delivery">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        Orders
+        Orders &amp; Delivery
       </a>
       <div class="section">Operations</div>
       <a data-page="inventory">
@@ -116,10 +116,6 @@
       <a data-page="production">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Production
-      </a>
-      <a data-page="delivery">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-        Delivery
       </a>
       <div class="section">Insights</div>
       <a data-page="projections">
@@ -204,7 +200,7 @@
         <div class="card">
           <div class="section-hdr">
             <h2>Pending Orders</h2>
-            <button class="btn sm" onclick="nav('orders')">View all →</button>
+            <button class="btn sm" onclick="nav('orders-delivery')">View all →</button>
           </div>
           <div id="dash-pending-orders"></div>
         </div>
@@ -571,23 +567,78 @@
     </div>
 
     <!-- ═══════ ORDERS ═══════ -->
-    <div class="page" id="page-orders">
-      <div class="section-hdr" style="margin-bottom:12px">
-        <span id="orders-count" style="font-size:13px;color:var(--muted)"></span>
-        <button class="btn primary" id="new-order-btn">+ New Order</button>
+    <!-- ═══════ ORDERS & DELIVERY ═══════ -->
+    <div class="page" id="page-orders-delivery">
+      <!-- Top-level tabs -->
+      <div class="tabs" id="od-main-tabs" style="margin-bottom:16px">
+        <button class="tab active" data-od-tab="all-orders">All Orders</button>
+        <button class="tab" data-od-tab="route-builder">Route Builder</button>
+        <button class="tab" data-od-tab="dist-orders">Distributor Orders</button>
       </div>
-      <div class="tabs" id="orders-filter">
-        <button class="tab active" data-status="all">All</button>
-        <button class="tab" data-status="pending">Pending</button>
-        <button class="tab" data-status="confirmed">Confirmed</button>
-        <button class="tab" data-status="in_transit">In Transit</button>
-        <button class="tab" data-status="delivered">Delivered</button>
+
+      <!-- Tab: All Orders -->
+      <div id="od-tab-all-orders">
+        <div class="section-hdr" style="margin-bottom:12px">
+          <span id="orders-count" style="font-size:13px;color:var(--muted)"></span>
+          <button class="btn primary" id="new-order-btn">+ New Order</button>
+        </div>
+        <div class="tabs" id="orders-filter">
+          <button class="tab active" data-status="all">All</button>
+          <button class="tab" data-status="pending">Pending</button>
+          <button class="tab" data-status="confirmed">Confirmed</button>
+          <button class="tab" data-status="in_transit">In Transit</button>
+          <button class="tab" data-status="delivered">Delivered</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Created</th><th>Account</th><th>Items</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+        </div>
       </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>Created</th><th>Account</th><th>Items</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="orders-tbody"></tbody>
-        </table>
+
+      <!-- Tab: Route Builder (was Delivery page) -->
+      <div id="od-tab-route-builder" style="display:none">
+        <div class="section-hdr" style="margin-bottom:4px">
+          <h2>Today's Route</h2>
+          <div style="display:flex;gap:8px">
+            <span id="del-progress" style="font-size:13px;color:var(--muted);align-self:center"></span>
+            <button class="btn sm red" id="clear-route-btn">Clear Route</button>
+          </div>
+        </div>
+        <div class="card-grid grid-2" style="margin-bottom:20px">
+          <div>
+            <div id="del-stops"></div>
+          </div>
+          <!-- Add stop form -->
+          <div class="card">
+            <div class="section-hdr"><h2>Add Stop</h2></div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label>From account</label>
+              <select id="del-account-sel"><option value="">— Or fill manually —</option></select>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group"><label>Stop name *</label><input id="del-stop-name" placeholder="Whole Foods Oak Park"></div>
+              <div class="form-group"><label>Address</label><input id="del-stop-addr" placeholder="123 Main St"></div>
+            </div>
+            <div style="margin-bottom:10px">
+              <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Quantities (cases — 1 case = 12 cans)</label>
+              <div id="del-qty-inputs">
+                <!-- Filled by JS via SKUS -->
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Notes</label>
+              <input id="del-stop-notes" placeholder="e.g. use back entrance">
+            </div>
+            <button class="btn primary" id="add-stop-btn">Add to Route</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Distributor Orders -->
+      <div id="od-tab-dist-orders" style="display:none">
+        <div id="od-dist-orders-content"></div>
       </div>
     </div>
 
@@ -630,44 +681,6 @@
     </div>
 
     <!-- ═══════ DELIVERY ═══════ -->
-    <div class="page" id="page-delivery">
-      <div class="section-hdr" style="margin-bottom:4px">
-        <h2>Today's Route</h2>
-        <div style="display:flex;gap:8px">
-          <span id="del-progress" style="font-size:13px;color:var(--muted);align-self:center"></span>
-          <button class="btn sm red" id="clear-route-btn">Clear Route</button>
-        </div>
-      </div>
-      <div class="card-grid grid-2" style="margin-bottom:20px">
-        <div>
-          <div id="del-stops"></div>
-        </div>
-        <!-- Add stop form -->
-        <div class="card">
-          <div class="section-hdr"><h2>Add Stop</h2></div>
-          <div class="form-group" style="margin-bottom:10px">
-            <label>From account</label>
-            <select id="del-account-sel"><option value="">— Or fill manually —</option></select>
-          </div>
-          <div class="form-row col2">
-            <div class="form-group"><label>Stop name *</label><input id="del-stop-name" placeholder="Whole Foods Oak Park"></div>
-            <div class="form-group"><label>Address</label><input id="del-stop-addr" placeholder="123 Main St"></div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Quantities (cases — 1 case = 12 cans)</label>
-            <div id="del-qty-inputs">
-              <!-- Filled by JS via SKUS -->
-            </div>
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Notes</label>
-            <input id="del-stop-notes" placeholder="e.g. use back entrance">
-          </div>
-          <button class="btn primary" id="add-stop-btn">Add to Route</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ═══════ PROJECTIONS ═══════ -->
     <div class="page" id="page-projections">
       <!-- Revenue Scenarios -->
