@@ -76,7 +76,11 @@ async function bootApp() {
       loadingScreen.style.display = 'flex';
       appShell.style.display = 'none';
 
-      await DB.init(user.uid, db);
+      // Timeout: if DB.init stalls (slow network, Firestore issue), still boot the app
+      await Promise.race([
+        DB.init(user.uid, db),
+        new Promise(resolve => setTimeout(resolve, 10000))
+      ]);
 
       checkMigration();
 
