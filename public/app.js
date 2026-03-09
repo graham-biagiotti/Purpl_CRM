@@ -2219,17 +2219,18 @@ function renderInventory() {
 
 function _renderInvPane() {
   // Show/hide panes
-  ['summary','receive','repack','pallets','supplies','log'].forEach(t=>{
+  ['summary','locations','receive','repack','pallets','supplies','log'].forEach(t=>{
     const p = qs(`#inv-pane-${t}`);
     if (p) p.style.display = t===_invTab ? '' : 'none';
   });
   const handlers = {
-    summary:  _invSummary,
-    receive:  _invReceive,
-    repack:   _invRepack,
-    pallets:  _invPallets,
-    supplies: _invSupplies,
-    log:      _invLog,
+    summary:   _invSummary,
+    locations: _invLocations,
+    receive:   _invReceive,
+    repack:    _invRepack,
+    pallets:   _invPallets,
+    supplies:  _invSupplies,
+    log:       _invLog,
   };
   (handlers[_invTab]||_invSummary)();
 }
@@ -2579,6 +2580,111 @@ function delInvEntry(id) {
   DB.remove('iv', id);
   _invLog();
   toast('Entry removed');
+}
+
+// ── Stock Locations (Phase 5) ─────────────────────────────
+function _invLocations() {
+  // Ensure Warehouse default location exists
+  const locs = DB.a('stock_locations');
+  if (!locs.find(l=>l.name==='Warehouse')) {
+    DB.push('stock_locations', {id:uid(), name:'Warehouse', address:'', notes:'Default', created:today()});
+  }
+  _renderLocationsTable();
+  _populateXferSelects();
+}
+
+function _renderLocationsTable() {
+  const locs = DB.a('stock_locations');
+  const transfers = DB.a('stock_transfers');
+  const iv = DB.a('iv');
+  const el = qs('#inv-locations-table');
+  if (!el) return;
+
+  if (!locs.length) { el.innerHTML='<div class="empty">No locations yet.</div>'; return; }
+
+  // Build stock-by-location: start from Warehouse = all iv stock
+  // Transfers move qty between locations
+  const stockAt = {}; // { locId: { sku: cases } }
+  locs.forEach(l=>{ stockAt[l.id] = {}; SKUS.forEach(s=>{ stockAt[l.id][s.id] = 0; }); });
+
+  // Seed warehouse with current inventory
+  const warehouseLoc = locs.find(l=>l.name==='Warehouse');
+  if (warehouseLoc) {
+    SKUS.forEach(s=>{
+      const ins  = iv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const outs = iv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
+      stockAt[warehouseLoc.id][s.id] = Math.max(0, Math.floor((ins-outs)/CANS_PER_CASE));
+    });
+  }
+
+  // Apply transfers
+  transfers.forEach(t=>{
+    if (stockAt[t.fromId]) stockAt[t.fromId][t.sku] = Math.max(0, (stockAt[t.fromId][t.sku]||0) - t.qty);
+    if (stockAt[t.toId])   stockAt[t.toId][t.sku]   = (stockAt[t.toId][t.sku]||0) + t.qty;
+  });
+
+  const skuCols = SKUS.map(s=>`<th>${s.label}</th>`).join('');
+  const rows = locs.map(l=>{
+    const skuVals = SKUS.map(s=>`<td>${stockAt[l.id]?.[s.id]||0} cs</td>`).join('');
+    const total   = SKUS.reduce((sum,s)=>sum+(stockAt[l.id]?.[s.id]||0),0);
+    return `<tr>
+      <td><strong>${l.name}</strong>${l.address?`<br><small style="color:var(--muted)">${l.address}</small>`:''}</td>
+      ${skuVals}
+      <td><strong>${total} cs</strong></td>
+      ${l.name!=='Warehouse'?`<td><button class="btn xs red" onclick="deleteStockLocation('${l.id}')">✕</button></td>`:'<td></td>'}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Location</th>${skuCols}<th>Total</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function _populateXferSelects() {
+  const locs = DB.a('stock_locations');
+  const opts = locs.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+  const fromEl = qs('#xfer-from'); if (fromEl) fromEl.innerHTML = opts;
+  const toEl   = qs('#xfer-to');   if (toEl)   toEl.innerHTML   = opts;
+  const skuEl  = qs('#xfer-sku');
+  if (skuEl) skuEl.innerHTML = SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+}
+
+function addStockLocation() {
+  const name = (qs('#loc-name')?.value||'').trim();
+  if (!name) { toast('Name required'); return; }
+  const address = (qs('#loc-address')?.value||'').trim();
+  const notes   = (qs('#loc-notes')?.value||'').trim();
+  DB.push('stock_locations', {id:uid(), name, address, notes, created:today()});
+  qs('#loc-name').value = '';
+  qs('#loc-address').value = '';
+  qs('#loc-notes').value = '';
+  _renderLocationsTable();
+  _populateXferSelects();
+  toast('Location added');
+}
+
+function deleteStockLocation(id) {
+  if (!confirm2('Delete this location? Stock data will be lost.')) return;
+  DB.remove('stock_locations', id);
+  _renderLocationsTable();
+  _populateXferSelects();
+  toast('Location deleted');
+}
+
+function transferStock() {
+  const fromId = qs('#xfer-from')?.value;
+  const toId   = qs('#xfer-to')?.value;
+  const sku    = qs('#xfer-sku')?.value;
+  const qty    = parseInt(qs('#xfer-qty')?.value||'0');
+  const note   = (qs('#xfer-note')?.value||'').trim();
+  if (!fromId||!toId||!sku||!qty||qty<1) { toast('Fill all transfer fields'); return; }
+  if (fromId===toId) { toast('From and To must be different'); return; }
+  DB.push('stock_transfers', {id:uid(), fromId, toId, sku, qty, note, date:today()});
+  qs('#xfer-qty').value = '';
+  qs('#xfer-note').value = '';
+  _renderLocationsTable();
+  toast('Transfer logged');
 }
 
 // ══════════════════════════════════════════════════════════

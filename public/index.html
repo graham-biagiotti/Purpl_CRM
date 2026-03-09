@@ -337,6 +337,7 @@
       <!-- Tab Bar -->
       <div class="tabs" id="inv-tabs" style="margin-bottom:16px">
         <button class="tab active" data-inv-tab="summary">Stock Summary</button>
+        <button class="tab" data-inv-tab="locations">Locations</button>
         <button class="tab" data-inv-tab="receive">Receive</button>
         <button class="tab" data-inv-tab="repack">Repack Jobs</button>
         <button class="tab" data-inv-tab="pallets">Pallets</button>
@@ -355,6 +356,45 @@
               <tbody id="inv-table-body"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- Locations -->
+      <div id="inv-pane-locations" style="display:none">
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <!-- Add Location form -->
+          <div class="card">
+            <div class="section-hdr"><h2>Add Location</h2></div>
+            <div class="form-group"><label>Name *</label><input type="text" id="loc-name" placeholder="e.g. Main Warehouse, Event Trailer"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="loc-address" placeholder="Optional"></div>
+            <div class="form-group"><label>Notes</label><input type="text" id="loc-notes" placeholder="Optional"></div>
+            <button class="btn primary" onclick="addStockLocation()">Add Location</button>
+          </div>
+          <!-- Transfer stock -->
+          <div class="card">
+            <div class="section-hdr"><h2>Transfer Stock</h2></div>
+            <div class="form-group"><label>From location</label>
+              <select id="xfer-from"></select>
+            </div>
+            <div class="form-group"><label>To location</label>
+              <select id="xfer-to"></select>
+            </div>
+            <div class="form-group"><label>SKU</label>
+              <select id="xfer-sku"></select>
+            </div>
+            <div class="form-group"><label>Quantity (cases)</label>
+              <input type="number" id="xfer-qty" min="1" placeholder="Cases">
+            </div>
+            <div class="form-group"><label>Note</label>
+              <input type="text" id="xfer-note" placeholder="Optional">
+            </div>
+            <button class="btn primary" onclick="transferStock()">Transfer</button>
+          </div>
+        </div>
+        <!-- Stock by location table -->
+        <div class="card">
+          <div class="section-hdr"><h2>Stock by Location</h2></div>
+          <div id="inv-locations-table"></div>
         </div>
       </div>
 
