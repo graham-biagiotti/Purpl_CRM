@@ -64,13 +64,13 @@ const DB = {
       this._unsubscribe = onSnapshot(ref, async (snap) => {
         if (!initialized) {
           initialized = true;
-          if (snap.exists()) {
+          if (snap.exists) {
             this._applyData(snap.data());
           } else {
             await this._migrateFromLegacyPath(this._uid);
           }
           resolve();
-        } else if (snap.exists() && !snap.metadata.hasPendingWrites) {
+        } else if (snap.exists && !snap.metadata.hasPendingWrites) {
           // Remote change from another user — update cache and refresh UI
           this._applyData(snap.data());
           if (window.refreshCurrentPage) window.refreshCurrentPage();
@@ -101,7 +101,7 @@ const DB = {
     try {
       const oldRef = doc(this._db, 'users', oldUid, 'data', 'store');
       const snap = await getDoc(oldRef);
-      if (snap.exists()) {
+      if (snap.exists) {
         const data = snap.data();
         ARRAY_KEYS.forEach(k => {
           this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
