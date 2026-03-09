@@ -306,6 +306,11 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
 .btn.run:hover{background:var(--brand-purple-hover)}
 
+/* ── Quick Notes ────────────────────────────────────────── */
+.qn-item{padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface)}
+.qn-meta{font-size:11px;color:var(--muted);margin-bottom:4px}
+.qn-text{font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+
 /* ══════════════════════════════════════════════════════════
    PHASE 2 — COMPREHENSIVE UI POLISH
    ══════════════════════════════════════════════════════════ */
@@ -389,11 +394,8 @@ th{padding:11px 14px}
 /* Prospect name — larger, bolder */
 .pr-card-name{font-size:18px;font-weight:800;font-family:var(--font-brand)}
 
-/* ── Account card actions — hover only on desktop ───────── */
-@media(min-width:768px){
-  .ac-card-actions{opacity:0;transition:opacity .15s}
-  .ac-card:hover .ac-card-actions,.pr-card:hover .ac-card-actions{opacity:1}
-}
+/* ── Account card actions — always visible ───────────────── */
+.ac-card-actions{opacity:1}
 
 /* ── Badges ─────────────────────────────────────────────── */
 .badge{padding:3px 10px;font-size:11.5px}

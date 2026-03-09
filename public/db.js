@@ -31,6 +31,8 @@ const ARRAY_KEYS = [
   'repack_jobs',     // loose cans → finished packs conversion jobs
   'pallets',         // pallet tracking records
   'pack_supply',     // packaging supplies (labels, cartons, films, etc.)
+  // UX Phase 2 — Dashboard Quick Notes
+  'quick_notes',     // scratchpad notes (text, author, ts)
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run'];

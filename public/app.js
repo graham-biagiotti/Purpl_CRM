@@ -169,6 +169,46 @@ function renderDash() {
   renderProjections();
   renderVelocities();
   renderDistDashKPIs();
+  renderQuickNotes();
+}
+
+function renderQuickNotes() {
+  const el = qs('#dash-quick-notes');
+  if (!el) return;
+  const notes = DB.a('quick_notes').slice().sort((a,b)=>b.ts-a.ts).slice(0,8);
+  if (!notes.length) { el.innerHTML = '<div class="empty" style="padding:16px">No notes yet.</div>'; return; }
+  el.innerHTML = notes.map(n=>`
+    <div class="qn-item">
+      <div class="qn-meta">${n.author||'Team'} &nbsp;·&nbsp; ${fmtDt(n.ts)}</div>
+      <div class="qn-text">${escHtml(n.text)}</div>
+      <button class="btn xs red" style="margin-top:4px" onclick="deleteQuickNote('${n.id}')">Delete</button>
+    </div>`).join('');
+}
+
+function addQuickNote() {
+  const inp = qs('#qn-input');
+  const text = (inp?.value||'').trim();
+  if (!text) return;
+  const note = { id: uid(), text, author: window._currentUser?.email||'Team', ts: Date.now() };
+  DB.push('quick_notes', note);
+  inp.value = '';
+  renderQuickNotes();
+}
+
+function deleteQuickNote(id) {
+  DB.remove('quick_notes', id);
+  renderQuickNotes();
+}
+
+function fmtDt(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' +
+         d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function renderWelcomeHeader(ac, ord, inv) {

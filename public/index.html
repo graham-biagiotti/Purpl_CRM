@@ -228,7 +228,7 @@
       </div>
 
       <!-- Row 5: Store by Store Velocity -->
-      <div class="card">
+      <div class="card" style="margin-bottom:20px">
         <div class="section-hdr">
           <h2>Store by Store Velocity</h2>
           <small style="color:var(--muted);font-size:12px">Last 90 days · units/week</small>
@@ -250,6 +250,19 @@
             <tbody id="dash-velocities"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Row 6: Quick Notes -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>Quick Notes</h2>
+          <small style="color:var(--muted);font-size:12px">Team scratchpad</small>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <textarea id="qn-input" rows="2" placeholder="Add a note…" style="flex:1;resize:vertical;font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:inherit"></textarea>
+          <button class="btn primary" style="align-self:flex-end;min-width:72px" onclick="addQuickNote()">Add</button>
+        </div>
+        <div id="dash-quick-notes"></div>
       </div>
 
     </div>
