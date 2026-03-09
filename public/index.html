@@ -1034,6 +1034,48 @@
 
 <!-- ══════════════════════ MODALS ════════════════════════ -->
 
+<!-- Quick Log Outreach (accounts + prospects) -->
+<div class="overlay" id="modal-log-outreach" onclick="if(event.target===this)closeModal('modal-log-outreach')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hdr">
+      <h2 id="mlo-title">Log Outreach</h2>
+      <button class="btn sm" onclick="closeModal('modal-log-outreach')">✕</button>
+    </div>
+    <input type="hidden" id="mlo-id">
+    <input type="hidden" id="mlo-kind"> <!-- 'ac' or 'pr' -->
+    <div class="form-row">
+      <label>Type</label>
+      <select id="mlo-type">
+        <option value="Call">Call</option>
+        <option value="Email">Email</option>
+        <option value="Visit">Visit</option>
+        <option value="Text">Text</option>
+        <option value="Social">Social</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Date</label>
+      <input type="date" id="mlo-date">
+    </div>
+    <div class="form-row">
+      <label>Notes</label>
+      <textarea id="mlo-note" rows="3" placeholder="What happened? What was discussed?"></textarea>
+    </div>
+    <div class="form-row" id="mlo-nextsteps-row">
+      <label>Next Steps</label>
+      <input type="text" id="mlo-nextsteps" placeholder="e.g. Follow up in 2 weeks">
+    </div>
+    <div class="form-row" id="mlo-nextdate-row">
+      <label>Next Follow-up Date</label>
+      <input type="date" id="mlo-nextdate">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-log-outreach')">Cancel</button>
+      <button class="btn primary" onclick="saveLogOutreach()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Account view -->
 <div class="overlay" id="modal-account">
   <div class="modal" style="max-width:700px">

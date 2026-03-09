@@ -302,6 +302,8 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .pr-card-nextsteps{background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;margin-bottom:10px}
 .pr-card-nextsteps .ac-card-section-label{color:#1e40af}
 .pr-card-nextsteps-text{font-size:13px;color:#1e3a8a}
+.pr-card-nextsteps-tap{cursor:pointer;transition:background .12s}
+.pr-card-nextsteps-tap:hover{background:#dbeafe}
 .ac-card-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px}
 .btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
 .btn.run:hover{background:var(--brand-purple-hover)}

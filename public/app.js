@@ -1085,11 +1085,14 @@ function renderProspects() {
       </div>
       ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
       ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}</div></div>`:''}
-      ${p.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${p.nextAction}</div></div>`:''}
+      <div class="pr-card-nextsteps pr-card-nextsteps-tap" onclick="openLogOutreachModal('pr','${p.id}')">
+        <div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps <span style="font-size:10px;color:#93c5fd">(tap to log)</span></div>
+        <div class="pr-card-nextsteps-text">${p.nextAction||'<span style="color:#93c5fd">No next steps set — tap to add</span>'}${p.nextDate?' &nbsp;·&nbsp; <strong>'+fmtD(p.nextDate)+'</strong>':''}</div>
+      </div>
       <div class="ac-card-actions">
-        <button class="btn sm primary" onclick="editProspect('${p.id}')">Edit</button>
-        <button class="btn sm" onclick="logProspectOutreach('${p.id}')">📞 Log Outreach</button>
-        <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert to Account</button>
+        <button class="btn sm primary" onclick="logProspectOutreach('${p.id}')">📞 Log Follow-Up</button>
+        <button class="btn sm" onclick="editProspect('${p.id}')">Edit</button>
+        <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert</button>
         <button class="btn sm red" onclick="deleteProspect('${p.id}')">✕</button>
       </div>
     </div>`;
@@ -1270,22 +1273,55 @@ function quickNote(id) {
 }
 
 function logOutreach(id) {
-  const type = prompt('Outreach type (Call / Email / Visit / Text):') || 'Call';
-  if (!type.trim()) return;
-  const note = prompt('Notes (optional):') || '';
-  const entry = {id:uid(), type:type.trim(), date:today(), note:note.trim()};
-  DB.update('ac', id, a=>({...a, outreach:[...(a.outreach||[]),entry]}));
-  renderAccounts();
-  toast('Outreach logged');
+  openLogOutreachModal('ac', id);
 }
 
 function logProspectOutreach(id) {
-  const type = prompt('Outreach type (Call / Email / Visit / Text):') || 'Call';
-  if (!type.trim()) return;
-  const note = prompt('Notes (optional):') || '';
-  const entry = {id:uid(), type:type.trim(), date:today(), note:note.trim()};
-  DB.update('pr', id, p=>({...p, outreach:[...(p.outreach||[]),entry], lastContact:today()}));
-  renderProspects();
+  openLogOutreachModal('pr', id);
+}
+
+function openLogOutreachModal(kind, id) {
+  const name = kind === 'ac'
+    ? DB.a('ac').find(x=>x.id===id)?.name
+    : DB.a('pr').find(x=>x.id===id)?.name;
+  qs('#mlo-title').textContent = 'Log Outreach' + (name ? ` — ${name}` : '');
+  qs('#mlo-id').value = id;
+  qs('#mlo-kind').value = kind;
+  qs('#mlo-type').value = 'Call';
+  qs('#mlo-date').value = today();
+  qs('#mlo-note').value = '';
+  qs('#mlo-nextsteps').value = '';
+  qs('#mlo-nextdate').value = '';
+  // Show next steps fields for prospects only
+  const showExtra = kind === 'pr';
+  qs('#mlo-nextsteps-row').style.display = showExtra ? '' : 'none';
+  qs('#mlo-nextdate-row').style.display  = showExtra ? '' : 'none';
+  openModal('modal-log-outreach');
+}
+
+function saveLogOutreach() {
+  const id   = qs('#mlo-id').value;
+  const kind = qs('#mlo-kind').value;
+  const type = qs('#mlo-type').value;
+  const date = qs('#mlo-date').value || today();
+  const note = qs('#mlo-note').value.trim();
+  const next = qs('#mlo-nextsteps').value.trim();
+  const nextDate = qs('#mlo-nextdate').value;
+  const entry = {id:uid(), type, date, note};
+  if (kind === 'ac') {
+    DB.update('ac', id, a=>({...a, outreach:[...(a.outreach||[]),entry]}));
+    renderAccounts();
+  } else {
+    DB.update('pr', id, p=>({
+      ...p,
+      outreach:[...(p.outreach||[]),entry],
+      lastContact: date,
+      ...(next ? {nextAction: next} : {}),
+      ...(nextDate ? {nextDate} : {}),
+    }));
+    renderProspects();
+  }
+  closeModal('modal-log-outreach');
   toast('Outreach logged');
 }
 
