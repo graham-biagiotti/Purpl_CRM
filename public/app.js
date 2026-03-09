@@ -80,6 +80,7 @@ const renders = {
   orders:           ()=>nav('orders-delivery'),
   delivery:         ()=>{ nav('orders-delivery'); switchODTab('route-builder'); },
   production:       renderProduction,
+  map:              renderMap,
   projections:      renderProjectionsPage,
   reports:          renderReports,
   integrations:     renderIntegrations,
@@ -4165,3 +4166,186 @@ window.onAppReady = function() {
   // Navigate to dashboard
   nav('dashboard');
 };
+
+// ══════════════════════════════════════════════════════════
+//  TERRITORY MAP  (Phase 8)
+// ══════════════════════════════════════════════════════════
+
+let _mapInstance    = null;
+let _mapMarkers     = [];
+let _mapLayer       = 'all';
+let _mapRunMode     = false;
+let _mapClusterer   = null;
+
+function renderMap() {
+  // Wire layer tabs once
+  const layerTabs = qs('#map-pin-tabs');
+  if (layerTabs && !layerTabs._wired) {
+    layerTabs._wired = true;
+    layerTabs.querySelectorAll('[data-map-layer]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        layerTabs.querySelectorAll('[data-map-layer]').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        _mapLayer = btn.dataset.mapLayer;
+        _renderMapPins();
+      });
+    });
+  }
+
+  if (!window.GOOGLE_PLACES_KEY) {
+    qs('#map-no-key')?.style && (qs('#map-no-key').style.display='flex');
+    return;
+  }
+  qs('#map-no-key')?.style && (qs('#map-no-key').style.display='none');
+
+  PlacesAC.load().then(ok=>{
+    if (!ok) return;
+    if (_mapInstance) { _renderMapPins(); return; }
+
+    _mapInstance = new google.maps.Map(qs('#map-canvas'), {
+      center: { lat: 42.3601, lng: -71.0589 }, // Boston default
+      zoom: 9,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    });
+    _renderMapPins();
+  });
+}
+
+const MAP_PIN_COLORS = {
+  account:  '#8b5cf6', // purple
+  prospect: '#3b82f6', // blue
+  run:      '#10b981', // green
+};
+
+function _renderMapPins() {
+  if (!_mapInstance) return;
+
+  // Clear existing markers
+  _mapMarkers.forEach(m=>m.setMap(null));
+  _mapMarkers = [];
+
+  const bounds = new google.maps.LatLngBounds();
+  let hasPoints = false;
+
+  const addPin = (lat, lng, opts) => {
+    if (!lat||!lng||isNaN(lat)||isNaN(lng)) return;
+    const marker = new google.maps.Marker({
+      position: { lat, lng },
+      map: _mapInstance,
+      title: opts.name,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: opts.color,
+        fillOpacity: 0.9,
+        strokeColor: '#fff',
+        strokeWeight: 2,
+      },
+    });
+
+    // Info window
+    const iw = new google.maps.InfoWindow({ content: `
+      <div style="font-family:sans-serif;min-width:160px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${opts.name}</div>
+        <div style="font-size:12px;color:#666">${opts.sub||''}</div>
+        ${opts.action?`<div style="margin-top:8px"><a href="#" onclick="${opts.action};return false" style="color:#8b5cf6;font-weight:600;font-size:12px">${opts.actionLabel||'View'}</a></div>`:''}
+        ${_mapRunMode&&opts.runAction?`<div style="margin-top:4px"><a href="#" onclick="${opts.runAction};return false" style="color:#10b981;font-weight:600;font-size:12px">+ Add to Run</a></div>`:''}
+      </div>` });
+
+    marker.addListener('click', ()=> iw.open(_mapInstance, marker));
+
+    if (_mapRunMode && opts.runAction) {
+      marker.addListener('dblclick', ()=>{ eval(opts.runAction); });
+    }
+
+    _mapMarkers.push(marker);
+    bounds.extend({ lat, lng });
+    hasPoints = true;
+  };
+
+  // Accounts
+  if (_mapLayer==='all'||_mapLayer==='accounts') {
+    DB.a('ac').filter(a=>a.status==='active'&&a.lat&&a.lng).forEach(a=>{
+      addPin(parseFloat(a.lat), parseFloat(a.lng), {
+        name: a.name,
+        sub: a.address||a.type||'',
+        color: MAP_PIN_COLORS.account,
+        action: `openAccount('${a.id}')`,
+        actionLabel: 'View Account',
+        runAction: `mapAddToRun('${a.id}')`,
+      });
+    });
+  }
+
+  // Prospects
+  if (_mapLayer==='all'||_mapLayer==='prospects') {
+    DB.a('pr').filter(p=>!['won','lost'].includes(p.status)&&p.lat&&p.lng).forEach(p=>{
+      addPin(parseFloat(p.lat), parseFloat(p.lng), {
+        name: p.name,
+        sub: p.address||p.type||'',
+        color: MAP_PIN_COLORS.prospect,
+        action: `editProspect('${p.id}')`,
+        actionLabel: 'View Prospect',
+      });
+    });
+  }
+
+  // Today's run stops
+  if (_mapLayer==='all'||_mapLayer==='run') {
+    const run = DB.obj('today_run', {stops:[]});
+    (run.stops||[]).filter(s=>s.lat&&s.lng).forEach(s=>{
+      addPin(parseFloat(s.lat), parseFloat(s.lng), {
+        name: s.name,
+        sub: s.address||'',
+        color: MAP_PIN_COLORS.run,
+      });
+    });
+  }
+
+  if (hasPoints) _mapInstance.fitBounds(bounds);
+  _updateRunModeBar();
+}
+
+function toggleMapRunMode() {
+  _mapRunMode = !_mapRunMode;
+  const btn = qs('#map-run-mode-btn');
+  if (btn) {
+    btn.textContent = _mapRunMode ? '✕ Exit Run Mode' : 'Route Builder Mode';
+    btn.classList.toggle('primary', !_mapRunMode);
+    btn.classList.toggle('green', _mapRunMode);
+  }
+  const bar = qs('#map-run-bar');
+  if (bar) bar.style.display = _mapRunMode ? '' : 'none';
+  _renderMapPins();
+}
+
+function mapAddToRun(accountId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  const run = DB.obj('today_run', {stops:[]});
+  const already = (run.stops||[]).find(s=>s.accountId===accountId);
+  if (already) { toast('Already on today\'s run'); return; }
+  const stop = {
+    id: uid(),
+    name: a.name,
+    accountId: a.id,
+    address: a.address||'',
+    lat: a.lat||'',
+    lng: a.lng||'',
+    items: (a.skus||[]).map(s=>({sku:s,qty:0})),
+    notes: '',
+    done: false,
+  };
+  DB.atomicUpdate(d=>{ d.today_run=d.today_run||{stops:[]}; d.today_run.stops=[...(d.today_run.stops||[]),stop]; return d; });
+  _updateRunModeBar();
+  toast(`${a.name} added to run`);
+}
+
+function _updateRunModeBar() {
+  const run = DB.obj('today_run', {stops:[]});
+  const cnt = (run.stops||[]).length;
+  const el = qs('#map-run-count');
+  if (el) el.textContent = cnt ? `${cnt} stop${cnt!==1?'s':''} in today's run` : '';
+}

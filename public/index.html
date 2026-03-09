@@ -118,6 +118,10 @@
         Production
       </a>
       <div class="section">Insights</div>
+      <a data-page="map">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+        Territory Map
+      </a>
       <a data-page="projections">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         Projections
@@ -1079,6 +1083,37 @@
           <div style="font-size:13px;color:var(--muted)">User tracking available after multiple sign-ins.</div>
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
+      </div>
+    </div>
+
+    <!-- ═══════ TERRITORY MAP ═══════ -->
+    <div class="page" id="page-map">
+      <!-- Floating control panel -->
+      <div id="map-controls" class="map-controls-panel">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <strong style="font-size:14px">Territory Map</strong>
+          <div class="tabs" style="margin:0" id="map-pin-tabs">
+            <button class="tab active" data-map-layer="all">All</button>
+            <button class="tab" data-map-layer="accounts">Accounts</button>
+            <button class="tab" data-map-layer="prospects">Prospects</button>
+            <button class="tab" data-map-layer="run">Today's Run</button>
+          </div>
+          <button class="btn sm primary" id="map-run-mode-btn" onclick="toggleMapRunMode()">Route Builder Mode</button>
+          <button class="btn sm" onclick="renderMap()">↺ Refresh</button>
+        </div>
+        <div id="map-run-bar" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <span style="font-size:13px;color:var(--muted)">Click pins to add to today's run. </span>
+          <span id="map-run-count" style="font-size:13px;font-weight:600"></span>
+          <button class="btn sm primary" style="margin-left:8px" onclick="nav('orders-delivery');switchODTab('route-builder')">View Route →</button>
+        </div>
+      </div>
+      <!-- Map container -->
+      <div id="map-canvas" style="width:100%;height:calc(100vh - 200px);border-radius:12px;overflow:hidden;background:#e5e7eb">
+        <div id="map-no-key" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;color:var(--muted)">
+          <div style="font-size:40px">🗺️</div>
+          <div style="font-size:16px;font-weight:600">Territory Map</div>
+          <div style="font-size:13px;text-align:center;max-width:320px">Add your Google Maps API key to <strong>firebase-config.js</strong> to enable the interactive territory map.<br><br>See <code>places.js</code> for setup instructions.</div>
+        </div>
       </div>
     </div>
 

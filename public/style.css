@@ -308,6 +308,13 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
 .btn.run:hover{background:var(--brand-purple-hover)}
 
+/* ── Territory Map ──────────────────────────────────────── */
+.map-controls-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+#page-map{display:flex;flex-direction:column;height:100%}
+#map-canvas{flex:1;min-height:400px}
+.btn.green{background:#10b981;color:#fff;border-color:#10b981}
+.btn.green:hover{background:#059669}
+
 /* ── Quick Notes ────────────────────────────────────────── */
 .qn-item{padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface)}
 .qn-meta{font-size:11px;color:var(--muted);margin-bottom:4px}
