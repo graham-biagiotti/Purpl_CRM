@@ -3119,7 +3119,17 @@ function openOrderDetail(id) {
     }
   }
 
-  qs('#mod-delete-btn').onclick    = ()=>{ if(confirm2('Delete this order?')){ DB.remove('orders',id); closeModal('modal-order-detail'); renderOrders(); toast('Deleted'); }};
+  qs('#mod-delete-btn').onclick = ()=>{
+    if (!confirm2('Delete this order?')) return;
+    // Remove linked inventory out-entries (from run delivery or manual delivery)
+    DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
+    DB.remove('orders', id);
+    closeModal('modal-order-detail');
+    renderOrders();
+    renderInventory();
+    renderDash();
+    toast('Order and linked inventory entries removed');
+  };
   qs('#mod-status-btn').onclick    = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
   qs('#mod-reschedule-btn').onclick = ()=>{
     const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
@@ -3134,11 +3144,20 @@ function openOrderDetail(id) {
 
 function cycleOrderStatus(id) {
   const seq = ['pending','confirmed','in_transit','delivered'];
-  DB.update('orders', id, o=>{
-    const i = seq.indexOf(o.status);
-    return {...o, status: seq[Math.min(i+1, seq.length-1)]};
-  });
+  const o = DB.a('orders').find(x=>x.id===id);
+  if (!o) return;
+  const newStatus = seq[Math.min(seq.indexOf(o.status)+1, seq.length-1)];
+  DB.update('orders', id, x=>({...x, status:newStatus}));
+  // If just reached 'delivered' on a non-run order, deduct stock now
+  if (newStatus==='delivered' && o.status!=='delivered' && o.source!=='run') {
+    (o.items||[]).forEach(item=>{
+      DB.push('iv', {id:uid(), date:today(), sku:item.sku, type:'out',
+        qty: item.qty * CANS_PER_CASE, note:'Order delivered', ordId:id});
+    });
+    renderInventory();
+  }
   renderOrders();
+  renderDash();
   toast('Status updated');
 }
 
@@ -3203,9 +3222,9 @@ function saveTodayRun() {
   const notes = qs('#sched-notes')?.value?.trim()||'';
   const entry = {id:uid(), date:today(), notes, ...items};
   DB.push('prod_hist', entry);
-  // Also update inventory
+  // Also update inventory — store prodId so we can clean up on delete
   Object.entries(items).forEach(([sku, qty])=>{
-    DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, note:'Production run'});
+    DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, note:'Production run', prodId:entry.id});
   });
   if(qs('#sched-notes')) qs('#sched-notes').value='';
   renderProduction();
@@ -3222,9 +3241,17 @@ function delShipment(id) {
 
 function delProdHist(id) {
   if (!confirm2('Remove this production record?')) return;
+  // Remove linked inventory entries (by prodId; fallback: match by date+qty for legacy records)
+  const rec = DB.a('prod_hist').find(p=>p.id===id);
+  DB.a('iv').filter(e=>
+    e.prodId===id ||
+    (!e.prodId && e.note==='Production run' && e.type==='in' && e.date===rec?.date && rec?.[e.sku]==e.qty)
+  ).forEach(e=>DB.remove('iv',e.id));
   DB.remove('prod_hist', id);
   renderProduction();
-  toast('Removed');
+  renderInventory();
+  renderDash();
+  toast('Production record and inventory entries removed');
 }
 
 function saveShipment() {
@@ -3356,6 +3383,7 @@ function toggleStop(i) {
       // inventory is in CANS — multiply cases × CANS_PER_CASE
       qty: i.qty * CANS_PER_CASE,
       note: 'Delivery: ' + stop.name,
+      ordId: newOrd.id,
     }));
 
     DB.atomicUpdate(cache => {
