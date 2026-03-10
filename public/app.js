@@ -808,6 +808,8 @@ function renderAccounts() {
 
     const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
     const lastOutreach = a.outreach?.length ? a.outreach[a.outreach.length-1] : null;
+    const locs = (a.locs && a.locs.length) ? a.locs
+      : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
 
     return `<div class="ac-card${needsAttn?' needs-attention':''}">
       <div class="ac-card-hdr">
@@ -816,10 +818,10 @@ function renderAccounts() {
             <span class="ac-card-name">${a.name}</span>
             ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
           </div>
-          <div class="ac-card-sub">${[a.type,a.address].filter(Boolean).join(' · ')}</div>
+          <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).join(' · ')}</div>
           ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).join(' · ')}</div>`:''}
           ${a.email?`<div class="ac-card-email">✉ ${a.email}</div>`:''}
-          ${(a.locations||0)>1?`<div class="ac-card-sub">${a.locations} locations</div>`:''}
+          ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
         </div>
         <div class="ac-card-badges">
           ${a.type?`<span class="badge gray">${a.type}</span>`:''}
@@ -827,6 +829,16 @@ function renderAccounts() {
           ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
         </div>
       </div>
+      ${locs.length>1?`<div id="ac-locs-${a.id}" class="ac-locs-drawer" style="display:none">${locs.map(l=>`
+        <div class="ac-loc-item">
+          <div class="ac-loc-dot"></div>
+          <div style="flex:1;min-width:0">
+            ${l.label?`<div class="ac-loc-label">${l.label}</div>`:''}
+            ${l.address?`<div class="ac-loc-addr">${l.address}</div>`:''}
+            ${l.contact||l.phone?`<div class="ac-loc-addr" style="margin-top:2px">${[l.contact,l.phone].filter(Boolean).join(' · ')}</div>`:''}
+            ${l.dropOffRules?`<div class="ac-loc-drop">🚚 ${l.dropOffRules}</div>`:''}
+          </div>
+        </div>`).join('')}</div>`:''}
       <div class="ac-card-metrics">
         <div><div class="ac-metric-label">Last Order</div>${lastOrderHtml}</div>
         <div><div class="ac-metric-label">Last Contacted</div>${lastContactHtml}</div>
@@ -836,7 +848,7 @@ function renderAccounts() {
       ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
       ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
       ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${lastOutreach.note?' — '+lastOutreach.note:''}</div></div>`:''}
-      ${a.dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
+      ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
       <div class="ac-card-actions">
         <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
         <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
@@ -846,6 +858,17 @@ function renderAccounts() {
       </div>
     </div>`;
   }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
+}
+
+function toggleAcLocs(id) {
+  const drawer = document.getElementById('ac-locs-'+id);
+  const btn    = document.getElementById('ac-locs-btn-'+id);
+  if (!drawer) return;
+  const opening = drawer.style.display === 'none';
+  drawer.style.display = opening ? '' : 'none';
+  if (btn) btn.innerHTML = opening
+    ? btn.innerHTML.replace('▼','▲')
+    : btn.innerHTML.replace('▲','▼');
 }
 
 function _macShowLoc(locs, idx) {
