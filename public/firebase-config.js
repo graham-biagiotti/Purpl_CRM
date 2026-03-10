@@ -9,7 +9,7 @@
 //  3. APIs & Services → Credentials → + Create Credentials → API Key
 //  4. Restrict key to: Places API + Maps JavaScript API + your domain
 //  5. Paste the key below:
-window.GOOGLE_PLACES_KEY = '';  // <-- paste your key here
+window.GOOGLE_PLACES_KEY = 'AIzaSyDXQhw8xe39QmOeBU4b7zUNdDNPWmVJSW8';
 
 // ── One-time data migration ──────────────────────────────────────────────────
 // If you had data under your old Google Sign-In account, paste your old UID
