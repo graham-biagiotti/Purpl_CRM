@@ -848,6 +848,22 @@ function renderAccounts() {
   }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
 }
 
+function _macShowLoc(locs, idx) {
+  const loc = locs[idx] || locs[0] || {};
+  const addrRow = qs('#mac-address-row');
+  const dropRow = qs('#mac-drop-row');
+  if (addrRow) {
+    const addr = loc.address || '';
+    qs('#mac-address').textContent = addr || '—';
+    addrRow.style.display = addr ? '' : 'none';
+  }
+  if (dropRow) {
+    const dr = loc.dropOffRules || '';
+    qs('#mac-drop-rules').textContent = dr;
+    dropRow.style.display = dr ? '' : 'none';
+  }
+}
+
 function openAccount(id) {
   const a = DB.a('ac').find(x=>x.id===id);
   if (!a) return;
@@ -868,6 +884,24 @@ function openAccount(id) {
   qs('#mac-last-order').textContent = a.lastOrder ? `${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d ago)` : '—';
   qs('#mac-skus').innerHTML = (a.skus||[]).map(skuBadge).join(' ');
   qs('#mac-par').innerHTML = Object.entries(a.par||{}).map(([k,v])=>`${skuBadge(k)} par: <strong>${v}</strong>`).join('&nbsp;&nbsp;');
+
+  // Locations
+  const locs = (a.locs && a.locs.length) ? a.locs
+    : (a.address ? [{id:'legacy', label:'', address:a.address, dropOffRules:a.dropOffRules||''}] : []);
+  const locsRow = qs('#mac-locs-row');
+  const locSelect = qs('#mac-loc-select');
+  if (locsRow && locSelect) {
+    if (locs.length > 1) {
+      locSelect.innerHTML = locs.map((l,i)=>
+        `<option value="${i}">${l.label || ('Location '+(i+1))}: ${l.address||'(no address)'}</option>`).join('');
+      locSelect.value = '0';
+      locsRow.style.display = '';
+      locSelect.onchange = () => _macShowLoc(locs, parseInt(locSelect.value));
+    } else {
+      locsRow.style.display = 'none';
+    }
+    _macShowLoc(locs, 0);
+  }
 
   // Order history
   const acOrders = DB.a('orders').filter(o=>o.accountId===id).sort((a,b)=>b.created>a.created?1:-1).slice(0,8);
@@ -929,6 +963,73 @@ function addAccountNote(id) {
   toast('Note saved');
 }
 
+// ── Multi-location helpers (Edit Account) ─────────────────
+function _eacLocRow(loc, canRemove) {
+  const esc = s => (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  return `
+    <div class="eac-loc-row" data-loc-id="${loc.id}" style="background:var(--surface-2,#f9f8ff);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+        <input class="eac-loc-label" placeholder="Location name (e.g. Downtown)" value="${esc(loc.label)}" style="flex:1">
+        ${canRemove?`<button type="button" class="btn sm red" onclick="eacRemoveLoc('${loc.id}')">✕ Remove</button>`:''}
+      </div>
+      <div style="margin-bottom:8px">
+        <input class="eac-loc-address" placeholder="123 Main St, City, State" value="${esc(loc.address)}" style="width:100%;box-sizing:border-box">
+      </div>
+      <div class="form-row col2" style="margin-bottom:8px">
+        <div><input class="eac-loc-contact" placeholder="Contact (optional)" value="${esc(loc.contact)}"></div>
+        <div><input class="eac-loc-phone" type="tel" placeholder="Phone (optional)" value="${esc(loc.phone)}"></div>
+      </div>
+      <textarea class="eac-loc-droprules" placeholder="Drop-off / delivery rules for this location" style="width:100%;box-sizing:border-box;min-height:40px;resize:vertical">${esc(loc.dropOffRules)}</textarea>
+    </div>`;
+}
+
+function _eacAttachPlaces(container) {
+  if (!window.PlacesAC) return;
+  container.querySelectorAll('.eac-loc-address').forEach(el => PlacesAC.attach(el));
+}
+
+function eacRenderLocs(locs) {
+  const container = qs('#eac-locs-list');
+  if (!container) return;
+  container.innerHTML = locs.map((loc, i) => _eacLocRow(loc, locs.length > 1)).join('');
+  _eacAttachPlaces(container);
+}
+
+function eacAddLoc() {
+  const container = qs('#eac-locs-list');
+  if (!container) return;
+  const loc = {id: uid(), label:'', address:'', contact:'', phone:'', dropOffRules:''};
+  const rows = container.querySelectorAll('.eac-loc-row');
+  // If this is the second location being added, show Remove on the first row too
+  if (rows.length === 1) {
+    const firstRow = rows[0];
+    const firstId = firstRow.dataset.locId;
+    const headerDiv = firstRow.querySelector('div');
+    if (headerDiv && !firstRow.querySelector('button[onclick^="eacRemoveLoc"]')) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn sm red';
+      btn.setAttribute('onclick', `eacRemoveLoc('${firstId}')`);
+      btn.textContent = '✕ Remove';
+      headerDiv.appendChild(btn);
+    }
+  }
+  const div = document.createElement('div');
+  div.innerHTML = _eacLocRow(loc, true);
+  const row = div.firstElementChild;
+  container.appendChild(row);
+  if (window.PlacesAC) PlacesAC.attach(row.querySelector('.eac-loc-address'));
+}
+
+function eacRemoveLoc(locId) {
+  const container = qs('#eac-locs-list');
+  if (!container) return;
+  container.querySelector(`[data-loc-id="${locId}"]`)?.remove();
+  const remaining = container.querySelectorAll('.eac-loc-row');
+  if (remaining.length === 1) {
+    remaining[0].querySelectorAll('button[onclick^="eacRemoveLoc"]').forEach(b => b.remove());
+  }
+}
+
 function editAccount(id) {
   const a = DB.a('ac').find(x=>x.id===id) || {id:uid()};
   const isNew = !DB.a('ac').find(x=>x.id===id);
@@ -939,13 +1040,16 @@ function editAccount(id) {
   qs('#eac-contact').value = a.contact||'';
   qs('#eac-phone').value = a.phone||'';
   qs('#eac-email').value = a.email||'';
-  qs('#eac-address').value = a.address||'';
   qs('#eac-type').value = a.type||'Grocery';
   qs('#eac-territory').value = a.territory||'';
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
-  qs('#eac-locations').value = a.locations||1;
-  qs('#eac-drop-rules').value = a.dropOffRules||'';
+
+  // Build locations list (migrate old single-address accounts on the fly)
+  const locs = (a.locs && a.locs.length)
+    ? a.locs
+    : [{id: uid(), label:'', address: a.address||'', contact:'', phone:'', dropOffRules: a.dropOffRules||''}];
+  eacRenderLocs(locs);
 
   // SKU checkboxes
   qs('#eac-skus').innerHTML = SKUS.map(s=>`
@@ -957,8 +1061,6 @@ function editAccount(id) {
   renderParInputs(a);
 
   qs('#eac-save-btn').onclick = () => saveAccount(id, isNew);
-  // Re-attach address autocomplete (safe to call multiple times)
-  if (window.PlacesAC) PlacesAC.reattach();
   if (!isNew) {
     const delBtn = qs('#eac-delete-btn');
     if (delBtn) { delBtn.style.display=''; delBtn.onclick = ()=>deleteAccount(id); }
@@ -990,17 +1092,23 @@ async function saveAccount(id, isNew) {
   skus.forEach(s=>{par[s]=parseInt(qs('#par-'+s)?.value)||24;});
 
   const existing = DB.a('ac').find(x=>x.id===id);
-  const addrEl  = qs('#eac-address');
-  const address = addrEl?.value?.trim()||'';
 
-  // Silently capture lat/lng (from autocomplete or geocode fallback)
-  let lat = null, lng = null;
-  if (address && window.PlacesAC) {
-    const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
-    if (coords) { lat = coords.lat; lng = coords.lng; }
-  } else if (addrEl?.dataset?.lat) {
-    lat = parseFloat(addrEl.dataset.lat);
-    lng = parseFloat(addrEl.dataset.lng);
+  // Collect & geocode all location rows
+  const locs = [];
+  for (const row of document.querySelectorAll('#eac-locs-list .eac-loc-row')) {
+    const locId      = row.dataset.locId || uid();
+    const label      = row.querySelector('.eac-loc-label')?.value?.trim()||'';
+    const addrEl     = row.querySelector('.eac-loc-address');
+    const address    = addrEl?.value?.trim()||'';
+    const contact    = row.querySelector('.eac-loc-contact')?.value?.trim()||'';
+    const phone      = row.querySelector('.eac-loc-phone')?.value?.trim()||'';
+    const dropOffRules = row.querySelector('.eac-loc-droprules')?.value?.trim()||'';
+    let lat = null, lng = null;
+    if (address && window.PlacesAC) {
+      const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+    locs.push({id: locId, label, address, lat, lng, contact, phone, dropOffRules});
   }
 
   const rec = {
@@ -1008,14 +1116,16 @@ async function saveAccount(id, isNew) {
     contact:      qs('#eac-contact')?.value?.trim()||'',
     phone:        qs('#eac-phone')?.value?.trim()||'',
     email:        qs('#eac-email')?.value?.trim()||'',
-    address,
-    lat, lng,                         // stored for future map use
+    // top-level address/lat/lng from first location (backward compat for display)
+    address:      locs[0]?.address||'',
+    lat:          locs[0]?.lat||null,
+    lng:          locs[0]?.lng||null,
+    locs,
     type:         qs('#eac-type')?.value||'Grocery',
     territory:    qs('#eac-territory')?.value?.trim()||'',
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
-    locations:    parseInt(qs('#eac-locations')?.value)||1,
-    dropOffRules: qs('#eac-drop-rules')?.value?.trim()||'',
+    dropOffRules: locs[0]?.dropOffRules||'',
     skus, par,
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
@@ -4265,16 +4375,21 @@ function _renderMapPins() {
     hasPoints = true;
   };
 
-  // Accounts
+  // Accounts — plot each location as its own pin
   if (_mapLayer==='all'||_mapLayer==='accounts') {
-    DB.a('ac').filter(a=>a.status==='active'&&a.lat&&a.lng).forEach(a=>{
-      addPin(parseFloat(a.lat), parseFloat(a.lng), {
-        name: a.name,
-        sub: a.address||a.type||'',
-        color: MAP_PIN_COLORS.account,
-        action: `openAccount('${a.id}')`,
-        actionLabel: 'View Account',
-        runAction: `mapAddToRun('${a.id}')`,
+    DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
+      const locs = (a.locs && a.locs.length) ? a.locs
+        : (a.lat && a.lng ? [{id:'legacy', label:'', address:a.address||'', lat:a.lat, lng:a.lng, dropOffRules:''}] : []);
+      locs.filter(l=>l.lat&&l.lng).forEach(l=>{
+        const pinName = locs.length > 1 ? `${a.name} – ${l.label||l.address||'Location'}` : a.name;
+        addPin(parseFloat(l.lat), parseFloat(l.lng), {
+          name: pinName,
+          sub: l.address||a.type||'',
+          color: MAP_PIN_COLORS.account,
+          action: `openAccount('${a.id}')`,
+          actionLabel: 'View Account',
+          runAction: `mapAddToRun('${a.id}')`,
+        });
       });
     });
   }

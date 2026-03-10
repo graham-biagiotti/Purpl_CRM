@@ -1181,6 +1181,11 @@
     </div>
     <!-- Overview -->
     <div id="mac-tab-overview" class="tab-pane">
+      <!-- Location selector (shown only when account has multiple locations) -->
+      <div id="mac-locs-row" style="margin-bottom:12px;display:none">
+        <span style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Location</span>
+        <select id="mac-loc-select" style="width:100%"></select>
+      </div>
       <div class="card-grid grid-2" style="margin-bottom:14px">
         <div><span style="font-size:11px;color:var(--muted)">Contact</span><div id="mac-contact"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Phone</span><div id="mac-phone"></div></div>
@@ -1190,6 +1195,8 @@
         <div><span style="font-size:11px;color:var(--muted)">Customer Since</span><div id="mac-since"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Last Order</span><div id="mac-last-order"></div></div>
       </div>
+      <div id="mac-address-row" style="margin-bottom:8px;display:none"><span style="font-size:11px;color:var(--muted)">Address</span><div id="mac-address" style="margin-top:2px"></div></div>
+      <div id="mac-drop-row" style="margin-bottom:12px;display:none"><span style="font-size:11px;color:var(--muted)">Drop-off rules</span><div id="mac-drop-rules" style="margin-top:2px;font-size:13px"></div></div>
       <div style="margin-bottom:8px"><span style="font-size:11px;color:var(--muted)">Active SKUs</span><div id="mac-skus" style="margin-top:4px"></div></div>
       <div><span style="font-size:11px;color:var(--muted)">Par Levels</span><div id="mac-par" style="margin-top:4px"></div></div>
     </div>
@@ -1233,7 +1240,6 @@
       <div class="form-group"><label>Phone</label><input id="eac-phone" type="tel"></div>
       <div class="form-group"><label>Email</label><input id="eac-email" type="email"></div>
     </div>
-    <div class="form-group" style="margin-bottom:10px"><label>Address</label><input id="eac-address" placeholder="123 Main St, City, State"></div>
     <div class="form-row col3">
       <div class="form-group"><label>Type</label>
         <select id="eac-type"><option>Grocery</option><option>Gym</option><option>Café</option><option>Restaurant</option><option>Spa / Wellness</option><option>Specialty / Gift</option><option>Farm / Country Store</option><option>Co-op</option><option>Online</option><option>Other</option></select>
@@ -1243,13 +1249,13 @@
         <select id="eac-status"><option value="active">Active</option><option value="paused">Paused</option><option value="inactive">Inactive</option></select>
       </div>
     </div>
-    <div class="form-row col2" style="margin-bottom:10px">
-      <div class="form-group"><label>Customer since</label><input type="date" id="eac-since"></div>
-      <div class="form-group"><label>Locations</label><input type="number" id="eac-locations" min="1" placeholder="1"></div>
-    </div>
-    <div class="form-group" style="margin-bottom:10px">
-      <label>Drop-off / delivery rules</label>
-      <textarea id="eac-drop-rules" placeholder="e.g. Drop off at back entrance, call ahead, see contract for details..." style="min-height:50px"></textarea>
+    <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="font-size:12px;font-weight:600;color:var(--fg)">Locations</label>
+        <button type="button" class="btn sm" onclick="eacAddLoc()">+ Add Location</button>
+      </div>
+      <div id="eac-locs-list"></div>
     </div>
     <div style="margin-bottom:10px">
       <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Active SKUs</label>
