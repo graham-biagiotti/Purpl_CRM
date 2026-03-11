@@ -4237,10 +4237,82 @@ function setupFilters() {
 }
 
 // ══════════════════════════════════════════════════════════
+//  DATA RESTORE  (one-time auto-migration on deploy;
+//                 restores the 16 accounts + 14 prospects
+//                 wiped by the March 2026 seed-overwrite bug)
+// ══════════════════════════════════════════════════════════
+function restoreMyData() {
+  // Already done — skip
+  if (DB.obj('settings',{}).data_restored) return;
+
+  const mkId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+  const ACCOUNTS = [
+    {id:mkId(),name:'GoodVibes Gift Shop',type:'Specialty / Gift',contact:'Rebecca',phone:'',email:'4goodvibessomerville@gmail.com',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'Drop off at Medford Location * See Contract for Details',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-02-26',text:'Uses service Consigner Access. Interested in purpl.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-02-26',note:''}],lastOrder:null,lastContacted:'2026-02-26'},
+    {id:mkId(),name:'Artisans New London',type:'Specialty / Gift',contact:'Amy and Macy',phone:'603-526-4227',email:'info@artisansnewlondon.com',address:'11 South Pleasant St, New London, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2025-12-11',note:''}],lastOrder:null,lastContacted:'2025-12-11'},
+    {id:mkId(),name:'Barrel and Baskit',type:'Café',contact:'Beth',phone:'603-340-2488',email:'beth@localbaskit.com',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[],lastOrder:'2026-02-01',lastContacted:null},
+    {id:mkId(),name:'Calefs Country Store',type:'Farm / Country Store',contact:'Melanie Giehl',phone:'800-462-2118',email:'melanie@calefs.com',address:'606 Franklin Pierce Highway, Barrington, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2025-11-12',note:''}],lastOrder:null,lastContacted:'2025-11-12'},
+    {id:mkId(),name:'Dry Celler',type:'Specialty / Gift',contact:'Kate Boyle',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-09',text:'NA store. Maybe market as mixer botanical.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:null},
+    {id:mkId(),name:'Gilford Country Store',type:'Specialty / Gift',contact:'Kathy',phone:'603-366-6250',email:'gilfordcountrystore@gmail.com',address:'1934 Lake Shore Rd, Gilford, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-01-14',text:'Interested in purpl. Order for PBF too.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-01-14',note:''}],lastOrder:'2025-09-19',lastContacted:'2026-01-14'},
+    {id:mkId(),name:'Goffstown Green Thumb',type:'Farm / Country Store',contact:'Jennifer Conroy',phone:'603-497-3131',email:'goffstowngreenthumbgc@gmail.com',address:'278 Mast Road, Goffstown, NH 03045',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-01-29',text:'Interested in purpl.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-01-29',note:''}],lastOrder:'2026-01-29',lastContacted:'2026-01-29'},
+    {id:mkId(),name:'Granite State Naturals',type:'Grocery',contact:'Robin',phone:'603-224-9341',email:'robin@granitestatenaturals.com',address:'170 North State Street, Concord, NH 03301',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2025-11-25',text:'Has space for purpl.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2025-11-25',note:''}],lastOrder:null,lastContacted:'2025-11-25'},
+    {id:mkId(),name:'Green Envy',type:'Specialty / Gift',contact:'Helen Ryba',phone:'603-722-3885',email:'Info@greenenvywellness.com',address:'377 Elm Street, Manchester, NH 03104',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2026-01-07',note:''}],lastOrder:'2026-01-07',lastContacted:'2026-01-07'},
+    {id:mkId(),name:'Lavender Fields at Pumpkin Blossom Farm',type:'Other',contact:'',phone:'',email:'',address:'393 Pumpkin Hill Rd, Warner, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[],lastOrder:null,lastContacted:null},
+    {id:mkId(),name:'Little Red Hen Farm and Market',type:'Farm / Country Store',contact:'Jill Fudala',phone:'603-568-5540',email:'',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2026-01-27',note:''}],lastOrder:null,lastContacted:'2026-01-27'},
+    {id:mkId(),name:'Littleton Co Op',type:'Co-op',contact:'Rebecka Daniels',phone:'',email:'rdaniels@littletoncoop.org',address:'43 Bethlehem Road, Littleton, NH 03561',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-02-25',text:'PBF customer.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-02-25',note:''}],lastOrder:null,lastContacted:'2026-02-25'},
+    {id:mkId(),name:'Something Wonderful Shop',type:'Specialty / Gift',contact:'Kristin',phone:'603-722-3885',email:'Somethingwonderfulshop@gmail.com',address:'5326 Vermont Route 14, Sharon, VT 05065',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-01-08',text:'Interested in Purpl.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-01-08',note:''}],lastOrder:'2026-01-08',lastContacted:'2026-01-08'},
+    {id:mkId(),name:'Sunapee Cellar and Pantry',type:'Specialty / Gift',contact:'Julie Woodworth',phone:'802-236-4695',email:'',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[],lastOrder:null,lastContacted:null},
+    {id:mkId(),name:'Sweet Beet Market',type:'Co-op',contact:'Cassie',phone:'603-938-5323',email:'cassie@kearsargefoodhub.org',address:'11 West Main St, Bradford, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-02-25',text:'Reach out for first purpl order.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-02-25',note:'interested'}],lastOrder:'2026-01-20',lastContacted:'2026-02-25'},
+    {id:mkId(),name:'Zebs General Store',type:'Specialty / Gift',contact:'Ray',phone:'',email:'shop@zebs.com',address:'North Conway, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2025-09-06',note:''}],lastOrder:null,lastContacted:'2025-09-06'},
+  ];
+
+  const PROSPECTS = [
+    {id:mkId(),name:'Tip Top Co Op',type:'Co-op / Natural',contact:'Lisa Boragine',phone:'508-867-0460',email:'tiptopbrookfield@icloud.com',address:'8 Central Street, Brookfield, MA',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'2026-02-27',nextDate:'2026-03-21',nextAction:'Member meeting March 28th — need samples before then.',notes:[{id:mkId(),date:'2026-02-27',text:'Need samples for both brands.',author:'you',nextAction:'Member meeting March 28th — need samples before then.',nextDate:'2026-03-21'}],outreach:[]},
+    {id:mkId(),name:'Lavender Sense Relaxation Retreat',type:'Spa / Wellness',contact:'Jen (Owner)',phone:'',email:'jen@lavendersenseretreat.com',address:'Alton Bay, NH',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'2026-02-26',nextDate:'',nextAction:'Interested in purpl when launch.',notes:[{id:mkId(),date:'2026-02-26',text:'PBF sign up.',author:'you',nextAction:'Interested in purpl when launch.',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Franklin Community Co Op',type:'Co-op / Natural',contact:'',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'lead',priority:'medium',source:'migrated from v5',lastContact:'2026-02-26',nextDate:'',nextAction:'Get in contact.',notes:[{id:mkId(),date:'2026-02-26',text:'Max Barnett — Wellness Buyer — sent cold about PBF. Wendi Byther — Grocery Buyer — About purpl.',author:'you',nextAction:'Get in contact.',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-02-26',note:'Filled out contact form specific for grocery buyer'}]},
+    {id:mkId(),name:'The Local Grocer',type:'Co-op / Natural',contact:'Alexandria Small',phone:'603-356-6068',email:'alexandria@nhlocalgrocer.com',address:'3358 White Mountain Highway, Conway, NH 03860',lat:null,lng:null,territory:'',status:'lead',priority:'high',source:'migrated from v5',lastContact:'2026-02-26',nextDate:'',nextAction:'Sample meeting with Alexandria and owners + purpl buyer.',notes:[{id:mkId(),date:'2026-02-26',text:'',author:'you',nextAction:'Sample meeting with Alexandria and owners + purpl buyer.',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Wegmans',type:'Grocery',contact:'Melissa',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'contacted',priority:'high',source:'migrated from v5',lastContact:'2026-02-25',nextDate:'2026-03-04',nextAction:'Wait to hear anything.',notes:[{id:mkId(),date:'2026-02-25',text:'Email sent to Melissa introducing purpl, asking for correct buyer.',author:'you',nextAction:'Wait to hear anything.',nextDate:'2026-03-04'}],outreach:[{id:mkId(),type:'Email',date:'2026-02-25',note:'Expressed interest. Sent information to VP and category manager.'}]},
+    {id:mkId(),name:'Concord Co Op',type:'Co-op / Natural',contact:'Rianna',phone:'',email:'Rianna@concordfoodcoop.coop',address:'24 1/2 S Main St, Concord, NH',lat:null,lng:null,territory:'',status:'contacted',priority:'high',source:'migrated from v5',lastContact:'2026-02-25',nextDate:'2026-03-04',nextAction:'Get in contact with buyer.',notes:[{id:mkId(),date:'2026-02-25',text:'Spoke to Autumn from the bakery. Gave me buyer contact. Both PBF and Purpl.',author:'you',nextAction:'Get in contact with buyer.',nextDate:'2026-03-04'}],outreach:[]},
+    {id:mkId(),name:'Common Man Roadsides',type:'Convenience',contact:'Ashley (Bev Manager)',phone:'',email:'ashley@thecman.com',address:'',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'2026-02-19',nextDate:'2026-03-05',nextAction:'',notes:[{id:mkId(),date:'2026-02-19',text:'Got contact from Christine at home office.',author:'you',nextAction:'',nextDate:'2026-03-05'}],outreach:[]},
+    {id:mkId(),name:'Assabet Co Op Market',type:'Co-op / Natural',contact:'Dawn (Buyer)',phone:'978-243-8374',email:'vendor@assabetmarket.coop',address:'86 Powder Mill Road, Maynard, MA 01754',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'2026-02-18',nextDate:'2026-03-18',nextAction:'Get in contact with Dawn or another buyer for purpl.',notes:[{id:mkId(),date:'2026-02-18',text:'Referred from general inquiries email. Pitched both brands.',author:'you',nextAction:'Get in contact with Dawn or another buyer for purpl.',nextDate:'2026-03-18'}],outreach:[]},
+    {id:mkId(),name:'Hannafords',type:'Grocery',contact:'',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'2026-02-17',nextDate:'',nextAction:'',notes:[{id:mkId(),date:'2026-02-17',text:'Local application resubmitted.',author:'you',nextAction:'',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Rutland Co Op',type:'Co-op / Natural',contact:'Heather Sevrie',phone:'802-773-0737',email:'wellness@rutlandcoop.com',address:'77 Wales Street, Rutland, VT 05701',lat:null,lng:null,territory:'',status:'sampling',priority:'medium',source:'migrated from v5',lastContact:'2026-02-09',nextDate:'2026-02-27',nextAction:'Reach back out for first order.',notes:[{id:mkId(),date:'2026-02-09',text:'Dropped off PBF samples, met Heather, interested in Purpl when launching.',author:'you',nextAction:'Reach back out for first order.',nextDate:'2026-02-27'}],outreach:[]},
+    {id:mkId(),name:'Co Op Food Stores',type:'Co-op / Natural',contact:'Caitlin Woodbury',phone:'',email:'president@coopfoodstore.com',address:'',lat:null,lng:null,territory:'',status:'sampling',priority:'high',source:'migrated from v5',lastContact:'2026-02-09',nextDate:'',nextAction:'Wait for reply. Push purpl when update.',notes:[{id:mkId(),date:'2026-02-09',text:'Submitted PBF samples + coming soon purpl sheet.',author:'you',nextAction:'Wait for reply. Push purpl when update.',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Monadnock Food Co Op',type:'Co-op / Natural',contact:'Kalliope Kalombratsos',phone:'603-355-8008',email:'superwellness@monadnockfood.coop',address:'34 Cypress Street, Keene, NH 03431',lat:null,lng:null,territory:'',status:'contacted',priority:'high',source:'migrated from v5',lastContact:'2026-01-19',nextDate:'',nextAction:'Need to follow up and reach out for new contact in correct category.',notes:[{id:mkId(),date:'2026-01-19',text:'Current PBF retailer.',author:'you',nextAction:'Need to follow up and reach out for new contact in correct category.',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Newberry Deli',type:'Café',contact:'Jay',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'contacted',priority:'medium',source:'migrated from v5',lastContact:'',nextDate:'',nextAction:'Purpl reach out.',notes:[{id:mkId(),date:'2026-03-09',text:'',author:'you',nextAction:'Purpl reach out.',nextDate:''}],outreach:[]},
+    {id:mkId(),name:'Northeast Shared Services',type:'Grocery',contact:'Maisy',phone:'',email:'',address:'',lat:null,lng:null,territory:'',status:'negotiating',priority:'high',source:'migrated from v5',lastContact:'',nextDate:'2026-03-04',nextAction:'',notes:[{id:mkId(),date:'2026-03-09',text:'Key distribution partner covering Price Chopper / Market 32 and Tops Markets.',author:'you',nextAction:'',nextDate:'2026-03-04'}],outreach:[]},
+  ];
+
+  // Demo account/prospect names seeded by the bug — remove them
+  const DEMO_AC = new Set(['whole foods market – oak park','mariano\'s – lincoln square','central gym & fitness','sunrise café']);
+  const DEMO_PR = new Set(['green earth market','fitzzone studios']);
+
+  const realAcNames = new Set(ACCOUNTS.map(x=>x.name.toLowerCase().trim()));
+  const realPrNames = new Set(PROSPECTS.map(x=>x.name.toLowerCase().trim()));
+
+  // Keep any accounts that aren't demo placeholders and aren't in our restore list (user may have added others)
+  const kept = DB.a('ac').filter(x=>!DEMO_AC.has(x.name.toLowerCase().trim())&&!realAcNames.has(x.name.toLowerCase().trim()));
+  const keptPr = DB.a('pr').filter(x=>!DEMO_PR.has(x.name.toLowerCase().trim())&&!realPrNames.has(x.name.toLowerCase().trim()));
+
+  const newAc = [...kept, ...ACCOUNTS];
+  const newPr = [...keptPr, ...PROSPECTS];
+
+  DB.atomicUpdate(cache=>{
+    cache.ac = newAc;
+    cache.pr = newPr;
+    cache.settings = {...(cache.settings||{}), data_restored: true, seeded: true};
+    return cache;
+  });
+
+  console.log(`[restore] ${ACCOUNTS.length} accounts + ${PROSPECTS.length} prospects restored.`);
+}
+
+// ══════════════════════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════════════════════
 window.onAppReady = function() {
   seedIfEmpty();
+  restoreMyData(); // one-time: restores real accounts/prospects lost in seed-overwrite bug
 
   // Allow db.js real-time listener to refresh whichever page is open
   window.refreshCurrentPage = () => renders[currentPage]?.();
