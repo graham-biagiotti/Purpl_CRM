@@ -116,6 +116,10 @@ function statusBadge(map, val) {
 
 // ── Default demo data (first run only) ──────────────────
 function seedIfEmpty() {
+  // SAFETY: never seed if Firestore hasn't confirmed document state yet.
+  // The 10-second startup timeout can fire before the snapshot arrives — without
+  // this guard, seedIfEmpty would see an empty cache and overwrite real data.
+  if (!DB._firestoreReady) return;
   // Only seed on the very first run — never again, even if all data is deleted
   const _s = DB.obj('settings', null);
   if (_s !== null && !_s.seeded) { DB.setObj('settings', {..._s, seeded:true}); return; }
@@ -298,7 +302,7 @@ function renderAttention() {
   const todayStr = today();
   DB.a('dist_invoices').filter(i=>i.status==='unpaid'&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
     const d = DB.a('dist_profiles').find(x=>x.id===i.distId);
-    items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`$${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
+    items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
   });
 
   // Distributors with no contact in 60+ days
@@ -449,7 +453,9 @@ function renderInvoiceStatus() {
 function setInvStatus(id, status) {
   const extra = status==='invoiced' ? {invoiceDate:today()} : status==='paid' ? {paidDate:today()} : {};
   DB.update('orders', id, o=>({...o, invoiceStatus:status, ...extra}));
-  openOrderDetail(id);
+  // Only refresh the order detail modal if it's already open (don't pop it open from dashboard)
+  const detailModal = document.getElementById('modal-order-detail');
+  if (detailModal && detailModal.classList.contains('open')) openOrderDetail(id);
   renderInvoiceStatus();
   toast(status==='paid'?'Marked as paid':'Invoice updated');
 }
@@ -977,7 +983,7 @@ function addAccountNote(id) {
   const next = qs('#mac-note-next')?.value?.trim();
   const nextDate = qs('#mac-note-next-date')?.value;
   const note = {id:uid(), date:today(), text, author:'you', nextAction:next, nextDate};
-  DB.update('ac', id, a=>({...a, notes:[...(a.notes||[]), note]}));
+  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]), note]}));
   if (qs('#mac-note-text')) qs('#mac-note-text').value='';
   if (qs('#mac-note-next')) qs('#mac-note-next').value='';
   if (qs('#mac-note-next-date')) qs('#mac-note-next-date').value='';
@@ -1459,7 +1465,7 @@ function saveLogOutreach() {
   const nextDate = qs('#mlo-nextdate').value;
   const entry = {id:uid(), type, date, note};
   if (kind === 'ac') {
-    DB.update('ac', id, a=>({...a, outreach:[...(a.outreach||[]),entry]}));
+    DB.update('ac', id, a=>({...a, lastContacted: date, outreach:[...(a.outreach||[]),entry]}));
     renderAccounts();
   } else if (kind === 'dist') {
     DB.update('dist_profiles', id, d=>({
@@ -1958,6 +1964,7 @@ function saveDistributor(id, isNew) {
   const name = qs('#edist-name')?.value?.trim();
   if (!name) { toast('Distributor name required'); return; }
   const terms = qs('#edist-terms')?.value||'Net 30';
+  const existing = DB.a('dist_profiles').find(x=>x.id===id);
   const rec = {
     id, name,
     platformType:    qs('#edist-platform')?.value||'other',
@@ -1968,7 +1975,11 @@ function saveDistributor(id, isNew) {
     paymentTerms:    terms,
     paymentTermsDays: terms==='custom'?(parseInt(qs('#edist-terms-days')?.value)||30):parseInt(terms.replace('Net ','')||30),
     notes:           qs('#edist-notes')?.value?.trim()||'',
-    createdAt:       DB.a('dist_profiles').find(x=>x.id===id)?.createdAt || today(),
+    createdAt:       existing?.createdAt || today(),
+    // Preserve contact-history fields that are not editable in this form
+    outreach:        existing?.outreach || [],
+    nextFollowup:    existing?.nextFollowup || '',
+    lastContact:     existing?.lastContact || '',
   };
   if (isNew) DB.push('dist_profiles', rec);
   else DB.update('dist_profiles', id, ()=>rec);
@@ -2943,7 +2954,7 @@ function switchODTab(tab) {
 function renderDistOrders() {
   const el = qs('#od-dist-orders-content');
   if (!el) return;
-  const pos = DB.a('dist_pos').slice().sort((a,b)=>b.created>a.created?1:-1);
+  const pos = DB.a('dist_pos').slice().sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
   if (!pos.length) { el.innerHTML='<div class="empty">No distributor orders yet.</div>'; return; }
   el.innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Date</th><th>Distributor</th><th>Items</th><th>Status</th><th>Actions</th></tr></thead>
@@ -2951,11 +2962,11 @@ function renderDistOrders() {
       const dist = DB.a('dist_profiles').find(d=>d.id===po.distId);
       const itemSummary = (po.items||[]).map(i=>`${i.qty}cs ${i.sku}`).join(', ');
       return `<tr>
-        <td>${fmtD(po.created)}</td>
+        <td>${fmtD(po.dateReceived)}</td>
         <td>${dist?.name||po.distId||'—'}</td>
         <td>${itemSummary||'—'}</td>
         <td>${statusBadge(DIST_PO_STATUS, po.status)}</td>
-        <td><button class="btn xs" onclick="openDistPO('${po.id}')">View</button></td>
+        <td><button class="btn xs" onclick="openDistributor('${po.distId}')">View</button></td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
@@ -3305,12 +3316,11 @@ function renderDelivery() {
   const done = stops.filter(s=>s.done).length;
   qs('#del-progress').innerHTML = stops.length ? `${done}/${stops.length} stops complete` : '';
 
-  // Pre-fill add-stop form with accounts
+  // Pre-fill add-stop form with accounts (always refresh so new accounts appear)
   const acSel = qs('#del-account-sel');
-  if (acSel && !acSel.dataset.loaded) {
+  if (acSel) {
     acSel.innerHTML = '<option value="">— Select account —</option>' +
       DB.a('ac').filter(a=>a.status==='active').map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
-    acSel.dataset.loaded = '1';
     acSel.onchange = () => prefillStop(acSel.value);
   }
 }
@@ -3435,7 +3445,7 @@ function offerDeliveryInvoice(stop, ac, ordId) {
       <button class="btn sm" onclick="document.getElementById('del-invoice-offer')?.remove()">Skip</button>
     </div>`;
 
-  const page = document.getElementById('page-delivery');
+  const page = document.getElementById('page-orders-delivery');
   if (page) page.insertBefore(banner, page.firstChild);
 }
 
@@ -3505,7 +3515,7 @@ function offerBatchInvoice(stops) {
       <button class="btn sm" onclick="document.getElementById('del-batch-invoice-offer')?.remove()">Skip</button>
     </div>`;
 
-  const page = document.getElementById('page-delivery');
+  const page = document.getElementById('page-orders-delivery');
   if (page) page.insertBefore(banner, page.firstChild);
 }
 
@@ -3739,8 +3749,8 @@ function repDistributor() {
 
   const rows = dists.map(d=>{
     const pos = allPOs.filter(p=>p.distId===d.id&&p.dateReceived>=from&&p.dateReceived<=to);
-    const inv = allInv.filter(i=>i.distId===d.id&&i.date>=from&&i.date<=to);
-    const poTotal  = pos.reduce((s,p)=>s+(p.total||0),0);
+    const inv = allInv.filter(i=>i.distId===d.id&&i.dateIssued>=from&&i.dateIssued<=to);
+    const poTotal  = pos.reduce((s,p)=>s+(p.totalValue||0),0);
     const invTotal = inv.reduce((s,i)=>s+(i.total||0),0);
     const paid     = inv.filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
     return [d.name, d.status, pos.length, fmtC(poTotal), fmtC(invTotal), fmtC(paid), fmtC(invTotal-paid)];
@@ -3797,7 +3807,7 @@ function repProfit() {
     SKUS.map(s=>s.label),
     [
       {label:'Revenue', data:SKUS.map(s=>+(bySkuRev[s.id]||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.5)', borderRadius:4},
-      {label:'Gross Profit', data:SKUS.map(s=>{ const qty=bySkuQty[s.id]||0; return +((bySkuRev[s.id]||0)-(costs.cogs[s.id]||2.15)*qty).toFixed(2); }), backgroundColor:'rgba(0,180,100,0.7)', borderRadius:4},
+      {label:'Gross Profit', data:SKUS.map(s=>{ const qty=bySkuCases[s.id]||0; return +((bySkuRev[s.id]||0)-(costs.cogs[s.id]||2.15)*qty*CANS_PER_CASE).toFixed(2); }), backgroundColor:'rgba(0,180,100,0.7)', borderRadius:4},
     ],
     'Revenue vs Gross Profit by SKU'
   );
@@ -4288,7 +4298,12 @@ window.onAppReady = function() {
 
   // Wire account SKU checkboxes → update par inputs
   const acSkuBox = qs('#eac-skus');
-  if (acSkuBox) acSkuBox.addEventListener('change', ()=>renderParInputs({}));
+  if (acSkuBox) acSkuBox.addEventListener('change', ()=>{
+    // Capture any par values already typed before rebuilding inputs
+    const currentPar = {};
+    SKUS.forEach(s=>{ const el=qs('#par-'+s.id); if(el) currentPar[s.id]=parseInt(el.value)||24; });
+    renderParInputs({par: currentPar});
+  });
 
   // Wire shipment SKU inputs
   if (qs('#modal-shipment')) {
@@ -4500,10 +4515,14 @@ function mapAddToRun(accountId) {
     address: a.address||'',
     lat: a.lat||'',
     lng: a.lng||'',
-    items: (a.skus||[]).map(s=>({sku:s,qty:0})),
     notes: '',
     done: false,
   };
+  // Pre-fill par quantities per SKU (stored as cases), matching addStop() format
+  SKUS.forEach(s=>{
+    const parCans = a.par?.[s.id] || 0;
+    stop[s.id] = parCans > 0 ? Math.ceil(parCans / CANS_PER_CASE) : 0;
+  });
   DB.atomicUpdate(d=>{ d.today_run=d.today_run||{stops:[]}; d.today_run.stops=[...(d.today_run.stops||[]),stop]; return d; });
   _updateRunModeBar();
   toast(`${a.name} added to run`);

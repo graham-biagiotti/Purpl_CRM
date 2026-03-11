@@ -45,6 +45,7 @@ const DB = {
   _uid: null,
   _db: null,
   _syncStatus: 'synced', // 'synced' | 'syncing' | 'error'
+  _firestoreReady: false, // true only after Firestore confirms document state (never after timeout)
 
   // ── Shared workspace path (all users share same data) ─
   _ref() {
@@ -74,6 +75,10 @@ const DB = {
           } else {
             await this._migrateFromLegacyPath(this._uid);
           }
+          this._firestoreReady = true;
+          // If the 10s timeout already fired and booted the app with empty cache,
+          // refresh whichever page is showing now that real data has loaded.
+          if (window.refreshCurrentPage) window.refreshCurrentPage();
           resolve();
         } else if (snap.exists && !snap.metadata.hasPendingWrites) {
           // Remote change from another user — update cache and refresh UI
