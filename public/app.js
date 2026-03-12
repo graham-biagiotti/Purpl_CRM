@@ -4525,25 +4525,10 @@ window.onAppReady = function() {
 
 let _mapInstance    = null;
 let _mapMarkers     = [];
-let _mapLayer       = 'all';
 let _mapRunMode     = false;
 let _mapClusterer   = null;
 
 function renderMap() {
-  // Wire layer tabs once
-  const layerTabs = qs('#map-pin-tabs');
-  if (layerTabs && !layerTabs._wired) {
-    layerTabs._wired = true;
-    layerTabs.querySelectorAll('[data-map-layer]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        layerTabs.querySelectorAll('[data-map-layer]').forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
-        _mapLayer = btn.dataset.mapLayer;
-        _renderMapPins();
-      });
-    });
-  }
-
   if (!window.GOOGLE_PLACES_KEY) {
     qs('#map-no-key')?.style && (qs('#map-no-key').style.display='flex');
     return;
@@ -4618,7 +4603,7 @@ function _renderMapPins() {
   };
 
   // Accounts — plot each location as its own pin
-  if (_mapLayer==='all'||_mapLayer==='accounts') {
+  {
     DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
       const locs = (a.locs && a.locs.length) ? a.locs
         : (a.lat && a.lng ? [{id:'legacy', label:'', address:a.address||'', lat:a.lat, lng:a.lng, dropOffRules:''}] : []);
@@ -4637,7 +4622,7 @@ function _renderMapPins() {
   }
 
   // Prospects
-  if (_mapLayer==='all'||_mapLayer==='prospects') {
+  {
     DB.a('pr').filter(p=>!['won','lost'].includes(p.status)&&p.lat&&p.lng).forEach(p=>{
       addPin(parseFloat(p.lat), parseFloat(p.lng), {
         name: p.name,
@@ -4650,7 +4635,7 @@ function _renderMapPins() {
   }
 
   // Today's run stops
-  if (_mapLayer==='all'||_mapLayer==='run') {
+  {
     const run = DB.obj('today_run', {stops:[]});
     (run.stops||[]).filter(s=>s.lat&&s.lng).forEach(s=>{
       addPin(parseFloat(s.lat), parseFloat(s.lng), {
