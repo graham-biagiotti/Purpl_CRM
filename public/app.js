@@ -1083,8 +1083,7 @@ function _eacLocRow(loc, canRemove) {
 }
 
 function _eacAttachPlaces(container) {
-  if (!window.PlacesAC) return;
-  container.querySelectorAll('.eac-loc-address').forEach(el => PlacesAC.attach(el));
+  // Address autocomplete restricted to territory map page only
 }
 
 function eacRenderLocs(locs) {
@@ -1116,7 +1115,6 @@ function eacAddLoc() {
   div.innerHTML = _eacLocRow(loc, true);
   const row = div.firstElementChild;
   container.appendChild(row);
-  if (window.PlacesAC) PlacesAC.attach(row.querySelector('.eac-loc-address'));
 }
 
 function eacRemoveLoc(locId) {
@@ -1433,8 +1431,6 @@ function editProspect(id) {
   qs('#epr-next-date').value = p.nextDate||'';
 
   qs('#epr-save-btn').onclick = () => saveProspect(id, isNew);
-  // Re-attach address autocomplete
-  if (window.PlacesAC) PlacesAC.reattach();
   const delBtn = qs('#epr-delete-btn');
   if (delBtn) {
     delBtn.style.display = isNew ? 'none' : '';
@@ -4421,9 +4417,7 @@ window.onAppReady = function() {
   // Allow db.js real-time listener to refresh whichever page is open
   window.refreshCurrentPage = () => renders[currentPage]?.();
 
-  // Initialize address autocomplete (Phase 3)
-  // Fires async — no blocking. Silent if no API key set.
-  if (window.PlacesAC) PlacesAC.initAll();
+  // Address autocomplete only activates on the territory map page
 
   // Wire nav links
   document.querySelectorAll('.sb-nav a[data-page]').forEach(a=>{
