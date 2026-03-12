@@ -1127,36 +1127,54 @@
 <div class="overlay" id="modal-log-outreach" onclick="if(event.target===this)closeModal('modal-log-outreach')">
   <div class="modal" style="max-width:420px">
     <div class="modal-hdr">
-      <h2 id="mlo-title">Log Outreach</h2>
+      <h2 id="mlo-title">Log Follow-Up</h2>
       <button class="btn sm" onclick="closeModal('modal-log-outreach')">✕</button>
     </div>
     <input type="hidden" id="mlo-id">
     <input type="hidden" id="mlo-kind"> <!-- 'ac' or 'pr' -->
     <div class="form-row">
-      <label>Type</label>
-      <select id="mlo-type">
-        <option value="Call">Call</option>
-        <option value="Email">Email</option>
-        <option value="Visit">Visit</option>
-        <option value="Text">Text</option>
-        <option value="Social">Social</option>
-      </select>
-    </div>
-    <div class="form-row">
       <label>Date</label>
       <input type="date" id="mlo-date">
     </div>
     <div class="form-row">
-      <label>Notes</label>
-      <textarea id="mlo-note" rows="3" placeholder="What happened? What was discussed?"></textarea>
+      <label>How contacted</label>
+      <select id="mlo-type">
+        <option value="call">Call</option>
+        <option value="email">Email</option>
+        <option value="in-person">In Person</option>
+        <option value="text">Text</option>
+        <option value="other">Other</option>
+      </select>
     </div>
+    <div class="form-row" id="mlo-contact-row">
+      <label>Who you spoke to</label>
+      <input type="text" id="mlo-contact" placeholder="Name or role...">
+    </div>
+    <div class="form-row">
+      <label>Quick note</label>
+      <textarea id="mlo-note" rows="3" placeholder="What was discussed..."></textarea>
+    </div>
+    <div class="form-row" id="mlo-outcome-row">
+      <label>Outcome</label>
+      <select id="mlo-outcome">
+        <option value="">— Select —</option>
+        <option value="Interested">Interested</option>
+        <option value="Ordered">Ordered</option>
+        <option value="Needs Follow-Up">Needs Follow-Up</option>
+        <option value="No Response">No Response</option>
+        <option value="Not Interested">Not Interested</option>
+        <option value="Left Voicemail">Left Voicemail</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="form-row" id="mlo-nextdate-row">
+      <label>Next Follow-Up Date</label>
+      <input type="date" id="mlo-nextdate">
+    </div>
+    <!-- Prospect-only: next steps text -->
     <div class="form-row" id="mlo-nextsteps-row">
       <label>Next Steps</label>
       <input type="text" id="mlo-nextsteps" placeholder="e.g. Follow up in 2 weeks">
-    </div>
-    <div class="form-row" id="mlo-nextdate-row">
-      <label>Next Follow-up Date</label>
-      <input type="date" id="mlo-nextdate">
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('modal-log-outreach')">Cancel</button>
@@ -1178,6 +1196,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="overview">Overview</button>
       <button class="tab" data-tab="orders">Orders</button>
+      <button class="tab" data-tab="outreach">Outreach</button>
       <button class="tab" data-tab="notes">Notes</button>
     </div>
     <!-- Overview -->
@@ -1195,6 +1214,8 @@
         <div><span style="font-size:11px;color:var(--muted)">Territory</span><div id="mac-territory"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Customer Since</span><div id="mac-since"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Last Order</span><div id="mac-last-order"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Last Contacted</span><div id="mac-last-contacted"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Next Follow-Up</span><div id="mac-next-followup"></div></div>
       </div>
       <div id="mac-address-row" style="margin-bottom:8px;display:none"><span style="font-size:11px;color:var(--muted)">Address</span><div id="mac-address" style="margin-top:2px"></div></div>
       <div id="mac-drop-row" style="margin-bottom:12px;display:none"><span style="font-size:11px;color:var(--muted)">Drop-off rules</span><div id="mac-drop-rules" style="margin-top:2px;font-size:13px"></div></div>
@@ -1207,6 +1228,13 @@
         <table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Notes</th></tr></thead>
         <tbody id="mac-order-hist"></tbody></table>
       </div>
+    </div>
+    <!-- Outreach tab -->
+    <div id="mac-tab-outreach" class="tab-pane" style="display:none">
+      <div style="margin-bottom:12px">
+        <button class="btn sm primary" id="mac-log-outreach-btn">+ Log Follow-Up</button>
+      </div>
+      <div id="mac-outreach-list"></div>
     </div>
     <!-- Notes tab -->
     <div id="mac-tab-notes" class="tab-pane" style="display:none">

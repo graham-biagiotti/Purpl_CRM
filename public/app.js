@@ -298,6 +298,15 @@ function renderAttention() {
     items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`openProspect('${p.id}')`});
   });
 
+  // Accounts with overdue follow-up dates and no newer contact logged
+  const todayNow = today();
+  ac.filter(a=>a.status==='active'&&a.nextFollowUp&&a.nextFollowUp<todayNow).forEach(a=>{
+    const lastContact = acLastContacted(a);
+    if (!lastContact || lastContact < a.nextFollowUp) {
+      items.push({icon:'📅', name:a.name, reason:`Follow-up overdue — was due ${fmtD(a.nextFollowUp)}`, action:`openAccount('${a.id}')`});
+    }
+  });
+
   // Overdue distributor invoices
   const todayStr = today();
   DB.a('dist_invoices').filter(i=>i.status==='unpaid'&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
@@ -335,6 +344,12 @@ function renderFollowUps() {
   const in14  = new Date(Date.now()+14*864e5).toISOString().slice(0,10);
 
   DB.a('ac').forEach(a=>{
+    // Prefer nextFollowUp field (set by log follow-up), fall back to note-based date
+    if (a.nextFollowUp && a.nextFollowUp >= now && a.nextFollowUp <= in14) {
+      const daysUntil = Math.max(0, Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5));
+      items.push({type:'account', name:a.name, date:a.nextFollowUp, action:'Follow up', id:a.id, daysUntil});
+      return;
+    }
     if (!a.notes?.length) return;
     const ln = a.notes[a.notes.length-1];
     if (ln?.nextDate && ln.nextDate >= now && ln.nextDate <= in14) {
@@ -817,6 +832,15 @@ function renderAccounts() {
     const locs = (a.locs && a.locs.length) ? a.locs
       : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
 
+    // Next follow-up date with color coding
+    const nfu = a.nextFollowUp;
+    let nfuHtml = '';
+    if (nfu) {
+      const nfuColor = nfu < today() ? '#dc2626' : nfu === today() ? '#d97706' : '#1d4ed8';
+      const nfuLabel = nfu < today() ? 'Overdue' : nfu === today() ? 'Today' : fmtD(nfu);
+      nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}</div></div>`;
+    }
+
     return `<div class="ac-card${needsAttn?' needs-attention':''}">
       <div class="ac-card-hdr">
         <div>
@@ -851,14 +875,15 @@ function renderAccounts() {
         <div><div class="ac-metric-label">Velocity</div>${velocityHtml}</div>
         <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
       </div>
+      ${nfuHtml}
       ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
       ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
-      ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${lastOutreach.note?' — '+lastOutreach.note:''}</div></div>`:''}
+      ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
       ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
       <div class="ac-card-actions">
         <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
         <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
-        <button class="btn sm" onclick="logOutreach('${a.id}')">📞 Outreach</button>
+        <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
         <button class="btn sm run" onclick="openNewOrder('${a.id}')">+ Run</button>
         <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
       </div>
@@ -940,8 +965,29 @@ function openAccount(id) {
     <td>${statusBadge(ORD_STATUS,o.status)}</td>
     <td>${o.notes||''}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">No orders yet</td></tr>';
 
+  // Last Contacted + Next Follow-Up in overview
+  const lastContactedVal = acLastContacted(a);
+  const lastContactedEl = qs('#mac-last-contacted');
+  if (lastContactedEl) {
+    lastContactedEl.textContent = lastContactedVal ? `${fmtD(lastContactedVal)} (${daysAgo(lastContactedVal)}d ago)` : '—';
+  }
+  const nfuEl = qs('#mac-next-followup');
+  if (nfuEl) {
+    if (a.nextFollowUp) {
+      const nfuColor = a.nextFollowUp < today() ? '#dc2626' : a.nextFollowUp === today() ? '#d97706' : '#1d4ed8';
+      nfuEl.innerHTML = `<span style="color:${nfuColor};font-weight:600">${fmtD(a.nextFollowUp)}</span>`;
+    } else {
+      nfuEl.textContent = '—';
+    }
+  }
+
   // Notes
   renderAccountNotes(a);
+
+  // Outreach tab
+  renderAccountOutreach(a);
+  const logOutreachBtn = qs('#mac-log-outreach-btn');
+  if (logOutreachBtn) logOutreachBtn.onclick = () => openLogOutreachModal('ac', id);
 
   // Set edit button
   qs('#mac-edit-btn').onclick = () => { closeModal('modal-account'); editAccount(id); };
@@ -990,6 +1036,30 @@ function addAccountNote(id) {
   const a = DB.a('ac').find(x=>x.id===id);
   renderAccountNotes(a);
   toast('Note saved');
+}
+
+function renderAccountOutreach(a) {
+  const ol = qs('#mac-outreach-list');
+  if (!ol) return;
+  const entries = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1);
+  if (!entries.length) {
+    ol.innerHTML = '<div class="empty" style="padding:16px">No follow-ups logged yet. Use the button above to log your first one.</div>';
+    return;
+  }
+  const TYPE_LABELS = {call:'Call',email:'Email','in-person':'In Person',text:'Text',other:'Other',Call:'Call',Email:'Email',Visit:'Visit',Text:'Text',Social:'Social'};
+  const TYPE_CLS    = {call:'blue',email:'green','in-person':'purple',text:'gray',other:'gray',Call:'blue',Email:'green',Visit:'purple',Text:'gray',Social:'gray'};
+  const OUT_CLS     = {'Interested':'green','Ordered':'green','Needs Follow-Up':'amber','No Response':'gray','Not Interested':'red','Left Voicemail':'gray','Other':'gray'};
+  ol.innerHTML = entries.map(e=>`
+    <div class="note-item">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--muted)">${fmtD(e.date)}</span>
+        <span class="badge ${TYPE_CLS[e.type]||'gray'}" style="font-size:10px">${TYPE_LABELS[e.type]||e.type||'Other'}</span>
+        ${e.outcome?`<span class="badge ${OUT_CLS[e.outcome]||'gray'}" style="font-size:10px">${e.outcome}</span>`:''}
+      </div>
+      ${e.contact?`<div style="font-size:13px;color:var(--muted);margin-bottom:2px">Spoke with: <strong>${e.contact}</strong></div>`:''}
+      ${(e.notes||e.note)?`<div style="font-size:13px">${e.notes||e.note}</div>`:''}
+      ${e.nextFollowUp?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px">📅 Next follow-up: <strong>${fmtD(e.nextFollowUp)}</strong></div>`:''}
+    </div>`).join('');
 }
 
 // ── Multi-location helpers (Edit Account) ─────────────────
@@ -1440,41 +1510,75 @@ function openLogOutreachModal(kind, id) {
   const name = kind === 'ac'
     ? DB.a('ac').find(x=>x.id===id)?.name
     : DB.a('pr').find(x=>x.id===id)?.name;
-  qs('#mlo-title').textContent = 'Log Outreach' + (name ? ` — ${name}` : '');
+  qs('#mlo-title').textContent = (kind === 'ac' ? 'Log Follow-Up' : 'Log Outreach') + (name ? ` — ${name}` : '');
   qs('#mlo-id').value = id;
   qs('#mlo-kind').value = kind;
-  qs('#mlo-type').value = 'Call';
+  qs('#mlo-type').value = 'call';
   qs('#mlo-date').value = today();
   qs('#mlo-note').value = '';
   qs('#mlo-nextsteps').value = '';
   qs('#mlo-nextdate').value = '';
-  // Show next steps fields for prospects only
-  const showExtra = kind === 'pr';
-  qs('#mlo-nextsteps-row').style.display = showExtra ? '' : 'none';
-  qs('#mlo-nextdate-row').style.display  = showExtra ? '' : 'none';
+  if (qs('#mlo-contact')) qs('#mlo-contact').value = '';
+  if (qs('#mlo-outcome')) qs('#mlo-outcome').value = '';
+  const isAccount  = kind === 'ac';
+  const isProspect = kind === 'pr';
+  // contact + outcome: accounts only
+  const contactRow = qs('#mlo-contact-row');
+  const outcomeRow = qs('#mlo-outcome-row');
+  if (contactRow) contactRow.style.display = isAccount ? '' : 'none';
+  if (outcomeRow) outcomeRow.style.display = isAccount ? '' : 'none';
+  // next steps text: prospects only
+  qs('#mlo-nextsteps-row').style.display = isProspect ? '' : 'none';
+  // next date: both accounts and prospects
+  qs('#mlo-nextdate-row').style.display = (isAccount || isProspect) ? '' : 'none';
   openModal('modal-log-outreach');
 }
 
 function saveLogOutreach() {
-  const id   = qs('#mlo-id').value;
-  const kind = qs('#mlo-kind').value;
-  const type = qs('#mlo-type').value;
-  const date = qs('#mlo-date').value || today();
-  const note = qs('#mlo-note').value.trim();
-  const next = qs('#mlo-nextsteps').value.trim();
+  const id      = qs('#mlo-id').value;
+  const kind    = qs('#mlo-kind').value;
+  const type    = qs('#mlo-type').value;
+  const date    = qs('#mlo-date').value || today();
+  const note    = qs('#mlo-note').value.trim();
+  const next    = qs('#mlo-nextsteps').value.trim();
   const nextDate = qs('#mlo-nextdate').value;
-  const entry = {id:uid(), type, date, note};
+  const contact = qs('#mlo-contact')?.value?.trim() || '';
+  const outcome = qs('#mlo-outcome')?.value || '';
+
   if (kind === 'ac') {
-    DB.update('ac', id, a=>({...a, lastContacted: date, outreach:[...(a.outreach||[]),entry]}));
+    const entry = {
+      id: uid(),
+      date,
+      type,
+      contact,
+      outcome,
+      notes: note,
+      nextFollowUp: nextDate || null,
+    };
+    DB.update('ac', id, a=>({
+      ...a,
+      lastContacted: date,
+      outreach: [...(a.outreach||[]), entry],
+      ...(nextDate ? {nextFollowUp: nextDate} : {}),
+    }));
     renderAccounts();
+    // Refresh outreach tab if account modal is still open
+    const acc = DB.a('ac').find(x=>x.id===id);
+    if (acc) renderAccountOutreach(acc);
+    closeModal('modal-log-outreach');
+    toast('Follow-up logged ✓');
   } else if (kind === 'dist') {
+    const entry = {id:uid(), type, date, note};
     DB.update('dist_profiles', id, d=>({
       ...d,
       outreach:[...(d.outreach||[]),entry],
       ...(nextDate ? {nextFollowup: nextDate} : {}),
     }));
     renderDistributors();
+    closeModal('modal-log-outreach');
+    toast('Outreach logged');
   } else {
+    const entry = {id:uid(), type, date, note};
     DB.update('pr', id, p=>({
       ...p,
       outreach:[...(p.outreach||[]),entry],
@@ -1483,9 +1587,9 @@ function saveLogOutreach() {
       ...(nextDate ? {nextDate} : {}),
     }));
     renderProspects();
+    closeModal('modal-log-outreach');
+    toast('Outreach logged');
   }
-  closeModal('modal-log-outreach');
-  toast('Outreach logged');
 }
 
 function deleteProspect(id) {
