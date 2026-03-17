@@ -1095,6 +1095,16 @@
         <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
       </div>
 
+      <!-- One-time trade show import — hidden after run -->
+      <div class="card" id="tradeshow-import-card" style="border:2px solid var(--amber,#f59e0b)">
+        <div class="section-hdr"><h2>Import Trade Show Prospects</h2></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+          Imports 34 prospects met at the spring 2026 trade show. Checks for duplicates by name before inserting.
+          Run once — this button disappears automatically after the import completes.
+        </div>
+        <button class="btn primary" onclick="importTradeShowProspects()">Import Trade Show Prospects (34 records)</button>
+      </div>
+
     </div>
 
     <!-- ═══════ TERRITORY MAP ═══════ -->
@@ -1367,20 +1377,22 @@
       <div class="form-group"><label>Type</label>
         <select id="epr-type">
           <option>Grocery</option>
+          <option>Specialty / Gift</option>
+          <option>Farm / Country Store</option>
+          <option>Co-op / Natural</option>
           <option>Natural Foods Store</option>
           <option>Health Food Store</option>
-          <option>Pharmacy / Drug Store</option>
-          <option>Gym / Fitness Center</option>
-          <option>Yoga Studio</option>
-          <option>Spa / Wellness</option>
           <option>Café</option>
           <option>Coffee Shop</option>
-          <option>Juice Bar / Smoothie Shop</option>
           <option>Restaurant</option>
           <option>Bar / Taproom</option>
+          <option>Spa / Wellness</option>
+          <option>Yoga Studio</option>
+          <option>Gym / Fitness Center</option>
+          <option>Pharmacy / Drug Store</option>
           <option>Hotel</option>
-          <option>Gift Shop / Boutique</option>
           <option>Farmers Market</option>
+          <option>Convenience</option>
           <option>Online Retailer</option>
           <option>Other</option>
         </select>

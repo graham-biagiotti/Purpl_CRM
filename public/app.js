@@ -1323,7 +1323,9 @@ function renderProspects() {
       : (lastOutreach ? `${fmtD(lastOutreach.date)} (${daysAgo(lastOutreach.date)}d)` : '—');
     const nextFollowHtml= p.nextDate
       ? `<span style="color:${p.nextDate<today()?'var(--red)':'var(--blue)'}">${fmtD(p.nextDate)}</span>`
-      : '<span style="color:var(--muted)">—</span>';
+      : (p.nextFollowUpLabel
+          ? `<span style="color:var(--blue);font-style:italic">${p.nextFollowUpLabel}</span>`
+          : '<span style="color:var(--muted)">—</span>');
 
     return `<div class="pr-card stage-${p.status||'lead'}">
       <div class="pr-card-hdr">
@@ -1378,7 +1380,7 @@ function openProspect(id) {
   qs('#mpr-source').textContent = p.source||'—';
   qs('#mpr-last-contact').textContent = fmtD(p.lastContact);
   qs('#mpr-next-action').textContent = p.nextAction||'—';
-  qs('#mpr-next-date').textContent = p.nextDate ? fmtD(p.nextDate) : '—';
+  qs('#mpr-next-date').textContent = p.nextDate ? fmtD(p.nextDate) : (p.nextFollowUpLabel || '—');
 
   // Notes
   const nl = qs('#mpr-notes-list');
@@ -4267,6 +4269,10 @@ function renderSettings() {
     _updateVarietyTotal();
   }
 
+  // Trade show import button — hide once import has run
+  const tsBtn = qs('#tradeshow-import-card');
+  if (tsBtn) tsBtn.style.display = s.tradeshow_2026_imported ? 'none' : '';
+
   // User list (read-only — show known signed-in users from settings)
   const usersEl = qs('#set-users-list');
   if (usersEl && s.known_users?.length) {
@@ -4447,6 +4453,94 @@ function restoreMyData() {
   });
 
   console.log(`[restore] ${ACCOUNTS.length} accounts + ${PROSPECTS.length} prospects restored.`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  TRADE SHOW IMPORT (one-time, 2026 spring show)
+// ══════════════════════════════════════════════════════════
+function importTradeShowProspects() {
+  if (!confirm('Import 34 trade show prospects? Duplicates will be skipped.')) return;
+
+  const TODAY = today();
+  const mk = () => uid();
+  const RECORDS = [
+    {name:'Oropa',contact:'Sandra Meiggs',phone:'508-207-5442',email:'oropaduxbury@gmail.com',address:'35B Depot Street, Duxbury, MA',type:'Specialty / Gift'},
+    {name:'Lubec Coastal Gifts',contact:'',phone:'207-733-4484',email:'lubecgifts@gmail.com',address:'20 Water Street, Lubec, ME',type:'Specialty / Gift'},
+    {name:'Ellie Anna Gift Shop',contact:'Sarah Legare',phone:'',email:'sarahlegare@hotmail.com',address:'785 Main St, Lewiston, ME',type:'Specialty / Gift'},
+    {name:'Artemisia Botanicals',contact:'Meghan and Teri Kalgren',phone:'978-745-0065',email:'artemisiabotanicalssalem@gmail.com',address:'3 Hawthorne Blvd., Salem, MA',type:'Specialty / Gift'},
+    {name:'Gunnison Orchards',contact:'Will Gunnison',phone:'518-597-9222',email:'gunnisonorchards@yahoo.com',address:'PO Box 276, Crown Point, NY',type:'Farm / Country Store'},
+    {name:'Norseman Beach Store',contact:'Richard Rainville',phone:'978-809-4381',email:'Retail@ogunquitbeach.com',address:'135 Beach St., Ogunquit, ME 03097',type:'Specialty / Gift'},
+    {name:'Kennebec Cabin Company',contact:'',phone:'',email:'isidora@mainecabinmasters.com',address:'Maine',type:'Specialty / Gift'},
+    {name:'Wild Blueberry Land',contact:'Dell Emerson / Chef Marie',phone:'207-483-2583',email:'wescogus@yahoo.com',address:'1067 US Highway 1, Columbia Falls, ME',type:'Farm / Country Store'},
+    {name:'Amolette Herbal Apothecary',contact:'Nicolette Janelle',phone:'207-625-9230',email:'amoletteherbalapothecary@gmail.com',address:'20 Main Street, Cornish, ME',type:'Specialty / Gift'},
+    {name:'Fuller Gardens',contact:'Victoria Kaiser',phone:'603-431-6024',email:'vkaiser71@gmail.com',address:'10 Willow Ave., North Hampton, NH',type:'Farm / Country Store'},
+    {name:'Brown Paper Packages',contact:'Alyssa Schoenfeld',phone:'603-739-9036',email:'alyssa@brownpaperpkg.com',address:'2053 Main Street, Bethlehem, NH',type:'Specialty / Gift'},
+    {name:'Giving Home',contact:'Leslie Smith',phone:'207-517-1719',email:'givinghomefreeport@gmail.com',address:'27 Bow Street, Freeport, ME',type:'Specialty / Gift'},
+    {name:'Senator Inn and Spa',contact:'Pamela Stone',phone:'207-622-3138',email:'boutique@senatorinn.com',address:'284 Western Ave., Augusta, ME',type:'Spa / Wellness'},
+    {name:'Air BNB Services',contact:'Kerri Osbone',phone:'',email:'experiences@stayohm.com',address:'Maine',type:'Other'},
+    {name:"Flaherty's Family Farm",contact:'',phone:'207-883-5494',email:'flahertyfarm@gmail.com',address:'123 Payne Rd, Scarborough, ME',type:'Farm / Country Store'},
+    {name:'Main Street Gift and Cafe',contact:'',phone:'978-534-5090',email:'hello@mainstreetgiftandcafe.com',address:'40 Main St., Leominster, MA',type:'Café'},
+    {name:'Island Closet',contact:'Jeannie Conway',phone:'207-248-1484',email:'theislandcloset@gmail.com',address:'61 Main Street, Vinalhaven, ME',type:'Specialty / Gift'},
+    {name:'Berry Vines',contact:'',phone:'207-255-4455',email:'',address:'247 Main Street, Machias, ME',type:'Specialty / Gift'},
+    {name:'PJS Trading',contact:'Paul and Jennifer Rich',phone:'978-604-1597',email:'pjstrading1775@gmail.com',address:'6 Temple Street, Tewksbury, MA',type:'Specialty / Gift'},
+    {name:'The Farm Truck at Hein Farm',contact:'Jennifer Woods',phone:'860-952-2767',email:'grow@farmingtonfarmtruck.farm',address:'303 Meadow Road, Farmington, CT',type:'Farm / Country Store'},
+    {name:'Brookfield Orchards',contact:'Diana Sears',phone:'508-867-6858',email:'diana.brookfieldorchards@gmail.com',address:'12 Lincoln Rd, North Brookfield, MA',type:'Farm / Country Store'},
+    {name:'Kays Cafe',contact:'Cindy Kobylarz',phone:'603-674-8385',email:'kobys@comcast.net',address:'325 Lafayette Rd, Hampton, NH',type:'Café'},
+    {name:'Waltham Fields Community Farm',contact:'Ana Strayton',phone:'781-899-2403',email:'ana@communityfarms.org',address:'240 Beaver Street, Waltham, MA',type:'Farm / Country Store'},
+    {name:'Wallingford Farm',contact:'Lisa',phone:'508-241-4066',email:'contact@wallingfordfarm.com',address:'21 York St, Kennebunk, ME',type:'Farm / Country Store'},
+    {name:'Country Collectibles',contact:'',phone:'207-764-8060',email:'countrycollecibles@gmail.com',address:'387 Main St., Presque Isle, ME',type:'Specialty / Gift'},
+    {name:'Pauls Marina',contact:'Helene Marsh Harrower',phone:'207-729-3067',email:'helene.harrower@paulsmarina.com',address:'36 Eastern Shore Rd., Brunswick, ME',type:'Other'},
+    {name:'Colonial Pharmacy',contact:'Nancy Rechisky',phone:'603-526-2233',email:'sales@colonialpharmacy.com',address:'28 Newport Rd, New London, NH',type:'Specialty / Gift'},
+    {name:'Tipped Trailer Co.',contact:'',phone:'',email:'tippedtrailerco@gmail.com',address:'5 Water St., Newport, NH',type:'Other'},
+    {name:'Country Keepsakes',contact:'Tiffany Pierson',phone:'207-667-6967',email:'tiffsckgifts@gmail.com',address:'282 Bar Harbor Rd, Trenton, ME',type:'Specialty / Gift'},
+    {name:'Rockywold Deephaven Camps',contact:'Claire Hekking',phone:'603-968-3313',email:'claire@RDCsquam.com',address:'18 Bacon Rd, Holderness, NH',type:'Spa / Wellness'},
+    {name:'Bedrock Gardens',contact:'Jodie Curtis',phone:'',email:'retail@bedrockgardens.org',address:'45 High Road, Lee, NH',type:'Farm / Country Store'},
+    {name:'Perkins Cove Pottery Shop',contact:'Rob Haslam',phone:'617-429-2120',email:'rob@perkinscovepottery.com',address:'104 Perkins Cove Rd., Ogunquit, ME',type:'Specialty / Gift'},
+    {name:'Fiddleheads',contact:'',phone:'207-767-5595',email:'bloomersmaine@gmail.com',address:'546 Shore Rd., Cape Elizabeth, ME',type:'Specialty / Gift'},
+    {name:'Whispering Sands Gifts',contact:'Ann Thomson',phone:'207-752-4675',email:'',address:'3 Main Street, York Beach, ME',type:'Specialty / Gift'},
+  ];
+
+  const existing = new Set(DB.a('pr').map(x => x.name.toLowerCase().trim()));
+  const toImport = RECORDS.filter(r => !existing.has(r.name.toLowerCase().trim()));
+  const skipped  = RECORDS.length - toImport.length;
+
+  if (toImport.length === 0) {
+    alert(`All ${RECORDS.length} records already exist — nothing imported.`);
+    return;
+  }
+
+  const prospects = toImport.map(r => ({
+    id:               mk(),
+    name:             r.name,
+    contact:          r.contact||'',
+    phone:            r.phone||'',
+    email:            r.email||'',
+    address:          r.address||'',
+    lat:              null,
+    lng:              null,
+    territory:        '',
+    type:             r.type,
+    status:           'contacted',
+    priority:         'medium',
+    source:           'Trade Show',
+    isPbf:            false,
+    lastContact:      TODAY,
+    nextAction:       'Follow up at purpl launch',
+    nextDate:         null,
+    nextFollowUpLabel:'purpl launch',
+    notes:            [],
+    outreach:         [],
+  }));
+
+  DB.atomicUpdate(cache => {
+    cache.pr = [...(cache.pr || []), ...prospects];
+    cache.settings = {...(cache.settings || {}), tradeshow_2026_imported: true};
+    return cache;
+  });
+
+  renderSettings();
+  renderProspects();
+  alert(`✓ ${toImport.length} prospects imported, ${skipped} skipped (duplicates).`);
 }
 
 // ══════════════════════════════════════════════════════════
