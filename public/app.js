@@ -163,8 +163,20 @@ function renderDash() {
     return oh < 48;
   }).length;
 
+  const allAc  = DB.a('ac');
+  const lfCount    = allAc.filter(a=>!!a.isPbf).length;
+  const purplOnly  = allAc.filter(a=>!a.isPbf).length;
+
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
-  qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple');
+  qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
+    `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
+      <div class="dash-brand-stat" onclick="dashFilterBrand('lf')" title="View Lavender Fields + purpl accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#166534;background:#dcfce7;border-radius:6px;padding:3px 8px">
+        <span>🌿</span><span><strong>${lfCount}</strong> carry both purpl + Lavender Fields</span>
+      </div>
+      <div class="dash-brand-stat" onclick="dashFilterBrand('purpl')" title="View purpl-only accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
+        <span>🟣</span><span><strong>${purplOnly}</strong> carry purpl only</span>
+      </div>
+    </div>`;
   qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
@@ -259,6 +271,12 @@ function renderWelcomeHeader(ac, ord, inv) {
 
 function kpiHtml(label, val, color) {
   return `<div class="kpi ${color}"><div class="num">${val}</div><div class="label">${label}</div></div>`;
+}
+
+function dashFilterBrand(val) {
+  nav('accounts');
+  const el = qs('#ac-brand-filter');
+  if (el) { el.value = val; renderAccounts(); }
 }
 
 // Price an order. Items qty is in CASES.
@@ -772,9 +790,10 @@ function acLastContacted(a) {
 
 function renderAccounts() {
   let list = DB.a('ac');
-  const search     = qs('#ac-search')?.value?.toLowerCase().trim() || '';
-  const typeFilter = qs('#ac-type-filter')?.value || '';
-  const sortVal    = qs('#ac-sort')?.value || 'name';
+  const search      = qs('#ac-search')?.value?.toLowerCase().trim() || '';
+  const typeFilter  = qs('#ac-type-filter')?.value || '';
+  const brandFilter = qs('#ac-brand-filter')?.value || '';
+  const sortVal     = qs('#ac-sort')?.value || 'name';
 
   if (search) list = list.filter(a=>
     a.name?.toLowerCase().includes(search) ||
@@ -782,6 +801,8 @@ function renderAccounts() {
     a.territory?.toLowerCase().includes(search) ||
     a.address?.toLowerCase().includes(search));
   if (typeFilter) list = list.filter(a=>a.type===typeFilter);
+  if (brandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
+  if (brandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
 
   list = list.slice().sort((a,b)=>{
     if (sortVal==='name')          return (a.name||'') < (b.name||'') ? -1 : 1;
@@ -846,6 +867,7 @@ function renderAccounts() {
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
             <span class="ac-card-name">${a.name}</span>
+            ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
             ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
           </div>
           <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).join(' · ')}</div>
@@ -927,6 +949,12 @@ function openAccount(id) {
   // Header
   qs('#mac-name').textContent = a.name;
   qs('#mac-status-badge').innerHTML = statusBadge(AC_STATUS, a.status);
+  const brandBadgeEl = qs('#mac-brand-badge');
+  if (brandBadgeEl) {
+    brandBadgeEl.innerHTML = a.isPbf
+      ? `<span class="badge green">🌿 Lavender Fields wholesaler + purpl</span>`
+      : `<span class="badge purple">purpl only</span>`;
+  }
 
   // Overview tab
   qs('#mac-contact').textContent = a.contact||'—';
@@ -1141,6 +1169,7 @@ function editAccount(id) {
   qs('#eac-territory').value = a.territory||'';
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
+  if (qs('#eac-ispbf')) qs('#eac-ispbf').checked = !!a.isPbf;
 
   // Build locations list (migrate old single-address accounts on the fly)
   const locs = (a.locs && a.locs.length)
@@ -1223,6 +1252,7 @@ async function saveAccount(id, isNew) {
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
+    isPbf:     qs('#eac-ispbf')?.checked || false,
     skus, par,
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
@@ -1256,15 +1286,18 @@ const PRIORITY_ORDER = {high:0, medium:1, low:2};
 
 function renderProspects() {
   let list = DB.a('pr');
-  const search      = qs('#pr-search')?.value?.toLowerCase().trim() || '';
-  const stageFilter = qs('#pr-stage-filter')?.value || '';
-  const sortVal     = qs('#pr-sort')?.value || 'priority';
+  const search       = qs('#pr-search')?.value?.toLowerCase().trim() || '';
+  const stageFilter  = qs('#pr-stage-filter')?.value || '';
+  const brandFilter  = qs('#pr-brand-filter')?.value || '';
+  const sortVal      = qs('#pr-sort')?.value || 'priority';
 
   if (search) list = list.filter(p=>
     p.name?.toLowerCase().includes(search) ||
     p.contact?.toLowerCase().includes(search) ||
     p.address?.toLowerCase().includes(search));
   if (stageFilter) list = list.filter(p=>p.status===stageFilter);
+  if (brandFilter === 'lf')    list = list.filter(p=>!!p.isPbf);
+  if (brandFilter === 'purpl') list = list.filter(p=>!p.isPbf);
 
   list = list.slice().sort((a,b)=>{
     if (sortVal==='priority') return (PRIORITY_ORDER[a.priority||'medium']||1)-(PRIORITY_ORDER[b.priority||'medium']||1);
@@ -1292,6 +1325,7 @@ function renderProspects() {
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
             <span class="pr-card-name">${p.name}</span>
+            ${p.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
           </div>
           <div class="ac-card-sub">${[p.type,p.address||p.territory].filter(Boolean).join(' · ')}</div>
           ${p.contact||p.phone?`<div class="ac-card-sub">${[p.contact,p.phone].filter(Boolean).join(' · ')}</div>`:''}
@@ -1429,6 +1463,7 @@ function editProspect(id) {
   qs('#epr-next-action').value = p.nextAction||'';
   qs('#epr-priority').value = p.priority||'medium';
   qs('#epr-next-date').value = p.nextDate||'';
+  if (qs('#epr-ispbf')) qs('#epr-ispbf').checked = !!p.isPbf;
 
   qs('#epr-save-btn').onclick = () => saveProspect(id, isNew);
   const delBtn = qs('#epr-delete-btn');
@@ -1471,6 +1506,7 @@ async function saveProspect(id, isNew) {
     nextAction: qs('#epr-next-action')?.value?.trim()||'',
     priority:   qs('#epr-priority')?.value||'medium',
     nextDate:   qs('#epr-next-date')?.value||'',
+    isPbf:      qs('#epr-ispbf')?.checked || false,
     notes:      DB.a('pr').find(x=>x.id===id)?.notes||[],
     outreach:   DB.a('pr').find(x=>x.id===id)?.outreach||[],
     lastContact: DB.a('pr').find(x=>x.id===id)?.lastContact||today(),
@@ -4308,12 +4344,12 @@ function qs(sel) { return document.querySelector(sel); }
 // ── Wire filter/search controls ──────────────────────────
 function setupFilters() {
   // Accounts
-  ['#ac-search','#ac-type-filter','#ac-sort'].forEach(sel=>{
+  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-sort'].forEach(sel=>{
     const el = qs(sel);
     if (el) el.addEventListener('input', renderAccounts);
   });
   // Prospects
-  ['#pr-search','#pr-stage-filter','#pr-sort'].forEach(sel=>{
+  ['#pr-search','#pr-stage-filter','#pr-brand-filter','#pr-sort'].forEach(sel=>{
     const el = qs(sel);
     if (el) el.addEventListener('input', renderProspects);
   });

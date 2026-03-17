@@ -277,6 +277,11 @@
           <option>Restaurant</option><option>Spa / Wellness</option><option>Specialty / Gift</option>
           <option>Farm / Country Store</option><option>Co-op</option><option>Online</option><option>Other</option>
         </select>
+        <select id="ac-brand-filter">
+          <option value="">All Brands</option>
+          <option value="lf">🌿 Lavender Fields + purpl</option>
+          <option value="purpl">purpl Only</option>
+        </select>
         <select id="ac-sort">
           <option value="name">Sort: Name A–Z</option>
           <option value="lastOrder">Sort: Last Order</option>
@@ -299,6 +304,11 @@
           <option value="lead">Lead</option><option value="contacted">Contacted</option>
           <option value="sampling">Sampling</option><option value="negotiating">Negotiating</option>
           <option value="won">Won</option><option value="lost">Lost</option>
+        </select>
+        <select id="pr-brand-filter">
+          <option value="">All Brands</option>
+          <option value="lf">🌿 Lavender Fields + purpl</option>
+          <option value="purpl">purpl Only</option>
         </select>
         <select id="pr-sort">
           <option value="priority">Sort: Priority</option>
@@ -1183,7 +1193,10 @@
     <div class="modal-hdr">
       <div>
         <h2 id="mac-name">Account</h2>
-        <div id="mac-status-badge" style="margin-top:4px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+          <div id="mac-status-badge"></div>
+          <div id="mac-brand-badge"></div>
+        </div>
       </div>
       <button class="modal-close btn sm">✕</button>
     </div>
@@ -1273,6 +1286,11 @@
       </div>
     </div>
     <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+        <input type="checkbox" id="eac-ispbf"> Also a Lavender Fields wholesaler
+      </label>
+    </div>
     <div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <label style="font-size:12px;font-weight:600;color:var(--fg)">Locations</label>
@@ -1335,6 +1353,11 @@
     <div class="form-row col2">
       <div class="form-group"><label>Name *</label><input id="epr-name"></div>
       <div class="form-group"><label>Contact</label><input id="epr-contact"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+        <input type="checkbox" id="epr-ispbf"> Also a Lavender Fields wholesaler
+      </label>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Phone</label><input id="epr-phone" type="tel"></div>
