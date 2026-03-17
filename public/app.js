@@ -1111,7 +1111,11 @@ function _eacLocRow(loc, canRemove) {
 }
 
 function _eacAttachPlaces(container) {
-  // Address autocomplete restricted to territory map page only
+  if (!window.PlacesAC) return;
+  PlacesAC.load().then(ok => {
+    if (!ok) return;
+    container.querySelectorAll('.eac-loc-address').forEach(el => PlacesAC.attach(el));
+  });
 }
 
 function eacRenderLocs(locs) {
@@ -1473,6 +1477,7 @@ function editProspect(id) {
   }
 
   openModal('modal-edit-prospect');
+  if (window.PlacesAC) PlacesAC.load().then(ok => { if (ok) PlacesAC.reattach(); });
 }
 
 async function saveProspect(id, isNew) {
