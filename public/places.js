@@ -43,12 +43,12 @@
     }
 
     _loading = new Promise(resolve => {
-      const s    = document.createElement('script');
-      s.src      = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places&loading=async`;
-      s.async    = true;
-      s.defer    = true;
-      s.onload   = () => { _loaded = true; resolve(true); };
-      s.onerror  = () => {
+      window.__purplPlacesReady = () => { _loaded = true; resolve(true); };
+      const s   = document.createElement('script');
+      s.src     = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places&callback=__purplPlacesReady`;
+      s.async   = true;
+      s.defer   = true;
+      s.onerror = () => {
         console.warn('purpl CRM: Google Places API failed to load. Check your API key and billing.');
         resolve(false);
       };
