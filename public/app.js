@@ -1147,6 +1147,7 @@ function eacAddLoc() {
   div.innerHTML = _eacLocRow(loc, true);
   const row = div.firstElementChild;
   container.appendChild(row);
+  _eacAttachPlaces(row);
 }
 
 function eacRemoveLoc(locId) {
