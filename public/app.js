@@ -4390,6 +4390,10 @@ function setupFilters() {
 //                 wiped by the March 2026 seed-overwrite bug)
 // ══════════════════════════════════════════════════════════
 function restoreMyData() {
+  // SAFETY: never run before Firestore confirms data is loaded.
+  // The 10s startup timeout can fire before the snapshot arrives — without
+  // this guard, restoreMyData would see an empty cache and overwrite real data.
+  if (!DB._firestoreReady) return;
   // Already done — skip
   if (DB.obj('settings',{}).data_restored) return;
 
@@ -4459,6 +4463,7 @@ function restoreMyData() {
 //  TRADE SHOW IMPORT (one-time, 2026 spring show)
 // ══════════════════════════════════════════════════════════
 function importTradeShowProspects() {
+  if (!DB._firestoreReady) { toast('⚠️ Database not ready yet — please wait a moment and try again.'); return; }
   if (!confirm('Import 34 trade show prospects? Duplicates will be skipped.')) return;
 
   const TODAY = today();
@@ -4548,10 +4553,15 @@ function importTradeShowProspects() {
 // ══════════════════════════════════════════════════════════
 window.onAppReady = function() {
   seedIfEmpty();
-  restoreMyData(); // one-time: restores real accounts/prospects lost in seed-overwrite bug
+  restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
 
-  // Allow db.js real-time listener to refresh whichever page is open
-  window.refreshCurrentPage = () => renders[currentPage]?.();
+  // Allow db.js real-time listener to refresh whichever page is open.
+  // Also used to retry one-time migrations that were skipped because the
+  // 10s startup timeout fired before Firestore data arrived.
+  window.refreshCurrentPage = () => {
+    restoreMyData();
+    renders[currentPage]?.();
+  };
 
   // Address autocomplete only activates on the territory map page
 
