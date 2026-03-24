@@ -30,6 +30,26 @@ function toast(msg, dur=3000) {
 function confirm2(msg) { return window.confirm(msg); }
 
 // ── SKU definitions ──────────────────────────────────────
+// ── Fulfillment helpers ──────────────────────────────────
+function _getFulfillBadge(a) {
+  const fb = a.fulfilledBy;
+  if (!fb || fb === 'direct') {
+    return `<span class="badge purple" style="font-size:10px">Direct</span>`;
+  }
+  const dist = DB.a('dist_profiles').find(d=>d.id===fb);
+  return `<span class="badge amber" style="font-size:10px">via ${dist?.name||'Distributor'}</span>`;
+}
+
+function _populateFulfillFilter() {
+  const sel = qs('#ac-fulfill-filter');
+  if (!sel) return;
+  const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Fulfillment</option><option value="direct">Direct</option>' +
+    dists.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+  if (current) sel.value = current;
+}
+
 const SKUS = [
   {id:'classic',    label:'Classic',    cls:'sku-classic',    bg:'classic-bg'},
   {id:'blueberry',  label:'Blueberry',  cls:'sku-blueberry',  bg:'blueberry-bg'},
@@ -164,8 +184,10 @@ function renderDash() {
   }).length;
 
   const allAc  = DB.a('ac');
-  const lfCount    = allAc.filter(a=>!!a.isPbf).length;
-  const purplOnly  = allAc.filter(a=>!a.isPbf).length;
+  const lfCount      = allAc.filter(a=>!!a.isPbf).length;
+  const purplOnly    = allAc.filter(a=>!a.isPbf).length;
+  const directCount  = allAc.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct').length;
+  const viaDistCount = allAc.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
 
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
@@ -176,6 +198,12 @@ function renderDash() {
       <div class="dash-brand-stat" onclick="dashFilterBrand('purpl')" title="View purpl-only accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
         <span>🟣</span><span><strong>${purplOnly}</strong> carry purpl only</span>
       </div>
+      <div class="dash-brand-stat" onclick="dashFilterFulfill('direct')" title="View direct accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
+        <span>🚗</span><span><strong>${directCount}</strong> direct accounts</span>
+      </div>
+      ${viaDistCount>0?`<div class="dash-brand-stat" onclick="dashFilterFulfill('dist')" title="View distributor-fulfilled accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;background:#fef3c7;border-radius:6px;padding:3px 8px">
+        <span>🚚</span><span><strong>${viaDistCount}</strong> via distributor</span>
+      </div>`:''}
     </div>`;
   qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
@@ -279,6 +307,22 @@ function dashFilterBrand(val) {
   if (el) { el.value = val; renderAccounts(); }
 }
 
+function dashFilterFulfill(val) {
+  nav('accounts');
+  _populateFulfillFilter();
+  const el = qs('#ac-fulfill-filter');
+  if (el) {
+    // 'dist' means show all distributor-linked; pick first distributor or leave as ''
+    if (val === 'dist') {
+      const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
+      el.value = dists.length ? dists[0].id : '';
+    } else {
+      el.value = val;
+    }
+    renderAccounts();
+  }
+}
+
 // Price an order. Items qty is in CASES.
 // Account pricing (ac.pricing[sku]) should be price-per-case.
 // Fallback: COGS per can × 2.2 markup × CANS_PER_CASE = price per case.
@@ -301,7 +345,19 @@ function renderAttention() {
   ac.filter(a=>a.status==='active').forEach(a=>{
     const last = a.lastOrder;
     if (daysAgo(last) >= 30) {
-      items.push({icon:'🕐', name:a.name, reason:`No order in ${daysAgo(last)} days`, action:`openAccount('${a.id}')`});
+      const isDistFulfilled = a.fulfilledBy && a.fulfilledBy !== 'direct';
+      if (isDistFulfilled) {
+        const dist = DB.a('dist_profiles').find(d=>d.id===a.fulfilledBy);
+        items.push({
+          icon:'⚠️',
+          name: a.name,
+          reason: `No order in ${daysAgo(last)} days — fulfilled via ${dist?.name||'distributor'}`,
+          action: `openAccount('${a.id}')`,
+          color: '#d97706',
+        });
+      } else {
+        items.push({icon:'🕐', name:a.name, reason:`No order in ${daysAgo(last)} days`, action:`openAccount('${a.id}')`});
+      }
     }
   });
 
@@ -332,11 +388,11 @@ function renderAttention() {
     items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
   });
 
-  // Distributors with no contact in 60+ days
+  // Distributors with no contact in 30+ days (phase 7: lowered from 60 to 30)
   DB.a('dist_profiles').filter(d=>d.status==='active').forEach(d=>{
     const out = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
-    const lastDate = out[0]?.date || null;
-    if (daysAgo(lastDate) >= 60) {
+    const lastDate = out[0]?.date || d.lastContacted || null;
+    if (daysAgo(lastDate) >= 30) {
       items.push({icon:'🚚', name:`${d.name} — No Recent Contact`, reason:`Last contacted ${lastDate?daysAgo(lastDate)+' days ago':'never'}`, action:`openDistributor('${d.id}')`});
     }
   });
@@ -349,9 +405,9 @@ function renderAttention() {
   const el = qs('#dash-attention');
   if (!el) return;
   el.innerHTML = items.length ? items.slice(0,10).map(i=>`
-    <div class="attn-item" onclick="${i.action}" style="cursor:pointer">
+    <div class="attn-item" onclick="${i.action}" style="cursor:pointer${i.color?';border-left:3px solid '+i.color:''}">
       <div class="attn-icon">${i.icon}</div>
-      <div class="attn-info"><div class="attn-name">${i.name}</div><div class="attn-reason">${i.reason}</div></div>
+      <div class="attn-info"><div class="attn-name">${i.name}</div><div class="attn-reason" style="${i.color?'color:'+i.color:''}">${i.reason}</div></div>
     </div>`).join('') : '<div class="empty">All clear! No immediate action needed.</div>';
 }
 
@@ -789,11 +845,13 @@ function acLastContacted(a) {
 }
 
 function renderAccounts() {
+  _populateFulfillFilter();
   let list = DB.a('ac');
-  const search      = qs('#ac-search')?.value?.toLowerCase().trim() || '';
-  const typeFilter  = qs('#ac-type-filter')?.value || '';
-  const brandFilter = qs('#ac-brand-filter')?.value || '';
-  const sortVal     = qs('#ac-sort')?.value || 'name';
+  const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
+  const typeFilter    = qs('#ac-type-filter')?.value || '';
+  const brandFilter   = qs('#ac-brand-filter')?.value || '';
+  const fulfillFilter = qs('#ac-fulfill-filter')?.value || '';
+  const sortVal       = qs('#ac-sort')?.value || 'name';
 
   if (search) list = list.filter(a=>
     a.name?.toLowerCase().includes(search) ||
@@ -803,6 +861,8 @@ function renderAccounts() {
   if (typeFilter) list = list.filter(a=>a.type===typeFilter);
   if (brandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
   if (brandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
+  if (fulfillFilter === 'direct') list = list.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
+  else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
   list = list.slice().sort((a,b)=>{
     if (sortVal==='name')          return (a.name||'') < (b.name||'') ? -1 : 1;
@@ -865,10 +925,11 @@ function renderAccounts() {
     return `<div class="ac-card${needsAttn?' needs-attention':''}">
       <div class="ac-card-hdr">
         <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
             <span class="ac-card-name">${a.name}</span>
             ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
             ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
+            ${_getFulfillBadge(a)}
           </div>
           <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).join(' · ')}</div>
           ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).join(' · ')}</div>`:''}
@@ -1006,6 +1067,18 @@ function openAccount(id) {
       nfuEl.innerHTML = `<span style="color:${nfuColor};font-weight:600">${fmtD(a.nextFollowUp)}</span>`;
     } else {
       nfuEl.textContent = '—';
+    }
+  }
+  const fbEl = qs('#mac-fulfilled-by');
+  if (fbEl) {
+    const fb = a.fulfilledBy;
+    if (!fb || fb === 'direct') {
+      fbEl.innerHTML = `<span class="badge purple" style="font-size:11px">Direct</span>`;
+    } else {
+      const dist = DB.a('dist_profiles').find(d=>d.id===fb);
+      fbEl.innerHTML = dist
+        ? `<span class="badge amber" style="font-size:11px;cursor:pointer" onclick="closeModal('modal-account');openDistributor('${dist.id}')">via ${dist.name}</span>`
+        : `<span class="badge amber" style="font-size:11px">via Distributor</span>`;
     }
   }
 
@@ -1176,6 +1249,15 @@ function editAccount(id) {
   qs('#eac-since').value = a.since||today();
   if (qs('#eac-ispbf')) qs('#eac-ispbf').checked = !!a.isPbf;
 
+  // Populate fulfilled-by dropdown with active distributors
+  const ffSel = qs('#eac-fulfilled-by');
+  if (ffSel) {
+    const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
+    ffSel.innerHTML = '<option value="direct">Direct (self-deliver)</option>' +
+      dists.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+    ffSel.value = a.fulfilledBy || 'direct';
+  }
+
   // Build locations list (migrate old single-address accounts on the fly)
   const locs = (a.locs && a.locs.length)
     ? a.locs
@@ -1243,6 +1325,8 @@ async function saveAccount(id, isNew) {
   }
 
   const rec = {
+    // Preserve ALL existing fields first — avoids data loss on save
+    ...(existing||{}),
     id, name,
     contact:      qs('#eac-contact')?.value?.trim()||'',
     phone:        qs('#eac-phone')?.value?.trim()||'',
@@ -1257,7 +1341,8 @@ async function saveAccount(id, isNew) {
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
-    isPbf:     qs('#eac-ispbf')?.checked || false,
+    isPbf:        qs('#eac-ispbf')?.checked || false,
+    fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
@@ -1608,15 +1693,32 @@ function saveLogOutreach() {
     closeModal('modal-log-outreach');
     toast('Follow-up logged ✓');
   } else if (kind === 'dist') {
-    const entry = {id:uid(), type, date, note};
+    const entry = {
+      id: uid(),
+      type,
+      date,
+      contact,
+      outcome,
+      note,
+      nextFollowUp: nextDate || null,
+    };
     DB.update('dist_profiles', id, d=>({
       ...d,
-      outreach:[...(d.outreach||[]),entry],
+      outreach: [...(d.outreach||[]), entry],
+      lastContacted: date,
       ...(nextDate ? {nextFollowup: nextDate} : {}),
     }));
     renderDistributors();
+    // Refresh outreach tab if dist modal is open
+    if (_currentDistId === id) {
+      const dist = DB.a('dist_profiles').find(x=>x.id===id);
+      if (dist) {
+        const pane = qs('#mdist-tab-outreach');
+        if (pane && pane.style.display!=='none') pane.innerHTML = renderDistOutreachHTML(dist);
+      }
+    }
     closeModal('modal-log-outreach');
-    toast('Outreach logged');
+    toast('Contact logged ✓');
   } else {
     const entry = {id:uid(), type, date, note};
     DB.update('pr', id, p=>({
@@ -1761,26 +1863,28 @@ function renderDistributors() {
     const lastContactDays = lastContact ? daysAgo(lastContact) : null;
     const nextFollowup = d.nextFollowup || null;
 
-    return `<div class="ac-card${lastContactDays!==null&&lastContactDays>60?' needs-attention':''}">
+    const linkedAcCount = DB.a('ac').filter(a=>a.fulfilledBy===d.id).length;
+    return `<div class="ac-card${lastContactDays!==null&&lastContactDays>30?' needs-attention':''}">
       <div class="ac-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
             <span class="ac-card-name">${d.name}</span>
             <span class="badge gray">${d.platformType||'Other'}</span>
+            ${linkedAcCount>0?`<span class="badge amber" style="font-size:10px">${linkedAcCount} account${linkedAcCount!==1?'s':''}</span>`:''}
           </div>
           <div class="ac-card-sub">${d.territory||'No territory set'}</div>
         </div>
         <div class="ac-card-badges">
           ${statusBadge(DIST_STATUS, d.status)}
-          ${lastContactDays!==null&&lastContactDays>60?'<span class="badge amber">⚠ Needs Attention</span>':''}
+          ${lastContactDays!==null&&lastContactDays>30?'<span class="badge amber">⚠ Needs Attention</span>':''}
         </div>
       </div>
       <div class="ac-card-metrics" style="grid-template-columns:repeat(${nextFollowup?5:4},1fr)">
         <div><div class="ac-metric-label">Total Doors</div><div class="ac-metric-val">${fmt(totalDoors)||'—'}</div></div>
         <div><div class="ac-metric-label">Sales Reps</div><div class="ac-metric-val">${reps.length}</div></div>
-        <div><div class="ac-metric-label">Last Contacted</div><div class="ac-metric-val${lastContactDays!==null&&lastContactDays>60?' red':''}">${lastContact?`${fmtD(lastContact)} (${lastContactDays}d)`:'—'}</div></div>
+        <div><div class="ac-metric-label">Last Contacted</div><div class="ac-metric-val${lastContactDays!==null&&lastContactDays>30?' red':''}">${lastContact?`${fmtD(lastContact)} (${lastContactDays}d)`:'—'}</div></div>
         <div><div class="ac-metric-label">Last PO</div><div class="ac-metric-val${lastPO&&daysAgo(lastPO)>60?' red':''}">${lastPO?fmtD(lastPO):'—'}</div></div>
-        ${nextFollowup?`<div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val${nextFollowup<today()?' red':''}">${fmtD(nextFollowup)}</div></div>`:''}
+        ${nextFollowup?`<div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val${nextFollowup<today()?' red':nextFollowup===today()?' amber':''}">${fmtD(nextFollowup)}</div></div>`:''}
       </div>
       ${outreach[0]?`<div class="ac-card-section"><div class="ac-card-section-label">Last Contact</div><div style="font-size:13px">${outreach[0].type} · ${fmtD(outreach[0].date)}${outreach[0].note?' — '+outreach[0].note:''}</div></div>`:''}
       ${pendingVal>0?`<div class="ac-card-section"><div class="ac-card-section-label">Outstanding Invoices</div><div style="font-size:13px;color:var(--red)">${fmtC(pendingVal)}</div></div>`:''}
@@ -1798,21 +1902,33 @@ function renderDistributors() {
   </div>`;
 }
 
-// ── Log Contact (Phase 6) ─────────────────────────────────
+// ── Log Contact (Phase 6 / 7) ─────────────────────────────
 function logDistContact(id) {
   const d = DB.a('dist_profiles').find(x=>x.id===id);
   if (!d) return;
   qs('#mlo-title').textContent = `Log Contact — ${d.name}`;
   qs('#mlo-id').value = id;
   qs('#mlo-kind').value = 'dist';
-  qs('#mlo-type').value = 'Call';
+  qs('#mlo-type').value = 'call';
   qs('#mlo-date').value = today();
   qs('#mlo-note').value = '';
-  qs('#mlo-nextsteps').value = '';
+  if (qs('#mlo-nextsteps')) qs('#mlo-nextsteps').value = '';
+  if (qs('#mlo-contact'))   qs('#mlo-contact').value   = '';
+  if (qs('#mlo-outcome'))   qs('#mlo-outcome').value   = '';
   qs('#mlo-nextdate').value = d.nextFollowup || '';
-  qs('#mlo-nextsteps-row').style.display = '';
+  // Show all fields for distributors
+  const contactRow = qs('#mlo-contact-row');
+  const outcomeRow = qs('#mlo-outcome-row');
+  if (contactRow) contactRow.style.display = '';
+  if (outcomeRow) outcomeRow.style.display = '';
+  qs('#mlo-nextsteps-row').style.display = 'none';
   qs('#mlo-nextdate-row').style.display  = '';
   openModal('modal-log-outreach');
+}
+
+function _switchDistTab(tab) {
+  const btn = document.querySelector(`#modal-distributor .tab[data-dtab="${tab}"]`);
+  if (btn) btn.click();
 }
 
 // ── Detail Modal ──────────────────────────────────────────
@@ -1859,18 +1975,35 @@ function renderDistTab(tab, distId) {
     case 'stores':    pane.innerHTML = renderDistStoresHTML(d); break;
     case 'imports':   pane.innerHTML = renderDistImportsHTML(d); break;
     case 'outreach':  pane.innerHTML = renderDistOutreachHTML(d); break;
+    case 'accounts':  pane.innerHTML = renderDistAccountsHTML(d); break;
   }
 }
 
 function renderDistOverviewHTML(d) {
   const terms = d.paymentTerms==='custom' ? `Custom (${d.paymentTermsDays||'?'} days)` : d.paymentTerms||'Net 30';
+  const linkedAccounts = DB.a('ac').filter(a=>a.fulfilledBy===d.id);
+  const linkedCount = linkedAccounts.length;
+  const outstandingInvCount = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status)).length;
+  const outstandingInvVal = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+  const recentPO = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0];
+  const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+  const lastContact = outreach[0]?.date || d.lastContacted || null;
+
+  // Warning: any linked account with no order in 30+ days
+  const staleAccounts = linkedAccounts.filter(a=>daysAgo(a.lastOrder)>=30);
+
   return `
   <div class="card-grid grid-2" style="margin-bottom:14px">
     <div><span style="font-size:11px;color:var(--muted)">Platform Type</span><div>${d.platformType||'—'}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Payment Terms</span><div>${terms}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Contract Start</span><div>${d.contractStart?fmtD(d.contractStart):'—'}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Total Doors</span><div><strong>${fmt(d.doorCount||0)}</strong></div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Linked Accounts</span><div><strong style="cursor:pointer;color:var(--lavblue)" onclick="_switchDistTab('accounts')">${linkedCount}</strong></div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Outstanding Invoices</span><div>${outstandingInvCount>0?`<span style="color:var(--red);font-weight:600">${fmtC(outstandingInvVal)}</span>`:'<span style="color:var(--green)">Clear</span>'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Most Recent Shipment</span><div>${recentPO?fmtD(recentPO.dateReceived):'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Last Contacted</span><div>${lastContact?`${fmtD(lastContact)} (${daysAgo(lastContact)}d ago)`:'—'}</div></div>
   </div>
+  ${staleAccounts.length>0?`<div style="background:#fef3c7;border:1px solid #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">⚠ ${staleAccounts.length} linked account${staleAccounts.length!==1?'s have':' has'} not ordered in 30+ days: ${staleAccounts.map(a=>`<strong>${a.name}</strong>`).join(', ')}</div>`:''}
   <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${d.territory||'—'}</div></div>
   ${d.notes?`<div class="highlight-box" style="margin-bottom:0"><div class="ac-card-section-label">Internal Notes</div><div style="font-size:13px;margin-top:4px">${d.notes}</div></div>`:''}`;
 }
@@ -1959,8 +2092,9 @@ function renderDistOrdersHTML(d) {
   }).join('');
 
   return `
-    <div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-      <button class="btn sm primary" onclick="addDistPOInModal('${d.id}')">+ Log PO</button>
+    <div style="margin-bottom:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn sm primary" onclick="openDistShipmentModal('${d.id}')">🚚 Log Shipment</button>
+      <button class="btn sm" onclick="addDistPOInModal('${d.id}')">+ Log PO</button>
     </div>
     <div class="tbl-wrap">
       <table>
@@ -2067,19 +2201,172 @@ function renderDistImportsHTML(d) {
 function renderDistOutreachHTML(d) {
   const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
   const nextFollowup = d.nextFollowup;
+  const TYPE_CLS = {call:'purple', email:'blue', 'in-person':'green', text:'amber', other:'gray'};
+  const rows = outreach.map(e=>{
+    const nfu = e.nextFollowUp;
+    const nfuHtml = nfu ? `<span style="color:${nfu<today()?'var(--red)':nfu===today()?'var(--amber)':'var(--muted)'};font-size:11px">${fmtD(nfu)}</span>` : '—';
+    return `<tr>
+      <td>${fmtD(e.date)}</td>
+      <td><span class="badge ${TYPE_CLS[e.type]||'gray'}">${e.type||'—'}</span></td>
+      <td>${e.contact||'—'}</td>
+      <td>${e.outcome?`<span class="badge gray">${e.outcome}</span>`:'—'}</td>
+      <td style="max-width:200px">${e.note||'—'}</td>
+      <td>${nfuHtml}</td>
+    </tr>`;
+  }).join('');
   return `
-    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       ${nextFollowup?`<span class="badge ${nextFollowup<today()?'red':'blue'}">Next follow-up: ${fmtD(nextFollowup)}</span>`:''}
       <button class="btn sm primary" onclick="logDistContact('${d.id}')">📞 Log Contact</button>
     </div>
     ${outreach.length ? `<div class="tbl-wrap"><table>
-      <thead><tr><th>Date</th><th>Type</th><th>Notes</th></tr></thead>
-      <tbody>${outreach.map(e=>`<tr>
-        <td>${fmtD(e.date)}</td>
-        <td><span class="badge gray">${e.type}</span></td>
-        <td>${e.note||'—'}</td>
-      </tr>`).join('')}</tbody>
+      <thead><tr><th>Date</th><th>Type</th><th>Contact</th><th>Outcome</th><th>Notes</th><th>Next Follow-Up</th></tr></thead>
+      <tbody>${rows}</tbody>
     </table></div>` : '<div class="empty">No outreach logged yet.</div>'}`;
+}
+
+function renderDistAccountsHTML(d) {
+  const linked = DB.a('ac').filter(a=>a.fulfilledBy===d.id);
+  if (!linked.length) return `<div class="empty">No accounts are linked to this distributor yet.<br><small style="color:var(--muted)">Edit an account and set "Fulfilled By" to ${d.name} to link it here.</small></div>`;
+
+  const todayStr = today();
+  const rows = linked.map(a=>{
+    const outstanding = DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid').length;
+    const nfu = a.nextFollowUp;
+    const nfuHtml = nfu
+      ? `<span style="color:${nfu<todayStr?'var(--red)':nfu===todayStr?'var(--amber)':'var(--blue)'};">${fmtD(nfu)}</span>`
+      : '—';
+    return `<tr>
+      <td><strong style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${a.id}')">${a.name}</strong></td>
+      <td>${a.type||'—'}</td>
+      <td style="font-size:12px">${a.address||'—'}</td>
+      <td>${a.lastOrder?fmtD(a.lastOrder):'<span style="color:var(--red)">Never</span>'}</td>
+      <td>${acLastContacted(a)?fmtD(acLastContacted(a)):'—'}</td>
+      <td>${outstanding>0?`<span class="badge red">${outstanding} unpaid</span>`:'<span class="badge green">Clear</span>'}</td>
+      <td>${nfuHtml}</td>
+      <td>
+        <button class="btn xs primary" onclick="openAccount('${a.id}')">View</button>
+        <button class="btn xs" onclick="logOutreach('${a.id}')">Follow-Up</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const totalOutstanding = linked.reduce((s,a)=>{
+    return s + DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid').length;
+  }, 0);
+
+  return `
+    <div style="margin-bottom:10px;font-size:13px;color:var(--muted)">${linked.length} account${linked.length!==1?'s':''} fulfilled via ${d.name}${totalOutstanding>0?` &nbsp;·&nbsp; <span style="color:var(--red);font-weight:600">${totalOutstanding} unpaid invoice${totalOutstanding!==1?'s':''}</span>`:''}</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Account</th><th>Type</th><th>Address</th><th>Last Order</th><th>Last Contacted</th><th>Outstanding</th><th>Next Follow-Up</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Log Shipment to Distributor (Phase 5) ────────────────
+function openDistShipmentModal(distId) {
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  if (!d) return;
+  qs('#dship-dist-id').value = distId;
+  qs('#dship-dist-name').textContent = d.name;
+  qs('#dship-date').value = today();
+  qs('#dship-po-ref').value = '';
+  qs('#dship-notes').value = '';
+  qs('#dship-status').value = 'fulfilled';
+
+  // Build qty inputs using CANS_PER_CASE constant
+  const qtyDiv = qs('#dship-qty-inputs');
+  if (qtyDiv) {
+    qtyDiv.innerHTML = SKUS.map(s=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        ${skuBadge(s.id)}
+        <input type="number" id="dship-qty-${s.id}" value="0" min="0" step="1" style="width:80px">
+        <span style="font-size:12px;color:var(--muted)">cases (×${CANS_PER_CASE} cans)</span>
+      </div>`).join('');
+  }
+  openModal('modal-dist-shipment');
+}
+
+function saveDistShipment() {
+  const distId  = qs('#dship-dist-id').value;
+  const date    = qs('#dship-date').value || today();
+  const poRef   = qs('#dship-po-ref').value.trim();
+  const notes   = qs('#dship-notes').value.trim();
+  const status  = qs('#dship-status').value;
+
+  const items = SKUS.map(s=>({
+    sku: s.id,
+    cases: parseInt(qs(`#dship-qty-${s.id}`)?.value)||0
+  })).filter(i=>i.cases>0);
+
+  if (!items.length) { toast('Add at least one SKU qty'); return; }
+
+  const totalCases = items.reduce((s,i)=>s+i.cases, 0);
+  const totalCans  = totalCases * CANS_PER_CASE;
+
+  // Build batch write: PO record + inventory deductions + stock transfer + dist lastOrder
+  const shipId = uid();
+  const poId   = uid();
+  const stId   = uid();
+
+  const dist = DB.a('dist_profiles').find(x=>x.id===distId);
+
+  // 1. Create dist PO record
+  const poRec = {
+    id: poId,
+    distId,
+    poNumber: poRef || `SHIP-${date}`,
+    dateReceived: date,
+    expectedShipDate: date,
+    items,
+    totalCases,
+    totalValue: null,
+    status,
+    notes,
+    isShipment: true,
+  };
+  DB.push('dist_pos', poRec);
+
+  // 2. Deduct inventory (one inv entry per SKU)
+  items.forEach(item=>{
+    DB.push('iv', {
+      id: uid(),
+      sku: item.sku,
+      type: 'out',
+      qty: item.cases * CANS_PER_CASE,
+      date,
+      source: 'dist_shipment',
+      ref: shipId,
+      note: `Shipment to ${dist?.name||'distributor'}${poRef?' — '+poRef:''}`,
+    });
+  });
+
+  // 3. Stock transfer record
+  DB.push('stock_transfers', {
+    id: stId,
+    date,
+    fromLocation: 'warehouse',
+    toLocation: `dist:${distId}`,
+    items,
+    ref: poRef || poId,
+    notes,
+  });
+
+  // 4. Update distributor lastOrder date
+  DB.update('dist_profiles', distId, d=>({
+    ...d,
+    lastOrder: date,
+  }));
+
+  closeModal('modal-dist-shipment');
+  // Refresh dist modal orders tab if open
+  const openDistPane = qs('#mdist-tab-orders');
+  if (openDistPane && openDistPane.style.display!=='none' && _currentDistId===distId) {
+    openDistPane.innerHTML = renderDistOrdersHTML(DB.a('dist_profiles').find(x=>x.id===distId));
+  }
+  toast(`Shipment logged — ${totalCases} cases (${totalCans} cans) deducted from inventory`);
 }
 
 // ── Edit / Save Distributor ───────────────────────────────
@@ -2537,9 +2824,11 @@ function renderDistDashKPIs() {
   const allPOs = DB.a('dist_pos').sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
   const lastPO  = allPOs[0]?.dateReceived || null;
 
+  const viaDistAcCount = DB.a('ac').filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
   el.innerHTML = `
     <div>${kpiHtml('Active Distributors', active.length, 'purple')}</div>
     <div>${kpiHtml('Total Doors', fmt(totalDoors)||'—', 'blue')}</div>
+    <div>${kpiHtml('Dist. Accounts', viaDistAcCount, 'amber')}</div>
     <div>${kpiHtml('Outstanding Inv.', fmtC(outstandingVal), outstandingVal>0?'red':'green')}</div>
     <div>${kpiHtml('Last PO', lastPO?fmtD(lastPO):'None', 'gray')}</div>`;
 }
@@ -3426,6 +3715,17 @@ function saveShipment() {
 // ══════════════════════════════════════════════════════════
 //  DELIVERY
 // ══════════════════════════════════════════════════════════
+let _deliveryFulfillFilter = 'direct';
+
+function setDeliveryFulfillFilter(mode) {
+  _deliveryFulfillFilter = mode;
+  ['direct','all','dist'].forEach(m=>{
+    const btn = qs('#del-ff-'+m);
+    if (btn) btn.classList.toggle('active', m===mode);
+  });
+  renderDelivery();
+}
+
 function renderDelivery() {
   const run = DB.obj('today_run', {date:'', stops:[]});
   const stops = run.stops || [];
@@ -3437,12 +3737,15 @@ function renderDelivery() {
     const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
              || DB.a('ac').find(a=>a.name===s.name);
     const rules = ac?.dropOffRules || '';
+    const isDistFulfilled = ac?.fulfilledBy && ac.fulfilledBy !== 'direct';
+    const distName = isDistFulfilled ? DB.a('dist_profiles').find(d=>d.id===ac.fulfilledBy)?.name : null;
     return `
     <div class="order-card ${s.done?'done':''}">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <input type="checkbox" ${s.done?'checked':''} onchange="toggleStop(${i})" style="width:16px;height:16px;margin-top:2px;cursor:pointer">
         <div style="flex:1">
           <div style="font-size:14px;font-weight:700;${s.done?'text-decoration:line-through;opacity:.5':''}">${s.name}</div>
+          ${isDistFulfilled&&!s.done?`<div style="font-size:11px;color:#d97706;background:#fef3c7;padding:3px 8px;border-radius:4px;margin-bottom:4px">⚠ Fulfilled via ${distName||'distributor'} — confirm direct delivery is intentional</div>`:''}
           ${rules && !s.done ? `<div class="delivery-rules-box">
             <div class="delivery-rules-label">⚠ Delivery Instructions:</div>
             <div class="delivery-rules-text">${rules}</div>
@@ -3460,11 +3763,17 @@ function renderDelivery() {
   const done = stops.filter(s=>s.done).length;
   qs('#del-progress').innerHTML = stops.length ? `${done}/${stops.length} stops complete` : '';
 
-  // Pre-fill add-stop form with accounts (always refresh so new accounts appear)
+  // Pre-fill add-stop form with accounts filtered by fulfillment mode
   const acSel = qs('#del-account-sel');
   if (acSel) {
+    let acList = DB.a('ac').filter(a=>a.status==='active');
+    if (_deliveryFulfillFilter === 'direct') {
+      acList = acList.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
+    } else if (_deliveryFulfillFilter === 'dist') {
+      acList = acList.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct');
+    }
     acSel.innerHTML = '<option value="">— Select account —</option>' +
-      DB.a('ac').filter(a=>a.status==='active').map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+      acList.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
     acSel.onchange = () => prefillStop(acSel.value);
   }
 }
@@ -4359,7 +4668,7 @@ function qs(sel) { return document.querySelector(sel); }
 // ── Wire filter/search controls ──────────────────────────
 function setupFilters() {
   // Accounts
-  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-sort'].forEach(sel=>{
+  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-fulfill-filter','#ac-sort'].forEach(sel=>{
     const el = qs(sel);
     if (el) el.addEventListener('input', renderAccounts);
   });
@@ -4768,9 +5077,10 @@ function renderMap() {
 }
 
 const MAP_PIN_COLORS = {
-  account:  '#8b5cf6', // purple
-  prospect: '#3b82f6', // blue
-  run:      '#10b981', // green
+  account:     '#8b5cf6', // purple — direct
+  accountDist: '#d97706', // amber  — via distributor
+  prospect:    '#3b82f6', // blue
+  run:         '#10b981', // green
 };
 
 function _renderMapPins() {
@@ -4805,6 +5115,7 @@ function _renderMapPins() {
         <div style="font-weight:700;font-size:14px;margin-bottom:4px">${opts.name}</div>
         <div style="font-size:12px;color:#666">${opts.sub||''}</div>
         ${opts.action?`<div style="margin-top:8px"><a href="#" onclick="${opts.action};return false" style="color:#8b5cf6;font-weight:600;font-size:12px">${opts.actionLabel||'View'}</a></div>`:''}
+        ${opts.action2&&opts.actionLabel2?`<div style="margin-top:4px"><a href="#" onclick="${opts.action2};return false" style="color:#d97706;font-weight:600;font-size:12px">${opts.actionLabel2}</a></div>`:''}
         ${_mapRunMode&&opts.runAction?`<div style="margin-top:4px"><a href="#" onclick="${opts.runAction};return false" style="color:#10b981;font-weight:600;font-size:12px">+ Add to Run</a></div>`:''}
       </div>` });
 
@@ -4819,19 +5130,24 @@ function _renderMapPins() {
     hasPoints = true;
   };
 
-  // Accounts — plot each location as its own pin
+  // Accounts — plot each location as its own pin; color by fulfillment
   {
     DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
       const locs = (a.locs && a.locs.length) ? a.locs
         : (a.lat && a.lng ? [{id:'legacy', label:'', address:a.address||'', lat:a.lat, lng:a.lng, dropOffRules:''}] : []);
+      const isDistFulfilled = a.fulfilledBy && a.fulfilledBy !== 'direct';
+      const distName = isDistFulfilled ? DB.a('dist_profiles').find(d=>d.id===a.fulfilledBy)?.name : null;
+      const pinColor = isDistFulfilled ? MAP_PIN_COLORS.accountDist : MAP_PIN_COLORS.account;
       locs.filter(l=>l.lat&&l.lng).forEach(l=>{
         const pinName = locs.length > 1 ? `${a.name} – ${l.label||l.address||'Location'}` : a.name;
         addPin(parseFloat(l.lat), parseFloat(l.lng), {
           name: pinName,
-          sub: l.address||a.type||'',
-          color: MAP_PIN_COLORS.account,
+          sub: isDistFulfilled ? `via ${distName||'distributor'} · ${l.address||a.type||''}` : (l.address||a.type||''),
+          color: pinColor,
           action: `openAccount('${a.id}')`,
           actionLabel: 'View Account',
+          actionLabel2: isDistFulfilled && distName ? `View ${distName}` : null,
+          action2: isDistFulfilled ? `openDistributor('${a.fulfilledBy}')` : null,
           runAction: `mapAddToRun('${a.id}')`,
         });
       });

@@ -282,6 +282,10 @@
           <option value="lf">🌿 Lavender Fields + purpl</option>
           <option value="purpl">purpl Only</option>
         </select>
+        <select id="ac-fulfill-filter">
+          <option value="">All Fulfillment</option>
+          <option value="direct">Direct</option>
+        </select>
         <select id="ac-sort">
           <option value="name">Sort: Name A–Z</option>
           <option value="lastOrder">Sort: Last Order</option>
@@ -653,6 +657,11 @@
 
       <!-- Tab: Route Builder (was Delivery page) -->
       <div id="od-tab-route-builder" style="display:none">
+        <div id="del-fulfill-toggle" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+          <button class="btn sm active" id="del-ff-direct" onclick="setDeliveryFulfillFilter('direct')">Direct Only</button>
+          <button class="btn sm" id="del-ff-all" onclick="setDeliveryFulfillFilter('all')">All Accounts</button>
+          <button class="btn sm" id="del-ff-dist" onclick="setDeliveryFulfillFilter('dist')">By Distributor</button>
+        </div>
         <div class="section-hdr" style="margin-bottom:4px">
           <h2>Today's Route</h2>
           <div style="display:flex;gap:8px">
@@ -1242,6 +1251,7 @@
         <div><span style="font-size:11px;color:var(--muted)">Last Order</span><div id="mac-last-order"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Last Contacted</span><div id="mac-last-contacted"></div></div>
         <div><span style="font-size:11px;color:var(--muted)">Next Follow-Up</span><div id="mac-next-followup"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Fulfilled By</span><div id="mac-fulfilled-by"></div></div>
       </div>
       <div id="mac-address-row" style="margin-bottom:8px;display:none"><span style="font-size:11px;color:var(--muted)">Address</span><div id="mac-address" style="margin-top:2px"></div></div>
       <div id="mac-drop-row" style="margin-bottom:12px;display:none"><span style="font-size:11px;color:var(--muted)">Drop-off rules</span><div id="mac-drop-rules" style="margin-top:2px;font-size:13px"></div></div>
@@ -1305,6 +1315,11 @@
       </div>
     </div>
     <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
+    <div class="form-group" style="margin-bottom:10px"><label>Fulfilled By</label>
+      <select id="eac-fulfilled-by">
+        <option value="direct">Direct (self-deliver)</option>
+      </select>
+    </div>
     <div class="form-group" style="margin-bottom:14px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
         <input type="checkbox" id="eac-ispbf"> Also a Lavender Fields wholesaler
@@ -1526,6 +1541,7 @@
       <button class="tab" data-dtab="stores">Store Coverage</button>
       <button class="tab" data-dtab="imports">Imported Data</button>
       <button class="tab" data-dtab="outreach">Outreach Log</button>
+      <button class="tab" data-dtab="accounts">Accounts</button>
     </div>
     <div id="mdist-tab-overview"  class="dtab-pane"></div>
     <div id="mdist-tab-reps"      class="dtab-pane" style="display:none"></div>
@@ -1535,11 +1551,45 @@
     <div id="mdist-tab-stores"    class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-imports"   class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-outreach"  class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-accounts"  class="dtab-pane" style="display:none"></div>
     <div class="modal-footer">
       <button class="btn" onclick="logDistContact(_currentDistId)">📞 Log Contact</button>
       <button class="btn" id="mdist-po-btn">+ Log PO</button>
       <button class="btn" id="mdist-invoice-btn">+ Invoice</button>
       <button class="btn primary" id="mdist-edit-btn">Edit Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Shipment to Distributor -->
+<div class="overlay" id="modal-dist-shipment">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-hdr"><h2>Log Shipment to Distributor</h2><button class="modal-close btn sm">✕</button></div>
+    <input type="hidden" id="dship-dist-id">
+    <div class="form-row col2">
+      <div class="form-group"><label>Distributor</label><div id="dship-dist-name" style="padding:8px 0;font-weight:600"></div></div>
+      <div class="form-group"><label>Ship Date *</label><input type="date" id="dship-date"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Cases per SKU (1 case = 12 cans)</label>
+      <div id="dship-qty-inputs"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>PO / Reference #</label><input id="dship-po-ref" placeholder="e.g. PO-2026-001"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="dship-status">
+          <option value="fulfilled">Fulfilled</option>
+          <option value="partial">Partial</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:12px"><label>Notes</label>
+      <textarea id="dship-notes" rows="2" placeholder="Optional notes…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-dist-shipment')">Cancel</button>
+      <button class="btn primary" onclick="saveDistShipment()">Save Shipment</button>
     </div>
   </div>
 </div>
