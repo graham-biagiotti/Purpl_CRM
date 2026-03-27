@@ -5681,9 +5681,11 @@ async function declinePortalOrder(id) {
 // ── Confirm portal order flow ─────────────────────────────
 
 let _confirmPortalOrderId = null;
+let _portalOrderId = null;
 
 function openConfirmPortalOrder(id) {
   _confirmPortalOrderId = id;
+  _portalOrderId = id;
   const o = PortalDB.getOrders().find(x => x.id === id);
   if (!o) return;
   if (!o.accountId) {
@@ -5720,58 +5722,120 @@ function openConfirmPortalOrder(id) {
   if (dueDateInput) dueDateInput.value = today();
 
   const saveBtn = qs('#mcpo-save-btn');
-  if (saveBtn) saveBtn.onclick = () => _confirmPortalOrderSave();
+  if (saveBtn) saveBtn.onclick = () => confirmPortalOrder();
 
   openModal('modal-confirm-portal-order');
 }
 
-async function _confirmPortalOrderSave() {
-  const o = PortalDB.getOrders().find(x => x.id === _confirmPortalOrderId);
-  if (!o) return;
-  const cases   = parseInt(qs('#mcpo-classic-qty')?.value)||0;
-  const dueDate = qs('#mcpo-due-date')?.value || today();
-  const notes   = qs('#mcpo-notes')?.value?.trim()||'';
-  if (cases < 1) { toast('Enter at least 1 case'); return; }
-  if (!o.accountId) { toast('Account not linked'); return; }
+async function confirmPortalOrder() {
+  if (!_portalOrderId) return;
+  try {
+    const portalRef = firebase.firestore()
+      .collection('portal_orders').doc(_portalOrderId);
+    const portalSnap = await portalRef.get();
+    const d = portalSnap.data();
 
-  // Build real order in orders collection
-  const orderId = uid();
-  const cans    = cases * PORTAL_CANS_PER_CASE;
-  const newOrder = {
-    id: orderId,
-    accountId: o.accountId,
-    created: new Date().toISOString(),
-    dueDate,
-    status: 'pending',
-    source: 'portal',
-    linkedPortalOrderId: o.id,
-    items: [{ sku:'classic', qty: cases }],
-    canCount: cans,
-    notes,
-    invoiceStatus: 'none',
-    invoiceDate: null,
-    paidDate: null,
-    poNumber: o.poNumber||'',
-  };
+    const casesEl = document.getElementById('confirm-cases');
+    const cases = parseInt(casesEl?.value || qs('#mcpo-classic-qty')?.value || 0);
+    if (cases < 1) { toast('Enter at least 1 case'); return; }
 
-  DB.push('orders', newOrder);
+    const cans = cases * PORTAL_CANS_PER_CASE;
+    const orderId = 'ord_' + Date.now().toString(36);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const batch = firebase.firestore().batch();
 
-  // Update account lastOrder
-  DB.update('ac', o.accountId, a => ({
-    ...a, lastOrder: dueDate
-  }));
+    // 1. Create order record
+    const orderRef = firebase.firestore()
+      .collection('orders').doc(orderId);
+    batch.set(orderRef, {
+      id: orderId,
+      accountId: d.accountId || null,
+      accountName: d.accountName,
+      date: todayStr,
+      cases: cases,
+      cans: cans,
+      status: 'pending',
+      source: 'portal',
+      linkedPortalOrderId: _portalOrderId,
+      notes: d.notes || '',
+      poNumber: d.poNumber || '',
+      deliveryWindow: d.deliveryWindow || '',
+      distributor: d.distributor || '',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-  // Update portal_orders doc
-  const nowIso = new Date().toISOString();
-  await PortalDB.updateOrder(o.id, {
-    status: 'confirmed',
-    confirmedAt: new Date(),
-    convertedOrderId: orderId,
-  });
+    // 2. Update portal order status
+    batch.update(portalRef, {
+      status: 'confirmed',
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      convertedOrderId: orderId
+    });
 
-  closeModal('modal-confirm-portal-order');
-  toast('Order confirmed and added to orders ✓');
-  renderPreOrders(true);
+    // 3. Update account lastOrder date
+    if (d.accountId) {
+      const entityCollection = d.isProspect ? 'prospects' : 'accounts';
+      const acctRef = firebase.firestore()
+        .collection(entityCollection).doc(d.accountId);
+      batch.update(acctRef, { lastOrder: todayStr });
+    }
+
+    // 4. Deduct from inventory (finished packs)
+    const invRef = firebase.firestore()
+      .collection('inventory_log').doc();
+    batch.set(invRef, {
+      type: 'portal_order',
+      date: todayStr,
+      sku: 'classic',
+      cases: cases,
+      cans: cans,
+      accountName: d.accountName,
+      orderId: orderId,
+      notes: 'Portal order confirmed',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 5. Create draft invoice
+    const invoiceId = 'inv_' + Date.now().toString(36);
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30);
+    const invoiceRef = firebase.firestore()
+      .collection('invoices').doc(invoiceId);
+    batch.set(invoiceRef, {
+      id: invoiceId,
+      accountId: d.accountId || null,
+      accountName: d.accountName,
+      orderId: orderId,
+      date: todayStr,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      cases: cases,
+      cans: cans,
+      amount: null,
+      status: 'draft',
+      source: 'portal',
+      invoiceEmail: d.billingEmail || '',
+      billedFrom: 'lavender@pumpkinblossomfarm.com',
+      notes: 'Auto-generated from portal order. Set amount before sending.',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
+    closeModal('modal-confirm-portal-order');
+    renderPreOrders(true);
+    toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+
+    // If prospect — prompt to convert
+    if (d.isProspect && d.accountId) {
+      setTimeout(() => {
+        if (confirm(d.accountName + ' is a prospect. Convert to active account now?')) {
+          convertProspect(d.accountId);
+        }
+      }, 500);
+    }
+
+  } catch(e) {
+    console.error('confirmPortalOrder error:', e);
+    toast('Error confirming order — check console');
+  }
 }
 
 // ── Phase 5: Portal Settings ──────────────────────────────
