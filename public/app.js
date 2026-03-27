@@ -538,7 +538,37 @@ function renderInvoiceStatus() {
         <div class="attn-info"><div class="attn-name">${ac2?.name||'Unknown'}</div><div class="attn-reason">Invoice overdue &middot; ${fmtD(o.dueDate)}</div></div>
         <button class="btn xs green" onclick="setInvStatus('${o.id}','paid')">Mark Paid</button>
       </div>`;
-    }).join('') : '<div class="empty">No invoice issues</div>'}`;
+    }).join('') : '<div class="empty">No invoice issues</div>'}
+    ${(()=>{
+      const rInvs = DB.a('retail_invoices').sort((a,b)=>b.date>a.date?1:-1);
+      if (!rInvs.length) return '';
+      const rows = rInvs.map(inv=>{
+        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
+        const statusCls = inv.status==='paid'?'green': daysAgo(inv.dueDate)>0?'red':'blue';
+        return `<tr>
+          <td>${inv.invoiceNumber||'—'}</td>
+          <td>${fmtD(inv.date)}</td>
+          <td>${acName}</td>
+          <td>${fmtD(inv.dueDate)}</td>
+          <td>${fmtC(inv.total||0)}</td>
+          <td><span class="badge ${statusCls}">${inv.status==='paid'?'Paid':daysAgo(inv.dueDate)>0?'Overdue':'Unpaid'}</span></td>
+          <td style="white-space:nowrap">
+            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
+            ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">Mark Paid</button>`:''}
+            <button class="btn xs red" onclick="deleteRetailInv('${inv.id}')">✕</button>
+          </td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-top:16px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Invoices</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Invoice #</th><th>Date</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    })()}`;
 }
 
 function setInvStatus(id, status) {
@@ -549,6 +579,252 @@ function setInvStatus(id, status) {
   if (detailModal && detailModal.classList.contains('open')) openOrderDetail(id);
   renderInvoiceStatus();
   toast(status==='paid'?'Marked as paid':'Invoice updated');
+}
+
+// ══════════════════════════════════════════════════════════
+//  RETAIL INVOICES (standalone customer invoices)
+// ══════════════════════════════════════════════════════════
+
+function openAddInv() {
+  // Populate account dropdown
+  const sel = qs('#iv-account');
+  if (sel) {
+    const accounts = DB.a('ac').filter(a=>a.status==='active').sort((a,b)=>a.name>b.name?1:-1);
+    sel.innerHTML = '<option value="">— Select account —</option>' +
+      accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  }
+  if (qs('#iv-date'))           qs('#iv-date').value = today();
+  if (qs('#iv-price-type'))     qs('#iv-price-type').value = 'direct';
+  if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = '';
+  if (qs('#iv-cases'))          qs('#iv-cases').value = '';
+  if (qs('#iv-amt'))            qs('#iv-amt').value = '';
+  if (qs('#iv-notes'))          qs('#iv-notes').value = '';
+  openModal('modal-add-inv');
+}
+
+function _ivAutoFillPrice() {
+  const acId = qs('#iv-account')?.value;
+  const type = qs('#iv-price-type')?.value;
+  if (!acId || type === 'manual') return;
+  const ac = DB.a('ac').find(a=>a.id===acId);
+  if (!ac) return;
+  let price = null;
+  if (type === 'direct')  price = ac.pricePerCaseDirect  || null;
+  if (type === 'dist')    price = ac.pricePerCaseDist    || null;
+  if (type === 'custom')  price = ac.pricePerCaseCustom  || null;
+  if (price && qs('#iv-price-per-case')) {
+    qs('#iv-price-per-case').value = price;
+    _ivCalcTotal();
+  }
+}
+
+function _ivCalcTotal() {
+  const cases = parseFloat(qs('#iv-cases')?.value)||0;
+  const price = parseFloat(qs('#iv-price-per-case')?.value)||0;
+  if (qs('#iv-amt')) qs('#iv-amt').value = cases && price ? (cases * price).toFixed(2) : '';
+}
+
+function saveRetailInv() {
+  const acId  = qs('#iv-account')?.value;
+  const date  = qs('#iv-date')?.value;
+  const cases = parseFloat(qs('#iv-cases')?.value)||0;
+  const price = parseFloat(qs('#iv-price-per-case')?.value)||0;
+  if (!acId)   { toast('Select an account'); return; }
+  if (!date)   { toast('Invoice date required'); return; }
+  if (!cases)  { toast('Enter case quantity'); return; }
+  if (!price)  { toast('Enter price per case'); return; }
+
+  const invSettings = DB.obj('invoice_settings', {});
+  const terms = invSettings.terms || 30;
+  const dueDate = new Date(new Date(date+'T12:00:00').getTime() + terms*864e5).toISOString().slice(0,10);
+
+  // Auto-generate invoice number
+  const existing = DB.a('retail_invoices');
+  const num = existing.length + 1;
+  const invoiceNumber = `INV-${new Date().getFullYear()}-${String(num).padStart(3,'0')}`;
+
+  const rec = {
+    id: uid(),
+    invoiceNumber,
+    accountId: acId,
+    date,
+    dueDate,
+    priceType:    qs('#iv-price-type')?.value || 'direct',
+    pricePerCase: price,
+    cases,
+    total: cases * price,
+    notes: qs('#iv-notes')?.value?.trim() || '',
+    status: 'unpaid',
+    createdAt: today(),
+  };
+  DB.push('retail_invoices', rec);
+  closeModal('modal-add-inv');
+  renderInvoiceStatus();
+  toast('Invoice saved');
+}
+
+function markRetailInvPaid(id) {
+  DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
+  renderInvoiceStatus();
+  toast('Marked as paid');
+}
+
+function deleteRetailInv(id) {
+  if (!confirm2('Delete this invoice?')) return;
+  DB.remove('retail_invoices', id);
+  renderInvoiceStatus();
+  toast('Invoice deleted');
+}
+
+function generateInvoicePrint(invoiceId) {
+  const inv = DB.a('retail_invoices').find(i=>i.id===invoiceId);
+  if (!inv) { toast('Invoice not found'); return; }
+  const ac = DB.a('ac').find(a=>a.id===inv.accountId) || {};
+  const invSettings = DB.obj('invoice_settings', {});
+
+  const fromName    = invSettings.fromName    || 'Pumpkin Blossom Farm LLC';
+  const fromEmail   = invSettings.fromEmail   || 'sales@drinkpurpl.com';
+  const fromAddress = invSettings.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
+  const payInstr    = invSettings.paymentInstructions || '';
+  const achRouting  = invSettings.achRouting  || '';
+  const achAccount  = invSettings.achAccount  || '';
+  const stripeLink  = invSettings.stripeLink  || '';
+  const terms       = invSettings.terms       || 30;
+
+  const cans      = (inv.cases || 0) * CANS_PER_CASE;
+  const subtotal  = inv.total || 0;
+  const dueDateFmt = fmtD(inv.dueDate);
+  const invDateFmt = fmtD(inv.date);
+
+  // Status badge color
+  const statusColor = inv.status === 'paid' ? '#16a34a' : daysAgo(inv.dueDate) > 0 ? '#dc2626' : '#1d4ed8';
+  const statusLabel = inv.status === 'paid' ? 'PAID' : daysAgo(inv.dueDate) > 0 ? 'OVERDUE' : 'UNPAID';
+
+  // Account address (first location)
+  const acAddr = ac.locs?.[0]?.address || ac.address || '';
+
+  // Payment section
+  let paymentHtml = '';
+  if (achRouting && achAccount) {
+    paymentHtml += `
+      <div style="margin-bottom:8px">
+        <strong>ACH / Bank Transfer:</strong><br>
+        Routing: <strong>${achRouting}</strong><br>
+        Account: <strong>${achAccount}</strong>
+      </div>`;
+  }
+  if (stripeLink) {
+    paymentHtml += `
+      <div style="margin-bottom:8px">
+        <a href="${stripeLink}" style="display:inline-block;background:#635bff;color:#fff;padding:8px 20px;border-radius:6px;text-decoration:none;font-weight:600">Pay Now →</a>
+      </div>`;
+  }
+  if (payInstr) {
+    paymentHtml += `<div style="white-space:pre-line;font-size:13px;color:#555">${payInstr}</div>`;
+  }
+  if (!paymentHtml) {
+    paymentHtml = `<div style="font-size:13px;color:#555">Make checks payable to ${fromName}</div>`;
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${inv.invoiceNumber}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; padding: 40px; max-width: 800px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 2px solid #e5e7eb; }
+    .logo-block img { height: 56px; margin-bottom: 8px; display: block; }
+    .company-name { font-size: 17px; font-weight: 700; color: #1a1a1a; }
+    .company-sub { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.5; }
+    .invoice-meta { text-align: right; }
+    .inv-label { font-size: 32px; font-weight: 800; color: #7c3aed; letter-spacing: -1px; }
+    .inv-detail { font-size: 13px; color: #374151; margin-top: 6px; line-height: 1.8; }
+    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; color: #fff; background: ${statusColor}; margin-top: 4px; }
+    .bill-to { margin-bottom: 28px; }
+    .bill-to h3 { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .bill-to .account-name { font-size: 18px; font-weight: 700; }
+    .bill-to .account-addr { font-size: 13px; color: #555; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead th { background: #7c3aed; color: #fff; padding: 10px 12px; font-size: 12px; font-weight: 600; text-align: left; }
+    tbody td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
+    tbody tr:hover { background: #faf5ff; }
+    .totals { text-align: right; margin-bottom: 28px; }
+    .totals table { width: auto; margin-left: auto; margin-bottom: 0; }
+    .totals td { padding: 4px 12px; font-size: 14px; }
+    .totals .total-due td { font-size: 18px; font-weight: 800; color: #7c3aed; border-top: 2px solid #7c3aed; padding-top: 10px; }
+    .payment-section { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 28px; }
+    .payment-section h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: #374151; }
+    .footer { text-align: center; font-size: 12px; color: #9ca3af; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+    @media print { body { padding: 24px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-block">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl logo">
+      <div class="company-name">${fromName}</div>
+      <div class="company-sub">${fromAddress}<br>${fromEmail} &nbsp;·&nbsp; 603-748-3038</div>
+    </div>
+    <div class="invoice-meta">
+      <div class="inv-label">INVOICE</div>
+      <div class="inv-detail">
+        <strong>Invoice #:</strong> ${inv.invoiceNumber}<br>
+        <strong>Invoice Date:</strong> ${invDateFmt}<br>
+        <strong>Due Date:</strong> ${dueDateFmt}<br>
+        <strong>Terms:</strong> Net ${terms}
+      </div>
+      <div class="status-badge">${statusLabel}</div>
+    </div>
+  </div>
+
+  <div class="bill-to">
+    <h3>Bill To</h3>
+    <div class="account-name">${ac.name || '—'}</div>
+    ${acAddr ? `<div class="account-addr">${acAddr}</div>` : ''}
+    ${ac.contact ? `<div class="account-addr">${ac.contact}</div>` : ''}
+    ${ac.email ? `<div class="account-addr">${ac.email}</div>` : ''}
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Product</th><th>Cases</th><th>Cans</th><th>Price / Case</th><th>Total</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>purpl by Pumpkin Blossom Farm</strong>${inv.notes ? `<br><small style="color:#6b7280">${inv.notes}</small>` : ''}</td>
+        <td>${fmt(inv.cases)}</td>
+        <td>${fmt(cans)}</td>
+        <td>${fmtC(inv.pricePerCase)}</td>
+        <td>${fmtC(subtotal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table>
+      <tr><td>Subtotal</td><td>${fmtC(subtotal)}</td></tr>
+      <tr class="total-due"><td><strong>Total Due</strong></td><td><strong>${fmtC(subtotal)}</strong></td></tr>
+    </table>
+  </div>
+
+  <div class="payment-section">
+    <h3>Payment Options</h3>
+    ${paymentHtml}
+  </div>
+
+  <div class="footer">
+    Thank you for your business — purpl by Pumpkin Blossom Farm<br>
+    <a href="https://drinkpurpl.com" style="color:#7c3aed">drinkpurpl.com</a>
+  </div>
+
+  <script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
 }
 
 // ── Revenue Projections ───────────────────────────────────

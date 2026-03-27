@@ -213,7 +213,10 @@
           <div id="dash-pending-orders"></div>
         </div>
         <div class="card">
-          <div class="section-hdr"><h2>Invoice Status</h2></div>
+          <div class="section-hdr">
+            <h2>Invoice Status</h2>
+            <button class="btn sm primary" onclick="openAddInv()">+ Add Invoice</button>
+          </div>
           <div id="dash-invoice-status"></div>
         </div>
       </div>
@@ -1850,6 +1853,49 @@
     <div class="modal-footer">
       <button class="modal-close btn">Cancel</button>
       <button class="btn primary" id="mpo-save-btn">Save PO</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Retail Invoice -->
+<div class="overlay" id="modal-add-inv">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-hdr"><h2>Add Invoice</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Account *</label>
+        <select id="iv-account" onchange="_ivAutoFillPrice()"></select>
+      </div>
+      <div class="form-group"><label>Invoice Date (can be post-dated)</label>
+        <input type="date" id="iv-date">
+      </div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Pricing Type</label>
+        <select id="iv-price-type" onchange="_ivAutoFillPrice()">
+          <option value="direct">Direct Retailer</option>
+          <option value="dist">Distributor</option>
+          <option value="custom">Custom</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Price per case ($)</label>
+        <input type="number" id="iv-price-per-case" step="0.01" min="0" placeholder="0.00" oninput="_ivCalcTotal()">
+      </div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Cases</label>
+        <input type="number" id="iv-cases" min="1" step="1" placeholder="0" oninput="_ivCalcTotal()">
+      </div>
+      <div class="form-group"><label>Total Amount ($)</label>
+        <input type="number" id="iv-amt" step="0.01" readonly style="background:var(--surface);color:var(--muted)">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
+      <textarea id="iv-notes" rows="3" style="width:100%;resize:vertical" placeholder="Optional notes…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" onclick="saveRetailInv()">Save Invoice</button>
     </div>
   </div>
 </div>
