@@ -5426,7 +5426,7 @@ function _renderPoAll() {
     <thead><tr>
       <th>Submitted</th><th>Account</th><th>Match</th>
       <th>Cases</th><th>Cans</th><th>Delivery Window</th><th>PO#</th>
-      <th>Status</th><th>Flags</th><th>Actions</th>
+      <th>Distributor</th><th>Status</th><th>Flags</th><th>Actions</th>
     </tr></thead>
     <tbody>${orders.map(o => {
       const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
@@ -5444,6 +5444,7 @@ function _renderPoAll() {
         <td>${cans||'—'}</td>
         <td style="font-size:12px">${escHtml(o.deliveryWindow||'—')}</td>
         <td style="font-size:12px">${escHtml(o.poNumber||'—')}</td>
+        <td style="font-size:12px">${escHtml(o.distributor||'—')}</td>
         <td>${_poStatusBadge(o.status||'new')}</td>
         <td>${multiFlag}</td>
         <td style="white-space:nowrap">
@@ -5708,6 +5709,7 @@ function openConfirmPortalOrder(id) {
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${escHtml(o.accountName)}</div>
       <div style="font-size:12px;color:var(--muted)">Portal submission · ${_fmtPoDate(o.submittedAt)}</div>
       ${o.poNumber?`<div style="font-size:12px;margin-top:4px">PO# ${escHtml(o.poNumber)}</div>`:''}
+      ${o.distributor?`<div style="font-size:12px;margin-top:4px"><strong>Distributor:</strong> ${escHtml(o.distributor)}</div>`:''}
     </div>
   `;
 
