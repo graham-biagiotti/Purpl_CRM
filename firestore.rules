@@ -2,37 +2,39 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Authenticated users can read/write everything
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-
-    // Portal: accounts readable by anyone for token lookup
+    // Portal: public can read accounts for token lookup
     match /accounts/{accountId} {
       allow read: if true;
+      allow write: if request.auth != null;
     }
 
-    // Portal: prospects readable by anyone for token lookup
+    // Portal: public can read prospects for token lookup
     match /prospects/{prospectId} {
       allow read: if true;
+      allow write: if request.auth != null;
     }
 
-    // Portal: anyone can submit an order
+    // Portal: public can submit orders
     match /portal_orders/{orderId} {
       allow create: if true;
-      allow read, update: if request.auth != null;
+      allow read, update, delete: if request.auth != null;
     }
 
-    // Portal: notify me signups
+    // Portal: public can sign up for notifications
     match /portal_notify/{docId} {
       allow create: if true;
-      allow read: if request.auth != null;
+      allow read, delete: if request.auth != null;
     }
 
-    // Portal: read settings to know mode
+    // Portal: public can read settings for mode
     match /portal_settings/{docId} {
       allow read: if true;
       allow write: if request.auth != null;
+    }
+
+    // Everything else requires auth
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
