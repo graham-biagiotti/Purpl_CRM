@@ -255,20 +255,28 @@ async function init() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('t');
     if (token) {
-      const q = query(collection(db, 'accounts'),
-        where('orderPortalToken', '==', token));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const acct = snap.docs[0].data();
-        accountId = snap.docs[0].id;
-        accountName = acct.name || '';
-        isMatched = true;
-        document.getElementById('matched-account').style.display = 'block';
-        document.getElementById('unmatched-account').style.display = 'none';
-        document.getElementById('locked-name').textContent = accountName;
-        if (acct.email) {
-          document.getElementById('billing-email-matched').value = acct.email;
+      try {
+        const q = query(collection(db, 'accounts'),
+          where('orderPortalToken', '==', token));
+        const snap = await getDocs(q);
+        console.log('Token lookup results:', snap.size);
+        if (!snap.empty) {
+          console.log('Account found:', snap.docs[0].data().name);
+          const acct = snap.docs[0].data();
+          accountId = snap.docs[0].id;
+          accountName = acct.name || '';
+          isMatched = true;
+          document.getElementById('matched-account').style.display = 'block';
+          document.getElementById('unmatched-account').style.display = 'none';
+          document.getElementById('locked-name').textContent = accountName;
+          if (acct.email) {
+            document.getElementById('billing-email-matched').value = acct.email;
+          }
+        } else {
+          console.log('No account found for token:', token);
         }
+      } catch(e) {
+        console.error('Token lookup failed:', e);
       }
     }
     if (!isMatched) {
