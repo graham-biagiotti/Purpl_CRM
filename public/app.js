@@ -82,7 +82,7 @@ function nav(page) {
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
-    'pre-orders':'Pre-Orders'
+    'pre-orders':'Pre-Orders', invoices:'Invoices'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -107,7 +107,7 @@ const renders = {
   integrations:     renderIntegrations,
   settings:         renderSettings,
   'pre-orders':     renderPreOrders,
-  invoices:         renderInvoicesPage,
+  invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -6467,3 +6467,383 @@ function renderSettings() {
   loadInvoiceSettings();
 }
 
+
+// ═══════════ INVOICES PAGE (v2 — reads from iv collection) ═══════════
+
+// Helper aliases used by invoice functions below
+const fmt$      = (n) => fmtC(n);
+const fmtDate   = (s) => fmtD(s);
+const daysSince = (s) => daysAgo(s);
+const esc       = (s) => escHtml(String(s||''));
+
+// markPaid alias (iv collection invoice records)
+function markPaid(id) {
+  DB.update('iv', id, x => ({...x, status:'paid', paidDate:today()}));
+  renderInvoicesPage();
+  toast('Marked as paid ✓');
+}
+
+// editInv — open add invoice modal pre-filled
+function editInv(id) {
+  const iv = DB.a('iv').find(x => x.id === id);
+  if (!iv) return;
+  openAddInv(iv.accountId || null, iv.priceType || 'direct', iv.cases || null, iv.notes || '');
+}
+
+function renderInvoicesPage() {
+  const invs = DB.a('iv');
+  const statusFilter = document.getElementById(
+    'inv-filter-status')?.value || '';
+  const acctFilter = document.getElementById(
+    'inv-filter-account')?.value || '';
+
+  // Populate account filter
+  const acctSel = document.getElementById('inv-filter-account');
+  if (acctSel && acctSel.options.length <= 1) {
+    const accts = DB.a('ac');
+    accts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = a.name;
+      acctSel.appendChild(opt);
+    });
+  }
+
+  // KPIs
+  const total = invs.reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const paid = invs.filter(x => x.status === 'paid')
+    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const overdueInvs = invs.filter(x =>
+    x.status !== 'paid' && x.due && x.due < today());
+  const overdueAmt = overdueInvs
+    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const drafts = invs.filter(x => x.status === 'draft').length;
+
+  const kpiEl = document.getElementById('inv-kpi-row');
+  if (kpiEl) kpiEl.innerHTML = `
+    <div class="kpi purple">
+      <div class="num" style="font-size:20px">${fmt$(total)}</div>
+      <div class="label">Total Invoiced</div></div>
+    <div class="kpi green">
+      <div class="num" style="font-size:20px">${fmt$(paid)}</div>
+      <div class="label">Collected</div></div>
+    <div class="kpi red">
+      <div class="num" style="font-size:20px">${fmt$(overdueAmt)}</div>
+      <div class="label">Overdue</div></div>
+    <div class="kpi amber">
+      <div class="num" style="font-size:20px">${drafts}</div>
+      <div class="label">Drafts</div></div>`;
+
+  // Overdue section
+  const overdueEl = document.getElementById('inv-overdue-list');
+  const overdueCard = document.getElementById('inv-overdue-card');
+  if (overdueEl) {
+    if (!overdueInvs.length) {
+      if (overdueCard) overdueCard.style.display = 'none';
+    } else {
+      if (overdueCard) overdueCard.style.display = 'block';
+      overdueEl.innerHTML = overdueInvs.map(iv => `
+        <div style="display:flex;justify-content:space-between;
+          align-items:center;padding:8px 0;
+          border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:600">${esc(iv.accountName||'?')}
+              · ${esc(iv.number||iv.invoiceNumber||'')}</div>
+            <div style="font-size:11px;color:var(--muted)">
+              Due ${fmtDate(iv.due||iv.dueDate)} ·
+              ${daysSince(iv.due||iv.dueDate)} days overdue</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span style="font-weight:700;color:var(--red)">
+              ${fmt$(iv.amount||iv.total)}</span>
+            <button class="btn xs green"
+              onclick="markPaid('${iv.id}');renderInvoicesPage()">
+              ✓ Paid</button>
+            <button class="btn xs"
+              onclick="generateInvoicePrint('${iv.id}')">
+              🖨️</button>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  // Main table
+  let filtered = [...invs];
+  if (statusFilter) filtered = filtered.filter(
+    x => x.status === statusFilter);
+  if (acctFilter) filtered = filtered.filter(
+    x => x.accountId === acctFilter);
+  filtered.sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+
+  const statColor = {
+    paid:'green', draft:'gray', sent:'blue',
+    overdue:'red', partial:'amber', unpaid:'blue'
+  };
+  const tbody = document.getElementById('inv-main-tbody');
+  if (tbody) tbody.innerHTML = !filtered.length ?
+    '<tr><td colspan="8" class="empty">No invoices yet</td></tr>' :
+    filtered.map(iv => {
+      const st = (iv.status !== 'paid' && (iv.due||iv.dueDate) && (iv.due||iv.dueDate) < today())
+        ? 'overdue' : (iv.status || 'draft');
+      const num = iv.number || iv.invoiceNumber || '—';
+      const due = iv.due || iv.dueDate || '';
+      const amt = iv.amount != null ? iv.amount : (iv.total != null ? iv.total : null);
+      const acName = iv.accountName || DB.a('ac').find(a=>a.id===iv.accountId)?.name || '?';
+      return `<tr>
+      <td><strong>${esc(num)}</strong></td>
+      <td>${esc(acName)}</td>
+      <td>${fmtDate(iv.date)}</td>
+      <td style="color:${due&&due<today()&&iv.status!=='paid'?
+        'var(--red)':'inherit'}">${fmtDate(due)}</td>
+      <td><strong>${amt != null ? fmt$(amt) :
+        '<span style="color:var(--muted)">Draft</span>'}</strong></td>
+      <td style="font-size:12px;color:var(--muted)">
+        ${iv.cases||'—'}</td>
+      <td><span class="badge ${statColor[st]||'gray'}">
+        ${st}</span></td>
+      <td class="no-print">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${st!=='paid' ?
+            `<button class="btn xs green"
+              onclick="markPaid('${iv.id}');renderInvoicesPage()">
+              ✓ Paid</button>` : ''}
+          ${st==='draft' ?
+            `<button class="btn xs blue"
+              onclick="markInvoiceSent('${iv.id}')">
+              ✉ Sent</button>` : ''}
+          <button class="btn xs"
+            onclick="generateInvoicePrint('${iv.id}')">
+            🖨️ Print</button>
+          <button class="btn xs"
+            onclick="editInv('${iv.id}')">Edit</button>
+          <button class="btn xs red"
+            onclick="deleteInvoice('${iv.id}')">✕</button>
+        </div>
+      </td>
+    </tr>`;
+    }).join('');
+}
+
+function markInvoiceSent(id) {
+  DB.update('iv', id, x => ({...x, status:'sent', sentAt: today()}));
+  renderInvoicesPage();
+  toast('Marked as sent ✓');
+}
+
+function deleteInvoice(id) {
+  if (!confirm('Delete this invoice?')) return;
+  DB.remove('iv', id);
+  renderInvoicesPage();
+  toast('Deleted');
+}
+
+function saveInvoiceSettings() {
+  const s = {
+    fromName: document.getElementById('inv-from-name')?.value ||
+      'Pumpkin Blossom Farm LLC',
+    fromEmail: document.getElementById('inv-from-email')?.value ||
+      'sales@drinkpurpl.com',
+    fromAddress: document.getElementById('inv-from-address')?.value ||
+      '393 Pumpkin Hill Rd, Warner, NH 03278',
+    terms: parseInt(document.getElementById('inv-terms')?.value)||30,
+    stripeLink: document.getElementById('inv-stripe-link')?.value||'',
+    achRouting: document.getElementById('inv-ach-routing')?.value||'',
+    achAccount: document.getElementById('inv-ach-account')?.value||'',
+    checkInstructions: document.getElementById(
+      'inv-check-instructions')?.value||''
+  };
+  DB.setObj('invoice_settings', s);
+  toast('Invoice settings saved ✓');
+}
+
+function loadInvoiceSettings() {
+  const s = DB.obj('invoice_settings', {});
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val != null) el.value = val;
+  };
+  set('inv-from-name',          s.fromName);
+  set('inv-from-email',         s.fromEmail);
+  set('inv-from-address',       s.fromAddress);
+  set('inv-terms',              s.terms);
+  set('inv-stripe-link',        s.stripeLink);
+  set('inv-ach-routing',        s.achRouting);
+  set('inv-ach-account',        s.achAccount);
+  set('inv-check-instructions', s.checkInstructions);
+  // legacy field aliases
+  set('inv-payment-instructions', s.checkInstructions || s.paymentInstructions);
+}
+
+function generateInvoicePrint(invoiceId) {
+  // Search both iv and retail_invoices collections
+  const iv = DB.a('iv').find(x => x.id === invoiceId)
+          || DB.a('retail_invoices').find(x => x.id === invoiceId);
+  if (!iv) { toast('Invoice not found'); return; }
+  const s = DB.obj('invoice_settings', {});
+  const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
+  const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
+  const fromEmail = s.fromEmail || 'sales@drinkpurpl.com';
+  const fromAddr  = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
+  const cans      = iv.cans || ((iv.cases||0) * CANS_PER_CASE);
+  const invNum    = iv.number || iv.invoiceNumber || '—';
+  const dueDate   = iv.due   || iv.dueDate || '';
+  const amt       = iv.amount != null ? iv.amount : (iv.total != null ? iv.total : null);
+  const status    = iv.status || 'draft';
+
+  const paymentHtml = `
+    ${s.stripeLink ?
+      `<div style="margin-bottom:8px">
+        <a href="${s.stripeLink}"
+          style="background:#7B4FA0;color:#fff;padding:10px 20px;
+          border-radius:8px;text-decoration:none;font-weight:600;
+          display:inline-block">
+          💳 Pay Now Online →</a></div>` : ''}
+    ${s.achRouting ?
+      `<div style="margin-bottom:4px">
+        <strong>ACH Transfer:</strong>
+        Routing: ${s.achRouting} ·
+        Account: ${s.achAccount}</div>` : ''}
+    ${(s.checkInstructions || s.paymentInstructions) ?
+      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
+      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
+  w.document.write(`<!DOCTYPE html>
+<html><head><title>Invoice ${invNum}</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    max-width:800px;margin:40px auto;padding:0 20px;
+    color:#1a1a2e;font-size:13px}
+  .header{display:flex;justify-content:space-between;
+    align-items:flex-start;margin-bottom:32px;
+    padding-bottom:20px;border-bottom:2px solid #7B4FA0}
+  .logo{height:50px}
+  .inv-label{font-size:32px;font-weight:700;
+    color:#7B4FA0;letter-spacing:-1px}
+  .inv-meta div{margin-bottom:4px;font-size:12px}
+  .bill-to{display:grid;grid-template-columns:1fr 1fr;
+    gap:20px;margin-bottom:24px}
+  .section-label{font-size:10px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.08em;
+    color:#9ca3af;margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px}
+  th{background:#f9fafb;padding:8px 12px;text-align:left;
+    font-size:11px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.05em;color:#6b7280;
+    border-bottom:2px solid #e5e7eb}
+  td{padding:10px 12px;border-bottom:1px solid #f3f4f6}
+  .total-row td{font-weight:700;font-size:15px;
+    color:#7B4FA0;border-top:2px solid #7B4FA0;border-bottom:none}
+  .payment-box{background:#f5f0ff;border-radius:8px;
+    padding:16px;margin-bottom:20px}
+  .footer{text-align:center;color:#9ca3af;font-size:11px;
+    margin-top:32px;padding-top:16px;
+    border-top:1px solid #e5e7eb}
+  .status-badge{display:inline-block;padding:3px 10px;
+    border-radius:20px;font-size:11px;font-weight:600;
+    background:${status==='paid'?'#dcfce7':
+      status==='overdue'?'#fee2e2':'#fef3c7'};
+    color:${status==='paid'?'#166534':
+      status==='overdue'?'#991b1b':'#92400e'}}
+  @media print{button{display:none}}
+</style></head><body>
+
+<div class="header">
+  <div>
+    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+      class="logo" alt="purpl">
+    <div style="margin-top:8px;font-size:12px;color:#6b7280">
+      ${fromName}<br>${fromAddr}<br>${fromEmail} · 603-748-3038
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div class="inv-label">INVOICE</div>
+    <div class="inv-meta" style="margin-top:8px">
+      <div><strong>#${invNum}</strong></div>
+      <div>Date: ${fmtDate(iv.date)}</div>
+      <div>Due: ${fmtDate(dueDate)}</div>
+      <div style="margin-top:6px">
+        <span class="status-badge">${status.toUpperCase()}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bill-to">
+  <div>
+    <div class="section-label">Bill To</div>
+    <div style="font-weight:600;font-size:14px">
+      ${esc(iv.accountName || ac.name || '?')}</div>
+    ${ac.address ?
+      `<div style="color:#6b7280;font-size:12px;margin-top:4px">
+        ${esc(ac.address)}</div>` : ''}
+    ${iv.billingEmail ?
+      `<div style="color:#6b7280;font-size:12px">
+        ${esc(iv.billingEmail)}</div>` : ''}
+  </div>
+  <div>
+    <div class="section-label">Payment Terms</div>
+    <div>Net ${s.terms||30} days</div>
+    ${iv.linkedOrderId ?
+      `<div style="font-size:11px;color:#9ca3af;margin-top:4px">
+        Order ref: ${iv.linkedOrderId}</div>` : ''}
+  </div>
+</div>
+
+<table>
+  <thead><tr>
+    <th>Product</th>
+    <th style="text-align:center">Cases</th>
+    <th style="text-align:center">Cans</th>
+    <th style="text-align:right">Price/Case</th>
+    <th style="text-align:right">Total</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td>
+        <strong>Classic Lavender Lemonade</strong>
+        <div style="font-size:11px;color:#9ca3af">
+          purpl · 12 fl oz · 12 cans/case</div>
+        ${iv.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(iv.notes)}</div>` : ''}
+      </td>
+      <td style="text-align:center">${iv.cases||'—'}</td>
+      <td style="text-align:center">${cans||'—'}</td>
+      <td style="text-align:right">
+        ${iv.pricePerCase ? fmt$(iv.pricePerCase) : '—'}</td>
+      <td style="text-align:right">
+        ${amt != null ? fmt$(amt) :
+          '<span style="color:#9ca3af">TBD</span>'}</td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="4">Total Due</td>
+      <td style="text-align:right">
+        ${amt != null ? fmt$(amt) :
+          '<span style="color:#9ca3af">Amount Pending</span>'}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<div class="payment-box">
+  <div class="section-label" style="margin-bottom:10px">Payment Options</div>
+  ${paymentHtml}
+</div>
+
+<div style="text-align:center;margin:20px 0">
+  <button onclick="window.print()"
+    style="background:#7B4FA0;color:#fff;border:none;
+    padding:10px 24px;border-radius:8px;font-size:14px;
+    font-weight:600;cursor:pointer">
+    🖨️ Print / Save as PDF</button>
+</div>
+
+<div class="footer">
+  Thank you for your business — purpl by Pumpkin Blossom Farm
+  <br>drinkpurpl.com · sales@drinkpurpl.com
+</div>
+
+</body></html>`);
+  w.document.close();
+}
