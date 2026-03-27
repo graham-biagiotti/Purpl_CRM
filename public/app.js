@@ -585,20 +585,33 @@ function setInvStatus(id, status) {
 //  RETAIL INVOICES (standalone customer invoices)
 // ══════════════════════════════════════════════════════════
 
-function openAddInv() {
+function openAddInv(accountId=null, priceType='direct', cases=null, notesText='') {
   // Populate account dropdown
   const sel = qs('#iv-account');
   if (sel) {
     const accounts = DB.a('ac').filter(a=>a.status==='active').sort((a,b)=>a.name>b.name?1:-1);
     sel.innerHTML = '<option value="">— Select account —</option>' +
       accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+    if (accountId) sel.value = accountId;
   }
-  if (qs('#iv-date'))           qs('#iv-date').value = today();
-  if (qs('#iv-price-type'))     qs('#iv-price-type').value = 'direct';
-  if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = '';
-  if (qs('#iv-cases'))          qs('#iv-cases').value = '';
-  if (qs('#iv-amt'))            qs('#iv-amt').value = '';
-  if (qs('#iv-notes'))          qs('#iv-notes').value = '';
+  if (qs('#iv-date'))       qs('#iv-date').value = today();
+  if (qs('#iv-price-type')) qs('#iv-price-type').value = priceType || 'direct';
+  if (qs('#iv-cases'))      qs('#iv-cases').value = cases || '';
+  if (qs('#iv-amt'))        qs('#iv-amt').value = '';
+  if (qs('#iv-notes'))      qs('#iv-notes').value = notesText || '';
+
+  // Auto-fill price from account's saved pricing for the given type
+  if (accountId) {
+    const ac = DB.a('ac').find(a=>a.id===accountId);
+    let price = null;
+    if (priceType === 'direct') price = ac?.pricePerCaseDirect || null;
+    if (priceType === 'dist')   price = ac?.pricePerCaseDist   || null;
+    if (priceType === 'custom') price = ac?.pricePerCaseCustom || null;
+    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = price || '';
+  } else {
+    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = '';
+  }
+  _ivCalcTotal();
   openModal('modal-add-inv');
 }
 
@@ -4004,6 +4017,41 @@ function saveShipment() {
   closeModal('modal-shipment');
   renderProduction();
   toast('Shipment scheduled');
+  _showInvoiceSuggestion(ship);
+}
+
+function _showInvoiceSuggestion(ship) {
+  const banner = document.getElementById('inv-suggest-banner');
+  if (!banner) return;
+  const totalCases = SKUS.reduce((s,sk)=>s+(ship[sk.id]||0), 0);
+  const msg = document.getElementById('inv-suggest-msg');
+  if (msg) msg.textContent = `Create invoice for ${ship.customer} (${totalCases} case${totalCases!==1?'s':''})?`;
+
+  banner.style.display = 'flex';
+
+  const yesBtn = document.getElementById('inv-suggest-yes');
+  const noBtn  = document.getElementById('inv-suggest-no');
+
+  const dismiss = () => { banner.style.display = 'none'; };
+
+  if (noBtn)  { noBtn.onclick  = dismiss; }
+  if (yesBtn) {
+    yesBtn.onclick = () => {
+      dismiss();
+      // Try to match customer name to an account
+      const ac = DB.a('ac').find(a=>a.name.toLowerCase()===ship.customer.toLowerCase())
+              || DB.a('ac').find(a=>a.name.toLowerCase().includes(ship.customer.toLowerCase()));
+      openAddInv(
+        ac?.id || null,
+        'dist',
+        totalCases,
+        `Distributor shipment to ${ship.customer} on ${ship.date}.`
+      );
+    };
+  }
+  // Auto-dismiss after 15 seconds
+  clearTimeout(banner._t);
+  banner._t = setTimeout(dismiss, 15000);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6144,7 +6192,36 @@ async function confirmPortalOrder() {
       cache['inv_log_v2'] = [...(cache['inv_log_v2'] || []), invoiceData];
     });
 
-    // 5. Update portal_orders status — stays as direct Firestore (not in DB cache)
+    // 5. Auto-draft retail invoice (after batch write succeeds)
+    {
+      const settings = DB.obj('invoice_settings', {});
+      const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
+      const pricePerCase = acct.pricePerCaseDirect || null;
+      const amount = pricePerCase ? cases * pricePerCase : null;
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + (settings.terms || 30));
+      DB.push('retail_invoices', {
+        id: uid(),
+        invoiceNumber: 'INV-' + Date.now().toString(36).toUpperCase(),
+        accountId: d.accountId || null,
+        accountName: d.accountName,
+        date: todayStr,
+        dueDate: dueDate.toISOString().slice(0,10),
+        cases: cases,
+        cans: cases * CANS_PER_CASE,
+        pricePerCase: pricePerCase,
+        total: amount,
+        priceType: 'direct',
+        status: 'draft',
+        source: 'portal',
+        billingEmail: d.billingEmail || acct.email || '',
+        fromEmail: settings.fromEmail || 'sales@drinkpurpl.com',
+        notes: 'Auto-drafted from portal order approval.',
+        linkedOrderId: orderId,
+      });
+    }
+
+    // 6. Update portal_orders status — stays as direct Firestore (not in DB cache)
     await portalRef.update({
       status: 'confirmed',
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),

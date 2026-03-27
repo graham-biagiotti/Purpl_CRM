@@ -1867,6 +1867,7 @@
       </div>
       <div class="form-group"><label>Invoice Date (can be post-dated)</label>
         <input type="date" id="iv-date">
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">You can post-date this invoice — set any date you need.</div>
       </div>
     </div>
     <div class="form-row col2">
@@ -2044,6 +2045,13 @@
 
 <!-- TOAST -->
 <div id="toast"></div>
+
+<!-- Invoice suggestion banner (non-blocking) -->
+<div id="inv-suggest-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:12px 18px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:9999;display:none;align-items:center;gap:12px;font-size:13px;max-width:420px;width:calc(100% - 32px)">
+  <span id="inv-suggest-msg" style="flex:1">Create invoice for this shipment?</span>
+  <button class="btn xs primary" id="inv-suggest-yes">Create Draft</button>
+  <button class="btn xs" id="inv-suggest-no">Skip</button>
+</div>
 
 <!-- MOBILE: sidebar overlay backdrop -->
 <div class="sidebar-overlay" id="sidebar-overlay"></div>
