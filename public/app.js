@@ -5823,7 +5823,7 @@ async function confirmPortalOrder() {
     // in one Firestore write via the DB cache
     DB.atomicUpdate(cache => {
       // 1. Create order in 'ord' collection
-      cache['ord'] = [...(cache['ord'] || []), orderData];
+      cache['orders'] = [...(cache['orders'] || []), orderData];
       // 2. Update account (or prospect) lastOrder
       if (d.accountId) {
         const key = d.isProspect ? 'pr' : 'ac';
