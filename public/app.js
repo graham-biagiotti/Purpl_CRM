@@ -5551,19 +5551,21 @@ function _exportNotifyCSV() {
 function _renderPoLinks() {
   const el = qs('#po-pane-links');
   if (!el) return;
-  const accounts = DB.a('ac').filter(a => a.orderPortalToken);
-  const orders   = PortalDB.getOrders();
-  const allAc    = DB.a('ac');
+  el.innerHTML = '<div style="padding:16px;color:var(--muted)">Loading...</div>';
+  firebase.firestore().collection('accounts').get()
+    .then(snap => {
+      const allAc  = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const orders = PortalDB.getOrders();
 
-  // Show all accounts (with and without token)
-  const rows = allAc.map(a => {
-    const token = a.orderPortalToken;
-    const url   = token ? `https://purpl-crm.web.app/order?t=${token}` : null;
-    const subs  = orders.filter(o => o.accountId === a.id);
-    return { a, token, url, subCount: subs.length };
-  });
+      // Show all accounts (with and without token)
+      const rows = allAc.map(a => {
+        const token = a.orderPortalToken;
+        const url   = token ? `https://purpl-crm.web.app/order?t=${token}` : null;
+        const subs  = orders.filter(o => o.accountId === a.id);
+        return { a, token, url, subCount: subs.length };
+      });
 
-  el.innerHTML = `<div class="card">
+      el.innerHTML = `<div class="card">
     <div class="section-hdr" style="margin-bottom:12px">
       <h2>All Account Links</h2>
       <span style="font-size:12px;color:var(--muted)">${rows.filter(r=>r.token).length} links generated</span>
@@ -5583,6 +5585,11 @@ function _renderPoLinks() {
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
+    })
+    .catch(e => {
+      console.error('_renderPoLinks error:', e);
+      el.innerHTML = '<div style="padding:16px;color:var(--red)">Failed to load accounts.</div>';
+    });
 }
 
 // ── Review modal ──────────────────────────────────────────

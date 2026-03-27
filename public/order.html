@@ -229,7 +229,7 @@ input:focus,textarea:focus,select:focus{
 
     <div class="error-msg" id="error-msg"></div>
     <button class="submit-btn" id="submit-btn" disabled onclick="submitOrder()">
-      Submit Pre-Order
+      Place Order
     </button>
 
   </div><!-- /#order-form -->
@@ -483,9 +483,18 @@ function submitOrder() {
         billingEmail: billingEmail
       });
     })
-    .catch(e => {
-      console.error('Submit error:', e);
-      showError('Something went wrong. Please try again or contact graham@pumpkinblossomfarm.com');
+    .catch(function(e) {
+      console.error('SUBMIT ERROR:', e.code, e.message, e);
+      var errEl = document.getElementById('error-msg');
+      if (errEl) {
+        errEl.textContent = 'Submission failed: ' + (e.message || e.code || 'Unknown error');
+        errEl.style.display = 'block';
+      }
+      var btn = document.getElementById('submit-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Place Order';
+      }
     });
 }
 
