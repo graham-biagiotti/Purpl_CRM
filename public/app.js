@@ -107,6 +107,7 @@ const renders = {
   integrations:     renderIntegrations,
   settings:         renderSettings,
   'pre-orders':     renderPreOrders,
+  invoices:         renderInvoicesPage,
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -838,6 +839,117 @@ function generateInvoicePrint(invoiceId) {
 
   const w = window.open('', '_blank');
   if (w) { w.document.write(html); w.document.close(); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  INVOICES PAGE
+// ══════════════════════════════════════════════════════════
+let _invSortKey = 'date';
+let _invSortDir = -1; // -1 = desc
+
+function sortInv(key) {
+  if (_invSortKey === key) { _invSortDir *= -1; }
+  else { _invSortKey = key; _invSortDir = -1; }
+  renderInvoicesPage();
+}
+
+function renderInvoicesPage() {
+  const allInv = DB.a('retail_invoices');
+  const todayStr = today();
+
+  // Populate account filter
+  const acSel = qs('#inv-filter-account');
+  if (acSel && acSel.options.length <= 1) {
+    const names = [...new Set(allInv.map(i=>i.accountName||'').filter(Boolean))].sort();
+    names.forEach(n=>{
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      acSel.appendChild(o);
+    });
+  }
+
+  const statusFilter  = qs('#inv-filter-status')?.value  || '';
+  const accountFilter = qs('#inv-filter-account')?.value || '';
+
+  // Compute effective status (mark overdue if unpaid + past due)
+  function effectiveStatus(inv) {
+    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
+    if (inv.dueDate && inv.dueDate < todayStr && inv.status !== 'paid') return 'overdue';
+    return inv.status || 'unpaid';
+  }
+
+  let invs = allInv.map(i=>({...i, _status: effectiveStatus(i)}));
+
+  if (statusFilter)  invs = invs.filter(i=>i._status === statusFilter);
+  if (accountFilter) invs = invs.filter(i=>(i.accountName||'')=== accountFilter);
+
+  // Sort
+  invs.sort((a,b)=>{
+    const av = a[_invSortKey] ?? a.invoiceNumber ?? '';
+    const bv = b[_invSortKey] ?? b.invoiceNumber ?? '';
+    return av < bv ? -_invSortDir : av > bv ? _invSortDir : 0;
+  });
+
+  // KPI row
+  const kpiEl = qs('#inv-kpi-row');
+  if (kpiEl) {
+    const total   = allInv.length;
+    const unpaid  = allInv.filter(i=>effectiveStatus(i)==='unpaid').length;
+    const overdue = allInv.filter(i=>effectiveStatus(i)==='overdue').length;
+    const paidAmt = allInv.filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
+    const outAmt  = allInv.filter(i=>!['paid','draft'].includes(effectiveStatus(i))).reduce((s,i)=>s+(i.total||0),0);
+    kpiEl.innerHTML = `
+      <div>${kpiHtml('Total Invoices', total, 'purple')}</div>
+      <div>${kpiHtml('Unpaid', unpaid, 'blue')}</div>
+      <div>${kpiHtml('Overdue', overdue, 'red')}</div>
+      <div>${kpiHtml('Outstanding $', fmtC(outAmt), 'amber')}</div>`;
+  }
+
+  // Overdue card
+  const overdueList = allInv.filter(i=>effectiveStatus(i)==='overdue');
+  const overdueEl = qs('#inv-overdue-list');
+  const overdueCard = qs('#inv-overdue-card');
+  if (overdueCard) overdueCard.style.display = overdueList.length ? '' : 'none';
+  if (overdueEl) {
+    overdueEl.innerHTML = overdueList.length ? overdueList.map(inv=>{
+      const days = daysAgo(inv.dueDate);
+      return `<div class="attn-item">
+        <div class="attn-icon">💰</div>
+        <div class="attn-info">
+          <div class="attn-name">${inv.accountName||'—'} — ${inv.invoiceNumber||'—'}</div>
+          <div class="attn-reason">${fmtC(inv.total||0)} · ${days}d overdue (due ${fmtD(inv.dueDate)})</div>
+        </div>
+        <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print</button>
+        <button class="btn xs green" onclick="markRetailInvPaid('${inv.id}');renderInvoicesPage()">Mark Paid</button>
+      </div>`;
+    }).join('') : '<div class="empty">No overdue invoices</div>';
+  }
+
+  // Main table
+  const tbody = qs('#inv-main-tbody');
+  if (!tbody) return;
+
+  const STATUS_CLS = {paid:'green', draft:'gray', overdue:'red', unpaid:'blue', sent:'blue', partial:'amber'};
+
+  tbody.innerHTML = invs.length ? invs.map(inv=>{
+    const st = inv._status;
+    const cls = STATUS_CLS[st] || 'gray';
+    const label = st.charAt(0).toUpperCase() + st.slice(1);
+    return `<tr>
+      <td><strong>${inv.invoiceNumber||'—'}</strong></td>
+      <td>${inv.accountName||'—'}</td>
+      <td>${fmtD(inv.date)}</td>
+      <td>${fmtD(inv.dueDate)}</td>
+      <td>${inv.total != null ? fmtC(inv.total) : '—'}</td>
+      <td>${inv.cases||'—'}</td>
+      <td><span class="badge ${cls}">${label}</span></td>
+      <td class="no-print" style="white-space:nowrap">
+        <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
+        ${st!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}');renderInvoicesPage()">Mark Paid</button>`:''}
+        <button class="btn xs red" onclick="deleteRetailInv('${inv.id}');renderInvoicesPage()">✕</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="8" class="empty">No invoices found</td></tr>`;
 }
 
 // ── Revenue Projections ───────────────────────────────────

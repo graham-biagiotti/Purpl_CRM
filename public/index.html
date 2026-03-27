@@ -108,6 +108,9 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Orders &amp; Delivery
       </a>
+      <a data-page="invoices" id="nav-invoices" onclick="nav('invoices')">
+        🧾 Invoices
+      </a>
       <a data-page="pre-orders">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
         Order Forms
@@ -1247,6 +1250,57 @@
         <button class="btn primary" onclick="importTradeShowProspects()">Import Trade Show Prospects (34 records)</button>
       </div>
 
+    </div>
+
+    <!-- ═══════ INVOICES ═══════ -->
+    <div class="page" id="page-invoices">
+
+      <!-- KPI row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="inv-kpi-row"></div>
+
+      <!-- Overdue section -->
+      <div class="card" style="margin-bottom:16px" id="inv-overdue-card">
+        <div class="section-hdr">
+          <h2 style="color:var(--red)">🔴 Overdue</h2>
+        </div>
+        <div id="inv-overdue-list"></div>
+      </div>
+
+      <!-- Main table -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>All Invoices</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="inv-filter-status" style="width:130px" onchange="renderInvoicesPage()">
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+              <option value="partial">Partial</option>
+            </select>
+            <select id="inv-filter-account" style="width:160px" onchange="renderInvoicesPage()">
+              <option value="">All Accounts</option>
+            </select>
+            <button class="btn primary" onclick="openAddInv(null,null)">+ New Invoice</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th onclick="sortInv('number')" style="cursor:pointer">Invoice #</th>
+              <th onclick="sortInv('accountName')" style="cursor:pointer">Account</th>
+              <th onclick="sortInv('date')" style="cursor:pointer">Invoice Date</th>
+              <th onclick="sortInv('due')" style="cursor:pointer">Due Date</th>
+              <th onclick="sortInv('amount')" style="cursor:pointer">Amount</th>
+              <th>Cases</th>
+              <th>Status</th>
+              <th class="no-print">Actions</th>
+            </tr></thead>
+            <tbody id="inv-main-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════ TERRITORY MAP ═══════ -->
