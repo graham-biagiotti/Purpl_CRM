@@ -81,7 +81,8 @@ function nav(page) {
     dashboard:'Dashboard', accounts:'Accounts', distributors:'Distributors',
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
-    reports:'Reports', integrations:'Integrations', settings:'Settings'
+    reports:'Reports', integrations:'Integrations', settings:'Settings',
+    'pre-orders':'Pre-Orders'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
@@ -104,7 +105,8 @@ const renders = {
   projections:      renderProjectionsPage,
   reports:          renderReports,
   integrations:     renderIntegrations,
-  settings:         renderSettings
+  settings:         renderSettings,
+  'pre-orders':     renderPreOrders,
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -969,6 +971,7 @@ function renderAccounts() {
         <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
         <button class="btn sm run" onclick="openNewOrder('${a.id}')">+ Run</button>
         <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
+        <button class="btn sm" onclick="copyOrderLink('${a.id}')">🔗 Copy Link</button>
       </div>
     </div>`;
   }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
@@ -1094,6 +1097,10 @@ function openAccount(id) {
   qs('#mac-edit-btn').onclick = () => { closeModal('modal-account'); editAccount(id); };
   qs('#mac-order-btn').onclick = () => { closeModal('modal-account'); openNewOrder(id); };
 
+  // Copy link button
+  const copyLinkBtn = qs('#mac-copy-link-btn');
+  if (copyLinkBtn) copyLinkBtn.onclick = () => copyOrderLink(id);
+
   // Tab switching
   document.querySelectorAll('#modal-account .tab').forEach(t=>{
     t.onclick = () => {
@@ -1102,6 +1109,8 @@ function openAccount(id) {
       t.classList.add('active');
       const pane = document.getElementById('mac-tab-'+t.dataset.tab);
       if (pane) pane.style.display='block';
+      // Lazy-load portal orders tab
+      if (t.dataset.tab === 'portal-orders') renderMacPortalOrdersTab(id);
     };
   });
   // Default to first tab
@@ -5228,3 +5237,651 @@ function _updateRunModeBar() {
   const el = qs('#map-run-count');
   if (el) el.textContent = cnt ? `${cnt} stop${cnt!==1?'s':''} in today's run` : '';
 }
+
+// ══════════════════════════════════════════════════════════
+//  WHOLESALE ORDER PORTAL — CRM SIDE (Phases 3–6)
+// ══════════════════════════════════════════════════════════
+
+// Unit constant — defined separately from CANS_PER_CASE so either
+// can change independently. Currently both equal 12.
+const PORTAL_CANS_PER_CASE = 12;
+
+// ── PortalDB — direct Firestore access for portal collections ──
+// Uses firebase compat SDK (loaded in index.html) directly.
+const PortalDB = {
+  _orders: [],
+  _notify: [],
+  _loaded: false,
+
+  _db() { return firebase.firestore(); },
+
+  async load() {
+    try {
+      const [ordSnap, notSnap] = await Promise.all([
+        this._db().collection('portal_orders').get(),
+        this._db().collection('portal_notify').get(),
+      ]);
+      this._orders = ordSnap.docs.map(d => ({ id: d.id, ...d.data(),
+        submittedAt: d.data().submittedAt?.toDate?.() || null }));
+      this._orders.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
+      this._notify = notSnap.docs.map(d => ({ id: d.id, ...d.data(),
+        submittedAt: d.data().submittedAt?.toDate?.() || null }));
+      this._loaded = true;
+    } catch(e) {
+      console.error('PortalDB.load error:', e);
+    }
+    return this;
+  },
+
+  async setToken(token, data) {
+    await this._db().collection('portal_tokens').doc(token).set({
+      ...data, createdAt: new Date().toISOString()
+    });
+  },
+
+  async saveConfig(config) {
+    await this._db().collection('portal_config').doc('main').set(config);
+  },
+
+  async getConfig() {
+    try {
+      const snap = await this._db().collection('portal_config').doc('main').get();
+      return snap.exists ? snap.data() : { mode:'preorder', pricePerCase:null, deadlineEnabled:false, deadline:null };
+    } catch(e) { return { mode:'preorder', pricePerCase:null, deadlineEnabled:false, deadline:null }; }
+  },
+
+  async updateOrder(id, data) {
+    await this._db().collection('portal_orders').doc(id).update(data);
+    const idx = this._orders.findIndex(o => o.id === id);
+    if (idx >= 0) this._orders[idx] = { ...this._orders[idx], ...data };
+  },
+
+  getOrders() { return this._orders; },
+  getNotify() { return this._notify; },
+  getAccountOrders(accountId) { return this._orders.filter(o => o.accountId === accountId); },
+};
+
+// ── Phase 3: Link generator ────────────────────────────────
+
+async function generateOrderLink(accountId) {
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) return null;
+  let token = a.orderPortalToken;
+  if (!token) {
+    const salt = Math.random().toString(36).slice(2);
+    const raw  = accountId + ':' + salt;
+    token = btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    DB.update('ac', accountId, ac => ({
+      ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
+    }));
+    await PortalDB.setToken(token, {
+      accountId, accountName: a.name, email: a.email || ''
+    });
+  }
+  return `https://purpl-crm.web.app/order?t=${token}`;
+}
+
+async function copyOrderLink(accountId) {
+  const url = await generateOrderLink(accountId);
+  if (!url) { toast('Account not found'); return; }
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch(_) {
+    const inp = document.createElement('input');
+    inp.value = url; document.body.appendChild(inp);
+    inp.select(); document.execCommand('copy');
+    document.body.removeChild(inp);
+  }
+  toast('Link copied to clipboard ✓');
+}
+
+// ── Phase 4: Pre-Orders page ──────────────────────────────
+
+let _poCurrentTab = 'all';
+
+async function renderPreOrders(forceReload) {
+  const el = qs('#page-pre-orders');
+  if (!el) return;
+  if (forceReload || !PortalDB._loaded) {
+    qs('#po-kpis').innerHTML = '<div style="color:var(--muted);font-size:13px;grid-column:1/-1">Loading portal orders…</div>';
+    await PortalDB.load();
+  }
+  _renderPoKpis();
+  _renderPoTabs();
+  _switchPoTab(_poCurrentTab);
+}
+
+function _renderPoKpis() {
+  const orders = PortalDB.getOrders();
+  const total   = orders.length;
+  const matched = orders.filter(o => o.isMatched).length;
+  const unmatched = orders.filter(o => !o.isMatched).length;
+  const totalCases = orders.reduce((s,o) => {
+    return s + (o.items||[]).reduce((ss,i) => ss + (i.cases||0), 0);
+  }, 0);
+  const totalCans = totalCases * PORTAL_CANS_PER_CASE;
+  const multiFlag = orders.filter(o => o.hasMultipleSubmissions).length;
+
+  const kpiHtml = (label, val, sub, cls) => `<div class="kpi-card kpi-${cls||'gray'}">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value">${val}</div>
+    ${sub?`<div class="kpi-sub">${sub}</div>`:''}
+  </div>`;
+
+  const el = qs('#po-kpis');
+  if (el) el.innerHTML =
+    kpiHtml('Total Submissions', total, '', 'purple') +
+    kpiHtml('Matched Accounts', matched, '', 'green') +
+    kpiHtml('Unmatched', unmatched, '', unmatched>0?'amber':'gray') +
+    kpiHtml('Total Cases', fmt(totalCases), `${fmt(totalCans)} cans · ${PORTAL_CANS_PER_CASE} cans/case`, 'blue') +
+    (multiFlag ? kpiHtml('Multiple Submissions', multiFlag, 'same account/email', 'amber') : '');
+}
+
+function _renderPoTabs() {
+  document.querySelectorAll('#po-tabs .tab').forEach(t => {
+    t.onclick = () => {
+      document.querySelectorAll('#po-tabs .tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      _poCurrentTab = t.dataset.poTab;
+      _switchPoTab(_poCurrentTab);
+    };
+  });
+}
+
+function _switchPoTab(tab) {
+  ['all','unmatched','confirmed','notify','links'].forEach(id => {
+    const el = qs(`#po-pane-${id}`);
+    if (el) el.style.display = id === tab ? '' : 'none';
+  });
+  if (tab === 'all')       _renderPoAll();
+  if (tab === 'unmatched') _renderPoUnmatched();
+  if (tab === 'confirmed') _renderPoConfirmed();
+  if (tab === 'notify')    _renderPoNotify();
+  if (tab === 'links')     _renderPoLinks();
+}
+
+const PO_STATUS_LABELS = {
+  new:'New', reviewed:'Reviewed', confirmed:'Confirmed', declined:'Declined'
+};
+const PO_STATUS_CLS = {
+  new:'amber', reviewed:'blue', confirmed:'green', declined:'red'
+};
+
+function _poStatusBadge(s) {
+  const cls = PO_STATUS_CLS[s]||'gray';
+  return `<span class="badge ${cls}">${PO_STATUS_LABELS[s]||s}</span>`;
+}
+
+function _fmtPoDate(d) {
+  if (!d) return '—';
+  if (d instanceof Date) return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  return d;
+}
+
+function _renderPoAll() {
+  const el = qs('#po-pane-all');
+  if (!el) return;
+  const orders = PortalDB.getOrders();
+  if (!orders.length) {
+    el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No portal submissions yet.</div></div>';
+    return;
+  }
+  el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
+    <thead><tr>
+      <th>Submitted</th><th>Account</th><th>Match</th>
+      <th>Cases</th><th>Cans</th><th>Delivery Window</th><th>PO#</th>
+      <th>Status</th><th>Flags</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${orders.map(o => {
+      const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+      const cans  = cases * PORTAL_CANS_PER_CASE;
+      const acLink = o.isMatched && o.accountId
+        ? `<strong style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</strong>`
+        : escHtml(o.accountName||'');
+      const multiFlag = o.hasMultipleSubmissions
+        ? `<span class="badge amber">↻ Updated</span>` : '';
+      return `<tr>
+        <td style="white-space:nowrap;font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
+        <td>${acLink}</td>
+        <td>${o.isMatched ? '<span class="badge green">✓ Matched</span>' : '<span class="badge red">? Unmatched</span>'}</td>
+        <td>${cases||'—'}</td>
+        <td>${cans||'—'}</td>
+        <td style="font-size:12px">${escHtml(o.deliveryWindow||'—')}</td>
+        <td style="font-size:12px">${escHtml(o.poNumber||'—')}</td>
+        <td>${_poStatusBadge(o.status||'new')}</td>
+        <td>${multiFlag}</td>
+        <td style="white-space:nowrap">
+          <button class="btn xs" onclick="reviewPortalOrder('${o.id}')">Review</button>
+          ${o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
+            ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : ''}
+          ${o.status!=='declined'&&o.status!=='confirmed'
+            ? `<button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div></div>`;
+}
+
+function _renderPoUnmatched() {
+  const el = qs('#po-pane-unmatched');
+  if (!el) return;
+  const orders = PortalDB.getOrders().filter(o => !o.isMatched);
+  if (!orders.length) {
+    el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No unmatched submissions.</div></div>';
+    return;
+  }
+  el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
+    <thead><tr><th>Submitted</th><th>Business Name</th><th>Email</th><th>Cases</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${orders.map(o => {
+      const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+      return `<tr>
+        <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
+        <td>${escHtml(o.accountName||'')}</td>
+        <td style="font-size:12px">${escHtml(o.billingEmail||'')}</td>
+        <td>${cases||'—'}</td>
+        <td>${_poStatusBadge(o.status||'new')}</td>
+        <td style="white-space:nowrap">
+          <button class="btn xs" onclick="reviewPortalOrder('${o.id}')">Review &amp; Link</button>
+          <button class="btn xs" onclick="createProspectFromPoId('${o.id}')">→ Prospect</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div></div>`;
+}
+
+function _renderPoConfirmed() {
+  const el = qs('#po-pane-confirmed');
+  if (!el) return;
+  const orders = PortalDB.getOrders().filter(o => o.status === 'confirmed');
+  if (!orders.length) {
+    el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No confirmed orders yet.</div></div>';
+    return;
+  }
+  el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
+    <thead><tr><th>Submitted</th><th>Account</th><th>Cases</th><th>Confirmed</th><th>Order ID</th></tr></thead>
+    <tbody>${orders.map(o => {
+      const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+      const confirmDate = o.confirmedAt instanceof Date ? fmtD(o.confirmedAt.toISOString().slice(0,10)) : (o.confirmedAt||'—');
+      return `<tr>
+        <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
+        <td>${o.isMatched&&o.accountId
+          ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</span>`
+          : escHtml(o.accountName||'')}</td>
+        <td>${cases}</td>
+        <td style="font-size:12px">${confirmDate}</td>
+        <td style="font-size:11px;color:var(--muted)">${o.convertedOrderId||'—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div></div>`;
+}
+
+function _renderPoNotify() {
+  const el = qs('#po-pane-notify');
+  if (!el) return;
+  const notifyList = PortalDB.getNotify();
+  if (!notifyList.length) {
+    el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No notification signups yet.</div></div>';
+    return;
+  }
+  el.innerHTML = `<div class="card">
+    <div class="section-hdr" style="margin-bottom:12px">
+      <h2>Coming Soon Notification Signups</h2>
+      <button class="btn sm" onclick="_exportNotifyCSV()">Export CSV</button>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Email</th><th>Flavor</th><th>Account</th><th>Submitted</th></tr></thead>
+      <tbody>${notifyList.map(n => `<tr>
+        <td>${escHtml(n.email||'')}</td>
+        <td>${skuBadge(n.sku||'')}</td>
+        <td>${n.accountName ? escHtml(n.accountName) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td style="font-size:12px">${_fmtPoDate(n.submittedAt)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function _exportNotifyCSV() {
+  const rows = [['Email','Flavor','Account Name','Submitted']];
+  PortalDB.getNotify().forEach(n => {
+    rows.push([n.email||'', n.sku||'', n.accountName||'', n.submittedAt ? n.submittedAt.toISOString().slice(0,10) : '']);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv,' + encodeURIComponent(csv);
+  a.download = 'portal-notify-list.csv';
+  a.click();
+}
+
+function _renderPoLinks() {
+  const el = qs('#po-pane-links');
+  if (!el) return;
+  const accounts = DB.a('ac').filter(a => a.orderPortalToken);
+  const orders   = PortalDB.getOrders();
+  const allAc    = DB.a('ac');
+
+  // Show all accounts (with and without token)
+  const rows = allAc.map(a => {
+    const token = a.orderPortalToken;
+    const url   = token ? `https://purpl-crm.web.app/order?t=${token}` : null;
+    const subs  = orders.filter(o => o.accountId === a.id);
+    return { a, token, url, subCount: subs.length };
+  });
+
+  el.innerHTML = `<div class="card">
+    <div class="section-hdr" style="margin-bottom:12px">
+      <h2>All Account Links</h2>
+      <span style="font-size:12px;color:var(--muted)">${rows.filter(r=>r.token).length} links generated</span>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Account</th><th>Link</th><th>Generated</th><th>Submitted</th><th>Actions</th></tr></thead>
+      <tbody>${rows.map(({a, token, url, subCount}) => `<tr>
+        <td><strong>${escHtml(a.name)}</strong></td>
+        <td style="font-size:11px;color:var(--muted)">
+          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="copyOrderLink('${a.id}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
+        </td>
+        <td style="font-size:12px">${a.orderPortalTokenCreatedAt ? fmtD(a.orderPortalTokenCreatedAt) : '—'}</td>
+        <td>${subCount > 0
+          ? `<span class="badge green">Yes (${subCount})</span>`
+          : '<span class="badge gray">No</span>'}</td>
+        <td><button class="btn xs" onclick="copyOrderLink('${a.id}')">🔗 Copy Link</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ── Review modal ──────────────────────────────────────────
+
+let _currentReviewOrderId = null;
+
+async function reviewPortalOrder(id) {
+  _currentReviewOrderId = id;
+  const o = PortalDB.getOrders().find(x => x.id === id);
+  if (!o) return;
+
+  // Mark as reviewed
+  if (o.status === 'new') {
+    await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
+  }
+
+  const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+  const cans  = cases * PORTAL_CANS_PER_CASE;
+  const notifySkus = (o.notifyMe||[]).map(n => n.sku).join(', ');
+
+  qs('#mpr-body').innerHTML = `
+    <div class="card-grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div><div style="font-size:11px;color:var(--muted)">Business</div><div style="font-weight:600">${escHtml(o.accountName||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Billing Email</div><div>${escHtml(o.billingEmail||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Submitted</div><div style="font-size:13px">${_fmtPoDate(o.submittedAt)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Mode</div><div>${o.mode==='liveorder'?'<span class="badge green">Live Order</span>':'<span class="badge amber">Pre-Order</span>'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Classic Lavender Lemonade</div><div style="font-weight:600">${cases} case${cases!==1?'s':''} <span style="color:var(--muted);font-size:12px">(${cans} cans)</span></div></div>
+      <div><div style="font-size:11px;color:var(--muted)">PO Number</div><div>${escHtml(o.poNumber||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Delivery Window</div><div>${escHtml(o.deliveryWindow||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Notes</div><div style="font-size:13px">${escHtml(o.notes||'—')}</div></div>
+      ${notifySkus?`<div><div style="font-size:11px;color:var(--muted)">Notify Me</div><div style="font-size:13px">${escHtml(notifySkus)}</div></div>`:''}
+      <div><div style="font-size:11px;color:var(--muted)">Status</div><div>${_poStatusBadge(o.status||'new')}</div></div>
+    </div>
+    ${o.hasMultipleSubmissions ? `<div style="background:#fef3c7;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:8px">⚠ This account/email has multiple submissions.</div>` : ''}
+  `;
+
+  // Show link-to-account for unmatched
+  const linkRow = qs('#mpr-link-account-row');
+  if (linkRow) {
+    linkRow.style.display = o.isMatched ? 'none' : '';
+    const sel = qs('#mpr-account-select');
+    if (sel && !o.isMatched) {
+      sel.innerHTML = '<option value="">— Select existing account —</option>' +
+        DB.a('ac').map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+    }
+  }
+
+  const confirmBtn = qs('#mpr-confirm-btn');
+  const declineBtn = qs('#mpr-decline-btn');
+  if (confirmBtn) confirmBtn.onclick = () => { closeModal('modal-portal-review'); openConfirmPortalOrder(id); };
+  if (declineBtn) declineBtn.onclick = () => { declinePortalOrder(id); closeModal('modal-portal-review'); };
+
+  openModal('modal-portal-review');
+}
+
+async function linkPortalOrderToAccount() {
+  const o = PortalDB.getOrders().find(x => x.id === _currentReviewOrderId);
+  if (!o) return;
+  const accountId = qs('#mpr-account-select')?.value;
+  if (!accountId) { toast('Select an account first'); return; }
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) return;
+  await PortalDB.updateOrder(o.id, { accountId, accountName: a.name, isMatched: true, isUnmatched: false });
+  toast('Linked to account ✓');
+  closeModal('modal-portal-review');
+  renderPreOrders(true);
+}
+
+async function createProspectFromPortalOrder() {
+  const o = PortalDB.getOrders().find(x => x.id === _currentReviewOrderId);
+  if (!o) return;
+  const pr = {
+    id: uid(), name: o.accountName||'', contact: o.contactName||'',
+    email: o.billingEmail||'', status:'lead', source:'Portal',
+    priority:'medium', notes:[], outreach:[],
+  };
+  DB.push('pr', pr);
+  await PortalDB.updateOrder(o.id, { status:'reviewed', reviewedAt: new Date() });
+  toast('Prospect created ✓');
+  closeModal('modal-portal-review');
+  renderPreOrders(true);
+}
+
+async function createProspectFromPoId(id) {
+  _currentReviewOrderId = id;
+  await createProspectFromPortalOrder();
+}
+
+async function declinePortalOrder(id) {
+  if (!confirm('Mark this submission as declined?')) return;
+  await PortalDB.updateOrder(id, { status:'declined' });
+  toast('Submission declined');
+  renderPreOrders(true);
+}
+
+// ── Confirm portal order flow ─────────────────────────────
+
+let _confirmPortalOrderId = null;
+
+function openConfirmPortalOrder(id) {
+  _confirmPortalOrderId = id;
+  const o = PortalDB.getOrders().find(x => x.id === id);
+  if (!o) return;
+  if (!o.accountId) {
+    toast('Link this submission to an account before confirming');
+    reviewPortalOrder(id);
+    return;
+  }
+  const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+  const a = DB.a('ac').find(x => x.id === o.accountId);
+
+  qs('#mcpo-body').innerHTML = `
+    <div style="font-size:14px;margin-bottom:12px">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">${escHtml(o.accountName)}</div>
+      <div style="font-size:12px;color:var(--muted)">Portal submission · ${_fmtPoDate(o.submittedAt)}</div>
+      ${o.poNumber?`<div style="font-size:12px;margin-top:4px">PO# ${escHtml(o.poNumber)}</div>`:''}
+    </div>
+  `;
+
+  const qtyInput = qs('#mcpo-classic-qty');
+  if (qtyInput) {
+    qtyInput.value = cases;
+    qtyInput.oninput = () => {
+      const q = parseInt(qtyInput.value)||0;
+      const cc = qs('#mcpo-can-count');
+      if (cc) cc.textContent = q > 0 ? `= ${q * PORTAL_CANS_PER_CASE} cans` : '';
+    };
+    qtyInput.oninput();
+  }
+
+  const notesInput = qs('#mcpo-notes');
+  if (notesInput) notesInput.value = o.deliveryWindow ? `Delivery: ${o.deliveryWindow}` : '';
+
+  const dueDateInput = qs('#mcpo-due-date');
+  if (dueDateInput) dueDateInput.value = today();
+
+  const saveBtn = qs('#mcpo-save-btn');
+  if (saveBtn) saveBtn.onclick = () => _confirmPortalOrderSave();
+
+  openModal('modal-confirm-portal-order');
+}
+
+async function _confirmPortalOrderSave() {
+  const o = PortalDB.getOrders().find(x => x.id === _confirmPortalOrderId);
+  if (!o) return;
+  const cases   = parseInt(qs('#mcpo-classic-qty')?.value)||0;
+  const dueDate = qs('#mcpo-due-date')?.value || today();
+  const notes   = qs('#mcpo-notes')?.value?.trim()||'';
+  if (cases < 1) { toast('Enter at least 1 case'); return; }
+  if (!o.accountId) { toast('Account not linked'); return; }
+
+  // Build real order in orders collection
+  const orderId = uid();
+  const cans    = cases * PORTAL_CANS_PER_CASE;
+  const newOrder = {
+    id: orderId,
+    accountId: o.accountId,
+    created: new Date().toISOString(),
+    dueDate,
+    status: 'pending',
+    source: 'portal',
+    linkedPortalOrderId: o.id,
+    items: [{ sku:'classic', qty: cases }],
+    canCount: cans,
+    notes,
+    invoiceStatus: 'none',
+    invoiceDate: null,
+    paidDate: null,
+    poNumber: o.poNumber||'',
+  };
+
+  DB.push('orders', newOrder);
+
+  // Update account lastOrder
+  DB.update('ac', o.accountId, a => ({
+    ...a, lastOrder: dueDate
+  }));
+
+  // Update portal_orders doc
+  const nowIso = new Date().toISOString();
+  await PortalDB.updateOrder(o.id, {
+    status: 'confirmed',
+    confirmedAt: new Date(),
+    convertedOrderId: orderId,
+  });
+
+  closeModal('modal-confirm-portal-order');
+  toast('Order confirmed and added to orders ✓');
+  renderPreOrders(true);
+}
+
+// ── Phase 5: Portal Settings ──────────────────────────────
+
+function togglePortalDeadline() {
+  const enabled = qs('#portal-deadline-enabled')?.checked;
+  const row = qs('#portal-deadline-row');
+  if (row) row.style.display = enabled ? '' : 'none';
+}
+
+async function renderPortalSettings() {
+  const config = await PortalDB.getConfig();
+  const modeEl = qs('#portal-mode');
+  if (modeEl) modeEl.value = config.mode || 'preorder';
+  const priceEl = qs('#portal-price-per-case');
+  if (priceEl) priceEl.value = config.pricePerCase || '';
+  const dlEnabled = qs('#portal-deadline-enabled');
+  if (dlEnabled) { dlEnabled.checked = !!config.deadlineEnabled; togglePortalDeadline(); }
+  const dlDate = qs('#portal-deadline');
+  if (dlDate) dlDate.value = config.deadline || '';
+
+  // Status card
+  await _renderPortalStatusCard(config);
+}
+
+async function _renderPortalStatusCard(config) {
+  const el = qs('#portal-status-body');
+  if (!el) return;
+  if (!PortalDB._loaded) await PortalDB.load();
+  const orders  = PortalDB.getOrders();
+  const total   = orders.length;
+  const lastOrd = orders[0];
+  const lastStr = lastOrd?.submittedAt
+    ? `${Math.floor((Date.now()-lastOrd.submittedAt.getTime())/60000)} min ago`
+    : 'Never';
+  el.innerHTML = `
+    <div style="display:grid;gap:6px">
+      <div>Mode: <strong>${config?.mode==='liveorder'?'Live Orders':'Pre-Order'}</strong></div>
+      <div>Total submissions: <strong>${total}</strong></div>
+      <div>Last submission: <strong>${lastStr}</strong></div>
+    </div>
+  `;
+}
+
+async function savePortalSettings() {
+  const mode      = qs('#portal-mode')?.value || 'preorder';
+  const price     = parseFloat(qs('#portal-price-per-case')?.value)||null;
+  const dlEnabled = qs('#portal-deadline-enabled')?.checked || false;
+  const deadline  = qs('#portal-deadline')?.value || null;
+  const config    = { mode, pricePerCase: price, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null };
+  try {
+    await PortalDB.saveConfig(config);
+    toast('Portal settings saved ✓');
+    await _renderPortalStatusCard(config);
+  } catch(e) {
+    toast('Save failed — ' + (e.message||e));
+    console.error(e);
+  }
+}
+
+// ── Phase 6: Portal Orders tab in account modal ───────────
+
+async function renderMacPortalOrdersTab(accountId) {
+  const el = qs('#mac-portal-orders-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">Loading…</div>';
+  if (!PortalDB._loaded) await PortalDB.load();
+  const orders = PortalDB.getAccountOrders(accountId);
+  if (!orders.length) {
+    el.innerHTML = `
+      <div style="padding:16px">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:14px">
+          No portal orders yet. Copy this account's personalized link and send it to them.
+        </p>
+        <button class="btn sm primary" onclick="copyOrderLink('${accountId}')">🔗 Copy Order Link</button>
+      </div>
+    `;
+    return;
+  }
+  el.innerHTML = `
+    <div style="margin-bottom:12px">
+      <button class="btn sm primary" onclick="copyOrderLink('${accountId}')">🔗 Copy Order Link</button>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Submitted</th><th>Cases</th><th>Cans</th><th>Status</th><th>Delivery Window</th><th>Notes</th></tr></thead>
+      <tbody>${orders.map(o => {
+        const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+        const cans  = cases * PORTAL_CANS_PER_CASE;
+        return `<tr>
+          <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
+          <td>${cases||'—'}</td>
+          <td>${cans||'—'}</td>
+          <td>${_poStatusBadge(o.status||'new')}</td>
+          <td style="font-size:12px">${escHtml(o.deliveryWindow||'—')}</td>
+          <td style="font-size:12px">${escHtml(o.notes||'—')}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+  `;
+}
+
+// ── Wire portal settings render into renderSettings ───────
+// Extend renderSettings to also load portal settings
+const _origRenderSettings = renderSettings;
+function renderSettings() {
+  _origRenderSettings();
+  renderPortalSettings();
+}
+
