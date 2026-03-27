@@ -971,7 +971,7 @@ function renderAccounts() {
         <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
         <button class="btn sm run" onclick="openNewOrder('${a.id}')">+ Run</button>
         <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
-        <button class="btn sm" onclick="copyOrderLink('${a.id}')">🔗 Copy Link</button>
+        <button class="btn sm" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button>
       </div>
     </div>`;
   }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
@@ -5303,39 +5303,30 @@ const PortalDB = {
 
 // ── Phase 3: Link generator ────────────────────────────────
 
-async function generateOrderLink(accountId) {
-  const accounts = JSON.parse(localStorage.getItem('pcrm5_ac') || '[]');
-  const account = accounts.find(a => a.id === accountId);
-  if (!account) { alert('Account not found'); return null; }
-  const token = btoa(accountId + ':' + Math.random().toString(36).slice(2))
-    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  await firebase.firestore().collection('accounts').doc(accountId).set({
-    orderPortalToken: token,
-    name: account.name,
-    email: account.email || '',
-    orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
-  }, { merge: true });
-  DB.update('ac', accountId, ac => ({
-    ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
-  }));
-  await PortalDB.setToken(token, {
-    accountId, accountName: account.name, email: account.email || ''
-  });
-  return `https://purpl-crm.web.app/order?t=${token}`;
+async function generateOrderLink(accountId, accountName, accountEmail) {
+  try {
+    const token = btoa(accountId + ':' + Math.random().toString(36).slice(2))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    await firebase.firestore().collection('accounts').doc(accountId).set({
+      orderPortalToken: token,
+      name: accountName,
+      email: accountEmail || '',
+      orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
+    }, { merge: true });
+    const link = window.location.origin + '/order?t=' + token;
+    await navigator.clipboard.writeText(link);
+    toast('Order link copied ✓');
+  } catch(e) {
+    console.error(e);
+    toast('Error generating link');
+  }
 }
 
 async function copyOrderLink(accountId) {
-  const url = await generateOrderLink(accountId);
-  if (!url) { toast('Account not found'); return; }
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch(_) {
-    const inp = document.createElement('input');
-    inp.value = url; document.body.appendChild(inp);
-    inp.select(); document.execCommand('copy');
-    document.body.removeChild(inp);
-  }
-  toast('Link copied to clipboard ✓');
+  const accounts = JSON.parse(localStorage.getItem('pcrm5_ac') || '[]');
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) { toast('Account not found'); return; }
+  await generateOrderLink(accountId, account.name, account.email || '');
 }
 
 // ── Phase 4: Pre-Orders page ──────────────────────────────
@@ -5580,13 +5571,13 @@ function _renderPoLinks() {
       <tbody>${rows.map(({a, token, url, subCount}) => `<tr>
         <td><strong>${escHtml(a.name)}</strong></td>
         <td style="font-size:11px;color:var(--muted)">
-          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="copyOrderLink('${a.id}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
+          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
         </td>
         <td style="font-size:12px">${a.orderPortalTokenCreatedAt ? fmtD(a.orderPortalTokenCreatedAt) : '—'}</td>
         <td>${subCount > 0
           ? `<span class="badge green">Yes (${subCount})</span>`
           : '<span class="badge gray">No</span>'}</td>
-        <td><button class="btn xs" onclick="copyOrderLink('${a.id}')">🔗 Copy Link</button></td>
+        <td><button class="btn xs" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button></td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
