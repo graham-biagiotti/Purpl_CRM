@@ -60,6 +60,7 @@ input:focus,textarea:focus,select:focus{
 .ty-note{font-size:13px;color:#6b7280;margin-bottom:8px;line-height:1.6}
 .ty-small{font-size:12px;color:#9ca3af;margin-top:16px}
 @media(max-width:480px){.container{padding:16px 12px}.card{padding:16px}}
+@media print{button{display:none !important}body{background:white}}
 </style>
 </head>
 <body>
@@ -241,6 +242,11 @@ input:focus,textarea:focus,select:focus{
     <h2 id="ty-heading">Thank you!</h2>
     <p>Your order has been received.</p>
     <div class="summary-card" id="ty-summary"></div>
+    <button onclick="window.print()" style="margin-top:16px;
+padding:10px 24px;background:#7B4FA0;color:#fff;border:none;
+border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+      🖨️ Print Order Confirmation
+    </button>
     <p class="ty-note">
       You'll receive an invoice from Pumpkin Blossom Farm at<br>
       <strong style="color:#7B4FA0">lavender@pumpkinblossomfarm.com</strong>
