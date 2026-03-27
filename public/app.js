@@ -5304,19 +5304,22 @@ const PortalDB = {
 // ── Phase 3: Link generator ────────────────────────────────
 
 async function generateOrderLink(accountId) {
-  const a = DB.a('ac').find(x => x.id === accountId);
-  if (!a) return null;
+  const accounts = JSON.parse(localStorage.getItem('pcrm5_ac') || '[]');
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) { alert('Account not found'); return null; }
   const token = btoa(accountId + ':' + Math.random().toString(36).slice(2))
     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  await firebase.firestore().collection('accounts').doc(accountId).update({
+  await firebase.firestore().collection('accounts').doc(accountId).set({
     orderPortalToken: token,
-    orderPortalTokenCreatedAt: today()
-  });
+    name: account.name,
+    email: account.email || '',
+    orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
+  }, { merge: true });
   DB.update('ac', accountId, ac => ({
     ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
   }));
   await PortalDB.setToken(token, {
-    accountId, accountName: a.name, email: a.email || ''
+    accountId, accountName: account.name, email: account.email || ''
   });
   return `https://purpl-crm.web.app/order?t=${token}`;
 }
