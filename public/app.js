@@ -5763,20 +5763,18 @@ async function confirmPortalOrder() {
     if (cases < 1) { toast('Enter at least 1 case'); return; }
 
     const cans = cases * PORTAL_CANS_PER_CASE;
-    const orderId = 'ord_' + Date.now().toString(36);
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const batch = firebase.firestore().batch();
+    const orderId = uid();
+    const todayStr = today();
 
-    // 1. Create order record
-    const orderRef = firebase.firestore()
-      .collection('orders').doc(orderId);
-    batch.set(orderRef, {
+    // 1. Build order record (matches delivery run order format)
+    const orderData = {
       id: orderId,
       accountId: d.accountId || null,
       accountName: d.accountName,
-      date: todayStr,
-      cases: cases,
-      cans: cans,
+      created: todayStr,
+      dueDate: todayStr,
+      cases,
+      cans,
       status: 'pending',
       source: 'portal',
       linkedPortalOrderId: _portalOrderId,
@@ -5784,64 +5782,68 @@ async function confirmPortalOrder() {
       poNumber: d.poNumber || '',
       deliveryWindow: d.deliveryWindow || '',
       distributor: d.distributor || '',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
 
-    // 2. Update portal order status
-    batch.update(portalRef, {
-      status: 'confirmed',
-      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      convertedOrderId: orderId
-    });
-
-    // 3. Update account lastOrder date
-    if (d.accountId) {
-      const entityCollection = d.isProspect ? 'prospects' : 'accounts';
-      const acctRef = firebase.firestore()
-        .collection(entityCollection).doc(d.accountId);
-      batch.update(acctRef, { lastOrder: todayStr });
-    }
-
-    // 4. Deduct from inventory (finished packs)
-    const invRef = firebase.firestore()
-      .collection('inventory_log').doc();
-    batch.set(invRef, {
-      type: 'portal_order',
+    // 3. Build inventory deduction entry (matches toggleStop format — qty in cans, type 'out')
+    const ivEntry = {
+      id: uid(),
       date: todayStr,
       sku: 'classic',
-      cases: cases,
-      cans: cans,
-      accountName: d.accountName,
-      orderId: orderId,
-      notes: 'Portal order confirmed',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+      type: 'out',
+      qty: cans,
+      note: 'Portal order: ' + d.accountName,
+      ordId: orderId,
+    };
 
-    // 5. Create draft invoice
-    const invoiceId = 'inv_' + Date.now().toString(36);
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
-    const invoiceRef = firebase.firestore()
-      .collection('invoices').doc(invoiceId);
-    batch.set(invoiceRef, {
-      id: invoiceId,
+    // 4. Build draft invoice (matches createDeliveryInvoice format)
+    const lastInvNum = DB.a('inv_log_v2').reduce((max, inv) => {
+      const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
+      return Math.max(max, n);
+    }, 0);
+    const invoiceNumber = 'INV-' + String(lastInvNum + 1).padStart(4, '0');
+    const terms = DB.obj('settings', { payment_terms: 30 }).payment_terms || 30;
+    const dueDateStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0, 10);
+    const invoiceData = {
+      id: uid(),
       accountId: d.accountId || null,
       accountName: d.accountName,
       orderId: orderId,
+      invoiceNumber,
       date: todayStr,
-      dueDate: dueDate.toISOString().slice(0, 10),
-      cases: cases,
-      cans: cans,
-      amount: null,
+      dueDate: dueDateStr,
+      cases,
+      cans,
       status: 'draft',
       source: 'portal',
       invoiceEmail: d.billingEmail || '',
-      billedFrom: 'lavender@pumpkinblossomfarm.com',
       notes: 'Auto-generated from portal order. Set amount before sending.',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    // 1–4: Write order, account lastOrder, inventory deduction, draft invoice
+    // in one Firestore write via the DB cache
+    DB.atomicUpdate(cache => {
+      // 1. Create order in 'ord' collection
+      cache['ord'] = [...(cache['ord'] || []), orderData];
+      // 2. Update account (or prospect) lastOrder
+      if (d.accountId) {
+        const key = d.isProspect ? 'pr' : 'ac';
+        cache[key] = (cache[key] || []).map(a =>
+          a.id === d.accountId ? { ...a, lastOrder: todayStr } : a
+        );
+      }
+      // 3. Deduct inventory — 'iv' is the inventory log (same array used by renderInventory)
+      cache['iv'] = [...(cache['iv'] || []), ivEntry];
+      // 4. Create draft invoice — 'inv_log_v2' is the invoice array
+      cache['inv_log_v2'] = [...(cache['inv_log_v2'] || []), invoiceData];
     });
 
-    await batch.commit();
+    // 5. Update portal_orders status — stays as direct Firestore (not in DB cache)
+    await portalRef.update({
+      status: 'confirmed',
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      convertedOrderId: orderId,
+    });
+
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     toast('✓ Order confirmed · Invoice draft created · Inventory updated');
