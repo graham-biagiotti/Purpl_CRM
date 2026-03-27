@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>purpl — Wholesale Order Portal</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#faf8ff;color:#1a1a2e;min-height:100vh}
+.container{max-width:600px;margin:0 auto;padding:24px 16px}
+.header{text-align:center;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #e5e7eb}
+.logo{font-size:36px;font-weight:700;letter-spacing:-2px;color:#7B4FA0;margin-bottom:8px}
+.logo span{color:#9B6DC0}
+h1{font-size:22px;font-weight:600;margin-bottom:6px}
+.tagline{font-size:14px;color:#6b7280}
+.banner{background:linear-gradient(135deg,#f5f0ff,#ede9fe);border:1px solid #c4b5fd;border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:14px;color:#5b21b6;display:none}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px}
+.form-group{margin-bottom:14px}
+label{display:block;font-size:12px;font-weight:500;color:#6b7280;margin-bottom:5px}
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;background:#fff;color:#1a1a2e}
+input:focus,textarea:focus{outline:2px solid #7B4FA0;border-color:transparent}
+input[readonly]{background:#f9fafb;color:#6b7280}
+.locked-field{background:#f5f0ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:600;color:#5b21b6}
+.product-card{border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px}
+.product-card.active{border-color:#7B4FA0;background:#faf8ff}
+.product-card.coming-soon{opacity:.5;background:#f9fafb}
+.product-name{font-size:15px;font-weight:600;margin-bottom:3px}
+.product-desc{font-size:12px;color:#6b7280;margin-bottom:12px}
+.coming-soon-badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:500;margin-left:8px}
+.cans-calc{font-size:12px;color:#7B4FA0;font-weight:500;margin-top:6px}
+.notify-row{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:#6b7280}
+.notify-row input[type=checkbox]{width:auto}
+.terms-block{background:#f9fafb;border-radius:10px;padding:16px;margin-bottom:20px;font-size:13px;color:#374151;line-height:1.6}
+.terms-block strong{display:block;margin-bottom:4px;color:#1a1a2e}
+.contact-info{margin-top:10px;font-size:13px;color:#6b7280}
+.contact-info a{color:#7B4FA0;text-decoration:none}
+.submit-btn{width:100%;padding:14px;background:#7B4FA0;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;transition:.15s;margin-bottom:24px}
+.submit-btn:hover{background:#6a3f8f}
+.submit-btn:disabled{background:#c4b5fd;cursor:not-allowed}
+.thankyou{display:none;text-align:center;padding:40px 20px}
+.thankyou h2{font-size:24px;font-weight:700;color:#7B4FA0;margin-bottom:8px}
+.thankyou p{font-size:15px;color:#6b7280;margin-bottom:20px}
+.summary-card{background:#f5f0ff;border:1px solid #c4b5fd;border-radius:10px;padding:16px;text-align:left;margin-bottom:20px}
+.summary-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e9d5ff;font-size:13px}
+.summary-row:last-child{border-bottom:none;font-weight:600}
+.error-msg{background:#fee2e2;color:#991b1b;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;display:none}
+@media(max-width:480px){.container{padding:16px 12px}}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">pur<span>pl</span></div>
+    <h1>Wholesale Order Portal</h1>
+    <p class="tagline">Place your wholesale order below. Questions? Contact us anytime.</p>
+  </div>
+  <!-- Pre-order banner -->
+  <div class="banner" id="preorder-banner">
+    🚀 Accepting Pre-Orders — Product launching soon. Reserve your first order today.
+  </div>
+  <!-- Form -->
+  <div id="order-form">
+    <!-- Account info -->
+    <div class="card">
+      <h2>Account Information</h2>
+      <div id="matched-account" style="display:none">
+        <div class="form-group">
+          <label>Ordering for</label>
+          <div class="locked-field" id="locked-name"></div>
+        </div>
+        <div class="form-group">
+          <label>Billing / Invoice email</label>
+          <input type="email" id="billing-email-matched"
+            placeholder="Email where you'd like your invoice sent">
+          <div style="font-size:11px;color:#6b7280;margin-top:4px">
+            Invoice will be sent to this address from Pumpkin Blossom Farm
+          </div>
+        </div>
+      </div>
+      <div id="unmatched-account">
+        <div class="form-group">
+          <label>Business Name *</label>
+          <input type="text" id="business-name" placeholder="Your store or business name">
+        </div>
+        <div class="form-group">
+          <label>Contact Name *</label>
+          <input type="text" id="contact-name" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label>Billing / Invoice email *</label>
+          <input type="email" id="billing-email-unmatched"
+            placeholder="Email where you'd like your invoice sent">
+          <div style="font-size:11px;color:#6b7280;margin-top:4px">
+            Invoice will be sent to this address from Pumpkin Blossom Farm
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Order -->
+    <div class="card">
+      <h2>Your Order</h2>
+      <!-- Classic -->
+      <div class="product-card active">
+        <div class="product-name">Classic Lavender Lemonade</div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <div id="price-display" style="display:none;font-size:13px;color:#7B4FA0;font-weight:600;margin-bottom:10px"></div>
+        <div class="form-group" style="margin-bottom:4px">
+          <label>Cases (12 cans per case)</label>
+          <input type="number" id="classic-cases" min="1" step="1"
+            placeholder="0" oninput="updateCans()">
+        </div>
+        <div class="cans-calc" id="cans-calc"></div>
+        <div id="preorder-note" style="display:none;font-size:12px;color:#9ca3af;margin-top:8px">
+          Pricing and delivery details will be confirmed at launch.
+        </div>
+      </div>
+      <!-- Coming soon -->
+      <div class="product-card coming-soon">
+        <div class="product-name">Blueberry Lavender Lemonade
+          <span class="coming-soon-badge">Coming Soon</span></div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
+        <div class="notify-row">
+          <input type="checkbox" id="notify-blueberry">
+          <label for="notify-blueberry" style="margin:0;font-size:13px;color:#6b7280">
+            Notify me when available</label>
+        </div>
+      </div>
+      <div class="product-card coming-soon">
+        <div class="product-name">Peach Lavender Lemonade
+          <span class="coming-soon-badge">Coming Soon</span></div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
+        <div class="notify-row">
+          <input type="checkbox" id="notify-peach">
+          <label for="notify-peach" style="margin:0;font-size:13px;color:#6b7280">
+            Notify me when available</label>
+        </div>
+      </div>
+      <div class="product-card coming-soon">
+        <div class="product-name">Raspberry Lavender Lemonade
+          <span class="coming-soon-badge">Coming Soon</span></div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
+        <div class="notify-row">
+          <input type="checkbox" id="notify-raspberry">
+          <label for="notify-raspberry" style="margin:0;font-size:13px;color:#6b7280">
+            Notify me when available</label>
+        </div>
+      </div>
+    </div>
+    <!-- Additional fields -->
+    <div class="card">
+      <h2>Delivery & Notes</h2>
+      <div class="form-group">
+        <label>Preferred Delivery Window (optional)</label>
+        <input type="text" id="delivery-window"
+          placeholder="e.g. First week of May, flexible, ASAP">
+      </div>
+      <div class="form-group">
+        <label>PO Number (optional)</label>
+        <input type="text" id="po-number"
+          placeholder="Your PO # if applicable">
+      </div>
+      <div class="form-group">
+        <label>Notes or Questions (optional)</label>
+        <textarea id="order-notes" rows="3"
+          placeholder="Anything else we should know about your order or delivery?"></textarea>
+      </div>
+    </div>
+    <!-- Terms -->
+    <div class="terms-block">
+      <strong>Invoice Terms</strong>
+      Net 30 from delivery date. Invoices are issued by Pumpkin Blossom Farm.
+      <div class="contact-info">
+        <strong style="margin-bottom:4px">Questions? Contact us:</strong>
+        Graham<br>
+        <a href="tel:6037483038">603-748-3038</a><br>
+        <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a><br>
+        <a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a><br>
+        393 Pumpkin Hill Rd, Warner, NH
+      </div>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+    <button class="submit-btn" id="submit-btn" disabled onclick="submitOrder()">
+      Submit Pre-Order
+    </button>
+  </div>
+  <!-- Thank you -->
+  <div class="thankyou" id="thankyou">
+    <div style="font-size:48px;margin-bottom:16px">🎉</div>
+    <h2 id="ty-name">Thank you!</h2>
+    <p>Your order has been received.</p>
+    <div class="summary-card" id="ty-summary"></div>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:8px">
+      Invoice Terms: Net 30 from delivery.<br>
+      You'll receive an invoice from Pumpkin Blossom Farm.
+    </p>
+    <p style="font-size:13px;color:#6b7280">
+      Questions?
+      <a href="mailto:graham@pumpkinblossomfarm.com" style="color:#7B4FA0">
+        graham@pumpkinblossomfarm.com</a> ·
+      603-748-3038 · drinkpurpl.com
+    </p>
+    <p style="font-size:12px;color:#9ca3af;margin-top:16px">
+      Want to update your order? Use your original link to resubmit.
+    </p>
+  </div>
+</div>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getFirestore, collection, addDoc, getDocs, query, where, doc, getDoc, serverTimestamp, updateDoc }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBbEQ1wV7MwJJjSC9_EalYxHMvTjHklwFY",
+  authDomain: "purpl-crm.firebaseapp.com",
+  projectId: "purpl-crm",
+  storageBucket: "purpl-crm.firebasestorage.app",
+  messagingSenderId: "805074818841",
+  appId: "1:805074818841:web:69655531888bd5904d5788"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const PORTAL_CANS_PER_CASE = 12;
+let isMatched = false;
+let accountId = null;
+let accountName = '';
+let portalMode = 'preorder';
+// Read URL token and portal settings on load
+async function init() {
+  try {
+    // Load portal settings
+    const settingsDoc = await getDoc(doc(db, 'portal_settings', 'config'));
+    if (settingsDoc.exists()) {
+      const s = settingsDoc.data();
+      portalMode = s.mode || 'preorder';
+      if (portalMode === 'preorder') {
+        document.getElementById('preorder-banner').style.display = 'block';
+        document.getElementById('preorder-note').style.display = 'block';
+        document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
+      } else {
+        document.getElementById('submit-btn').textContent = 'Place Order';
+        if (s.pricePerCase) {
+          const pd = document.getElementById('price-display');
+          pd.textContent = '$' + parseFloat(s.pricePerCase).toFixed(2) + ' per case';
+          pd.style.display = 'block';
+        }
+      }
+    }
+    // Resolve token
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('t');
+    if (token) {
+      const q = query(collection(db, 'accounts'),
+        where('orderPortalToken', '==', token));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const acct = snap.docs[0].data();
+        accountId = snap.docs[0].id;
+        accountName = acct.name || '';
+        isMatched = true;
+        document.getElementById('matched-account').style.display = 'block';
+        document.getElementById('unmatched-account').style.display = 'none';
+        document.getElementById('locked-name').textContent = accountName;
+        if (acct.email) {
+          document.getElementById('billing-email-matched').value = acct.email;
+        }
+      }
+    }
+    if (!isMatched) {
+      document.getElementById('matched-account').style.display = 'none';
+      document.getElementById('unmatched-account').style.display = 'block';
+    }
+  } catch(e) {
+    console.error('init error:', e);
+  }
+}
+window.updateCans = function() {
+  const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+  const calc = document.getElementById('cans-calc');
+  calc.textContent = cases > 0 ? '= ' + (cases * PORTAL_CANS_PER_CASE) + ' cans total' : '';
+  checkSubmitEnabled();
+}
+function checkSubmitEnabled() {
+  const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+  const notifyChecked = ['blueberry','peach','raspberry']
+    .some(f => document.getElementById('notify-' + f).checked);
+  document.getElementById('submit-btn').disabled = cases < 1 && !notifyChecked;
+}
+['notify-blueberry','notify-peach','notify-raspberry'].forEach(id => {
+  document.getElementById(id).addEventListener('change', checkSubmitEnabled);
+});
+window.submitOrder = async function() {
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('error-msg');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  errEl.style.display = 'none';
+  try {
+    const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+    let billingEmail = '';
+    let contactName = '';
+    let finalAccountName = accountName;
+    if (isMatched) {
+      billingEmail = document.getElementById('billing-email-matched').value.trim();
+    } else {
+      finalAccountName = document.getElementById('business-name').value.trim();
+      contactName = document.getElementById('contact-name').value.trim();
+      billingEmail = document.getElementById('billing-email-unmatched').value.trim();
+      if (!finalAccountName || !billingEmail) {
+        errEl.textContent = 'Please fill in your business name and email.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = portalMode === 'preorder' ? 'Submit Pre-Order' : 'Place Order';
+        return;
+      }
+    }
+    if (!billingEmail) {
+      errEl.textContent = 'Please enter your billing email.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = portalMode === 'preorder' ? 'Submit Pre-Order' : 'Place Order';
+      return;
+    }
+    // Check for duplicate
+    let hasMultiple = false;
+    let prevIds = [];
+    if (accountId || billingEmail) {
+      const checkField = accountId ? 'accountId' : 'billingEmail';
+      const checkVal = accountId || billingEmail;
+      const existing = await getDocs(query(collection(db, 'portal_orders'),
+        where(checkField, '==', checkVal)));
+      if (!existing.empty) {
+        hasMultiple = true;
+        prevIds = existing.docs.map(d => d.id);
+        for (const d of existing.docs) {
+          await updateDoc(doc(db, 'portal_orders', d.id),
+            { hasMultipleSubmissions: true });
+        }
+      }
+    }
+    // Build notifyMe array
+    const notifyMe = [];
+    ['blueberry','peach','raspberry'].forEach(f => {
+      if (document.getElementById('notify-' + f).checked) {
+        notifyMe.push({ sku: f, email: billingEmail });
+      }
+    });
+    // Save portal order
+    await addDoc(collection(db, 'portal_orders'), {
+      submittedAt: serverTimestamp(),
+      mode: portalMode,
+      accountId: accountId || null,
+      accountName: finalAccountName,
+      isMatched,
+      billingEmail,
+      contactName: contactName || null,
+      items: cases > 0 ? [{
+        sku: 'classic',
+        label: 'Classic Lavender Lemonade',
+        cases,
+        cansPerCase: PORTAL_CANS_PER_CASE,
+        totalCans: cases * PORTAL_CANS_PER_CASE
+      }] : [],
+      notifyMe,
+      deliveryWindow: document.getElementById('delivery-window').value,
+      poNumber: document.getElementById('po-number').value,
+      notes: document.getElementById('order-notes').value,
+      status: 'new',
+      reviewedAt: null,
+      confirmedAt: null,
+      convertedOrderId: null,
+      isUnmatched: !isMatched,
+      hasMultipleSubmissions: hasMultiple,
+      previousSubmissionIds: prevIds
+    });
+    // Save notify signups separately
+    for (const n of notifyMe) {
+      await addDoc(collection(db, 'portal_notify'), {
+        email: billingEmail,
+        flavors: notifyMe.map(x => x.sku),
+        accountName: finalAccountName,
+        accountId: accountId || null,
+        submittedAt: serverTimestamp()
+      });
+      break; // one entry per submission
+    }
+    // Show thank you
+    document.getElementById('order-form').style.display = 'none';
+    const ty = document.getElementById('thankyou');
+    ty.style.display = 'block';
+    document.getElementById('ty-name').textContent =
+      'Thank you, ' + finalAccountName + '!';
+    let summaryHtml = '';
+    if (cases > 0) {
+      summaryHtml += `<div class="summary-row">
+        <span>Classic Lavender Lemonade</span>
+        <span>${cases} cases (${cases * PORTAL_CANS_PER_CASE} cans)</span></div>`;
+    }
+    if (document.getElementById('delivery-window').value) {
+      summaryHtml += `<div class="summary-row">
+        <span>Delivery Window</span>
+        <span>${document.getElementById('delivery-window').value}</span></div>`;
+    }
+    if (document.getElementById('po-number').value) {
+      summaryHtml += `<div class="summary-row">
+        <span>PO Number</span>
+        <span>${document.getElementById('po-number').value}</span></div>`;
+    }
+    summaryHtml += `<div class="summary-row">
+      <span>Billing Email</span>
+      <span>${billingEmail}</span></div>`;
+    document.getElementById('ty-summary').innerHTML = summaryHtml;
+  } catch(e) {
+    console.error('submit error:', e);
+    errEl.textContent = 'Something went wrong. Please try again or contact graham@pumpkinblossomfarm.com';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = portalMode === 'preorder' ? 'Submit Pre-Order' : 'Place Order';
+  }
+}
+init();
+</script>
+</body>
+</html>
