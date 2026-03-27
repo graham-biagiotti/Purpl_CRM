@@ -5453,6 +5453,7 @@ function _renderPoAll() {
             ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : ''}
           ${o.status!=='declined'&&o.status!=='confirmed'
             ? `<button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
+          <button class="btn xs red" onclick="deletePortalOrder('${o.id}')">✕</button>
         </td>
       </tr>`;
     }).join('')}</tbody>
@@ -5684,6 +5685,19 @@ async function declinePortalOrder(id) {
   await PortalDB.updateOrder(id, { status:'declined' });
   toast('Submission declined');
   renderPreOrders(true);
+}
+
+async function deletePortalOrder(orderId) {
+  if (!confirm('Delete this submission? Cannot be undone.')) return;
+  try {
+    await firebase.firestore()
+      .collection('portal_orders').doc(orderId).delete();
+    toast('Deleted ✓');
+    renderPreOrders(true);
+  } catch(e) {
+    console.error(e);
+    toast('Error deleting');
+  }
 }
 
 // ── Confirm portal order flow ─────────────────────────────
