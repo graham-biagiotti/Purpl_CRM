@@ -5311,6 +5311,10 @@ async function generateOrderLink(accountId) {
     const salt = Math.random().toString(36).slice(2);
     const raw  = accountId + ':' + salt;
     token = btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    await firebase.firestore().collection('accounts').doc(accountId).update({
+      orderPortalToken: token,
+      orderPortalTokenCreatedAt: today()
+    });
     DB.update('ac', accountId, ac => ({
       ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
     }));
