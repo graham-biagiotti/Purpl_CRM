@@ -1452,6 +1452,7 @@ function renderProspects() {
         <button class="btn sm primary" onclick="logProspectOutreach('${p.id}')">📞 Log Follow-Up</button>
         <button class="btn sm" onclick="editProspect('${p.id}')">Edit</button>
         <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert</button>
+        <button class="btn xs" onclick="generateOrderLink('${p.id}','${escHtml(p.name)}','${escHtml(p.email||'')}','prospects')">🔗 Order Link</button>
         <button class="btn sm red" onclick="deleteProspect('${p.id}')">✕</button>
       </div>
     </div>`;
@@ -5303,14 +5304,15 @@ const PortalDB = {
 
 // ── Phase 3: Link generator ────────────────────────────────
 
-async function generateOrderLink(accountId, accountName, accountEmail) {
+async function generateOrderLink(entityId, entityName, entityEmail, entityType) {
+  entityType = entityType || 'accounts';
   try {
-    const token = btoa(accountId + ':' + Math.random().toString(36).slice(2))
+    const token = btoa(entityId + ':' + Math.random().toString(36).slice(2))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-    await firebase.firestore().collection('accounts').doc(accountId).set({
+    await firebase.firestore().collection(entityType).doc(entityId).set({
       orderPortalToken: token,
-      name: accountName,
-      email: accountEmail || '',
+      name: entityName,
+      email: entityEmail || '',
       orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
     }, { merge: true });
     const link = window.location.origin + '/order?t=' + token;
