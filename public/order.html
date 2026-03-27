@@ -272,7 +272,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-const PORTAL_CANS_PER_CASE = 12;
+const CANS_PER_CASE = 12;
 let isMatched = false;
 let isProspect = false;
 let accountId = null;
@@ -353,7 +353,7 @@ function init() {
 function updateCans() {
   const cases = parseInt(document.getElementById('classic-cases').value) || 0;
   const el = document.getElementById('cans-calc');
-  el.textContent = cases > 0 ? '= ' + (cases * PORTAL_CANS_PER_CASE) + ' cans total' : '';
+  el.textContent = cases > 0 ? '= ' + (cases * CANS_PER_CASE) + ' cans total' : '';
   checkSubmitEnabled();
 }
 
@@ -389,7 +389,7 @@ function showThankYou(data) {
   if (data.cases > 0) {
     rows += `<div class="summary-row">
       <span>Classic Lavender Lemonade</span>
-      <span>${data.cases} cases (${data.cases * PORTAL_CANS_PER_CASE} cans)</span></div>`;
+      <span>${data.cases} cases (${data.cases * CANS_PER_CASE} cans)</span></div>`;
   }
   if (data.distributor) {
     rows += `<div class="summary-row"><span>Distributor</span><span>${data.distributor}</span></div>`;
@@ -455,8 +455,8 @@ function submitOrder() {
       sku: 'classic',
       label: 'Classic Lavender Lemonade',
       cases: cases,
-      cansPerCase: PORTAL_CANS_PER_CASE,
-      totalCans: cases * PORTAL_CANS_PER_CASE
+      cansPerCase: CANS_PER_CASE,
+      totalCans: cases * CANS_PER_CASE
     }] : [],
     notifyMe: checkedFlavors,
     deliveryWindow: deliveryWindow,

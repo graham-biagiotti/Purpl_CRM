@@ -5243,9 +5243,6 @@ function _updateRunModeBar() {
 //  WHOLESALE ORDER PORTAL — CRM SIDE (Phases 3–6)
 // ══════════════════════════════════════════════════════════
 
-// Unit constant — defined separately from CANS_PER_CASE so either
-// can change independently. Currently both equal 12.
-const PORTAL_CANS_PER_CASE = 12;
 
 // ── PortalDB — direct Firestore access for portal collections ──
 // Uses firebase compat SDK (loaded in index.html) directly.
@@ -5355,7 +5352,7 @@ function _renderPoKpis() {
   const totalCases = orders.reduce((s,o) => {
     return s + (o.items||[]).reduce((ss,i) => ss + (i.cases||0), 0);
   }, 0);
-  const totalCans = totalCases * PORTAL_CANS_PER_CASE;
+  const totalCans = totalCases * CANS_PER_CASE;
   const multiFlag = orders.filter(o => o.hasMultipleSubmissions).length;
 
   const kpiHtml = (label, val, sub, cls) => `<div class="kpi-card kpi-${cls||'gray'}">
@@ -5369,7 +5366,7 @@ function _renderPoKpis() {
     kpiHtml('Total Submissions', total, '', 'purple') +
     kpiHtml('Matched Accounts', matched, '', 'green') +
     kpiHtml('Unmatched', unmatched, '', unmatched>0?'amber':'gray') +
-    kpiHtml('Total Cases', fmt(totalCases), `${fmt(totalCans)} cans · ${PORTAL_CANS_PER_CASE} cans/case`, 'blue') +
+    kpiHtml('Total Cases', fmt(totalCases), `${fmt(totalCans)} cans · ${CANS_PER_CASE} cans/case`, 'blue') +
     (multiFlag ? kpiHtml('Multiple Submissions', multiFlag, 'same account/email', 'amber') : '');
 }
 
@@ -5430,7 +5427,7 @@ function _renderPoAll() {
     </tr></thead>
     <tbody>${orders.map(o => {
       const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-      const cans  = cases * PORTAL_CANS_PER_CASE;
+      const cans  = cases * CANS_PER_CASE;
       const acLink = o.isMatched && o.accountId
         ? `<strong style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</strong>`
         : escHtml(o.accountName||'');
@@ -5609,7 +5606,7 @@ async function reviewPortalOrder(id) {
   }
 
   const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-  const cans  = cases * PORTAL_CANS_PER_CASE;
+  const cans  = cases * CANS_PER_CASE;
   const notifySkus = (o.notifyMe||[]).map(n => n.sku).join(', ');
 
   qs('#mpr-body').innerHTML = `
@@ -5733,7 +5730,7 @@ function openConfirmPortalOrder(id) {
     qtyInput.oninput = () => {
       const q = parseInt(qtyInput.value)||0;
       const cc = qs('#mcpo-can-count');
-      if (cc) cc.textContent = q > 0 ? `= ${q * PORTAL_CANS_PER_CASE} cans` : '';
+      if (cc) cc.textContent = q > 0 ? `= ${q * CANS_PER_CASE} cans` : '';
     };
     qtyInput.oninput();
   }
@@ -5762,7 +5759,7 @@ async function confirmPortalOrder() {
     const cases = parseInt(casesEl?.value || qs('#mcpo-classic-qty')?.value || 0);
     if (cases < 1) { toast('Enter at least 1 case'); return; }
 
-    const cans = cases * PORTAL_CANS_PER_CASE;
+    const cans = cases * CANS_PER_CASE;
     const orderId = uid();
     const todayStr = today();
 
@@ -5948,7 +5945,7 @@ async function renderMacPortalOrdersTab(accountId) {
       <thead><tr><th>Submitted</th><th>Cases</th><th>Cans</th><th>Status</th><th>Delivery Window</th><th>Notes</th></tr></thead>
       <tbody>${orders.map(o => {
         const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-        const cans  = cases * PORTAL_CANS_PER_CASE;
+        const cans  = cases * CANS_PER_CASE;
         return `<tr>
           <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
           <td>${cases||'—'}</td>
