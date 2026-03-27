@@ -601,18 +601,24 @@ function openAddInv(accountId=null, priceType='direct', cases=null, notesText=''
   if (qs('#iv-amt'))        qs('#iv-amt').value = '';
   if (qs('#iv-notes'))      qs('#iv-notes').value = notesText || '';
 
-  // Auto-fill price from account's saved pricing for the given type
+  // Auto-fill price from account's saved pricing
   if (accountId) {
     const ac = DB.a('ac').find(a=>a.id===accountId);
+    const acct = ac || {};
+    // Auto-detect best price: type-specific → direct → custom fallback
     let price = null;
-    if (priceType === 'direct') price = ac?.pricePerCaseDirect || null;
-    if (priceType === 'dist')   price = ac?.pricePerCaseDist   || null;
-    if (priceType === 'custom') price = ac?.pricePerCaseCustom || null;
+    if (priceType === 'direct') price = acct.pricePerCaseDirect || null;
+    if (priceType === 'dist')   price = acct.pricePerCaseDist   || null;
+    if (priceType === 'custom') price = acct.pricePerCaseCustom || null;
+    if (!price) price = acct.pricePerCaseDirect || acct.pricePerCaseCustom || null;
     if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = price || '';
+    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = price || '';
   } else {
     if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = '';
+    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = '';
   }
   _ivCalcTotal();
+  calcInvTotal();
   openModal('modal-add-inv');
 }
 
@@ -626,9 +632,11 @@ function _ivAutoFillPrice() {
   if (type === 'direct')  price = ac.pricePerCaseDirect  || null;
   if (type === 'dist')    price = ac.pricePerCaseDist    || null;
   if (type === 'custom')  price = ac.pricePerCaseCustom  || null;
-  if (price && qs('#iv-price-per-case')) {
-    qs('#iv-price-per-case').value = price;
+  if (price) {
+    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = price;
+    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = price;
     _ivCalcTotal();
+    calcInvTotal();
   }
 }
 
@@ -6333,7 +6341,36 @@ async function confirmPortalOrder() {
       });
     }
 
-    // 6. Update portal_orders status — stays as direct Firestore (not in DB cache)
+    // 6. Also push to iv collection (for renderInvoicesPage v2)
+    {
+      const invSettings = DB.obj('invoice_settings', {});
+      const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
+      const pricePerCase = acct.pricePerCaseDirect || null;
+      const invAmt = pricePerCase ? cases * pricePerCase : null;
+      const invDue = new Date();
+      invDue.setDate(invDue.getDate() + (invSettings.terms || 30));
+      DB.push('iv', {
+        id: uid(),
+        number: 'INV-' + Date.now().toString(36).toUpperCase(),
+        accountId: d.accountId || null,
+        accountName: d.accountName,
+        date: todayStr,
+        due: invDue.toISOString().slice(0, 10),
+        cases: cases,
+        cans: cases * CANS_PER_CASE,
+        pricePerCase: pricePerCase,
+        amount: invAmt,
+        priceType: 'direct',
+        status: 'draft',
+        source: 'portal',
+        billingEmail: d.billingEmail || acct.email || '',
+        fromEmail: 'sales@drinkpurpl.com',
+        notes: 'Auto-drafted from portal order.',
+        linkedOrderId: orderId,
+      });
+    }
+
+    // 7. Update portal_orders status — stays as direct Firestore (not in DB cache)
     await portalRef.update({
       status: 'confirmed',
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -6846,4 +6883,62 @@ function generateInvoicePrint(invoiceId) {
 
 </body></html>`);
   w.document.close();
+}
+
+// ── Invoice modal helpers (v2 — iv collection) ─────────────
+
+function calcInvTotal() {
+  const cases = parseInt(document.getElementById('iv-cases')?.value || 0);
+  const ppc   = parseFloat(document.getElementById('iv-ppc')?.value || 0);
+  const amtEl = document.getElementById('iv-amt');
+  if (amtEl && cases && ppc) {
+    amtEl.value = (cases * ppc).toFixed(2);
+  } else if (amtEl) {
+    amtEl.value = '';
+  }
+}
+
+function saveInv() {
+  const acId  = document.getElementById('iv-account')?.value;
+  const date  = document.getElementById('iv-date')?.value  || today();
+  const cases = parseInt(document.getElementById('iv-cases')?.value) || null;
+  const ppc   = parseFloat(document.getElementById('iv-ppc')?.value) || null;
+  const notes = document.getElementById('iv-notes')?.value?.trim() || '';
+  const type  = document.getElementById('iv-price-type')?.value || 'direct';
+
+  if (!acId)   { toast('Select an account'); return; }
+  if (!cases)  { toast('Enter case quantity'); return; }
+
+  const ac = DB.a('ac').find(x => x.id === acId) || {};
+  const invSettings = DB.obj('invoice_settings', {});
+  const terms = invSettings.terms || 30;
+  const dueDate = new Date(new Date(date + 'T12:00:00').getTime() + terms * 864e5)
+    .toISOString().slice(0, 10);
+
+  const existing = DB.a('iv').filter(x => x.number);
+  const num = existing.length + 1;
+  const number = 'INV-' + new Date().getFullYear() + '-' + String(num).padStart(3, '0');
+
+  DB.push('iv', {
+    id:           uid(),
+    number,
+    accountId:    acId,
+    accountName:  ac.name || '',
+    date,
+    due:          dueDate,
+    cases,
+    cans:         (cases || 0) * CANS_PER_CASE,
+    pricePerCase: ppc,
+    amount:       cases && ppc ? cases * ppc : null,
+    priceType:    type,
+    status:       'draft',
+    source:       'manual',
+    notes,
+    fromEmail:    invSettings.fromEmail || 'sales@drinkpurpl.com',
+  });
+
+  closeModal('modal-add-inv');
+  if (currentPage === 'invoices') renderInvoicesPage();
+  renderInvoiceStatus();
+  toast('Invoice saved ✓');
 }

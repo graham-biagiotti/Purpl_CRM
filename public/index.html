@@ -1933,15 +1933,16 @@
           <option value="manual">Manual</option>
         </select>
       </div>
-      <div class="form-group"><label>Price per case ($)</label>
-        <input type="number" id="iv-price-per-case" step="0.01" min="0" placeholder="0.00" oninput="_ivCalcTotal()">
+      <div class="form-group"><label>Price per Case ($)</label>
+        <input type="number" id="iv-ppc" step="0.01" min="0" placeholder="0.00" oninput="calcInvTotal()">
+        <input type="hidden" id="iv-price-per-case">
       </div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Cases</label>
-        <input type="number" id="iv-cases" min="1" step="1" placeholder="0" oninput="_ivCalcTotal()">
+        <input type="number" id="iv-cases" min="1" step="1" placeholder="0" oninput="calcInvTotal()">
       </div>
-      <div class="form-group"><label>Total Amount ($)</label>
+      <div class="form-group"><label>Total Amount ($) — auto-calculated</label>
         <input type="number" id="iv-amt" step="0.01" readonly style="background:var(--surface);color:var(--muted)">
       </div>
     </div>
@@ -1950,7 +1951,7 @@
     </div>
     <div class="modal-footer">
       <button class="modal-close btn">Cancel</button>
-      <button class="btn primary" onclick="saveRetailInv()">Save Invoice</button>
+      <button class="btn primary" onclick="saveInv()">Save Invoice</button>
     </div>
   </div>
 </div>
