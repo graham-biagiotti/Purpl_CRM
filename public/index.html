@@ -1179,6 +1179,52 @@
         <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
       </div>
 
+      <!-- Invoice Settings -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr">
+          <h2>Invoice Settings</h2>
+          <button class="btn sm primary" onclick="saveInvoiceSettings()">Save Invoice Settings</button>
+        </div>
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Invoice from name</label>
+              <input id="inv-from-name" placeholder="Pumpkin Blossom Farm LLC">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Invoice from email</label>
+              <input type="email" id="inv-from-email" placeholder="sales@drinkpurpl.com">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Invoice from address</label>
+              <input id="inv-from-address" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Default payment terms (days)</label>
+              <input type="number" id="inv-terms" value="30" min="0">
+            </div>
+          </div>
+          <div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Payment instructions</label>
+              <textarea id="inv-payment-instructions" rows="4" placeholder="e.g. Make checks payable to Pumpkin Blossom Farm LLC&#10;Mail to: 393 Pumpkin Hill Rd, Warner NH 03278" style="width:100%;resize:vertical"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>ACH routing number</label>
+              <input id="inv-ach-routing" placeholder="Routing number">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>ACH account number</label>
+              <input id="inv-ach-account" placeholder="Account number">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Stripe payment link</label>
+              <input id="inv-stripe-link" placeholder="https://buy.stripe.com/...">
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- One-time NEM show accounts import — hidden after run -->
       <div class="card" id="nem-import-card" style="border:2px solid var(--amber,#f59e0b)">
         <div class="section-hdr"><h2>Import NEM Show Accounts (March 2026)</h2></div>
@@ -1422,6 +1468,23 @@
     <div style="margin-bottom:16px">
       <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">Par Levels</label>
       <div id="eac-par"></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Pricing (per case)</label>
+      <div class="form-row col3">
+        <div class="form-group">
+          <label>Direct Retailer Price per case ($)</label>
+          <input type="number" id="ac-price-direct" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Distributor Price per case ($)</label>
+          <input type="number" id="ac-price-dist" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label>Custom / negotiated price ($)</label>
+          <input type="number" id="ac-price-custom" step="0.01" placeholder="0.00">
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn red" id="eac-delete-btn" style="margin-right:auto">Delete</button>

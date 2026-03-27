@@ -1282,6 +1282,11 @@ function editAccount(id) {
   // Par inputs
   renderParInputs(a);
 
+  // Pricing fields
+  if (qs('#ac-price-direct')) qs('#ac-price-direct').value = a.pricePerCaseDirect||'';
+  if (qs('#ac-price-dist'))   qs('#ac-price-dist').value   = a.pricePerCaseDist||'';
+  if (qs('#ac-price-custom')) qs('#ac-price-custom').value = a.pricePerCaseCustom||'';
+
   qs('#eac-save-btn').onclick = () => saveAccount(id, isNew);
   if (!isNew) {
     const delBtn = qs('#eac-delete-btn');
@@ -1353,6 +1358,9 @@ async function saveAccount(id, isNew) {
     isPbf:        qs('#eac-ispbf')?.checked || false,
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
+    pricePerCaseDirect: parseFloat(qs('#ac-price-direct')?.value)||null,
+    pricePerCaseDist:   parseFloat(qs('#ac-price-dist')?.value)||null,
+    pricePerCaseCustom: parseFloat(qs('#ac-price-custom')?.value)||null,
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
     lastOrder: existing?.lastOrder||null,
@@ -4659,6 +4667,32 @@ function saveSettings() {
   toast('Settings saved');
 }
 
+function loadInvoiceSettings() {
+  const inv = DB.obj('invoice_settings', {});
+  if (qs('#inv-payment-instructions')) qs('#inv-payment-instructions').value = inv.paymentInstructions||'';
+  if (qs('#inv-ach-routing'))          qs('#inv-ach-routing').value          = inv.achRouting||'';
+  if (qs('#inv-ach-account'))          qs('#inv-ach-account').value          = inv.achAccount||'';
+  if (qs('#inv-stripe-link'))          qs('#inv-stripe-link').value          = inv.stripeLink||'';
+  if (qs('#inv-terms'))                qs('#inv-terms').value                = inv.terms||30;
+  if (qs('#inv-from-name'))            qs('#inv-from-name').value            = inv.fromName||'Pumpkin Blossom Farm LLC';
+  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'sales@drinkpurpl.com';
+  if (qs('#inv-from-address'))         qs('#inv-from-address').value         = inv.fromAddress||'393 Pumpkin Hill Rd, Warner, NH 03278';
+}
+
+function saveInvoiceSettings() {
+  DB.setObj('invoice_settings', {
+    paymentInstructions: qs('#inv-payment-instructions')?.value?.trim()||'',
+    achRouting:          qs('#inv-ach-routing')?.value?.trim()||'',
+    achAccount:          qs('#inv-ach-account')?.value?.trim()||'',
+    stripeLink:          qs('#inv-stripe-link')?.value?.trim()||'',
+    terms:               parseInt(qs('#inv-terms')?.value)||30,
+    fromName:            qs('#inv-from-name')?.value?.trim()||'Pumpkin Blossom Farm LLC',
+    fromEmail:           qs('#inv-from-email')?.value?.trim()||'sales@drinkpurpl.com',
+    fromAddress:         qs('#inv-from-address')?.value?.trim()||'393 Pumpkin Hill Rd, Warner, NH 03278',
+  });
+  toast('Invoice settings saved');
+}
+
 // ══════════════════════════════════════════════════════════
 //  MODAL HELPERS
 // ══════════════════════════════════════════════════════════
@@ -5965,5 +5999,6 @@ const _origRenderSettings = renderSettings;
 function renderSettings() {
   _origRenderSettings();
   renderPortalSettings();
+  loadInvoiceSettings();
 }
 
