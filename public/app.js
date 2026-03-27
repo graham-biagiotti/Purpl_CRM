@@ -5325,7 +5325,7 @@ async function generateOrderLink(entityId, entityName, entityEmail, entityType) 
 }
 
 async function copyOrderLink(accountId) {
-  const accounts = JSON.parse(localStorage.getItem('pcrm5_ac') || '[]');
+  const accounts = DB.a('ac');
   const account = accounts.find(a => a.id === accountId);
   if (!account) { toast('Account not found'); return; }
   await generateOrderLink(accountId, account.name, account.email || '');
