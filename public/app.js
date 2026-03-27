@@ -711,7 +711,7 @@ function renderProjectionsPage() {
       const wk    = Math.round(weeklyBySku[s.id]*10)/10;
       const stock = stockFor(s.id);
       const d30u  = Math.round(wk*(30/7));
-      const gap   = d30u - stock;
+      const gap   = (d30u * CANS_PER_CASE) - stock;
       const daysSupply = wk > 0 ? Math.round(stock/((wk * CANS_PER_CASE)/7)) : null;
       const gapCls = gap > 0 ? 'color:var(--red);font-weight:600' : 'color:var(--green)';
       if (gap > 0) prodNotes.push(`${s.label}: need ${fmt(gap)} more units for 30d demand`);
