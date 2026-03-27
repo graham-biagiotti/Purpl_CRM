@@ -14,10 +14,10 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // Portal: public can submit orders
+    // Portal: public can read and submit orders
     match /portal_orders/{orderId} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, create: if true;
+      allow update, delete: if request.auth != null;
     }
 
     // Portal: public can sign up for notifications

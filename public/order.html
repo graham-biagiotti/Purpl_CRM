@@ -435,44 +435,32 @@ function submitOrder() {
   const checkedFlavors = ['blueberry', 'peach', 'raspberry']
     .filter(f => document.getElementById('notify-' + f).checked);
 
-  // Check for duplicates then submit
-  const checkField = isMatched ? 'accountId' : 'billingEmail';
-  const checkVal = isMatched ? accountId : billingEmail;
+  const orderData = {
+    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    mode: portalMode,
+    accountId: accountId || null,
+    accountName: finalAccountName,
+    isMatched: isMatched,
+    isProspect: isProspect,
+    billingEmail: billingEmail,
+    contactName: contactName || null,
+    distributor: distributorValue || '',
+    items: cases > 0 ? [{
+      sku: 'classic',
+      label: 'Classic Lavender Lemonade',
+      cases: cases,
+      cansPerCase: PORTAL_CANS_PER_CASE,
+      totalCans: cases * PORTAL_CANS_PER_CASE
+    }] : [],
+    notifyMe: checkedFlavors,
+    deliveryWindow: deliveryWindow,
+    poNumber: poNumber,
+    notes: notes,
+    status: 'new',
+    isUnmatched: !isMatched
+  };
 
-  db.collection('portal_orders').where(checkField, '==', checkVal).get()
-    .then(existing => {
-      const prevIds = existing.docs.map(d => d.id);
-      const hasMultiple = prevIds.length > 0;
-
-      const orderData = {
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        mode: portalMode,
-        accountId: accountId || null,
-        accountName: finalAccountName,
-        isMatched: isMatched,
-        isProspect: isProspect,
-        billingEmail: billingEmail,
-        contactName: contactName || null,
-        distributor: distributorValue || '',
-        items: cases > 0 ? [{
-          sku: 'classic',
-          label: 'Classic Lavender Lemonade',
-          cases: cases,
-          cansPerCase: PORTAL_CANS_PER_CASE,
-          totalCans: cases * PORTAL_CANS_PER_CASE
-        }] : [],
-        notifyMe: checkedFlavors,
-        deliveryWindow: deliveryWindow,
-        poNumber: poNumber,
-        notes: notes,
-        status: 'new',
-        isUnmatched: !isMatched,
-        hasMultipleSubmissions: hasMultiple,
-        previousSubmissionIds: prevIds
-      };
-
-      return db.collection('portal_orders').add(orderData);
-    })
+  db.collection('portal_orders').add(orderData)
     .then(() => {
       showThankYou({
         accountName: finalAccountName,
