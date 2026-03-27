@@ -5306,22 +5306,18 @@ const PortalDB = {
 async function generateOrderLink(accountId) {
   const a = DB.a('ac').find(x => x.id === accountId);
   if (!a) return null;
-  let token = a.orderPortalToken;
-  if (!token) {
-    const salt = Math.random().toString(36).slice(2);
-    const raw  = accountId + ':' + salt;
-    token = btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-    await firebase.firestore().collection('accounts').doc(accountId).update({
-      orderPortalToken: token,
-      orderPortalTokenCreatedAt: today()
-    });
-    DB.update('ac', accountId, ac => ({
-      ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
-    }));
-    await PortalDB.setToken(token, {
-      accountId, accountName: a.name, email: a.email || ''
-    });
-  }
+  const token = btoa(accountId + ':' + Math.random().toString(36).slice(2))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  await firebase.firestore().collection('accounts').doc(accountId).update({
+    orderPortalToken: token,
+    orderPortalTokenCreatedAt: today()
+  });
+  DB.update('ac', accountId, ac => ({
+    ...ac, orderPortalToken: token, orderPortalTokenCreatedAt: today()
+  }));
+  await PortalDB.setToken(token, {
+    accountId, accountName: a.name, email: a.email || ''
+  });
   return `https://purpl-crm.web.app/order?t=${token}`;
 }
 
