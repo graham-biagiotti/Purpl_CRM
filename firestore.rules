@@ -2,49 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Default: authenticated CRM users only ──────────
+    // Authenticated users can read/write everything
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
 
-    // ── Portal token lookup ────────────────────────────
-    // Unauthenticated read allowed (returns only accountName + email).
-    // Write only by authenticated CRM users (when generating links).
-    match /portal_tokens/{token} {
+    // Portal: accounts readable by anyone for token lookup
+    match /accounts/{accountId} {
       allow read: if true;
-      allow write: if request.auth != null;
     }
 
-    // ── Portal configuration (mode, price, deadline) ───
-    // Unauthenticated read for the public order form.
-    // Write only by authenticated CRM users.
-    match /portal_settings/{docId} {
+    // Portal: prospects readable by anyone for token lookup
+    match /prospects/{prospectId} {
       allow read: if true;
-      allow write: if request.auth != null;
     }
 
-    // ── Accounts (portal token lookup) ─────────────────
-    // Unauthenticated read allowed for token-based lookups.
-    // Write only by authenticated CRM users.
-    match /accounts/{id} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-
-    // ── Portal order submissions ───────────────────────
-    // Unauthenticated write: public form can submit orders.
-    // Read only by authenticated CRM users.
-    match /portal_orders/{id} {
+    // Portal: anyone can submit an order
+    match /portal_orders/{orderId} {
       allow create: if true;
       allow read, update: if request.auth != null;
     }
 
-    // ── Coming Soon notification signups ───────────────
-    // Unauthenticated write: public form can sign up.
-    // Read only by authenticated CRM users.
-    match /portal_notify/{notifyId} {
+    // Portal: notify me signups
+    match /portal_notify/{docId} {
+      allow create: if true;
       allow read: if request.auth != null;
-      allow write: if true;
+    }
+
+    // Portal: read settings to know mode
+    match /portal_settings/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }
