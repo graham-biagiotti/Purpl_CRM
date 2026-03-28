@@ -187,24 +187,85 @@ input:focus,textarea:focus,select:focus{
     </div>
 
     <!-- Section 3: Distributor -->
-    <div class="card">
-      <h2>Distribution</h2>
-      <div class="form-group">
-        <label>Who is your current distributor?</label>
-        <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-          This helps us coordinate your orders.
-        </p>
-        <select id="distributor-select" onchange="toggleDistributorOther()">
-          <option value="">-- Select distributor (if applicable) --</option>
-          <option value="direct">Direct — no distributor</option>
-          <option value="other">Other — I will specify below</option>
-        </select>
-      </div>
-      <div class="form-group" id="distributor-other-group" style="display:none">
-        <label>Distributor Name</label>
-        <input type="text" id="distributor-other" placeholder="Enter your distributor's name">
+    <div class="card" style="margin-bottom:16px">
+  <h2 style="font-size:15px;font-weight:600;
+    margin-bottom:4px">Distribution</h2>
+  <p style="font-size:12px;color:#6b7280;
+    margin-bottom:14px;line-height:1.6">
+    Knowing who distributes your beverages helps us
+    get purpl to you the right way. The more accounts
+    we see using the same distributor, the stronger
+    our case to bring purpl into their portfolio.
+  </p>
+
+  <div class="form-group" style="margin-bottom:8px">
+    <label>Who distributes your beverages?
+      <span style="font-weight:400;color:#9ca3af">
+        (optional — list as many as you use)</span>
+    </label>
+    <div id="distributor-list">
+      <div class="distributor-entry"
+        style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" class="distributor-input"
+          placeholder="e.g. UNFI, KeHE, local distributor..."
+          style="flex:1">
+        <button type="button"
+          onclick="removeDistributor(this)"
+          style="background:#fee2e2;
+          border:1px solid #fca5a5;color:#991b1b;
+          border-radius:8px;padding:0 14px;
+          cursor:pointer;font-size:20px;
+          line-height:1;flex-shrink:0">×</button>
       </div>
     </div>
+    <button type="button" onclick="addDistributor()"
+      style="background:#f5f0ff;border:1px solid #c4b5fd;
+      color:#7B4FA0;border-radius:8px;padding:8px 14px;
+      font-size:13px;font-weight:500;cursor:pointer;
+      margin-bottom:8px">
+      + Add another distributor
+    </button>
+    <div style="font-size:11px;color:#9ca3af">
+      Include anyone you order beverages or specialty
+      food through — even regional or local distributors.
+    </div>
+  </div>
+
+  <div style="background:#f5f0ff;border-radius:8px;
+    padding:10px 14px;margin-bottom:12px;
+    font-size:13px;color:#5b21b6;line-height:1.5">
+    We'll reach out personally to confirm how we'll
+    get purpl to you.
+  </div>
+
+  <div class="form-group" style="margin-bottom:12px">
+    <label>Are you open to ordering direct from us
+      while we work on getting into your
+      distributor's portfolio?</label>
+    <select id="distributor-direct-open">
+      <option value="">-- Select --</option>
+      <option value="yes">
+        Yes — happy to order direct in the meantime</option>
+      <option value="maybe">
+        Maybe — let's talk about it</option>
+      <option value="distributor_only">
+        No — we need to go through our distributor</option>
+      <option value="no_distributor">
+        We don't use a distributor</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label style="display:flex;align-items:flex-start;
+      gap:8px;cursor:pointer;font-weight:400">
+      <input type="checkbox" id="distributor-contact-ok"
+        style="width:auto;margin-top:2px;flex-shrink:0">
+      <span style="font-size:13px">I'm open to mentioning
+        purpl to my distributor rep — every conversation
+        helps us get listed faster</span>
+    </label>
+  </div>
+</div>
 
     <!-- Section 4: Delivery & Notes -->
     <div class="card">
@@ -327,19 +388,25 @@ function init() {
           document.getElementById('matched-section').style.display = 'block';
           document.getElementById('unmatched-section').style.display = 'none';
           if (accountEmail) document.getElementById('billing-email').value = accountEmail;
-          firebase.firestore().collection('portal_orders')
+          var banner = document.getElementById('returning-banner');
+          if (banner) banner.style.display = 'block';
+
+          firebase.firestore()
+            .collection('portal_orders')
             .where('accountId', '==', accountId)
             .orderBy('submittedAt', 'desc')
+            .limit(10)
             .get()
             .then(function(snap) {
-              if (!snap.empty) {
-                var history = snap.docs.map(function(d) {
-                  return Object.assign({id: d.id}, d.data());
-                });
-                renderOrderHistory(history);
-              }
+              var orders = snap.docs.map(function(d) {
+                return Object.assign({id: d.id}, d.data());
+              });
+              renderPastOrders(orders);
             })
-            .catch(function(e) { console.log('No order history:', e); });
+            .catch(function(e) {
+              console.log('Past orders error:', e);
+              renderPastOrders([]);
+            });
         }
       })
       .catch(e => console.error('Token lookup error:', e));
@@ -360,19 +427,25 @@ function init() {
           document.getElementById('matched-section').style.display = 'block';
           document.getElementById('unmatched-section').style.display = 'none';
           if (accountEmail) document.getElementById('billing-email').value = accountEmail;
-          firebase.firestore().collection('portal_orders')
+          var banner = document.getElementById('returning-banner');
+          if (banner) banner.style.display = 'block';
+
+          firebase.firestore()
+            .collection('portal_orders')
             .where('accountId', '==', accountId)
             .orderBy('submittedAt', 'desc')
+            .limit(10)
             .get()
             .then(function(snap) {
-              if (!snap.empty) {
-                var history = snap.docs.map(function(d) {
-                  return Object.assign({id: d.id}, d.data());
-                });
-                renderOrderHistory(history);
-              }
+              var orders = snap.docs.map(function(d) {
+                return Object.assign({id: d.id}, d.data());
+              });
+              renderPastOrders(orders);
             })
-            .catch(function(e) { console.log('No order history:', e); });
+            .catch(function(e) {
+              console.log('Past orders error:', e);
+              renderPastOrders([]);
+            });
         }
       })
       .catch(e => console.error('Prospect token lookup error:', e));
@@ -541,6 +614,211 @@ function submitOrder() {
         btn.textContent = 'Place Order';
       }
     });
+}
+
+function renderPastOrders(orders) {
+  var section = document.getElementById(
+    'past-orders-section');
+  var list = document.getElementById('past-orders-list');
+  if (!section || !list) return;
+  section.style.display = 'block';
+  if (!orders || !orders.length) {
+    list.innerHTML = '<div style="text-align:center;' +
+      'padding:20px;color:#9ca3af;font-size:13px">' +
+      'No previous orders yet — your history ' +
+      'will appear here after your first order.</div>';
+    return;
+  }
+  var statusColor = {
+    confirmed:'#166534',new:'#92400e',
+    reviewed:'#1e40af',declined:'#991b1b'
+  };
+  var statusBg = {
+    confirmed:'#dcfce7',new:'#fef3c7',
+    reviewed:'#dbeafe',declined:'#fee2e2'
+  };
+  list.innerHTML = orders.map(function(o) {
+    var cases = (o.items||[])[0] ?
+      (o.items[0].cases||0) : 0;
+    var cans = cases * CANS_PER_CASE;
+    var status = o.status || 'new';
+    var dt = o.submittedAt && o.submittedAt.toDate ?
+      o.submittedAt.toDate().toLocaleDateString(
+        'en-US',{month:'short',day:'numeric',
+        year:'numeric'}) : 'Unknown date';
+    var color = statusColor[status] || '#374151';
+    var bg = statusBg[status] || '#f3f4f6';
+    return '<div style="display:flex;' +
+      'justify-content:space-between;' +
+      'align-items:center;padding:12px 0;' +
+      'border-bottom:1px solid #f5f0ff">' +
+      '<div>' +
+      '<div style="font-size:13px;font-weight:600">' +
+        dt + '</div>' +
+      '<div style="font-size:12px;color:#6b7280;' +
+        'margin-top:2px">' +
+        cases + ' case' + (cases!==1?'s':'') +
+        ' · ' + cans + ' cans' +
+        (o.poNumber?' · PO: '+o.poNumber:'') +
+        (o.deliveryWindow?' · '+o.deliveryWindow:'') +
+      '</div></div>' +
+      '<div style="display:flex;gap:8px;' +
+        'align-items:center;flex-shrink:0">' +
+      '<span style="font-size:11px;font-weight:600;' +
+        'padding:3px 10px;border-radius:20px;' +
+        'background:'+bg+';color:'+color+'">' +
+        status.toUpperCase()+'</span>' +
+      '<button onclick="printPortalOrder(\''+o.id+'\')" ' +
+        'style="background:#f5f0ff;border:1px solid ' +
+        '#c4b5fd;color:#7B4FA0;border-radius:8px;' +
+        'padding:6px 12px;font-size:12px;' +
+        'font-weight:500;cursor:pointer">' +
+        'View PDF</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function printPortalOrder(orderId) {
+  firebase.firestore()
+    .collection('portal_orders')
+    .doc(orderId)
+    .get()
+    .then(function(doc) {
+      if (!doc.exists) {
+        alert('Order not found'); return;
+      }
+      var o = doc.data();
+      var cases = (o.items||[])[0] ?
+        (o.items[0].cases||0) : 0;
+      var cans = cases * CANS_PER_CASE;
+      var dt = o.submittedAt && o.submittedAt.toDate ?
+        o.submittedAt.toDate().toLocaleDateString(
+          'en-US',{weekday:'long',month:'long',
+          day:'numeric',year:'numeric'}) : 'Unknown date';
+      var dists = Array.isArray(o.distributors) ?
+        o.distributors.join(', ') :
+        (o.distributorName||'');
+      var w = window.open('','_blank');
+      w.document.write('<!DOCTYPE html><html><head>'+
+        '<title>Order — '+(o.accountName||'')+'</title>'+
+        '<style>'+
+        'body{font-family:-apple-system,sans-serif;'+
+          'max-width:640px;margin:40px auto;'+
+          'padding:0 20px;color:#1a1a2e;font-size:13px}'+
+        '.header{text-align:center;padding-bottom:20px;'+
+          'border-bottom:2px solid #7B4FA0;'+
+          'margin-bottom:24px}'+
+        '.logo{height:50px}'+
+        'h1{font-size:20px;font-weight:700;'+
+          'color:#7B4FA0;margin:8px 0 4px}'+
+        '.lbl{font-size:10px;font-weight:700;'+
+          'text-transform:uppercase;letter-spacing:.08em;'+
+          'color:#9ca3af;margin:14px 0 4px}'+
+        '.val{font-size:14px;font-weight:500}'+
+        '.row{display:flex;justify-content:space-between;'+
+          'padding:10px 0;border-bottom:1px solid #f5f0ff}'+
+        '.total{display:flex;justify-content:space-between;'+
+          'padding:12px 0;font-weight:700;font-size:15px;'+
+          'color:#7B4FA0;border-top:2px solid #7B4FA0}'+
+        '.badge{display:inline-block;padding:4px 12px;'+
+          'border-radius:20px;font-size:12px;'+
+          'font-weight:600;background:#fef3c7;color:#92400e}'+
+        '.footer{text-align:center;margin-top:32px;'+
+          'padding-top:16px;border-top:1px solid #e9d5ff;'+
+          'color:#9ca3af;font-size:11px}'+
+        '@media print{button{display:none!important}}'+
+        '</style></head><body>'+
+        '<div class="header">'+
+        '<img src="https://static.wixstatic.com/media/'+
+          '81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png'+
+          '/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,'+
+          'enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig'+
+          '%20in%20front%20-%20transparent.png" class="logo">'+
+        '<h1>Order Confirmation</h1>'+
+        '<div style="font-size:12px;color:#6b7280">'+dt+'</div>'+
+        '</div>'+
+        '<div class="lbl">Ordered By</div>'+
+        '<div class="val">'+(o.accountName||'—')+'</div>'+
+        '<div class="lbl">Billing Email</div>'+
+        '<div class="val">'+(o.billingEmail||'—')+'</div>'+
+        (o.poNumber?
+          '<div class="lbl">PO Number</div>'+
+          '<div class="val">'+o.poNumber+'</div>':'')+
+        '<div class="lbl">Status</div>'+
+        '<div><span class="badge">'+
+          (o.status||'new').toUpperCase()+'</span></div>'+
+        '<div class="lbl" style="margin-top:20px">'+
+          'Order Details</div>'+
+        '<div class="row">'+
+          '<span>Classic Lavender Lemonade</span>'+
+          '<span>'+cases+' cases · '+cans+' cans</span>'+
+        '</div>'+
+        '<div class="total">'+
+          '<span>Total Cases</span>'+
+          '<span>'+cases+'</span>'+
+        '</div>'+
+        (dists?
+          '<div class="lbl">Distributor(s)</div>'+
+          '<div class="val">'+dists+'</div>':'')+
+        (o.deliveryWindow?
+          '<div class="lbl">Delivery Window</div>'+
+          '<div class="val">'+o.deliveryWindow+'</div>':'')+
+        (o.leadTimeNeeded?
+          '<div class="lbl">Lead Time</div>'+
+          '<div class="val">'+o.leadTimeNeeded+'</div>':'')+
+        (o.notes?
+          '<div class="lbl">Notes</div>'+
+          '<div class="val">'+o.notes+'</div>':'')+
+        '<div style="text-align:center;margin:24px 0">'+
+        '<button onclick="window.print()" '+
+          'style="background:#7B4FA0;color:#fff;border:none;'+
+          'padding:10px 24px;border-radius:8px;'+
+          'font-size:14px;font-weight:600;cursor:pointer">'+
+          'Print / Save as PDF</button></div>'+
+        '<div class="footer">'+
+          'purpl by Pumpkin Blossom Farm · '+
+          'sales@drinkpurpl.com · 603-748-3038 · '+
+          'drinkpurpl.com</div>'+
+        '</body></html>');
+      w.document.close();
+    })
+    .catch(function(e) {
+      console.error('Print error:', e);
+      alert('Could not load order');
+    });
+}
+
+function addDistributor() {
+  var list = document.getElementById('distributor-list');
+  var div = document.createElement('div');
+  div.className = 'distributor-entry';
+  div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+  div.innerHTML =
+    '<input type="text" class="distributor-input" '+
+    'placeholder="Another distributor..." style="flex:1">'+
+    '<button type="button" onclick="removeDistributor(this)" '+
+    'style="background:#fee2e2;border:1px solid #fca5a5;'+
+    'color:#991b1b;border-radius:8px;padding:0 14px;'+
+    'cursor:pointer;font-size:20px;line-height:1;'+
+    'flex-shrink:0">×</button>';
+  list.appendChild(div);
+  div.querySelector('input').focus();
+}
+
+function removeDistributor(btn) {
+  var entries = document.querySelectorAll('.distributor-entry');
+  if (entries.length <= 1) {
+    btn.previousElementSibling.value = ''; return;
+  }
+  btn.parentElement.remove();
+}
+
+function getDistributors() {
+  return Array.from(
+    document.querySelectorAll('.distributor-input')
+  ).map(function(i) {
+    return i.value.trim();
+  }).filter(function(v) { return v.length > 0; });
 }
 
 function renderOrderHistory(orders) {
