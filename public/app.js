@@ -660,10 +660,12 @@ function saveRetailInv() {
   const terms = invSettings.terms || 30;
   const dueDate = new Date(new Date(date+'T12:00:00').getTime() + terms*864e5).toISOString().slice(0,10);
 
-  // Auto-generate invoice number
-  const existing = DB.a('retail_invoices');
-  const num = existing.length + 1;
-  const invoiceNumber = `INV-${new Date().getFullYear()}-${String(num).padStart(3,'0')}`;
+  // Auto-generate invoice number (max-scan ensures no collisions across sources)
+  const lastNum = DB.a('retail_invoices').reduce((max, inv) => {
+    const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
+    return Math.max(max, n);
+  }, 0);
+  const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
 
   const rec = {
     id: uid(),
@@ -4373,9 +4375,8 @@ function createDeliveryInvoice(accountId, ordId) {
   const terms   = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
-  // Auto-increment invoice number
-  const existing = DB.a('inv_log_v2');
-  const lastNum  = existing.reduce((max,inv)=>{
+  // Auto-increment invoice number from the single invoice collection
+  const lastNum = DB.a('retail_invoices').reduce((max,inv)=>{
     const n = parseInt((inv.invoiceNumber||'').replace(/\D/g,'')) || 0;
     return Math.max(max, n);
   }, 0);
@@ -4387,16 +4388,20 @@ function createDeliveryInvoice(accountId, ordId) {
     const pricePerCase = ac.pricing?.[i.sku] || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
-  const total = lineItems.reduce((s,l)=>s+l.amount, 0);
+  const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
+  const total      = lineItems.reduce((s,l)=>s+l.amount, 0);
+  const pricePerCase = totalCases > 0 ? total / totalCases : 0;
 
   const invoice = {
     id: uid(), accountId, orderId: ordId, invoiceNumber,
-    date: today(), dueDate, lineItems, total,
-    status: 'pending', source: 'delivery_run', notes: '',
+    date: today(), dueDate, lineItems,
+    cases: totalCases, cans: totalCases * CANS_PER_CASE,
+    pricePerCase, total,
+    status: 'unpaid', source: 'delivery_run', notes: '',
     accountName: ac.name,
   };
 
-  DB.push('inv_log_v2', invoice);
+  DB.push('retail_invoices', invoice);
   // Mark the order as invoiced
   DB.update('orders', ordId, o=>({...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber}));
 
@@ -6270,34 +6275,21 @@ async function confirmPortalOrder() {
       ordId: orderId,
     };
 
-    // 4. Build draft invoice (matches createDeliveryInvoice format)
-    const lastInvNum = DB.a('inv_log_v2').reduce((max, inv) => {
+    // 4. Build draft invoice using the single retail_invoices collection
+    const lastInvNum = DB.a('retail_invoices').reduce((max, inv) => {
       const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
       return Math.max(max, n);
     }, 0);
     const invoiceNumber = 'INV-' + String(lastInvNum + 1).padStart(4, '0');
-    const terms = DB.obj('settings', { payment_terms: 30 }).payment_terms || 30;
-    const dueDateStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0, 10);
-    const invoiceData = {
-      id: uid(),
-      accountId: d.accountId || null,
-      accountName: d.accountName,
-      orderId: orderId,
-      invoiceNumber,
-      date: todayStr,
-      dueDate: dueDateStr,
-      cases,
-      cans,
-      status: 'draft',
-      source: 'portal',
-      invoiceEmail: d.billingEmail || '',
-      notes: 'Auto-generated from portal order. Set amount before sending.',
-    };
+    const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms
+                  || DB.obj('settings', { payment_terms: 30 }).payment_terms || 30;
+    const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
+    const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
+    const pricePerCase = acct.pricePerCaseDirect || null;
 
-    // 1–4: Write order, account lastOrder, inventory deduction, draft invoice
-    // in one Firestore write via the DB cache
+    // 1–3: Write order, account lastOrder, inventory deduction in one Firestore write
     DB.atomicUpdate(cache => {
-      // 1. Create order in 'ord' collection
+      // 1. Create order
       cache['orders'] = [...(cache['orders'] || []), orderData];
       // 2. Update account (or prospect) lastOrder
       if (d.accountId) {
@@ -6308,69 +6300,30 @@ async function confirmPortalOrder() {
       }
       // 3. Deduct inventory — 'iv' is the inventory log (same array used by renderInventory)
       cache['iv'] = [...(cache['iv'] || []), ivEntry];
-      // 4. Create draft invoice — 'inv_log_v2' is the invoice array
-      cache['inv_log_v2'] = [...(cache['inv_log_v2'] || []), invoiceData];
     });
 
-    // 5. Auto-draft retail invoice (after batch write succeeds)
-    {
-      const settings = DB.obj('invoice_settings', {});
-      const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
-      const pricePerCase = acct.pricePerCaseDirect || null;
-      const amount = pricePerCase ? cases * pricePerCase : null;
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + (settings.terms || 30));
-      DB.push('retail_invoices', {
-        id: uid(),
-        invoiceNumber: 'INV-' + Date.now().toString(36).toUpperCase(),
-        accountId: d.accountId || null,
-        accountName: d.accountName,
-        date: todayStr,
-        dueDate: dueDate.toISOString().slice(0,10),
-        cases: cases,
-        cans: cases * CANS_PER_CASE,
-        pricePerCase: pricePerCase,
-        total: amount,
-        priceType: 'direct',
-        status: 'draft',
-        source: 'portal',
-        billingEmail: d.billingEmail || acct.email || '',
-        fromEmail: settings.fromEmail || 'sales@drinkpurpl.com',
-        notes: 'Auto-drafted from portal order approval.',
-        linkedOrderId: orderId,
-      });
-    }
+    // 4. Create single draft invoice in retail_invoices (the authoritative invoice collection)
+    DB.push('retail_invoices', {
+      id: uid(),
+      invoiceNumber,
+      accountId: d.accountId || null,
+      accountName: d.accountName,
+      orderId: orderId,
+      date: todayStr,
+      dueDate: dueDateStr,
+      cases,
+      cans,
+      pricePerCase,
+      total: pricePerCase ? cases * pricePerCase : null,
+      priceType: 'direct',
+      status: 'draft',
+      source: 'portal',
+      billingEmail: d.billingEmail || acct.email || '',
+      notes: 'Auto-drafted from portal order approval.',
+      linkedPortalOrderId: _portalOrderId,
+    });
 
-    // 6. Also push to iv collection (for renderInvoicesPage v2)
-    {
-      const invSettings = DB.obj('invoice_settings', {});
-      const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
-      const pricePerCase = acct.pricePerCaseDirect || null;
-      const invAmt = pricePerCase ? cases * pricePerCase : null;
-      const invDue = new Date();
-      invDue.setDate(invDue.getDate() + (invSettings.terms || 30));
-      DB.push('iv', {
-        id: uid(),
-        number: 'INV-' + Date.now().toString(36).toUpperCase(),
-        accountId: d.accountId || null,
-        accountName: d.accountName,
-        date: todayStr,
-        due: invDue.toISOString().slice(0, 10),
-        cases: cases,
-        cans: cases * CANS_PER_CASE,
-        pricePerCase: pricePerCase,
-        amount: invAmt,
-        priceType: 'direct',
-        status: 'draft',
-        source: 'portal',
-        billingEmail: d.billingEmail || acct.email || '',
-        fromEmail: 'sales@drinkpurpl.com',
-        notes: 'Auto-drafted from portal order.',
-        linkedOrderId: orderId,
-      });
-    }
-
-    // 7. Update portal_orders status — stays as direct Firestore (not in DB cache)
+    // 5. Update portal_orders status — stays as direct Firestore (not in DB cache)
     await portalRef.update({
       status: 'confirmed',
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
