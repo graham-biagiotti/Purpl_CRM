@@ -268,23 +268,73 @@ input:focus,textarea:focus,select:focus{
 </div>
 
     <!-- Section 4: Delivery & Notes -->
-    <div class="card">
-      <h2>Delivery &amp; Notes</h2>
-      <div class="form-group">
-        <label>Preferred Delivery Window (optional)</label>
-        <input type="text" id="delivery-window"
-          placeholder="e.g. First week of May, ASAP, flexible">
-      </div>
-      <div class="form-group">
-        <label>PO Number (optional)</label>
-        <input type="text" id="po-number" placeholder="Your PO # if applicable">
-      </div>
-      <div class="form-group">
-        <label>Notes (optional)</label>
-        <textarea id="order-notes" rows="3"
-          placeholder="Delivery instructions, loading dock info, contact on site, or anything else we should know"></textarea>
-      </div>
-    </div>
+    <div class="card" style="margin-bottom:16px">
+  <h2 style="font-size:15px;font-weight:600;
+    margin-bottom:4px">Delivery &amp; Timing</h2>
+
+  <div style="background:#f5f0ff;border-radius:8px;
+    padding:12px 14px;margin-bottom:14px;
+    font-size:13px;color:#5b21b6;line-height:1.7">
+    <strong>Delivery guidelines:</strong><br>
+    Minimum order: 1 case (12 cans).<br>
+    Typical lead time: 1–2 weeks from order confirmation.<br>
+    We deliver directly to your location in our service
+    area (New England and surrounding states).<br>
+    Delivery is confirmed personally —
+    <a href="mailto:graham@pumpkinblossomfarm.com"
+      style="color:#7B4FA0;font-weight:600">
+      reach out to us</a> to finalize your window.
+  </div>
+
+  <div class="form-group" style="margin-bottom:12px">
+    <label>Preferred delivery window
+      <span style="font-weight:400;color:#9ca3af">
+        (optional)</span></label>
+    <input type="text" id="delivery-window"
+      placeholder="e.g. First week of May, ASAP, flexible">
+  </div>
+
+  <div class="form-group" style="margin-bottom:12px">
+    <label>How quickly do you typically need product
+      after placing an order?</label>
+    <select id="lead-time-needed">
+      <option value="">-- Select --</option>
+      <option value="asap">ASAP — as fast as possible</option>
+      <option value="1week">Within 1 week</option>
+      <option value="2weeks">1–2 weeks is fine</option>
+      <option value="month">Within a month</option>
+      <option value="flexible">Flexible — no rush</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>PO Number
+      <span style="font-weight:400;color:#9ca3af">
+        (optional)</span></label>
+    <input type="text" id="po-number"
+      placeholder="Your PO # if applicable">
+  </div>
+</div>
+
+    <!-- Notes -->
+    <div class="card" style="margin-bottom:16px">
+  <h2 style="font-size:15px;font-weight:600;
+    margin-bottom:14px">Additional Info</h2>
+
+  <div class="form-group" style="margin-bottom:12px">
+    <label>Social media handle
+      <span style="font-weight:400;color:#9ca3af">
+        (optional — for cross-promotion)</span></label>
+    <input type="text" id="social-handle"
+      placeholder="@yourstorename">
+  </div>
+
+  <div class="form-group">
+    <label>Notes (optional)</label>
+    <textarea id="order-notes" rows="3"
+      placeholder="Delivery instructions, loading dock info, contact on site, or anything else we should know"></textarea>
+  </div>
+</div>
 
     <!-- Section 5: Terms & Contact -->
     <div class="terms-block">
@@ -390,6 +440,45 @@ function init() {
           if (accountEmail) document.getElementById('billing-email').value = accountEmail;
           var banner = document.getElementById('returning-banner');
           if (banner) banner.style.display = 'block';
+
+          var prefs = data.portalPrefs || {};
+          if (prefs.billingEmail) {
+            var be = document.getElementById('billing-email');
+            if (be) be.value = prefs.billingEmail;
+          }
+          if (prefs.distributors && prefs.distributors.length) {
+            var list = document.getElementById('distributor-list');
+            prefs.distributors.forEach(function(d, i) {
+              if (i === 0) {
+                var inputs = list.querySelectorAll('.distributor-input');
+                if (inputs[0]) inputs[0].value = d;
+              } else {
+                addDistributor();
+                var inputs = list.querySelectorAll('.distributor-input');
+                inputs[inputs.length-1].value = d;
+              }
+            });
+          }
+          if (prefs.distributorDirectOpen) {
+            var ddo = document.getElementById('distributor-direct-open');
+            if (ddo) ddo.value = prefs.distributorDirectOpen;
+          }
+          if (prefs.distributorContactOk) {
+            var dco = document.getElementById('distributor-contact-ok');
+            if (dco) dco.checked = true;
+          }
+          if (prefs.leadTimeNeeded) {
+            var lt = document.getElementById('lead-time-needed');
+            if (lt) lt.value = prefs.leadTimeNeeded;
+          }
+          if (prefs.socialHandle) {
+            var sh = document.getElementById('social-handle');
+            if (sh) sh.value = prefs.socialHandle;
+          }
+          if (prefs.deliveryNotes) {
+            var dw = document.getElementById('delivery-window');
+            if (dw) dw.value = prefs.deliveryNotes;
+          }
 
           firebase.firestore()
             .collection('portal_orders')
@@ -509,23 +598,32 @@ function showThankYou(data) {
   ty.style.display = 'block';
   document.getElementById('ty-heading').textContent = 'Thank you, ' + data.accountName + '!';
 
-  let rows = '';
+  var orderData = data.orderData || {};
+  var summaryHtml = '';
   if (data.cases > 0) {
-    rows += `<div class="summary-row">
-      <span>Classic Lavender Lemonade</span>
-      <span>${data.cases} cases (${data.cases * CANS_PER_CASE} cans)</span></div>`;
+    summaryHtml += '<div class="summary-row">' +
+      '<span>Classic Lavender Lemonade</span>' +
+      '<span>' + data.cases + ' cases (' + (data.cases * CANS_PER_CASE) + ' cans)</span></div>';
   }
-  if (data.distributor) {
-    rows += `<div class="summary-row"><span>Distributor</span><span>${data.distributor}</span></div>`;
+  var dists = getDistributors();
+  if (dists.length) {
+    summaryHtml += '<div class="summary-row">' +
+      '<span>Distributor(s)</span>' +
+      '<span>' + dists.join(', ') + '</span></div>';
+  }
+  if (orderData.leadTimeNeeded) {
+    summaryHtml += '<div class="summary-row">' +
+      '<span>Lead Time</span>' +
+      '<span>' + orderData.leadTimeNeeded + '</span></div>';
   }
   if (data.deliveryWindow) {
-    rows += `<div class="summary-row"><span>Delivery Window</span><span>${data.deliveryWindow}</span></div>`;
+    summaryHtml += '<div class="summary-row"><span>Delivery Window</span><span>' + data.deliveryWindow + '</span></div>';
   }
   if (data.poNumber) {
-    rows += `<div class="summary-row"><span>PO Number</span><span>${data.poNumber}</span></div>`;
+    summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + data.poNumber + '</span></div>';
   }
-  rows += `<div class="summary-row"><span>Billing Email</span><span>${data.billingEmail}</span></div>`;
-  document.getElementById('ty-summary').innerHTML = rows;
+  summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + data.billingEmail + '</span></div>';
+  document.getElementById('ty-summary').innerHTML = summaryHtml;
 }
 
 function submitOrder() {
@@ -553,11 +651,6 @@ function submitOrder() {
   }
   if (!billingEmail) { showError('Please enter your billing email.'); return; }
 
-  const distSelect = document.getElementById('distributor-select').value;
-  const distributorValue = distSelect === 'other'
-    ? document.getElementById('distributor-other').value.trim()
-    : distSelect;
-
   const deliveryWindow = document.getElementById('delivery-window').value.trim();
   const poNumber = document.getElementById('po-number').value.trim();
   const notes = document.getElementById('order-notes').value.trim();
@@ -574,7 +667,11 @@ function submitOrder() {
     isProspect: isProspect,
     billingEmail: billingEmail,
     contactName: contactName || null,
-    distributor: distributorValue || '',
+    distributors: getDistributors(),
+    distributorDirectOpen: document.getElementById('distributor-direct-open')?.value||'',
+    distributorContactOk: document.getElementById('distributor-contact-ok')?.checked||false,
+    leadTimeNeeded: document.getElementById('lead-time-needed')?.value||'',
+    socialHandle: (document.getElementById('social-handle')?.value||'').trim(),
     items: cases > 0 ? [{
       sku: 'classic',
       label: 'Classic Lavender Lemonade',
@@ -592,13 +689,32 @@ function submitOrder() {
 
   db.collection('portal_orders').add(orderData)
     .then(() => {
+      if (isMatched && accountId) {
+        firebase.firestore()
+          .collection('accounts')
+          .doc(accountId)
+          .update({
+            portalPrefs: {
+              billingEmail: billingEmail,
+              distributors: getDistributors(),
+              distributorDirectOpen: document.getElementById('distributor-direct-open')?.value||'',
+              distributorContactOk: document.getElementById('distributor-contact-ok')?.checked||false,
+              leadTimeNeeded: document.getElementById('lead-time-needed')?.value||'',
+              socialHandle: (document.getElementById('social-handle')?.value||'').trim(),
+              deliveryNotes: (document.getElementById('delivery-window')?.value||'').trim(),
+              lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          }).catch(function(e) {
+            console.log('Prefs save error:', e);
+          });
+      }
       showThankYou({
         accountName: finalAccountName,
         cases: cases,
-        distributor: distributorValue,
         deliveryWindow: deliveryWindow,
         poNumber: poNumber,
-        billingEmail: billingEmail
+        billingEmail: billingEmail,
+        orderData: orderData
       });
     })
     .catch(function(e) {
