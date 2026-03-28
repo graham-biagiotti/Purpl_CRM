@@ -85,6 +85,15 @@ input:focus,textarea:focus,select:focus{
   <!-- Main form -->
   <div id="order-form">
 
+    <div id="returning-banner" style="display:none;
+  background:#dcfce7;border:1px solid #86efac;
+  border-radius:8px;padding:10px 14px;
+  margin-bottom:16px;font-size:13px;color:#166534">
+  Welcome back — your details have been pre-filled
+  from your last order. Just update your quantity and
+  anything that has changed.
+</div>
+
     <!-- Section 1: Account Info -->
     <div class="card">
       <h2>Account Information</h2>
@@ -235,6 +244,19 @@ input:focus,textarea:focus,select:focus{
     <button class="submit-btn" id="submit-btn" disabled onclick="submitOrder()">
       Place Order
     </button>
+
+    <div id="past-orders-section" style="display:none;
+  margin-top:24px">
+  <div class="card">
+    <h2 style="font-size:15px;font-weight:600;
+      margin-bottom:4px">Your Order History</h2>
+    <p style="font-size:12px;color:#6b7280;
+      margin-bottom:14px">Your recent orders with purpl.
+      Click View PDF on any order to download a copy
+      for your records.</p>
+    <div id="past-orders-list"></div>
+  </div>
+</div>
 
   </div><!-- /#order-form -->
 
