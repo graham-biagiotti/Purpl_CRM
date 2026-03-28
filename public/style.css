@@ -1,21 +1,31 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   /* ── purpl Brand Colors ───────────────────────────────────────── */
-  --brand-purple:       #4B2082;   /* Primary deep brand purple — logo, headings, primary actions */
-  --brand-purple-hover: #3A1768;   /* Darker on hover */
-  --brand-purple-mid:   #7B5CA7;   /* Medium purple — secondary accents, badges */
-  --brand-purple-soft:  #EDE4F5;   /* Soft lavender — tinted backgrounds */
-  --brand-purple-bg:    #F6F3FB;   /* Very light lavender — page background */
+  --black: #0a0a0a;
+  --sidebar: #2d1b4e;
+  --sidebar-hover: #3d2560;
+  --sidebar-active: #4a2d75;
+  --purple: #7B4FA0;
+  --purple2: #9B6DC0;
+  --purple-light: #f5f0ff;
+  --purple-border: #c4b5fd;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --bg: #faf8ff;
+  --card: #fff;
+  --border: #e9d5ff;
+  --text: #1a1a2e;
+  --muted: #6b7280;
+  --lavblue: #4a90b8;
 
-  /* ── Semantic aliases (used throughout app) ───────────────────── */
-  --black:#0a0a0a;
-  --sidebar:#0D0820;               /* Near-black with brand purple undertone */
-  --purple:var(--brand-purple);
-  --purple2:var(--brand-purple-mid);
-  --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;
-  --bg:var(--brand-purple-bg);
-  --card:#fff;--border:#e8e4f0;--text:#1a1a2e;--muted:#6b7280;
-  --lavblue:#4a90b8;
+  /* ── Aliases for backward compatibility ──────────────────────── */
+  --brand-purple:       var(--purple);
+  --brand-purple-hover: #6a3f8f;
+  --brand-purple-mid:   var(--purple2);
+  --brand-purple-soft:  var(--purple-light);
+  --brand-purple-bg:    var(--bg);
 
   /* ── SKU Colors ───────────────────────────────────────────────── */
   --sku-classic:#4B2082;--sku-blueberry:#3b82f6;--sku-peach:#f97316;--sku-raspberry:#e11d48;--sku-variety:#0891b2;
@@ -58,8 +68,8 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 #app-shell{display:none;width:100%}
 
 /* SIDEBAR */
-.sidebar{width:210px;min-height:100vh;background:var(--sidebar);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100}
-.sb-logo{padding:18px 16px 14px;border-bottom:1px solid #1e1535}
+.sidebar{width:210px;min-height:100vh;background:linear-gradient(180deg, #2d1b4e 0%, #1e1035 100%);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100}
+.sb-logo{padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,0.1);text-align:center}
 
 /* Brand lockup in sidebar */
 .brand-lockup{display:flex;align-items:center;gap:10px}
@@ -70,9 +80,9 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 
 .sb-nav{flex:1;padding:8px 0;overflow-y:auto}
 .sb-nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#9080b0;text-decoration:none;font-size:13px;transition:.15s;cursor:pointer;border:none;background:none;width:100%}
-.sb-nav a:hover,.sb-nav a.active{background:#1a1033;color:#fff}
-.sb-nav a.active{border-left:3px solid var(--brand-purple-mid);padding-left:13px}
-.sb-nav .section{font-size:10px;color:#3d2f5c;padding:12px 16px 4px;text-transform:uppercase;letter-spacing:.08em}
+.sb-nav a:hover,.sb-nav a.active{background:rgba(123,79,160,0.3);color:#fff}
+.sb-nav a.active{border-left:3px solid #9B6DC0;padding-left:13px}
+.sb-nav .section{font-size:10px;color:rgba(255,255,255,0.3);padding:12px 16px 4px;text-transform:uppercase;letter-spacing:.08em}
 .sb-bottom{padding:12px 16px;border-top:1px solid #1e1535;display:flex;flex-direction:column;gap:6px}
 .sb-bottom small{color:#555;font-size:11px}
 .sb-signout{font-size:11px;color:#666;background:none;border:none;cursor:pointer;text-align:left;padding:0;text-decoration:underline}
@@ -80,14 +90,14 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 
 /* MAIN */
 .main{margin-left:210px;flex:1;min-height:100vh;display:flex;flex-direction:column}
-.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.topbar{background:#fff;border-bottom:1px solid #e9d5ff;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:17px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
 .page{display:none;padding:24px;flex:1}
 .page.active{display:block}
 
 /* CARDS */
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px}
+.card{background:var(--card);border:1px solid #e9d5ff;border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(123,79,160,0.08)}
 .card-grid{display:grid;gap:16px}
 .grid-2{grid-template-columns:1fr 1fr}
 .grid-3{grid-template-columns:1fr 1fr 1fr}
@@ -95,7 +105,7 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 .grid-5{grid-template-columns:repeat(5,1fr)}
 
 /* KPI */
-.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.kpi{background:var(--card);border:1px solid #e9d5ff;border-radius:10px;padding:16px;text-align:center;box-shadow:0 2px 8px rgba(123,79,160,0.06)}
 .kpi .num{font-size:28px;font-weight:700;line-height:1;font-family:var(--font-brand)}
 .kpi .label{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--font-body)}
 .kpi.purple .num{color:var(--brand-purple)}
@@ -136,8 +146,8 @@ tr.loc-row:hover td{background:#f0f9ff}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:500;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:.15s;color:var(--text)}
 .btn:hover{background:#f3f4f6}
-.btn.primary{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
-.btn.primary:hover{background:var(--brand-purple-hover)}
+.btn.primary{background:#7B4FA0;color:#fff;border-color:#7B4FA0}
+.btn.primary:hover{background:#6a3f8f}
 .btn.green{background:var(--green);color:#fff;border-color:var(--green)}
 .btn.red{background:var(--red);color:#fff;border-color:var(--red)}
 .btn.sm{padding:4px 10px;font-size:12px}
@@ -150,7 +160,7 @@ tr.loc-row:hover td{background:#f0f9ff}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-group label{font-size:12px;font-weight:500;color:var(--muted)}
 input,select,textarea{padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;width:100%;background:#fff;color:var(--text)}
-input:focus,select:focus,textarea:focus{outline:2px solid var(--brand-purple);border-color:transparent}
+input:focus,select:focus,textarea:focus{outline:2px solid #9B6DC0;border-color:transparent}
 textarea{resize:vertical;min-height:60px}
 
 /* MODAL */
@@ -170,7 +180,7 @@ textarea{resize:vertical;min-height:60px}
 /* TABS */
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px}
 .tab{padding:8px 14px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:none;border-left:none;border-right:none}
-.tab.active{color:var(--brand-purple);border-bottom-color:var(--brand-purple)}
+.tab.active{color:#7B4FA0;border-bottom-color:#7B4FA0}
 
 /* NOTES PANEL */
 .notes-list .note-item{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative}
@@ -249,7 +259,7 @@ textarea{resize:vertical;min-height:60px}
 .gauge-bar{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:6px}
 .gauge-fill{height:100%;border-radius:4px;background:var(--brand-purple);transition:.3s}
 hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
-.highlight-box{background:linear-gradient(135deg,#f5f0ff,var(--brand-purple-soft));border:1px solid #c4a8e8;border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.highlight-box{background:linear-gradient(135deg,#f5f0ff,#ede9fe);border:1px solid #c4b5fd;border-radius:8px;padding:12px 14px;margin-bottom:14px}
 
 /* SKU row in production form */
 .sku-row{display:grid;grid-template-columns:130px 1fr;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;margin-bottom:6px}
@@ -336,8 +346,8 @@ body{font-size:15px;line-height:1.5}
 
 /* ── Enhanced Cards ─────────────────────────────────────── */
 .card{
-  box-shadow:0 1px 4px rgba(75,32,130,.05),0 2px 12px rgba(0,0,0,.04);
-  border-color:#ede8f5;
+  box-shadow:0 2px 8px rgba(123,79,160,0.08);
+  border-color:#e9d5ff;
 }
 
 /* ── Enhanced Buttons ───────────────────────────────────── */
@@ -347,11 +357,11 @@ body{font-size:15px;line-height:1.5}
 /* ── KPI Cards Enhanced ─────────────────────────────────── */
 .kpi{
   padding:20px 18px;
-  box-shadow:0 2px 8px rgba(75,32,130,.08);
-  border-color:#ede8f5;
+  box-shadow:0 2px 8px rgba(123,79,160,0.06);
+  border:1px solid #e9d5ff;
 }
 .kpi .num{font-size:32px}
-.kpi.purple{background:linear-gradient(135deg,#f5eeff,#ede4f5);border-color:#c4a8e8}
+.kpi.purple{background:linear-gradient(135deg,#f5f0ff,#ede9fe);border-color:#c4b5fd}
 .kpi.green{background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-color:#86efac}
 .kpi.red{background:linear-gradient(135deg,#fff1f2,#fee2e2);border-color:#fca5a5}
 .kpi.amber{background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:#fcd34d}
