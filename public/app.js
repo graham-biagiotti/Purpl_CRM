@@ -623,7 +623,7 @@ function openAddInv(accountId=null, priceType='direct', cases=null, notesText=''
 
 function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNotes='') {
   const isNew = !id;
-  const inv   = id ? DB.a('iv').find(x => x.id === id && x.number) : null;
+  const inv   = id ? DB.a('iv').find(x => x.id === id) : null;
 
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
@@ -3223,7 +3223,7 @@ function renderDistPricingHTML(d) {
   const rows = SKUS.map(s=>{
     const p = DB.a('dist_pricing').find(x=>x.distId===d.id&&x.sku===s.id);
     const pricePerCase = p?.pricePerCase || null;
-    const pricePerCan  = pricePerCase ? pricePerCase/12 : null;
+    const pricePerCan  = pricePerCase ? pricePerCase/CANS_PER_CASE : null;
     const costPerCan   = costs.cogs?.[s.id] || 0;
     const gpPerCan     = pricePerCan ? pricePerCan - costPerCan : null;
     const marginPct    = pricePerCan && pricePerCan>0 ? gpPerCan/pricePerCan : null;
@@ -4379,7 +4379,7 @@ function deleteSupply(id) {
 // ── Log Tab ───────────────────────────────────────────────
 function _invLog() {
   const inv = DB.a('iv');
-  const log = inv.slice().sort((a,b)=>b.date>a.date?1:-1).slice(0,40);
+  const log = inv.filter(e => e.type === 'in' || e.type === 'out').sort((a,b)=>b.date>a.date?1:-1).slice(0,40);
   const tbody = qs('#inv-log-body');
   if (!tbody) return;
   tbody.innerHTML = log.map(entry=>`
@@ -5690,7 +5690,7 @@ function _lfRepCutoff() {
 
 function renderLfReports() {
   const cutoff = _lfRepCutoff();
-  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.date || inv.created || '') >= cutoff);
+  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.issued || inv.date || inv.created || '') >= cutoff);
   const paid = invs.filter(i => i.status === 'paid');
   const outstanding = invs.filter(i => i.status !== 'paid');
 
@@ -5745,7 +5745,7 @@ function renderLfReports() {
           const overdue = i.dueDate && i.dueDate < today();
           return `<tr>
             <td>${escHtml(i.accountName||'—')}</td>
-            <td>${escHtml(i.invoiceNumber||'INV')}</td>
+            <td>${escHtml(i.number||i.invoiceNumber||'INV')}</td>
             <td style="${overdue?'color:var(--red);font-weight:600':''}">${fmtD(i.dueDate)}</td>
             <td>${fmtC(i.total||0)}</td>
           </tr>`;
@@ -5776,7 +5776,7 @@ function renderLfReports() {
 function exportLfReportCSV(section) {
   let rows, headers, filename;
   const cutoff = _lfRepCutoff();
-  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.date || inv.created || '') >= cutoff);
+  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.issued || inv.date || inv.created || '') >= cutoff);
   const paid = invs.filter(i => i.status === 'paid');
 
   if (section === 'sku') {
@@ -5793,7 +5793,7 @@ function exportLfReportCSV(section) {
     filename = 'lf-orders-by-account.csv';
   } else if (section === 'outstanding') {
     headers = ['Account','Invoice','Due Date','Amount'];
-    rows = invs.filter(i=>i.status!=='paid').map(i=>[i.accountName||'—', i.invoiceNumber||'', i.dueDate||'', (i.total||0).toFixed(2)]);
+    rows = invs.filter(i=>i.status!=='paid').map(i=>[i.accountName||'—', i.number||i.invoiceNumber||'', i.dueDate||'', (i.total||0).toFixed(2)]);
     filename = 'lf-outstanding.csv';
   } else if (section === 'wix') {
     headers = ['Date','Run','SKU','Cases','Status'];
@@ -6753,7 +6753,7 @@ function saveLfInvoice(id, isNew) {
     items:         lineItems.map(l => ({skuName: l.skuName, cases: l.cases, units: l.units})),
     confirmed:     false,
   };
-  DB.push('lf_wix_deductions', deduction);
+  if (isNew) DB.push('lf_wix_deductions', deduction);
 
   closeModal('modal-lf-invoice');
   if (currentPage === 'lf-invoices') renderLfInvoicesPage();
@@ -8076,7 +8076,7 @@ function editInv(id) {
 }
 
 function renderInvoicesPage() {
-  const invs = DB.a('iv');
+  const invs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
   const statusFilter = document.getElementById(
     'inv-filter-status')?.value || '';
   const acctFilter = document.getElementById(
@@ -8399,7 +8399,7 @@ function generateInvoicePrint(invoiceId) {
       : `<tr>
           <td>
             <strong>Classic Lavender Lemonade</strong>
-            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · 12 cans/case</div>
+            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · ${CANS_PER_CASE} cans/case</div>
             ${iv.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(iv.notes)}</div>` : ''}
           </td>
           <td style="text-align:center">${iv.cases||'—'}</td>
@@ -8442,17 +8442,6 @@ function generateInvoicePrint(invoiceId) {
 
 // ── Invoice modal helpers (v2 — iv collection) ─────────────
 
-function calcInvTotal() {
-  const cases = parseInt(document.getElementById('iv-cases')?.value || 0);
-  const ppc   = parseFloat(document.getElementById('iv-ppc')?.value || 0);
-  const amtEl = document.getElementById('iv-amt');
-  if (amtEl && cases && ppc) {
-    amtEl.value = (cases * ppc).toFixed(2);
-  } else if (amtEl) {
-    amtEl.value = '';
-  }
-}
-
 function saveInv(id, isNew) {
   const number    = qs('#iv-number')?.value?.trim() || '';
   const accountId = qs('#iv-account')?.value;
@@ -8493,7 +8482,7 @@ function saveInv(id, isNew) {
 
   // isNew may be undefined if called from old code paths — treat missing id as new
   const _isNew   = isNew !== false && !id;
-  const existing = _isNew ? null : DB.a('iv').find(x => x.id === id && x.number);
+  const existing = _isNew ? null : DB.a('iv').find(x => x.id === id);
   const saveId   = _isNew ? uid() : id;
 
   const rec = {
@@ -8566,25 +8555,23 @@ async function importWholesaleInquiries() {
         phone: d.phone || '',
         address: d.address || '',
         type: d.storeType || 'Other',
-        stage: 'Lead',
+        isPbf: (d.brandsInterested || []).includes('lf'),
+        status: 'lead',
         priority: 'Medium',
         source: 'Wholesale Page',
         lastContacted: null,
         nextFollowUp: null,
-        notes: [
-          d.storeDescription ?
-            'Store: ' + d.storeDescription : '',
-          d.howHeard ?
-            'How they heard: ' + d.howHeard : '',
-          d.monthlyVolume ?
-            'Monthly volume: ' + d.monthlyVolume : '',
-          d.usesDistributor ?
-            'Uses distributor: ' + d.usesDistributor : '',
-          d.distributorName ?
-            'Distributor: ' + d.distributorName : '',
-          d.contactPreference ?
-            'Contact pref: ' + d.contactPreference : ''
-        ].filter(Boolean).join('\n'),
+        notes: (function() {
+          var noteText = [
+            d.storeDescription ? 'Store: ' + d.storeDescription : '',
+            d.howHeard ? 'How they heard: ' + d.howHeard : '',
+            d.monthlyVolume ? 'Monthly volume: ' + d.monthlyVolume : '',
+            d.usesDistributor ? 'Uses distributor: ' + d.usesDistributor : '',
+            d.distributorName ? 'Distributor: ' + d.distributorName : '',
+            d.contactPreference ? 'Contact pref: ' + d.contactPreference : ''
+          ].filter(Boolean).join('\n');
+          return noteText ? [{ id: uid(), text: noteText, date: today() }] : [];
+        })(),
         nextSteps: 'Follow up within 2 business days — wholesale page application',
         createdAt: today()
       });

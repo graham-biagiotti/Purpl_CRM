@@ -13,7 +13,7 @@
 // Collections stored as arrays in Firestore as single docs
 // (small dataset, single user — simplest possible approach)
 const ARRAY_KEYS = [
-  'ac','pr','iv','ord','orders','inv_log_v2',
+  'ac','pr','iv','orders',
   'prod_hist','prod_sched','shipments','dist',
   'rem','pack_types','runs',
   // Phase 4 — Distributors
