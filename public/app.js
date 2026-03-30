@@ -7184,7 +7184,7 @@ function _renderPoTabs() {
 }
 
 function _switchPoTab(tab) {
-  ['all','unmatched','confirmed','notify','links'].forEach(id => {
+  ['all','unmatched','confirmed','notify','links','lf'].forEach(id => {
     const el = qs(`#po-pane-${id}`);
     if (el) el.style.display = id === tab ? '' : 'none';
   });
@@ -7193,6 +7193,7 @@ function _switchPoTab(tab) {
   if (tab === 'confirmed') _renderPoConfirmed();
   if (tab === 'notify')    _renderPoNotify();
   if (tab === 'links')     _renderPoLinks();
+  if (tab === 'lf')        _renderPoLf();
 }
 
 const PO_STATUS_LABELS = {
@@ -7391,6 +7392,122 @@ function _renderPoLinks() {
       console.error('_renderPoLinks error:', e);
       el.innerHTML = '<div style="padding:16px;color:var(--red)">Failed to load accounts.</div>';
     });
+}
+
+// ── LF Submissions tab ────────────────────────────────────
+function _renderPoLf() {
+  const el = qs('#po-pane-lf');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:16px;color:var(--muted)">Loading LF submissions…</div>';
+  firebase.firestore().collection('portal_orders')
+    .where('brand', '==', 'lf')
+    .orderBy('submittedAt', 'desc')
+    .limit(100)
+    .get()
+    .then(snap => {
+      const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (!orders.length) {
+        el.innerHTML = '<div class="card"><div style="padding:24px;text-align:center;color:var(--muted)">No LF portal submissions yet.</div></div>';
+        return;
+      }
+      el.innerHTML = `<div class="card">
+        <div class="section-hdr" style="margin-bottom:12px"><h2>🌿 LF Form Submissions</h2></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Date</th><th>Account</th><th>Items</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>${orders.map(o => {
+            const dt = o.submittedAt?.toDate ? o.submittedAt.toDate().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+            const items = (o.lineItems||[]).map(i=>`${escHtml(i.skuName||'?')} ×${i.cases}`).join(', ');
+            const total = fmtC(o.total||0);
+            const stCls = o.status === 'pending' ? 'amber' : o.status === 'discarded' ? 'red' : 'green';
+            return `<tr>
+              <td style="font-size:12px">${dt}</td>
+              <td><strong>${escHtml(o.accountName||'—')}</strong><br><span style="font-size:11px;color:var(--muted)">${o.billingEmail||''}</span></td>
+              <td style="font-size:12px">${items||'—'}</td>
+              <td style="font-weight:600">${total}</td>
+              <td><span class="badge ${stCls}" style="font-size:10px">${o.status||'pending'}</span></td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${o.status !== 'discarded' ? `<button class="btn xs primary" onclick="createLfInvoiceFromPortal('${o.id}')">Create Invoice</button>` : ''}
+                  ${!o.accountId ? `<button class="btn xs secondary" onclick="linkPortalLfToAccount('${o.id}')">Link Account</button>` : ''}
+                  ${o.status !== 'discarded' ? `<button class="btn xs red" onclick="discardLfPortalOrder('${o.id}')">Discard</button>` : ''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>
+      </div>`;
+    })
+    .catch(e => {
+      el.innerHTML = '<div style="padding:16px;color:var(--red)">Failed to load LF submissions: '+escHtml(e.message)+'</div>';
+    });
+}
+
+function createLfInvoiceFromPortal(portalOrderId) {
+  firebase.firestore().collection('portal_orders').doc(portalOrderId).get()
+    .then(doc => {
+      if (!doc.exists) { toast('Order not found'); return; }
+      const o = doc.data();
+      nav('lf-invoices');
+      // Open blank new invoice modal, then fill in from portal order data
+      setTimeout(() => {
+        openLfInvoiceModal(null);
+        // Set account if known
+        const acSel = qs('#lfi-account');
+        if (acSel && o.accountId) acSel.value = o.accountId;
+        // Set notes
+        if (qs('#lfi-notes')) qs('#lfi-notes').value = 'From portal: ' + (o.billingEmail||'');
+        // Clear default line items and add portal items
+        const tbody = qs('#lfi-line-items');
+        if (tbody) {
+          tbody.innerHTML = '';
+          (o.lineItems||[]).forEach(it => {
+            lfInvAddLineItem();
+            // find the last row added and fill it
+            const rows = tbody.querySelectorAll('[data-row-id]');
+            const lastRow = rows[rows.length-1];
+            if (!lastRow) return;
+            const rowId = lastRow.dataset.rowId;
+            // Set SKU name and price manually
+            const skuSel = qs('#lfi-sku-'+rowId);
+            if (skuSel) {
+              // Try to find matching SKU by name
+              const matchOpt = Array.from(skuSel.options).find(opt => opt.text.includes(it.skuName||''));
+              if (matchOpt) {
+                skuSel.value = matchOpt.value;
+                skuSel.dispatchEvent(new Event('change'));
+              }
+            }
+            const casesEl = qs('#lfi-cases-'+rowId);
+            if (casesEl) { casesEl.value = it.cases||0; _lfInvRowCalc(rowId); }
+            const priceEl = qs('#lfi-price-'+rowId);
+            if (priceEl && it.unitPrice) { priceEl.value = parseFloat(it.unitPrice).toFixed(2); _lfInvRowCalc(rowId); }
+          });
+          _lfInvCalcTotal();
+        }
+      }, 350);
+    })
+    .catch(e => toast('Error: '+e.message));
+}
+
+function linkPortalLfToAccount(portalOrderId) {
+  const accounts = DB.a('ac').filter(a=>a.status==='active');
+  const sel = accounts.map(a=>`${a.id}|${a.name}`).join('\n');
+  const chosen = window.prompt('Enter account name to link:\n\n'+accounts.map(a=>a.name).join('\n'));
+  if (!chosen) return;
+  const ac = accounts.find(a=>a.name.toLowerCase()===chosen.toLowerCase().trim());
+  if (!ac) { toast('Account not found'); return; }
+  firebase.firestore().collection('portal_orders').doc(portalOrderId)
+    .update({ accountId: ac.id, accountName: ac.name })
+    .then(() => { toast('Linked to '+ac.name); _renderPoLf(); })
+    .catch(e => toast('Error: '+e.message));
+}
+
+function discardLfPortalOrder(portalOrderId) {
+  if (!confirm2('Mark this LF submission as discarded?')) return;
+  firebase.firestore().collection('portal_orders').doc(portalOrderId)
+    .update({ status: 'discarded' })
+    .then(() => { toast('Discarded'); _renderPoLf(); })
+    .catch(e => toast('Error: '+e.message));
 }
 
 // ── Review modal ──────────────────────────────────────────
