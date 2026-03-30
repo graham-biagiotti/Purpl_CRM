@@ -716,6 +716,14 @@
               <label>Notes</label>
               <input id="del-stop-notes" placeholder="e.g. use back entrance">
             </div>
+            <!-- LF Items -->
+            <div style="margin-bottom:12px">
+              <button type="button" class="btn secondary" style="font-size:12px;padding:4px 10px;margin-bottom:8px" onclick="toggleDelLfSection()">🌿 Add LF Items</button>
+              <div id="del-lf-section" style="display:none">
+                <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">🌿 Lavender Fields Items (cases)</label>
+                <div id="del-lf-inputs"><!-- filled by JS --></div>
+              </div>
+            </div>
             <button class="btn primary" id="add-stop-btn">Add to Route</button>
           </div>
         </div>
@@ -860,6 +868,13 @@
 
     <!-- ═══════ REPORTS ═══════ -->
     <div class="page" id="page-reports">
+      <!-- Brand tab bar -->
+      <div class="ac-brand-btns" id="rep-brand-btns" style="margin-bottom:16px">
+        <button class="ac-brand-btn active" data-val="purpl" onclick="setRepBrand('purpl')">💜 purpl</button>
+        <button class="ac-brand-btn" data-val="lf" onclick="setRepBrand('lf')">🌿 Lavender Fields</button>
+      </div>
+      <!-- purpl section -->
+      <div id="rep-purpl-section">
       <!-- Controls bar -->
       <div class="card" style="margin-bottom:16px;padding:12px 16px">
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
@@ -915,6 +930,64 @@
           <span style="color:var(--muted);font-size:13px">No saved reports yet. Configure a report and click 💾 Save.</span>
         </div>
       </div>
+      </div><!-- /rep-purpl-section -->
+
+      <!-- LF section -->
+      <div id="rep-lf-section" style="display:none">
+        <!-- Period filter -->
+        <div class="card" style="margin-bottom:16px;padding:12px 16px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600;color:var(--muted)">Period:</span>
+            <div class="ac-brand-btns" id="lf-rep-period-btns">
+              <button class="ac-brand-btn active" data-val="30" onclick="setLfRepPeriod(30)">30 days</button>
+              <button class="ac-brand-btn" data-val="60" onclick="setLfRepPeriod(60)">60 days</button>
+              <button class="ac-brand-btn" data-val="90" onclick="setLfRepPeriod(90)">90 days</button>
+              <button class="ac-brand-btn" data-val="0" onclick="setLfRepPeriod(0)">All time</button>
+            </div>
+          </div>
+        </div>
+        <!-- LF KPIs -->
+        <div class="card-grid grid-4" style="margin-bottom:16px" id="lf-rep-kpi-row">
+          <div class="kpi green"><div class="num" id="lf-rep-revenue">—</div><div class="label">Total LF Revenue</div></div>
+          <div class="kpi purple"><div class="num" id="lf-rep-units">—</div><div class="label">LF Units Sold</div></div>
+          <div class="kpi blue"><div class="num" id="lf-rep-collected">—</div><div class="label">Invoices Collected</div></div>
+          <div class="kpi amber"><div class="num" id="lf-rep-outstanding">—</div><div class="label">Outstanding</div></div>
+        </div>
+        <!-- Revenue by SKU -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>Revenue by SKU</h2>
+            <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('sku')">⬇ CSV</button>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>SKU</th><th>Cases</th><th>Revenue</th></tr></thead><tbody id="lf-rep-sku-tbody"></tbody></table></div>
+        </div>
+        <!-- Orders by Account -->
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Orders by Account</h2>
+              <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('accounts')">⬇ CSV</button>
+            </div>
+            <div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Cases</th><th>Revenue</th></tr></thead><tbody id="lf-rep-accts-tbody"></tbody></table></div>
+          </div>
+          <!-- Outstanding by Account -->
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Outstanding by Account</h2>
+              <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('outstanding')">⬇ CSV</button>
+            </div>
+            <div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Invoice</th><th>Due</th><th>Amount</th></tr></thead><tbody id="lf-rep-out-tbody"></tbody></table></div>
+          </div>
+        </div>
+        <!-- Wix Deduction Log -->
+        <div class="card">
+          <div class="section-hdr">
+            <h2>Wix Deduction Log</h2>
+            <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('wix')">⬇ CSV</button>
+          </div>
+          <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Run</th><th>SKU</th><th>Cases</th><th>Status</th></tr></thead><tbody id="lf-rep-wix-tbody"></tbody></table></div>
+        </div>
+      </div><!-- /rep-lf-section -->
     </div>
 
     <!-- ═══════ INTEGRATIONS ═══════ -->
@@ -1429,6 +1502,14 @@
         <option value="text">Text</option>
         <option value="other">Other</option>
       </select>
+    </div>
+    <div class="form-row" id="mlo-regarding-row">
+      <label>Regarding</label>
+      <div class="ac-brand-btns" id="mlo-regarding-btns" style="margin-top:4px">
+        <button type="button" class="ac-brand-btn active" data-val="purpl" onclick="setMloRegarding('purpl')">💜 purpl</button>
+        <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMloRegarding('lf')">🌿 LF</button>
+        <button type="button" class="ac-brand-btn" data-val="both" onclick="setMloRegarding('both')">Both</button>
+      </div>
     </div>
     <div class="form-row" id="mlo-contact-row">
       <label>Who you spoke to</label>

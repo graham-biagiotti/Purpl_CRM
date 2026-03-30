@@ -69,6 +69,8 @@ let _currentDistId = null;  // tracks which distributor detail is open
 // ── Accounts view state ──────────────────────────────────
 let _acBrandFilter = '';   // '' | 'purpl' | 'lf' | 'both'
 let _acCompact = false;
+let _repBrand = 'purpl';   // 'purpl' | 'lf'
+let _lfRepPeriod = 30;     // days; 0 = all time
 function nav(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.sb-nav a').forEach(a => a.classList.remove('active'));
@@ -1619,11 +1621,14 @@ function renderAccountOutreach(a) {
   const TYPE_LABELS = {call:'Call',email:'Email','in-person':'In Person',text:'Text',other:'Other',Call:'Call',Email:'Email',Visit:'Visit',Text:'Text',Social:'Social'};
   const TYPE_CLS    = {call:'blue',email:'green','in-person':'purple',text:'gray',other:'gray',Call:'blue',Email:'green',Visit:'purple',Text:'gray',Social:'gray'};
   const OUT_CLS     = {'Interested':'green','Ordered':'green','Needs Follow-Up':'amber','No Response':'gray','Not Interested':'red','Left Voicemail':'gray','Other':'gray'};
+  const REG_LABEL   = {purpl:'💜 purpl', lf:'🌿 LF', both:'Both'};
+  const REG_CLS     = {purpl:'purple', lf:'green', both:'blue'};
   ol.innerHTML = entries.map(e=>`
     <div class="note-item">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--muted)">${fmtD(e.date)}</span>
         <span class="badge ${TYPE_CLS[e.type]||'gray'}" style="font-size:10px">${TYPE_LABELS[e.type]||e.type||'Other'}</span>
+        ${e.regarding?`<span class="badge ${REG_CLS[e.regarding]||'gray'}" style="font-size:10px">${REG_LABEL[e.regarding]||e.regarding}</span>`:''}
         ${e.outcome?`<span class="badge ${OUT_CLS[e.outcome]||'gray'}" style="font-size:10px">${e.outcome}</span>`:''}
       </div>
       ${e.contact?`<div style="font-size:13px;color:var(--muted);margin-bottom:2px">Spoke with: <strong>${e.contact}</strong></div>`:''}
@@ -2192,10 +2197,15 @@ function logProspectOutreach(id) {
   openLogOutreachModal('pr', id);
 }
 
+function setMloRegarding(val) {
+  qs('#mlo-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
 function openLogOutreachModal(kind, id) {
-  const name = kind === 'ac'
-    ? DB.a('ac').find(x=>x.id===id)?.name
-    : DB.a('pr').find(x=>x.id===id)?.name;
+  const rec = kind === 'ac' ? DB.a('ac').find(x=>x.id===id) : DB.a('pr').find(x=>x.id===id);
+  const name = rec?.name;
   qs('#mlo-title').textContent = (kind === 'ac' ? 'Log Follow-Up' : 'Log Outreach') + (name ? ` — ${name}` : '');
   qs('#mlo-id').value = id;
   qs('#mlo-kind').value = kind;
@@ -2206,6 +2216,9 @@ function openLogOutreachModal(kind, id) {
   qs('#mlo-nextdate').value = '';
   if (qs('#mlo-contact')) qs('#mlo-contact').value = '';
   if (qs('#mlo-outcome')) qs('#mlo-outcome').value = '';
+  // Default "regarding" based on isPbf flag
+  const defaultRegarding = rec?.isPbf ? 'lf' : 'purpl';
+  setMloRegarding(defaultRegarding);
   const isAccount  = kind === 'ac';
   const isProspect = kind === 'pr';
   // contact + outcome: accounts only
@@ -2213,6 +2226,9 @@ function openLogOutreachModal(kind, id) {
   const outcomeRow = qs('#mlo-outcome-row');
   if (contactRow) contactRow.style.display = isAccount ? '' : 'none';
   if (outcomeRow) outcomeRow.style.display = isAccount ? '' : 'none';
+  // regarding row: accounts only (prospects are always purpl)
+  const regRow = qs('#mlo-regarding-row');
+  if (regRow) regRow.style.display = isAccount ? '' : 'none';
   // next steps text: prospects only
   qs('#mlo-nextsteps-row').style.display = isProspect ? '' : 'none';
   // next date: both accounts and prospects
@@ -2230,6 +2246,7 @@ function saveLogOutreach() {
   const nextDate = qs('#mlo-nextdate').value;
   const contact = qs('#mlo-contact')?.value?.trim() || '';
   const outcome = qs('#mlo-outcome')?.value || '';
+  const regarding = qs('#mlo-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
 
   if (kind === 'ac') {
     const entry = {
@@ -2240,6 +2257,7 @@ function saveLogOutreach() {
       outcome,
       notes: note,
       nextFollowUp: nextDate || null,
+      regarding,
     };
     DB.update('ac', id, a=>({
       ...a,
@@ -4313,6 +4331,30 @@ function _showInvoiceSuggestion(ship) {
 // ══════════════════════════════════════════════════════════
 let _deliveryFulfillFilter = 'direct';
 
+function toggleDelLfSection() {
+  const sec = qs('#del-lf-section');
+  if (!sec) return;
+  const showing = sec.style.display !== 'none';
+  sec.style.display = showing ? 'none' : '';
+  if (!showing) _renderDelLfInputs();
+}
+
+function _renderDelLfInputs() {
+  const container = qs('#del-lf-inputs');
+  if (!container) return;
+  const skus = DB.a('lf_skus').filter(s=>!s.archived);
+  if (!skus.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px">No LF SKUs configured. Add them in Settings.</div>';
+    return;
+  }
+  container.innerHTML = skus.map(s=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <label style="flex:1;font-size:13px">${escHtml(s.name)}</label>
+      <input type="number" id="del-lf-${s.id}" min="0" value="0" style="width:64px;text-align:center">
+      <span style="font-size:12px;color:var(--muted)">cs</span>
+    </div>`).join('');
+}
+
 function setDeliveryFulfillFilter(mode) {
   _deliveryFulfillFilter = mode;
   ['direct','all','dist'].forEach(m=>{
@@ -4348,6 +4390,7 @@ function renderDelivery() {
           </div>` : ''}
           <div style="font-size:12px;color:var(--muted)">${s.address||''}</div>
           <div style="margin-top:6px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]} cs`:'').filter(Boolean).join(' ')}</div>
+          ${(s.lfItems||[]).length?`<div style="margin-top:4px;font-size:12px;color:#15803d">🌿 ${(s.lfItems).map(it=>`${escHtml(it.skuName)} ×${it.cases} cs`).join(' · ')}</div>`:''}
           ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
         </div>
         <button class="btn xs red no-print" onclick="removeStop(${i})">✕</button>
@@ -4372,6 +4415,8 @@ function renderDelivery() {
       acList.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
     acSel.onchange = () => prefillStop(acSel.value);
   }
+  // Pre-populate LF inputs (hidden until toggled)
+  _renderDelLfInputs();
 }
 
 function prefillStop(accountId) {
@@ -4397,6 +4442,16 @@ function addStop() {
   const stop = {name, address:qs('#del-stop-addr')?.value?.trim()||'', notes:qs('#del-stop-notes')?.value?.trim()||'', done:false, accountId};
   SKUS.forEach(s=>{ stop[s.id]=parseInt(qs('#del-qty-'+s.id)?.value)||0; });
 
+  // Collect LF items if section is visible
+  const lfItems = [];
+  if (qs('#del-lf-section')?.style.display !== 'none') {
+    DB.a('lf_skus').filter(s=>!s.archived).forEach(s=>{
+      const cases = parseInt(qs('#del-lf-'+s.id)?.value) || 0;
+      if (cases > 0) lfItems.push({skuId: s.id, skuName: s.name, cases});
+    });
+  }
+  if (lfItems.length) stop.lfItems = lfItems;
+
   const run = DB.obj('today_run', {date:today(), stops:[]});
   run.stops = [...(run.stops||[]), stop];
   DB.setObj('today_run', run);
@@ -4407,6 +4462,10 @@ function addStop() {
   if(qs('#del-stop-notes')) qs('#del-stop-notes').value='';
   SKUS.forEach(s=>{ if(qs('#del-qty-'+s.id)) qs('#del-qty-'+s.id).value=''; });
   if(qs('#del-account-sel')) { qs('#del-account-sel').value=''; }
+  // Hide LF section and clear inputs
+  const lfSec = qs('#del-lf-section');
+  if (lfSec) { lfSec.style.display='none'; }
+  DB.a('lf_skus').filter(s=>!s.archived).forEach(s=>{ const el=qs('#del-lf-'+s.id); if(el) el.value=''; });
 
   renderDelivery();
   toast('Stop added');
@@ -4445,12 +4504,30 @@ function toggleStop(i) {
       ordId: newOrd.id,
     }));
 
+    // Build LF wix deduction record for this stop (if any LF items)
+    const stopLfItems = stop.lfItems || [];
+    const newWixDeduction = stopLfItems.length ? {
+      id: uid(), date: today(),
+      runName: (DB.obj('today_run',{}).date || today()) + ' run',
+      note: 'Delivery: ' + stop.name,
+      items: stopLfItems,
+      confirmed: false,
+    } : null;
+
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
       cache['ac'] = (cache['ac']||[]).map(a => a.id===ac2.id ? {...a, lastOrder:today()} : a);
       cache['iv'] = [...(cache['iv']||[]), ...newIvEntries];
       cache['orders'] = [...(cache['orders']||[]), newOrd];
+      if (newWixDeduction) {
+        cache['lf_wix_deductions'] = [...(cache['lf_wix_deductions']||[]), newWixDeduction];
+      }
     });
+
+    // Show Wix pull reminder if this stop had LF items
+    if (newWixDeduction) {
+      setTimeout(()=>showWixPullModal(null, newWixDeduction.id), 300);
+    }
 
     // Offer invoice (non-blocking — renders after DB write)
     setTimeout(()=>offerDeliveryInvoice(stop, ac2, newOrd.id), 200);
@@ -4616,6 +4693,16 @@ let _reportChart = null;
 let _reportType  = 'revenue';
 let _reportData  = null; // cached for CSV export
 
+function setRepBrand(brand) {
+  _repBrand = brand;
+  qs('#rep-purpl-section').style.display = brand === 'purpl' ? '' : 'none';
+  qs('#rep-lf-section').style.display    = brand === 'lf'    ? '' : 'none';
+  qs('#rep-brand-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === brand);
+  });
+  if (brand === 'lf') renderLfReports();
+}
+
 function renderReports() {
   // Set default date range if blank (last 90 days)
   const fromEl = qs('#rep-date-from');
@@ -4637,6 +4724,20 @@ function renderReports() {
     });
     fromEl?.addEventListener('change', renderReportContent);
     toEl?.addEventListener('change', renderReportContent);
+  }
+
+  // Show/hide purpl vs LF based on current brand
+  const purplSec = qs('#rep-purpl-section');
+  const lfSec    = qs('#rep-lf-section');
+  if (purplSec) purplSec.style.display = _repBrand === 'purpl' ? '' : 'none';
+  if (lfSec)    lfSec.style.display    = _repBrand === 'lf'    ? '' : 'none';
+  qs('#rep-brand-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === _repBrand);
+  });
+
+  if (_repBrand === 'lf') {
+    renderLfReports();
+    return;
   }
 
   _reportType = tabs?.querySelector('.tab.active')?.dataset.rep || 'revenue';
@@ -4940,6 +5041,143 @@ function loadSavedReport(id) {
 function deleteSavedReport(id) {
   DB.remove('saved_reports', id);
   renderSavedReports();
+}
+
+// ══════════════════════════════════════════════════════════
+//  LF REPORTS
+// ══════════════════════════════════════════════════════════
+function setLfRepPeriod(days) {
+  _lfRepPeriod = days;
+  qs('#lf-rep-period-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', +b.dataset.val === days);
+  });
+  renderLfReports();
+}
+
+function _lfRepCutoff() {
+  if (!_lfRepPeriod) return null; // all time
+  return new Date(Date.now() - _lfRepPeriod * 864e5).toISOString().slice(0,10);
+}
+
+function renderLfReports() {
+  const cutoff = _lfRepCutoff();
+  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.date || inv.created || '') >= cutoff);
+  const paid = invs.filter(i => i.status === 'paid');
+  const outstanding = invs.filter(i => i.status !== 'paid');
+
+  // KPIs
+  const totalRev = paid.reduce((s,i)=>s+(i.total||0),0);
+  const totalUnits = paid.reduce((s,i)=>s+(i.lineItems||[]).reduce((ss,l)=>ss+(l.cases||0),0),0);
+  const collected = paid.reduce((s,i)=>s+(i.total||0),0);
+  const outstandingAmt = outstanding.reduce((s,i)=>s+(i.total||0),0);
+  if (qs('#lf-rep-revenue'))     qs('#lf-rep-revenue').textContent     = fmtC(totalRev);
+  if (qs('#lf-rep-units'))       qs('#lf-rep-units').textContent       = fmt(totalUnits);
+  if (qs('#lf-rep-collected'))   qs('#lf-rep-collected').textContent   = fmtC(collected);
+  if (qs('#lf-rep-outstanding')) qs('#lf-rep-outstanding').textContent = fmtC(outstandingAmt);
+
+  // Revenue by SKU (from paid invoices)
+  const skuMap = {};
+  paid.forEach(inv=>{
+    (inv.lineItems||[]).forEach(l=>{
+      if (!skuMap[l.skuName]) skuMap[l.skuName] = {cases:0, rev:0};
+      skuMap[l.skuName].cases += (l.cases||0);
+      skuMap[l.skuName].rev   += (l.lineTotal||0);
+    });
+  });
+  const skuRows = Object.entries(skuMap).sort((a,b)=>b[1].rev-a[1].rev);
+  const skuTbody = qs('#lf-rep-sku-tbody');
+  if (skuTbody) {
+    skuTbody.innerHTML = skuRows.length
+      ? skuRows.map(([name,d])=>`<tr><td>${escHtml(name)}</td><td>${fmt(d.cases)}</td><td>${fmtC(d.rev)}</td></tr>`).join('')
+      : '<tr><td colspan="3" style="color:var(--muted);text-align:center">No paid LF invoices in period</td></tr>';
+  }
+
+  // Orders by Account
+  const acctMap = {};
+  paid.forEach(inv=>{
+    const name = inv.accountName || inv.accountId || '—';
+    if (!acctMap[name]) acctMap[name] = {cases:0, rev:0};
+    (inv.lineItems||[]).forEach(l=>{ acctMap[name].cases+=(l.cases||0); acctMap[name].rev+=(l.lineTotal||0); });
+  });
+  const acctRows = Object.entries(acctMap).sort((a,b)=>b[1].rev-a[1].rev);
+  const acctTbody = qs('#lf-rep-accts-tbody');
+  if (acctTbody) {
+    acctTbody.innerHTML = acctRows.length
+      ? acctRows.map(([name,d])=>`<tr><td>${escHtml(name)}</td><td>${fmt(d.cases)}</td><td>${fmtC(d.rev)}</td></tr>`).join('')
+      : '<tr><td colspan="3" style="color:var(--muted);text-align:center">No paid invoices in period</td></tr>';
+  }
+
+  // Outstanding by Account
+  const outTbody = qs('#lf-rep-out-tbody');
+  if (outTbody) {
+    const outRows = outstanding.sort((a,b)=>(a.dueDate||'')>(b.dueDate||'')?1:-1);
+    outTbody.innerHTML = outRows.length
+      ? outRows.map(i=>{
+          const overdue = i.dueDate && i.dueDate < today();
+          return `<tr>
+            <td>${escHtml(i.accountName||'—')}</td>
+            <td>${escHtml(i.invoiceNumber||'INV')}</td>
+            <td style="${overdue?'color:var(--red);font-weight:600':''}">${fmtD(i.dueDate)}</td>
+            <td>${fmtC(i.total||0)}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="4" style="color:var(--muted);text-align:center">No outstanding invoices</td></tr>';
+  }
+
+  // Wix Deduction Log
+  const wixTbody = qs('#lf-rep-wix-tbody');
+  if (wixTbody) {
+    const deductions = DB.a('lf_wix_deductions').filter(d => !cutoff || (d.date||'') >= cutoff)
+                         .sort((a,b)=>(b.date||'')>(a.date||'')?1:-1);
+    wixTbody.innerHTML = deductions.length
+      ? deductions.flatMap(d=>{
+          const items = d.items || [{skuName: d.skuName||'—', cases: d.cases||0}];
+          return items.map((it,idx)=>`<tr>
+            <td>${idx===0 ? fmtD(d.date) : ''}</td>
+            <td>${idx===0 ? escHtml(d.runName||d.note||'—') : ''}</td>
+            <td>${escHtml(it.skuName||'—')}</td>
+            <td>${it.cases||0}</td>
+            <td><span class="badge ${d.confirmed?'green':'amber'}" style="font-size:10px">${d.confirmed?'Confirmed':'Pending'}</span></td>
+          </tr>`);
+        }).join('')
+      : '<tr><td colspan="5" style="color:var(--muted);text-align:center">No Wix deductions in period</td></tr>';
+  }
+}
+
+function exportLfReportCSV(section) {
+  let rows, headers, filename;
+  const cutoff = _lfRepCutoff();
+  const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.date || inv.created || '') >= cutoff);
+  const paid = invs.filter(i => i.status === 'paid');
+
+  if (section === 'sku') {
+    headers = ['SKU','Cases','Revenue'];
+    const skuMap = {};
+    paid.forEach(inv=>{ (inv.lineItems||[]).forEach(l=>{ if(!skuMap[l.skuName])skuMap[l.skuName]={cases:0,rev:0}; skuMap[l.skuName].cases+=(l.cases||0); skuMap[l.skuName].rev+=(l.lineTotal||0); }); });
+    rows = Object.entries(skuMap).sort((a,b)=>b[1].rev-a[1].rev).map(([n,d])=>[n,d.cases,d.rev.toFixed(2)]);
+    filename = 'lf-revenue-by-sku.csv';
+  } else if (section === 'accounts') {
+    headers = ['Account','Cases','Revenue'];
+    const acctMap = {};
+    paid.forEach(inv=>{ const name=inv.accountName||'—'; if(!acctMap[name])acctMap[name]={cases:0,rev:0}; (inv.lineItems||[]).forEach(l=>{acctMap[name].cases+=(l.cases||0);acctMap[name].rev+=(l.lineTotal||0);}); });
+    rows = Object.entries(acctMap).sort((a,b)=>b[1].rev-a[1].rev).map(([n,d])=>[n,d.cases,d.rev.toFixed(2)]);
+    filename = 'lf-orders-by-account.csv';
+  } else if (section === 'outstanding') {
+    headers = ['Account','Invoice','Due Date','Amount'];
+    rows = invs.filter(i=>i.status!=='paid').map(i=>[i.accountName||'—', i.invoiceNumber||'', i.dueDate||'', (i.total||0).toFixed(2)]);
+    filename = 'lf-outstanding.csv';
+  } else if (section === 'wix') {
+    headers = ['Date','Run','SKU','Cases','Status'];
+    rows = DB.a('lf_wix_deductions').filter(d=>!cutoff||(d.date||'')>=cutoff)
+      .flatMap(d=>{ const items=d.items||[{skuName:d.skuName||'—',cases:d.cases||0}]; return items.map(it=>[d.date||'',d.runName||d.note||'—',it.skuName||'—',it.cases||0,d.confirmed?'Confirmed':'Pending']); });
+    filename = 'lf-wix-deductions.csv';
+  } else return;
+
+  const csv = [headers, ...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = filename;
+  a.click();
 }
 
 // ══════════════════════════════════════════════════════════
