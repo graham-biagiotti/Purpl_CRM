@@ -114,6 +114,7 @@ const renders = {
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   'lf-invoices':    renderLfInvoicesPage,
+  'mass-email':     renderMassEmail,
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -1558,6 +1559,8 @@ function openAccount(id) {
   // Set edit button
   qs('#mac-edit-btn').onclick = () => { closeModal('modal-account'); editAccount(id); };
   qs('#mac-order-btn').onclick = () => { closeModal('modal-account'); openNewOrder(id); };
+  const draftBtn = qs('#mac-draft-btn');
+  if (draftBtn) draftBtn.onclick = () => openDraftOutreachModal(id);
 
   // Copy link button
   const copyLinkBtn = qs('#mac-copy-link-btn');
@@ -1635,6 +1638,471 @@ function renderAccountOutreach(a) {
       ${(e.notes||e.note)?`<div style="font-size:13px">${e.notes||e.note}</div>`:''}
       ${e.nextFollowUp?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px">📅 Next follow-up: <strong>${fmtD(e.nextFollowUp)}</strong></div>`:''}
     </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+//  AI EMAIL DRAFTING
+// ══════════════════════════════════════════════════════════
+const _AI_SYSTEM_PROMPT = `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`;
+
+const _AI_SIGNATURE = `Graham Biagiotti - Director of Sales
+Direct: 603-748-3038
+393 Pumpkin Hill Rd. Warner, NH 03278
+Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages`;
+
+async function _callAnthropicApi(userPrompt) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: _AI_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(()=>({}));
+    throw new Error(err?.error?.message || `API error ${response.status}`);
+  }
+  const data = await response.json();
+  const text = data.content?.[0]?.text || '';
+  // Strip markdown code fences if present
+  const clean = text.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
+  return JSON.parse(clean);
+}
+
+function setMdoRegarding(val) {
+  qs('#mdo-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+function openDraftOutreachModal(accountId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  qs('#mdo-account-id').value = accountId;
+  qs('#mdo-title').textContent = `Draft Outreach — ${a.name}`;
+  qs('#mdo-context').value = '';
+  qs('#mdo-log-check').checked = true;
+  qs('#mdo-output').style.display = 'none';
+  // Default regarding
+  setMdoRegarding(a.isPbf ? 'lf' : 'purpl');
+  // Recent history
+  const entries = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,3);
+  const histEl = qs('#mdo-history');
+  if (histEl) {
+    histEl.innerHTML = entries.length
+      ? entries.map(e=>`<div style="margin-bottom:6px;padding:6px;background:var(--surface-2,#f9f8ff);border-radius:4px">
+          <span style="color:var(--muted)">${fmtD(e.date)}</span> · ${e.type||'—'}
+          ${e.notes||e.note ? `<div style="margin-top:2px">${escHtml((e.notes||e.note||'').slice(0,120))}</div>` : ''}
+        </div>`).join('')
+      : '<span style="color:var(--muted)">No outreach history yet.</span>';
+  }
+  openModal('modal-draft-outreach');
+}
+
+async function generateOutreachDraft() {
+  const accountId = qs('#mdo-account-id').value;
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  const regarding = qs('#mdo-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const context   = qs('#mdo-context')?.value?.trim() || '';
+  const entries   = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,3);
+
+  const btn = qs('#mdo-generate-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+
+  const historyText = entries.length
+    ? entries.map(e=>`- ${e.date} (${e.type||'—'}): ${e.notes||e.note||'—'}`).join('\n')
+    : 'No prior outreach.';
+
+  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
+  const userPrompt = `Write a wholesale outreach email for the following account:
+
+Account: ${a.name}
+Type: ${a.type || 'Wholesale Account'}
+Territory: ${a.territory || 'New Hampshire'}
+Brand: ${brandLabel}
+Last order: ${a.lastOrder ? fmtD(a.lastOrder) : 'Never'}
+Last contacted: ${a.lastContacted ? fmtD(a.lastContacted) : 'Never'}
+
+Recent outreach history:
+${historyText}
+
+${context ? `Goal / context: ${context}` : ''}
+
+End the email with this exact signature:
+${_AI_SIGNATURE}`;
+
+  try {
+    const result = await _callAnthropicApi(userPrompt);
+    if (qs('#mdo-subject')) qs('#mdo-subject').value = result.subject || '';
+    if (qs('#mdo-body'))    qs('#mdo-body').value    = result.body    || '';
+    qs('#mdo-output').style.display = '';
+
+    // Auto-log if checkbox checked
+    if (qs('#mdo-log-check')?.checked) {
+      const subject = result.subject || '';
+      DB.update('ac', accountId, ac=>({
+        ...ac,
+        lastContacted: today(),
+        outreach: [...(ac.outreach||[]), {
+          id: uid(), date: today(), type: 'email',
+          regarding, notes: `Draft generated: ${subject}`, outcome: '',
+        }],
+      }));
+    }
+  } catch(e) {
+    toast('Error: ' + e.message, 5000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate Draft'; }
+  }
+}
+
+function mdoRegenerateClick() {
+  qs('#mdo-output').style.display = 'none';
+  generateOutreachDraft();
+}
+
+function mdoOpenMailto() {
+  const subject = encodeURIComponent(qs('#mdo-subject')?.value || '');
+  const body    = encodeURIComponent(qs('#mdo-body')?.value || '');
+  const accountId = qs('#mdo-account-id').value;
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  const email = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
+  window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
+}
+
+function mdoCopyBody() {
+  const body = qs('#mdo-body')?.value || '';
+  navigator.clipboard.writeText(body).then(()=>toast('Body copied ✓')).catch(()=>toast('Copy failed'));
+}
+
+// ══════════════════════════════════════════════════════════
+//  MASS EMAIL PAGE
+// ══════════════════════════════════════════════════════════
+let _meSelectedIds = new Set();
+let _meBatchQueue  = [];
+let _meBatchIdx    = 0;
+
+function renderMassEmail() {
+  // Wire mode tabs once
+  const tabs = qs('#me-mode-tabs');
+  if (tabs && !tabs.dataset.wired) {
+    tabs.dataset.wired = '1';
+    tabs.querySelectorAll('.tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        tabs.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        const mode = t.dataset.mode;
+        qs('#me-broadcast').style.display = mode === 'broadcast' ? '' : 'none';
+        qs('#me-batch').style.display     = mode === 'batch'     ? '' : 'none';
+      });
+    });
+  }
+  // Wire brand filter buttons
+  qs('#me-brand-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.onclick = () => { setMeBrandBtn('#me-brand-btns', b.dataset.val); renderMeAccountList(); };
+  });
+  qs('#me-batch-brand-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.onclick = () => { setMeBrandBtn('#me-batch-brand-btns', b.dataset.val); renderMeBatchList(); };
+  });
+  renderMeAccountList();
+  renderMeBatchList();
+}
+
+function setMeBrandBtn(containerSel, val) {
+  qs(containerSel)?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+function _getMeFilteredAccounts(brandSel, lastContactSel, statusSel) {
+  const brand       = qs(brandSel)?.querySelector('.ac-brand-btn.active')?.dataset?.val ?? '';
+  const lastContact = qs(lastContactSel)?.value || '';
+  const status      = qs(statusSel)?.value || '';
+  let list = DB.a('ac');
+  if (status === 'active') list = list.filter(a=>a.status==='active');
+  if (brand === 'lf')    list = list.filter(a=>a.isPbf);
+  if (brand === 'purpl') list = list.filter(a=>!a.isPbf);
+  if (lastContact === 'never') list = list.filter(a=>!a.lastContacted);
+  else if (lastContact) {
+    const days = parseInt(lastContact);
+    list = list.filter(a=>!a.lastContacted || daysAgo(a.lastContacted) >= days);
+  }
+  return list;
+}
+
+function renderMeAccountList() {
+  const list = _getMeFilteredAccounts('#me-brand-btns', '#me-last-contact-filter', '#me-status-filter');
+  const el = qs('#me-account-list');
+  if (!el) return;
+  el.innerHTML = list.map(a=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border)">
+      <input type="checkbox" id="me-chk-${a.id}" ${_meSelectedIds.has(a.id)?'checked':''} onchange="meToggleAccount('${a.id}',this.checked)" style="width:14px;height:14px;flex-shrink:0">
+      <label for="me-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px">
+        <div>${escHtml(a.name)}</div>
+        <div style="font-size:11px;color:var(--muted)">${a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted'}</div>
+      </label>
+    </div>`).join('') || '<div style="color:var(--muted);font-size:13px;padding:8px">No accounts match filters.</div>';
+  _updateMeCount();
+}
+
+function renderMeBatchList() {
+  const list = _getMeFilteredAccounts('#me-batch-brand-btns', '#me-batch-last-contact', null);
+  const el = qs('#me-batch-list');
+  if (!el) return;
+  el.innerHTML = list.map(a=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border)">
+      <input type="checkbox" id="meb-chk-${a.id}" ${_meSelectedIds.has(a.id)?'checked':''} onchange="meToggleAccount('${a.id}',this.checked)" style="width:14px;height:14px;flex-shrink:0">
+      <label for="meb-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px">
+        <div>${escHtml(a.name)}</div>
+        <div style="font-size:11px;color:var(--muted)">${a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted'}</div>
+      </label>
+    </div>`).join('') || '<div style="color:var(--muted);font-size:13px;padding:8px">No accounts match filters.</div>';
+  _updateMeBatchCount();
+}
+
+function meToggleAccount(id, checked) {
+  if (checked) _meSelectedIds.add(id); else _meSelectedIds.delete(id);
+  _updateMeCount();
+  _updateMeBatchCount();
+  // sync checkboxes in both lists
+  const bc = qs('#meb-chk-'+id); if (bc) bc.checked = checked;
+  const mc = qs('#me-chk-'+id);  if (mc) mc.checked  = checked;
+}
+
+function meSelectAll() {
+  _getMeFilteredAccounts('#me-brand-btns','#me-last-contact-filter','#me-status-filter')
+    .forEach(a=>_meSelectedIds.add(a.id));
+  renderMeAccountList();
+}
+function meDeselectAll() {
+  _getMeFilteredAccounts('#me-brand-btns','#me-last-contact-filter','#me-status-filter')
+    .forEach(a=>_meSelectedIds.delete(a.id));
+  renderMeAccountList();
+}
+function meBatchSelectAll() {
+  _getMeFilteredAccounts('#me-batch-brand-btns','#me-batch-last-contact',null)
+    .forEach(a=>_meSelectedIds.add(a.id));
+  renderMeBatchList();
+}
+function meBatchDeselectAll() {
+  _getMeFilteredAccounts('#me-batch-brand-btns','#me-batch-last-contact',null)
+    .forEach(a=>_meSelectedIds.delete(a.id));
+  renderMeBatchList();
+}
+
+function _updateMeCount() {
+  const n = _meSelectedIds.size;
+  const countEl = qs('#me-selected-count'); if (countEl) countEl.textContent = `${n} selected`;
+  const sendEl  = qs('#me-send-count');     if (sendEl)  sendEl.textContent  = n;
+}
+function _updateMeBatchCount() {
+  const el = qs('#me-batch-count'); if (el) el.textContent = `${_meSelectedIds.size} selected`;
+}
+
+function setMeFilter() { renderMeAccountList(); }
+function setMeBatchFilter() { renderMeBatchList(); }
+
+function setMeRegarding(val) {
+  qs('#me-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+async function meBroadcastGenerate() {
+  const n        = _meSelectedIds.size;
+  const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const goal     = qs('#me-goal')?.value?.trim() || '';
+  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
+  const userPrompt = `Write a broadcast wholesale email to ${n} accounts. Regarding: ${brandLabel}. ${goal ? 'Goal: ' + goal + '.' : ''} Keep it under 150 words, professional, no emojis. End with this exact signature:\n${_AI_SIGNATURE}`;
+  const statusEl = qs('#me-broadcast-status');
+  if (statusEl) statusEl.textContent = '⏳ Generating…';
+  try {
+    const result = await _callAnthropicApi(userPrompt);
+    if (qs('#me-subject')) qs('#me-subject').value = result.subject || '';
+    if (qs('#me-body'))    qs('#me-body').value    = result.body    || '';
+    if (statusEl) statusEl.textContent = '✓ Draft generated';
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '';
+    toast('Error: ' + e.message, 5000);
+  }
+}
+
+async function meBroadcastSend() {
+  const accounts = DB.a('ac').filter(a=>_meSelectedIds.has(a.id));
+  if (!accounts.length) { toast('No accounts selected'); return; }
+  const subject  = qs('#me-subject')?.value || '';
+  const body     = qs('#me-body')?.value    || '';
+  const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const statusEl = qs('#me-broadcast-status');
+
+  for (let i = 0; i < accounts.length; i++) {
+    const a = accounts[i];
+    if (statusEl) statusEl.textContent = `Opening email ${i+1} of ${accounts.length}…`;
+    const email = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
+    const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto);
+    // Log outreach
+    DB.update('ac', a.id, ac=>({
+      ...ac,
+      lastContacted: today(),
+      outreach: [...(ac.outreach||[]), {
+        id: uid(), date: today(), type: 'email', regarding,
+        notes: `Broadcast email: ${subject}`, outcome: '',
+      }],
+    }));
+    if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 500));
+  }
+  if (statusEl) statusEl.textContent = `✓ Done — ${accounts.length} emails opened`;
+  toast(`${accounts.length} mailto: links opened ✓`);
+}
+
+// ── Batch Session ─────────────────────────────────────────
+function meBatchStart() {
+  const queue = DB.a('ac').filter(a=>_meSelectedIds.has(a.id));
+  if (!queue.length) { toast('Select accounts first'); return; }
+  _meBatchQueue = queue;
+  _meBatchIdx   = 0;
+  _renderBatchWorker();
+}
+
+function _renderBatchWorker() {
+  const worker = qs('#me-batch-worker');
+  if (!worker) return;
+  if (_meBatchIdx >= _meBatchQueue.length) {
+    worker.innerHTML = `<div style="text-align:center;padding:32px">
+      <div style="font-size:24px;margin-bottom:8px">✓</div>
+      <div style="font-size:16px;font-weight:600">Session complete!</div>
+      <div style="color:var(--muted);margin-top:4px">${_meBatchQueue.length} accounts drafted</div>
+      <button class="btn secondary" style="margin-top:16px" onclick="meBatchReset()">Start New Session</button>
+    </div>`;
+    return;
+  }
+  const a = _meBatchQueue[_meBatchIdx];
+  const entries = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,2);
+  const histHtml = entries.map(e=>`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">${fmtD(e.date)} · ${e.type||'—'} — ${escHtml((e.notes||e.note||'').slice(0,80))}</div>`).join('') || '<div style="font-size:12px;color:var(--muted)">No history</div>';
+  const defaultReg = a.isPbf ? 'lf' : 'purpl';
+
+  worker.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:12px;color:var(--muted)">Account ${_meBatchIdx+1} of ${_meBatchQueue.length}</span>
+      <button class="btn sm secondary" onclick="meBatchEnd()">End Session</button>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:16px;font-weight:700">${escHtml(a.name)}</div>
+      <div style="font-size:12px;color:var(--muted)">${a.type||''} · Last contacted: ${a.lastContacted?fmtD(a.lastContacted):'Never'}</div>
+    </div>
+    <div style="margin-bottom:8px">${histHtml}</div>
+    <div class="form-row" style="margin-bottom:8px">
+      <label>Regarding</label>
+      <div class="ac-brand-btns" id="mebw-regarding-btns">
+        <button type="button" class="ac-brand-btn ${defaultReg==='purpl'?'active':''}" data-val="purpl" onclick="setMebwRegarding('purpl')">💜 purpl</button>
+        <button type="button" class="ac-brand-btn ${defaultReg==='lf'?'active':''}" data-val="lf" onclick="setMebwRegarding('lf')">🌿 LF</button>
+        <button type="button" class="ac-brand-btn" data-val="both" onclick="setMebwRegarding('both')">Both</button>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:8px">
+      <label>Context <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input type="text" id="mebw-context" placeholder="e.g. Sample follow-up...">
+    </div>
+    <button class="btn secondary" id="mebw-gen-btn" onclick="meBatchGenerate('${a.id}')" style="margin-bottom:10px">✨ Generate Draft</button>
+    <div id="mebw-output" style="display:none">
+      <div class="form-row" style="margin-bottom:6px">
+        <label>Subject</label>
+        <input type="text" id="mebw-subject" style="background:var(--surface-2,#f9f8ff)">
+      </div>
+      <div class="form-row" style="margin-bottom:8px">
+        <label>Body</label>
+        <textarea id="mebw-body" rows="8" style="background:var(--surface-2,#f9f8ff);font-size:13px;line-height:1.5"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn secondary" onclick="mebwOpenMailto('${a.id}')">📧 Open in Email Client</button>
+        <button class="btn secondary" onclick="mebwCopyBody()">📋 Copy Body</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button class="btn primary" onclick="meBatchNext('${a.id}')">Next → <span style="font-size:11px;opacity:.7">(logs outreach)</span></button>
+    </div>`;
+}
+
+function setMebwRegarding(val) {
+  qs('#mebw-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+async function meBatchGenerate(accountId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  const regarding = qs('#mebw-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const context   = qs('#mebw-context')?.value?.trim() || '';
+  const entries   = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,3);
+  const historyText = entries.length ? entries.map(e=>`- ${e.date} (${e.type||'—'}): ${e.notes||e.note||'—'}`).join('\n') : 'No prior outreach.';
+  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
+
+  const btn = qs('#mebw-gen-btn');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
+
+  const userPrompt = `Write a wholesale outreach email for the following account:\n\nAccount: ${a.name}\nType: ${a.type||'Wholesale Account'}\nTerritory: ${a.territory||'New Hampshire'}\nBrand: ${brandLabel}\nLast order: ${a.lastOrder?fmtD(a.lastOrder):'Never'}\nLast contacted: ${a.lastContacted?fmtD(a.lastContacted):'Never'}\n\nRecent outreach history:\n${historyText}\n\n${context?'Goal / context: '+context+'\n':''}\nEnd the email with this exact signature:\n${_AI_SIGNATURE}`;
+
+  try {
+    const result = await _callAnthropicApi(userPrompt);
+    if (qs('#mebw-subject')) qs('#mebw-subject').value = result.subject || '';
+    if (qs('#mebw-body'))    qs('#mebw-body').value    = result.body    || '';
+    qs('#mebw-output').style.display = '';
+  } catch(e) {
+    toast('Error: '+e.message, 5000);
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='✨ Generate Draft'; }
+  }
+}
+
+function mebwOpenMailto(accountId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  const email   = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
+  const subject = encodeURIComponent(qs('#mebw-subject')?.value||'');
+  const body    = encodeURIComponent(qs('#mebw-body')?.value||'');
+  window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
+}
+
+function mebwCopyBody() {
+  const body = qs('#mebw-body')?.value||'';
+  navigator.clipboard.writeText(body).then(()=>toast('Body copied ✓')).catch(()=>toast('Copy failed'));
+}
+
+function meBatchNext(accountId) {
+  // Log outreach on current account
+  const regarding = qs('#mebw-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const subject   = qs('#mebw-subject')?.value || '';
+  if (accountId) {
+    DB.update('ac', accountId, ac=>({
+      ...ac,
+      lastContacted: today(),
+      outreach: [...(ac.outreach||[]), {
+        id: uid(), date: today(), type: 'email', regarding,
+        notes: subject ? `Draft: ${subject}` : 'Batch session draft', outcome: '',
+      }],
+    }));
+  }
+  _meBatchIdx++;
+  _renderBatchWorker();
+}
+
+function meBatchEnd() {
+  _meBatchIdx = _meBatchQueue.length;
+  _renderBatchWorker();
+}
+
+function meBatchReset() {
+  _meBatchQueue = [];
+  _meBatchIdx   = 0;
+  _meSelectedIds.clear();
+  const worker = qs('#me-batch-worker');
+  if (worker) worker.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted)">Select accounts and click Start Session.</div>';
+  renderMeBatchList();
 }
 
 // ── Multi-location helpers (Edit Account) ─────────────────
