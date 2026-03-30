@@ -1,5 +1,70 @@
 # purpl CRM — Changelog
 
+## 2026-03-30 — Wholesale Modernization (6 Sections)
+
+### Section 1 · Order Form: Welcome Banner and Past Orders HTML
+
+**Changes:**
+- Added returning-customer welcome banner (`#returning-banner`) above the account info card — shown after account match, confirms details have been pre-filled
+- Added `#past-orders-section` and `#past-orders-list` containers below the submit button — hidden by default, populated by JS after load
+
+---
+
+### Section 2 · Order Form: Past Orders JS, Print PDF, Distributor
+
+**Changes:**
+- `init()` now reveals the welcome banner and queries `portal_orders` for the last 10 orders by `accountId`, passing results to `renderPastOrders()`
+- `renderPastOrders()` renders each past order with date, case/can count, PO number, delivery window, color-coded status badge, and a "View PDF" button
+- `printPortalOrder(orderId)` opens a new tab with a fully styled order confirmation PDF including logo, line items, distributor, delivery window, and a print button
+- Distributor section replaced with a multi-entry distributor list (add/remove rows), open-to-direct dropdown, and distributor contact opt-in checkbox
+- Added `addDistributor()`, `removeDistributor()`, and `getDistributors()` helper functions
+
+---
+
+### Section 3 · Order Form: Delivery, Social, Saved Prefs, Payload
+
+**Changes:**
+- Delivery section replaced with a full Delivery & Timing card: delivery guidelines info block, preferred delivery window text input, lead time dropdown, and PO number field
+- Social media handle field added before the notes textarea
+- `init()` loads saved `portalPrefs` from the account document and pre-fills billing email, distributors, distributor dropdowns, lead time, social handle, and delivery notes
+- `submitOrder()` saves all new fields back to `accounts/{accountId}.portalPrefs` in Firestore after successful submission
+- Submit payload updated to include `distributors`, `distributorDirectOpen`, `distributorContactOk`, `leadTimeNeeded`, and `socialHandle`
+- Thank-you summary now shows distributors and lead time rows when present
+
+---
+
+### Section 4 · Wholesale Landing Page (`public/wholesale.html`)
+
+**Changes:**
+- Created new standalone `wholesale.html` — a full-page public-facing wholesale landing site
+- Fixed nav with logo, centered nav links (desktop only), and "Wholesale Sign In" link
+- Hero section with dark purple gradient, headline, subheading, and two CTA buttons
+- Why Carry purpl section: three-column cards (Provenance, Velocity, Partnership)
+- Our Story section: two-column layout with farm copy and product image
+- The Product section: product image, feature pills, coming soon flavor cards
+- Wholesale Terms section: minimum order, territory, and payment blocks — no pricing
+- Stockists section: two-column list of 10 current retail accounts
+- Application form: 10+ fields, Firestore write to `portal_inquiries`, inline validation, success state with personalized confirmation message
+- Footer with contact info, links, and copyright
+- Fully responsive — all multi-column sections stack on mobile under 768px
+
+---
+
+### Section 5 · Wholesale Inquiries into CRM Prospects
+
+**Changes:**
+- Added `importWholesaleInquiries()` to `app.js` — queries `portal_inquiries` where `status == 'new'`, deduplicates against existing prospects by name, creates prospect records with all available fields, marks imported docs as `status: 'imported'`
+- Added "Import Wholesale Inquiries" button to the Prospects page filter bar in `index.html`
+
+---
+
+### Section 6 · Firestore Rules for Wholesale Inquiries
+
+**Changes:**
+- Added `portal_inquiries` rule to `firestore.rules`: public `create` allowed (unauthenticated form submissions), `read/update/delete` requires auth
+
+---
+
 ## 2026-03-08 — 6-Phase Improvement Release
 
 ### Phase 1 · Delivery Rules on Run Sheet
