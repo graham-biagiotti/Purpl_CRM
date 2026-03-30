@@ -108,6 +108,9 @@
       <a data-page="invoices" id="nav-invoices" onclick="nav('invoices')">
         🧾 Invoices
       </a>
+      <a data-page="lf-invoices" id="nav-lf-invoices" onclick="nav('lf-invoices')">
+        🌿 LF Invoices
+      </a>
       <a data-page="pre-orders">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
         Order Forms
@@ -183,6 +186,14 @@
         <div id="dash-kpi-accounts"></div>
         <div id="dash-kpi-pipeline"></div>
         <div id="dash-kpi-alerts"></div>
+      </div>
+
+      <!-- Row 1b: LF KPIs -->
+      <div class="card-grid grid-4" id="dash-lf-kpis" style="margin-bottom:20px">
+        <div id="dash-kpi-lf-accounts"></div>
+        <div id="dash-kpi-lf-outstanding"></div>
+        <div id="dash-kpi-lf-overdue"></div>
+        <div id="dash-kpi-lf-wix"></div>
       </div>
 
       <!-- Row 2: Needs Attention + Upcoming Follow-ups -->
@@ -1251,6 +1262,27 @@
         <button class="btn primary" onclick="importTradeShowProspects()">Import Trade Show Prospects (34 records)</button>
       </div>
 
+      <!-- LF SKU Catalog -->
+      <div class="card" style="margin-top:16px">
+        <div class="section-hdr">
+          <h2>🌿 Lavender Fields SKUs</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="lf-sku-show-archived" onchange="renderLfSkuSettings()"> Show archived
+            </label>
+            <button class="btn sm primary" onclick="addLfSku()">+ Add SKU</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Name</th><th>Wholesale $/unit</th><th>Case Size</th><th>MSRP</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="lf-sku-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
     <!-- ═══════ INVOICES ═══════ -->
@@ -1299,6 +1331,47 @@
               <th class="no-print">Actions</th>
             </tr></thead>
             <tbody id="inv-main-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LF INVOICES ═══════ -->
+    <div class="page" id="page-lf-invoices">
+      <!-- KPI row -->
+      <div class="card-grid grid-4" style="margin-bottom:16px">
+        <div id="lf-inv-kpi-total"></div>
+        <div id="lf-inv-kpi-collected"></div>
+        <div id="lf-inv-kpi-overdue"></div>
+        <div id="lf-inv-kpi-wix"></div>
+      </div>
+      <!-- Main card -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>🌿 Lavender Fields Invoices</h2>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div class="ac-brand-btns" id="lf-inv-tabs">
+              <button class="ac-brand-btn active" data-status="" onclick="setLfInvFilter('')">All</button>
+              <button class="ac-brand-btn" data-status="unpaid" onclick="setLfInvFilter('unpaid')">Unpaid</button>
+              <button class="ac-brand-btn" data-status="paid" onclick="setLfInvFilter('paid')">Paid</button>
+              <button class="ac-brand-btn" data-status="overdue" onclick="setLfInvFilter('overdue')">Overdue</button>
+            </div>
+            <button class="btn primary" onclick="openLfInvoiceModal(null)">+ New LF Invoice</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Invoice #</th>
+              <th>Account</th>
+              <th>Issued</th>
+              <th>Due</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Wix Pulled</th>
+              <th>Actions</th>
+            </tr></thead>
+            <tbody id="lf-inv-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -1566,6 +1639,65 @@
       <button class="modal-close btn">Cancel</button>
       <button class="btn" onclick="previewPasteAccount()">Preview</button>
       <button class="btn primary" id="paste-ac-confirm-btn" style="display:none" onclick="confirmPasteAccount()">Use This →</button>
+    </div>
+  </div>
+</div>
+
+<!-- LF Invoice create/edit -->
+<div class="overlay" id="modal-lf-invoice">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-hdr"><h2 id="lfi-modal-title">New LF Invoice</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Invoice #</label><input id="lfi-number" placeholder="LF-001"></div>
+      <div class="form-group"><label>Account *</label><select id="lfi-account"></select></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Issued</label><input type="date" id="lfi-issued"></div>
+      <div class="form-group"><label>Due</label><input type="date" id="lfi-due"></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;font-weight:600;color:var(--fg)">Line Items</label>
+        <button type="button" class="btn sm" onclick="lfInvAddLineItem()">+ Add Item</button>
+      </div>
+      <div id="lfi-line-items"></div>
+      <div style="text-align:right;font-weight:700;font-size:15px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px">
+        Total: <span id="lfi-total">$0.00</span>
+      </div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Status</label>
+        <select id="lfi-status">
+          <option value="unpaid">Unpaid</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
+          <option value="partial">Partial</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Wix Invoice Link (optional)</label><input id="lfi-link" placeholder="https://…"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Notes</label>
+      <textarea id="lfi-notes" rows="2" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" id="lfi-delete-btn" style="display:none;margin-right:auto">Delete</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" id="lfi-save-btn">Save Invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wix inventory pull alert -->
+<div class="overlay" id="modal-wix-pull">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hdr"><h2>🔴 Wix Inventory Pull Required</h2><button class="modal-close btn sm" onclick="confirmWixPull(false)">✕</button></div>
+    <p style="font-size:13px;margin-bottom:12px">Deduct the following from Wix inventory for <strong id="wix-pull-account"></strong>:</p>
+    <div id="wix-pull-items" style="margin-bottom:16px"></div>
+    <p style="font-size:12px;color:var(--muted)">Invoice: <strong id="wix-pull-inv-number"></strong></p>
+    <div class="modal-footer">
+      <button class="btn" onclick="confirmWixPull(false)">Remind me later</button>
+      <button class="btn primary" onclick="confirmWixPull(true)">✓ Got it — I'll update Wix now</button>
     </div>
   </div>
 </div>

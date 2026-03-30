@@ -575,3 +575,13 @@ th{padding:11px 14px}
 .ac-star{background:none;border:none;cursor:pointer;font-size:18px;color:#d1d5db;padding:0 2px;line-height:1;transition:color .12s}
 .ac-star:hover{color:#f59e0b}
 .ac-star.active{color:#f59e0b}
+
+/* ── LF SKU table ───────────────────────────────────────── */
+.lf-sku-archived td { opacity: 0.45; }
+
+/* ── LF Invoice line item rows ──────────────────────────── */
+.lfi-item-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.lfi-item-row .lfi-sku-sel{flex:1;min-width:180px}
+.lfi-item-row .lfi-cases-label{font-size:12px;color:var(--muted)}
+.lfi-item-row .lfi-units-display{font-size:12px;color:var(--muted);min-width:80px}
+.lfi-item-row .lfi-line-amt{font-weight:600;min-width:70px;text-align:right}

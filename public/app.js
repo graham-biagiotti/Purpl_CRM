@@ -111,6 +111,7 @@ const renders = {
   settings:         renderSettings,
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
+  'lf-invoices':    renderLfInvoicesPage,
 };
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -146,6 +147,19 @@ function seedIfEmpty() {
   // The 10-second startup timeout can fire before the snapshot arrives — without
   // this guard, seedIfEmpty would see an empty cache and overwrite real data.
   if (!DB._firestoreReady) return;
+  // Seed LF SKUs independently — happens once regardless of other data state
+  if (!DB.a('lf_skus').length) {
+    DB.set('lf_skus', [
+      {id:uid(),name:'Lavender Simple Syrup 12.7oz',wholesalePrice:8.99, caseSize:12,msrp:17.99,archived:false},
+      {id:uid(),name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99,caseSize:1, msrp:null, archived:false},
+      {id:uid(),name:'Aromatherapy Scrunchie',        wholesalePrice:7.49, caseSize:6, msrp:14.99,archived:false},
+      {id:uid(),name:'Seatbelt Sachet',               wholesalePrice:4.99, caseSize:12,msrp:9.99, archived:false},
+      {id:uid(),name:'Soy Candle',                    wholesalePrice:14.99,caseSize:12,msrp:24.99,archived:false},
+      {id:uid(),name:'Lavender Refresh Powder',       wholesalePrice:4.99, caseSize:12,msrp:9.99, archived:false},
+      {id:uid(),name:'Aromatherapy Roll-On',          wholesalePrice:9.99, caseSize:24,msrp:19.99,archived:false},
+      {id:uid(),name:'Dryer Sachet 2-Pack',           wholesalePrice:5.49, caseSize:12,msrp:9.99, archived:false},
+    ]);
+  }
   // Only seed on the very first run — never again, even if all data is deleted
   const _s = DB.obj('settings', null);
   if (_s !== null && !_s.seeded) { DB.setObj('settings', {..._s, seeded:true}); return; }
@@ -222,6 +236,7 @@ function renderDash() {
   renderProjections();
   renderVelocities();
   renderDistDashKPIs();
+  renderLfDashKpis();
   renderQuickNotes();
 }
 
@@ -5182,6 +5197,8 @@ function renderSettings() {
     </table></div>`;
   }
 
+  // LF SKU catalog
+  renderLfSkuSettings();
 }
 
 function _updateVarietyTotal() {
@@ -5542,6 +5559,403 @@ function importNEMShowAccounts() {
   renderSettings();
   renderAccounts();
   alert(`✓ ${toImport.length} accounts imported, ${skipped} skipped (duplicates).`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  LAVENDER FIELDS — SKU CATALOG (Settings)
+// ══════════════════════════════════════════════════════════
+
+function renderLfSkuSettings() {
+  const tbody = qs('#lf-sku-tbody');
+  if (!tbody) return;
+  const showArchived = qs('#lf-sku-show-archived')?.checked || false;
+  let skus = DB.a('lf_skus').slice();
+  if (!showArchived) skus = skus.filter(s => !s.archived);
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  tbody.innerHTML = skus.map(s => `
+    <tr data-sku-id="${s.id}" class="${s.archived ? 'lf-sku-archived' : ''}">
+      <td><input class="lfs-name" value="${esc(s.name)}" style="width:220px"></td>
+      <td><input class="lfs-price" type="number" step="0.01" value="${s.wholesalePrice||''}" style="width:80px"> /unit</td>
+      <td><input class="lfs-case" type="number" step="1" value="${s.caseSize||''}" style="width:60px"></td>
+      <td><input class="lfs-msrp" type="number" step="0.01" value="${s.msrp||''}" placeholder="—" style="width:80px"></td>
+      <td style="white-space:nowrap">
+        <button class="btn sm primary" onclick="saveLfSkuRow('${s.id}')">Save</button>
+        <button class="btn sm ${s.archived?'':'amber'}" onclick="toggleLfSkuArchive('${s.id}')">${s.archived?'Restore':'Archive'}</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">No SKUs yet. Click "+ Add SKU" to get started.</td></tr>';
+}
+
+function saveLfSkuRow(id) {
+  const row = qs(`#lf-sku-tbody [data-sku-id="${id}"]`);
+  if (!row) return;
+  const name = row.querySelector('.lfs-name')?.value?.trim();
+  if (!name) { toast('SKU name required'); return; }
+  const wholesalePrice = parseFloat(row.querySelector('.lfs-price')?.value) || 0;
+  const caseSize       = parseInt(row.querySelector('.lfs-case')?.value)    || 1;
+  const msrpRaw        = parseFloat(row.querySelector('.lfs-msrp')?.value);
+  const msrp           = isNaN(msrpRaw) ? null : msrpRaw || null;
+  DB.update('lf_skus', id, s => ({...s, name, wholesalePrice, caseSize, msrp}));
+  toast('SKU saved ✓');
+}
+
+function toggleLfSkuArchive(id) {
+  const sku = DB.a('lf_skus').find(s => s.id === id);
+  if (!sku) return;
+  DB.update('lf_skus', id, s => ({...s, archived: !s.archived}));
+  renderLfSkuSettings();
+  toast(sku.archived ? 'SKU restored' : 'SKU archived');
+}
+
+function addLfSku() {
+  const newSku = {id:uid(), name:'New SKU', wholesalePrice:0, caseSize:1, msrp:null, archived:false};
+  DB.push('lf_skus', newSku);
+  renderLfSkuSettings();
+  toast('New SKU added — edit name and save');
+}
+
+// ══════════════════════════════════════════════════════════
+//  LAVENDER FIELDS — INVOICES PAGE
+// ══════════════════════════════════════════════════════════
+
+let _lfInvStatusFilter = '';
+let _wixPullDeductionId = null;
+let _wixPullInvoiceId   = null;
+
+const LF_INV_STATUS = {
+  unpaid:  {label:'Unpaid',  cls:'amber'},
+  paid:    {label:'Paid',    cls:'green'},
+  overdue: {label:'Overdue', cls:'red'},
+  partial: {label:'Partial', cls:'blue'},
+};
+
+function setLfInvFilter(status) {
+  _lfInvStatusFilter = status;
+  document.querySelectorAll('#lf-inv-tabs .ac-brand-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.status === status));
+  renderLfInvoicesPage();
+}
+
+function renderLfInvoicesPage() {
+  const all = DB.a('lf_invoices');
+
+  // KPIs
+  const totalInvoiced  = all.reduce((s,i) => s + (i.total||0), 0);
+  const collected      = all.filter(i => i.status === 'paid').reduce((s,i) => s + (i.total||0), 0);
+  const overdueCnt     = all.filter(i => i.status === 'overdue').length;
+  const pendingWix     = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+
+  if (qs('#lf-inv-kpi-total'))     qs('#lf-inv-kpi-total').innerHTML     = kpiHtml('Total Invoiced (LF)', fmtC(totalInvoiced), 'purple');
+  if (qs('#lf-inv-kpi-collected')) qs('#lf-inv-kpi-collected').innerHTML = kpiHtml('Collected', fmtC(collected), 'green');
+  if (qs('#lf-inv-kpi-overdue'))   qs('#lf-inv-kpi-overdue').innerHTML   = kpiHtml('Overdue', overdueCnt, overdueCnt > 0 ? 'red' : 'gray');
+  if (qs('#lf-inv-kpi-wix'))       qs('#lf-inv-kpi-wix').innerHTML       = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+
+  // Filter + sort
+  let list = all.slice();
+  if (_lfInvStatusFilter) list = list.filter(i => i.status === _lfInvStatusFilter);
+  list.sort((a,b) => (b.issued||'') > (a.issued||'') ? 1 : -1);
+
+  const tbody = qs('#lf-inv-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = list.map(inv => {
+    const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
+    const wixHtml = inv.wixPulled
+      ? `<span style="color:var(--green,#16a34a);font-weight:600">✓ Done</span>`
+      : `<span style="color:#f59e0b;font-weight:600">⚠ Pending</span>`;
+    return `<tr>
+      <td><strong>${escHtml(inv.number||'—')}</strong></td>
+      <td>${escHtml(inv.accountName||'—')}</td>
+      <td>${fmtD(inv.issued)}</td>
+      <td>${fmtD(inv.due)}</td>
+      <td><strong>${fmtC(inv.total||0)}</strong></td>
+      <td><span class="badge ${sc.cls}">${sc.label}</span></td>
+      <td>${wixHtml}</td>
+      <td style="white-space:nowrap">
+        <button class="btn sm" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
+        <button class="btn sm ${inv.status==='paid'?'':'primary'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'Mark Paid'}</button>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="empty">No LF invoices yet. Click "+ New LF Invoice" to create one.</td></tr>';
+}
+
+function markLfInvPaid(id) {
+  const inv = DB.a('lf_invoices').find(x => x.id === id);
+  if (!inv) return;
+  const newStatus = inv.status === 'paid' ? 'unpaid' : 'paid';
+  DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidAt: newStatus === 'paid' ? today() : null}));
+  renderLfInvoicesPage();
+  toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
+}
+
+// ── LF Invoice modal ─────────────────────────────────────
+
+function openLfInvoiceModal(id) {
+  const isNew = !id;
+  const inv   = id ? DB.a('lf_invoices').find(x => x.id === id) : null;
+
+  qs('#lfi-modal-title').textContent = isNew ? 'New LF Invoice' : 'Edit LF Invoice';
+
+  // Auto-number / load fields
+  if (isNew) {
+    const num = DB.a('lf_invoices').length + 1;
+    if (qs('#lfi-number')) qs('#lfi-number').value = 'LF-' + String(num).padStart(3,'0');
+    if (qs('#lfi-issued')) qs('#lfi-issued').value  = today();
+    const terms  = DB.obj('invoice_settings',{}).terms || 30;
+    const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
+    if (qs('#lfi-due'))    qs('#lfi-due').value    = dueStr;
+    if (qs('#lfi-status')) qs('#lfi-status').value = 'unpaid';
+    if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
+    if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
+    if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
+  } else {
+    if (qs('#lfi-number')) qs('#lfi-number').value = inv.number||'';
+    if (qs('#lfi-issued')) qs('#lfi-issued').value  = inv.issued||today();
+    if (qs('#lfi-due'))    qs('#lfi-due').value    = inv.due||'';
+    if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'unpaid';
+    if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
+    if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
+    if (qs('#lfi-delete-btn')) {
+      qs('#lfi-delete-btn').style.display = '';
+      qs('#lfi-delete-btn').onclick = () => deleteLfInvoice(id);
+    }
+  }
+
+  // Account selector (all non-inactive accounts)
+  const acSel = qs('#lfi-account');
+  if (acSel) {
+    const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+    acSel.innerHTML = '<option value="">— Select Account —</option>' +
+      accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+    if (inv?.accountId) acSel.value = inv.accountId;
+  }
+
+  // Line items
+  const container = qs('#lfi-line-items');
+  if (container) {
+    container.innerHTML = '';
+    const rows = inv?.lineItems?.length ? inv.lineItems : [];
+    if (rows.length) {
+      rows.forEach(item => _lfInvRenderLineRow(item));
+    } else {
+      _lfInvRenderLineRow(null); // one blank row
+    }
+    _lfInvCalcTotal();
+  }
+
+  qs('#lfi-save-btn').onclick = () => saveLfInvoice(id, isNew);
+  openModal('modal-lf-invoice');
+}
+
+function _lfInvRenderLineRow(item) {
+  const container = qs('#lfi-line-items');
+  if (!container) return;
+  const skus  = DB.a('lf_skus').filter(s => !s.archived);
+  const rowId = uid();
+  const row   = document.createElement('div');
+  row.className    = 'lfi-item-row';
+  row.dataset.rowId = rowId;
+  const selOpts = skus.map(s => {
+    const sel = item && s.id === item.skuId ? 'selected' : '';
+    return `<option value="${s.id}" data-price="${s.wholesalePrice}" data-case="${s.caseSize}" ${sel}>${escHtml(s.name)}</option>`;
+  }).join('');
+  const cases = item?.cases || 1;
+  const units = item?.units || 0;
+  const lineTotal = item?.lineTotal || 0;
+  row.innerHTML = `
+    <select class="lfi-sku-sel" onchange="_lfInvRowCalc('${rowId}')">
+      <option value="">— Select SKU —</option>${selOpts}
+    </select>
+    <input class="lfi-cases" type="number" min="1" step="1" value="${cases}" style="width:70px" oninput="_lfInvRowCalc('${rowId}')">
+    <span class="lfi-cases-label">cases</span>
+    <span class="lfi-units-display">= <strong class="lfi-units">${units}</strong> units</span>
+    <span class="lfi-line-total lfi-line-amt">${fmtC(lineTotal)}</span>
+    <button type="button" class="btn sm red" onclick="_lfInvRemoveRow('${rowId}')">✕</button>`;
+  container.appendChild(row);
+  // Trigger calc if pre-filled
+  if (item?.skuId) _lfInvRowCalc(rowId);
+}
+
+function lfInvAddLineItem() {
+  _lfInvRenderLineRow(null);
+  _lfInvCalcTotal();
+}
+
+function _lfInvRowCalc(rowId) {
+  const row = qs(`#lfi-line-items [data-row-id="${rowId}"]`);
+  if (!row) return;
+  const sel       = row.querySelector('.lfi-sku-sel');
+  const opt       = sel?.options[sel?.selectedIndex];
+  const unitPrice = parseFloat(opt?.dataset?.price || 0);
+  const caseSize  = parseInt(opt?.dataset?.case    || 0);
+  const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+  const units     = cases * caseSize;
+  const lineTotal = units * unitPrice;
+  const unitsEl   = row.querySelector('.lfi-units');
+  if (unitsEl) unitsEl.textContent = units;
+  const ltEl = row.querySelector('.lfi-line-amt');
+  if (ltEl) ltEl.textContent = fmtC(lineTotal);
+  _lfInvCalcTotal();
+}
+
+function _lfInvRemoveRow(rowId) {
+  qs(`#lfi-line-items [data-row-id="${rowId}"]`)?.remove();
+  _lfInvCalcTotal();
+}
+
+function _lfInvCalcTotal() {
+  const container = qs('#lfi-line-items');
+  if (!container) return;
+  let total = 0;
+  container.querySelectorAll('.lfi-item-row').forEach(row => {
+    const sel       = row.querySelector('.lfi-sku-sel');
+    const opt       = sel?.options[sel?.selectedIndex];
+    const unitPrice = parseFloat(opt?.dataset?.price || 0);
+    const caseSize  = parseInt(opt?.dataset?.case    || 0);
+    const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+    total += cases * caseSize * unitPrice;
+  });
+  const el = qs('#lfi-total');
+  if (el) el.textContent = fmtC(total);
+}
+
+function saveLfInvoice(id, isNew) {
+  const number    = qs('#lfi-number')?.value?.trim() || '';
+  const accountId = qs('#lfi-account')?.value;
+  const issued    = qs('#lfi-issued')?.value || today();
+  const due       = qs('#lfi-due')?.value || '';
+  const status    = qs('#lfi-status')?.value || 'unpaid';
+  const notes     = qs('#lfi-notes')?.value?.trim() || '';
+  const link      = qs('#lfi-link')?.value?.trim() || '';
+
+  if (!accountId) { toast('Select an account'); return; }
+
+  const ac   = DB.a('ac').find(x => x.id === accountId) || {};
+  const skus = DB.a('lf_skus');
+
+  // Collect line items from DOM
+  const lineItems = [];
+  qs('#lfi-line-items').querySelectorAll('.lfi-item-row').forEach(row => {
+    const sel       = row.querySelector('.lfi-sku-sel');
+    const skuId     = sel?.value;
+    if (!skuId) return;
+    const opt       = sel.options[sel.selectedIndex];
+    const unitPrice = parseFloat(opt?.dataset?.price || 0);
+    const caseSize  = parseInt(opt?.dataset?.case    || 0);
+    const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+    if (!cases) return;
+    const units     = cases * caseSize;
+    const skuObj    = skus.find(s => s.id === skuId);
+    lineItems.push({
+      skuId,
+      skuName:   skuObj?.name || opt?.textContent?.trim() || '',
+      unitPrice,
+      caseSize,
+      cases,
+      units,
+      lineTotal: units * unitPrice,
+    });
+  });
+
+  if (!lineItems.length) { toast('Add at least one line item'); return; }
+
+  const total    = lineItems.reduce((s, l) => s + l.lineTotal, 0);
+  const existing = isNew ? null : DB.a('lf_invoices').find(x => x.id === id);
+  const saveId   = isNew ? uid() : id;
+
+  const rec = {
+    ...(existing||{}),
+    id: saveId, number,
+    accountId, accountName: ac.name||'',
+    issued, due, lineItems, total, status,
+    wixPulled:   existing?.wixPulled   || false,
+    wixPulledAt: existing?.wixPulledAt || null,
+    notes, link,
+  };
+
+  if (isNew) DB.push('lf_invoices', rec);
+  else DB.update('lf_invoices', id, () => rec);
+
+  // Generate Wix pull deduction record
+  const deduction = {
+    id: uid(),
+    invoiceId:     saveId,
+    invoiceNumber: rec.number,
+    accountId:     rec.accountId,
+    accountName:   rec.accountName,
+    date:          today(),
+    items:         lineItems.map(l => ({skuName: l.skuName, cases: l.cases, units: l.units})),
+    confirmed:     false,
+  };
+  DB.push('lf_wix_deductions', deduction);
+
+  closeModal('modal-lf-invoice');
+  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  renderLfDashKpis();
+  toast(`Invoice ${rec.number} saved ✓`);
+  showWixPullModal(rec, deduction.id);
+}
+
+function deleteLfInvoice(id) {
+  if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
+  DB.remove('lf_invoices', id);
+  closeModal('modal-lf-invoice');
+  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  renderLfDashKpis();
+  toast('Invoice deleted');
+}
+
+// ── Wix pull modal ────────────────────────────────────────
+
+function showWixPullModal(inv, deductionId) {
+  _wixPullDeductionId = deductionId;
+  _wixPullInvoiceId   = inv.id;
+  const acEl = qs('#wix-pull-account');
+  if (acEl) acEl.textContent = inv.accountName || '—';
+  const numEl = qs('#wix-pull-inv-number');
+  if (numEl) numEl.textContent = inv.number || '—';
+  const itemsEl = qs('#wix-pull-items');
+  if (itemsEl) {
+    itemsEl.innerHTML = (inv.lineItems||[]).map(l => `
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>${escHtml(l.skuName)}</span>
+        <span><strong>${l.cases}</strong> case${l.cases!==1?'s':''} (${l.units} units)</span>
+      </div>`).join('') || '<div style="color:var(--muted)">No items</div>';
+  }
+  openModal('modal-wix-pull');
+}
+
+function confirmWixPull(confirmed) {
+  if (_wixPullDeductionId) {
+    DB.update('lf_wix_deductions', _wixPullDeductionId, d => ({...d, confirmed}));
+  }
+  if (confirmed && _wixPullInvoiceId) {
+    DB.update('lf_invoices', _wixPullInvoiceId, inv => ({...inv, wixPulled: true, wixPulledAt: today()}));
+  }
+  closeModal('modal-wix-pull');
+  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  renderLfDashKpis();
+  toast(confirmed ? '✓ Wix pull confirmed' : 'Reminder set — pull when ready');
+  _wixPullDeductionId = null;
+  _wixPullInvoiceId   = null;
+}
+
+// ── LF KPIs on dashboard ──────────────────────────────────
+
+function renderLfDashKpis() {
+  const el = qs('#dash-lf-kpis');
+  if (!el) return;
+  const lfAc       = DB.a('ac').filter(a => !!a.isPbf).length;
+  const lfInvs     = DB.a('lf_invoices');
+  const outstanding = lfInvs
+    .filter(i => i.status === 'unpaid' || i.status === 'overdue')
+    .reduce((s,i) => s + (i.total||0), 0);
+  const lfOverdue  = lfInvs.filter(i => i.status === 'overdue').length;
+  const pendingWix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+
+  if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🌿 LF Accounts', lfAc, 'green');
+  if (qs('#dash-kpi-lf-outstanding')) qs('#dash-kpi-lf-outstanding').innerHTML = kpiHtml('LF Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray');
+  if (qs('#dash-kpi-lf-overdue'))     qs('#dash-kpi-lf-overdue').innerHTML     = kpiHtml('LF Overdue', lfOverdue, lfOverdue > 0 ? 'red' : 'gray');
+  if (qs('#dash-kpi-lf-wix'))         qs('#dash-kpi-lf-wix').innerHTML         = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
 }
 
 // ══════════════════════════════════════════════════════════

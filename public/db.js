@@ -36,6 +36,11 @@ const ARRAY_KEYS = [
   // UX Phase 5 — Inventory Locations
   'stock_locations', // named stock locations (Warehouse, fridge, event trailer…)
   'stock_transfers', // transfers between locations
+  // Lavender Fields
+  'lf_skus',            // LF product catalog (name, wholesalePrice, caseSize, msrp)
+  'lf_invoices',        // LF wholesale invoices (line-item format)
+  'lf_wix_deductions',  // Wix inventory pull requests tied to LF invoices
+  'retail_invoices',    // delivery-run invoices (already used — registering here)
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run'];
