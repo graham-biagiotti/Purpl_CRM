@@ -6895,3 +6895,74 @@ function saveInv() {
   renderInvoiceStatus();
   toast('Invoice saved ✓');
 }
+
+async function importWholesaleInquiries() {
+  try {
+    const snap = await firebase.firestore()
+      .collection('portal_inquiries')
+      .where('status', '==', 'new')
+      .get();
+    if (snap.empty) {
+      toast('No new wholesale inquiries');
+      return;
+    }
+    let count = 0;
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      const existing = DB.a('pr').find(function(p) {
+        return p.name && d.businessName &&
+          p.name.toLowerCase() ===
+            d.businessName.toLowerCase();
+      });
+      if (existing) {
+        await firebase.firestore()
+          .collection('portal_inquiries')
+          .doc(doc.id).update({status:'duplicate'});
+        continue;
+      }
+      DB.push('pr', {
+        id: uid(),
+        name: d.businessName || '',
+        contact: d.contactName || '',
+        email: d.email || '',
+        phone: d.phone || '',
+        address: d.address || '',
+        type: d.storeType || 'Other',
+        stage: 'Lead',
+        priority: 'Medium',
+        source: 'Wholesale Page',
+        lastContacted: null,
+        nextFollowUp: null,
+        notes: [
+          d.storeDescription ?
+            'Store: ' + d.storeDescription : '',
+          d.howHeard ?
+            'How they heard: ' + d.howHeard : '',
+          d.monthlyVolume ?
+            'Monthly volume: ' + d.monthlyVolume : '',
+          d.usesDistributor ?
+            'Uses distributor: ' + d.usesDistributor : '',
+          d.distributorName ?
+            'Distributor: ' + d.distributorName : '',
+          d.contactPreference ?
+            'Contact pref: ' + d.contactPreference : ''
+        ].filter(Boolean).join('\n'),
+        nextSteps: 'Follow up within 2 business days — wholesale page application',
+        createdAt: today()
+      });
+      await firebase.firestore()
+        .collection('portal_inquiries')
+        .doc(doc.id).update({
+          status: 'imported',
+          importedAt: firebase.firestore
+            .FieldValue.serverTimestamp()
+        });
+      count++;
+    }
+    renderProspects('');
+    toast('Imported ' + count + ' wholesale inquiries as prospects');
+  } catch(e) {
+    console.error(e);
+    toast('Error importing inquiries');
+  }
+}
