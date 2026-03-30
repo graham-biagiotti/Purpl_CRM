@@ -553,3 +553,25 @@ th{padding:11px 14px}
   /* Delivery page progress bar */
   #del-progress{font-size:14px;font-weight:600}
 }
+
+/* ── Brand filter pill buttons ──────────────────────────── */
+.ac-brand-btns{display:flex;gap:4px;flex-wrap:wrap}
+.ac-brand-btn{padding:5px 11px;border-radius:20px;font-size:12px;font-weight:500;border:1px solid var(--border);background:var(--card);cursor:pointer;color:var(--text);transition:.12s}
+.ac-brand-btn:hover{background:#f3f4f6}
+.ac-brand-btn.active{background:#7B4FA0;color:#fff;border-color:#7B4FA0}
+
+/* ── Compact mode ───────────────────────────────────────── */
+#ac-compact-btn.active{background:#7B4FA0;color:#fff;border-color:#7B4FA0}
+.ac-compact .ac-card{padding:10px 14px;margin-bottom:6px}
+.ac-compact .ac-card-name{font-size:14px}
+.ac-compact .ac-card-sub,.ac-compact .ac-card-email{display:none}
+.ac-compact .ac-card-metrics{padding:6px 0;gap:8px}
+.ac-compact .ac-metric-label{font-size:9px}
+.ac-compact .ac-metric-val{font-size:12px}
+.ac-compact .ac-card-section,.ac-compact .ac-card-rules,.ac-compact .pr-card-nextsteps{display:none}
+.ac-compact .ac-card-actions .btn{padding:4px 10px;font-size:12px}
+
+/* ── Star / pin button ──────────────────────────────────── */
+.ac-star{background:none;border:none;cursor:pointer;font-size:18px;color:#d1d5db;padding:0 2px;line-height:1;transition:color .12s}
+.ac-star:hover{color:#f59e0b}
+.ac-star.active{color:#f59e0b}

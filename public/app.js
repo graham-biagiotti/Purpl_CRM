@@ -66,6 +66,9 @@ const skuBadge = (id) => {
 // ── Navigation ───────────────────────────────────────────
 let currentPage = 'dashboard';
 let _currentDistId = null;  // tracks which distributor detail is open
+// ── Accounts view state ──────────────────────────────────
+let _acBrandFilter = '';   // '' | 'purpl' | 'lf' | 'both'
+let _acCompact = false;
 function nav(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.sb-nav a').forEach(a => a.classList.remove('active'));
@@ -1257,12 +1260,33 @@ function acLastContacted(a) {
   return noteDate || outreachDate || null;
 }
 
+function setAcBrandFilter(val) {
+  _acBrandFilter = val;
+  document.querySelectorAll('.ac-brand-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.brand === val));
+  renderAccounts();
+}
+
+function toggleAcCompact() {
+  _acCompact = !_acCompact;
+  const cards = qs('#ac-cards');
+  if (cards) cards.classList.toggle('ac-compact', _acCompact);
+  const btn = qs('#ac-compact-btn');
+  if (btn) btn.classList.toggle('active', _acCompact);
+}
+
+function toggleAccountStar(id) {
+  const a = DB.a('ac').find(x=>x.id===id);
+  if (!a) return;
+  DB.update('ac', id, x=>({...x, starred: !x.starred}));
+  renderAccounts();
+}
+
 function renderAccounts() {
   _populateFulfillFilter();
   let list = DB.a('ac');
   const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
   const typeFilter    = qs('#ac-type-filter')?.value || '';
-  const brandFilter   = qs('#ac-brand-filter')?.value || '';
   const fulfillFilter = qs('#ac-fulfill-filter')?.value || '';
   const sortVal       = qs('#ac-sort')?.value || 'name';
 
@@ -1272,18 +1296,27 @@ function renderAccounts() {
     a.territory?.toLowerCase().includes(search) ||
     a.address?.toLowerCase().includes(search));
   if (typeFilter) list = list.filter(a=>a.type===typeFilter);
-  if (brandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
-  if (brandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
+  if (_acBrandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
+  else if (_acBrandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
+  else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf); // refine when brands[] field added
   if (fulfillFilter === 'direct') list = list.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
   list = list.slice().sort((a,b)=>{
+    // Starred always floats to top
+    if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
     if (sortVal==='name')          return (a.name||'') < (b.name||'') ? -1 : 1;
     if (sortVal==='lastOrder')     return (a.lastOrder||'') < (b.lastOrder||'') ? 1 : -1;
     if (sortVal==='lastContacted') return (acLastContacted(a)||'') < (acLastContacted(b)||'') ? 1 : -1;
     if (sortVal==='territory')     return (a.territory||'') < (b.territory||'') ? -1 : 1;
     return 0;
   });
+
+  // Keep compact state in sync after re-render
+  if (_acCompact) {
+    const cards = qs('#ac-cards');
+    if (cards) cards.classList.add('ac-compact');
+  }
 
   const el = qs('#ac-cards');
   if (!el) return;
@@ -1350,6 +1383,7 @@ function renderAccounts() {
           ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
         </div>
         <div class="ac-card-badges">
+          <button class="ac-star${a.starred?' active':''}" onclick="event.stopPropagation();toggleAccountStar('${a.id}')" title="${a.starred?'Unpin':'Pin to top'}">${a.starred?'★':'☆'}</button>
           ${a.type?`<span class="badge gray">${a.type}</span>`:''}
           ${statusBadge(AC_STATUS,a.status)}
           ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
@@ -1653,6 +1687,67 @@ function eacRemoveLoc(locId) {
   }
 }
 
+// ── Multi-contact helpers (Edit Account) ─────────────────
+function _eacContactRow(c, isOnly) {
+  const esc = s => (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  return `
+    <div class="eac-contact-row" data-contact-id="${c.id}" style="background:var(--surface-2,#f9f8ff);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+        <input class="eac-ct-name" placeholder="Name" value="${esc(c.name)}" style="flex:1;min-width:110px">
+        <input class="eac-ct-role" placeholder="Role" value="${esc(c.role||'')}" style="flex:1;min-width:90px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer">
+          <input type="radio" name="eac-ct-primary" class="eac-ct-primary" value="${c.id}" ${c.isPrimary?'checked':''}> Primary
+        </label>
+        ${!isOnly?`<button type="button" class="btn sm red" onclick="eacRemoveContact('${c.id}')">✕</button>`:''}
+      </div>
+      <div class="form-row col2" style="margin:0">
+        <div><input class="eac-ct-email" type="email" placeholder="Email" value="${esc(c.email||'')}"></div>
+        <div><input class="eac-ct-phone" type="tel" placeholder="Phone" value="${esc(c.phone||'')}"></div>
+      </div>
+    </div>`;
+}
+
+function eacRenderContacts(contacts) {
+  const container = qs('#eac-contacts-list');
+  if (!container) return;
+  container.innerHTML = contacts.map(c => _eacContactRow(c, contacts.length === 1)).join('');
+}
+
+function eacAddContact() {
+  const container = qs('#eac-contacts-list');
+  if (!container) return;
+  const rows = container.querySelectorAll('.eac-contact-row');
+  // When going from 1→2, show remove button on the first row too
+  if (rows.length === 1) {
+    const firstRow = rows[0];
+    const firstId = firstRow.dataset.contactId;
+    const headerDiv = firstRow.querySelector('div');
+    if (headerDiv && !firstRow.querySelector('.btn.red')) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn sm red';
+      btn.setAttribute('onclick', `eacRemoveContact('${firstId}')`);
+      btn.textContent = '✕';
+      headerDiv.appendChild(btn);
+    }
+  }
+  const c = {id: uid(), name:'', role:'', email:'', phone:'', isPrimary: rows.length === 0};
+  const div = document.createElement('div');
+  div.innerHTML = _eacContactRow(c, false);
+  container.appendChild(div.firstElementChild);
+}
+
+function eacRemoveContact(id) {
+  const container = qs('#eac-contacts-list');
+  if (!container) return;
+  container.querySelector(`[data-contact-id="${id}"]`)?.remove();
+  const remaining = container.querySelectorAll('.eac-contact-row');
+  if (remaining.length === 1) {
+    remaining[0].querySelectorAll('.btn.red').forEach(b => b.remove());
+    const radio = remaining[0].querySelector('.eac-ct-primary');
+    if (radio) radio.checked = true;
+  }
+}
+
 function editAccount(id) {
   const a = DB.a('ac').find(x=>x.id===id) || {id:uid()};
   const isNew = !DB.a('ac').find(x=>x.id===id);
@@ -1660,9 +1755,11 @@ function editAccount(id) {
   if (!m) return;
 
   qs('#eac-name').value = a.name||'';
-  qs('#eac-contact').value = a.contact||'';
-  qs('#eac-phone').value = a.phone||'';
-  qs('#eac-email').value = a.email||'';
+  // Populate contacts (migrate single-contact accounts on the fly)
+  const _editContacts = (a.contacts && a.contacts.length)
+    ? a.contacts
+    : [{id: uid(), name: a.contact||'', role:'', email: a.email||'', phone: a.phone||'', isPrimary: true}];
+  eacRenderContacts(_editContacts);
   qs('#eac-type').value = a.type||'Grocery';
   qs('#eac-territory').value = a.territory||'';
   qs('#eac-status').value = a.status||'active';
@@ -1749,13 +1846,33 @@ async function saveAccount(id, isNew) {
     locs.push({id: locId, label, address, lat, lng, contact, phone, dropOffRules});
   }
 
+  // Collect contacts from the contacts section
+  const contacts = [];
+  let primaryRadioVal = document.querySelector('#eac-contacts-list input[name="eac-ct-primary"]:checked')?.value || '';
+  for (const row of document.querySelectorAll('#eac-contacts-list .eac-contact-row')) {
+    const cId = row.dataset.contactId || uid();
+    contacts.push({
+      id:        cId,
+      name:      row.querySelector('.eac-ct-name')?.value?.trim()||'',
+      role:      row.querySelector('.eac-ct-role')?.value?.trim()||'',
+      email:     row.querySelector('.eac-ct-email')?.value?.trim()||'',
+      phone:     row.querySelector('.eac-ct-phone')?.value?.trim()||'',
+      isPrimary: cId === primaryRadioVal,
+    });
+  }
+  // If nothing marked primary, mark first
+  if (contacts.length && !contacts.some(c=>c.isPrimary)) contacts[0].isPrimary = true;
+  const primaryContact = contacts.find(c=>c.isPrimary) || contacts[0] || {};
+
   const rec = {
     // Preserve ALL existing fields first — avoids data loss on save
     ...(existing||{}),
     id, name,
-    contact:      qs('#eac-contact')?.value?.trim()||'',
-    phone:        qs('#eac-phone')?.value?.trim()||'',
-    email:        qs('#eac-email')?.value?.trim()||'',
+    contacts,
+    // Backward-compat flat fields derived from primary contact
+    contact:      primaryContact.name||'',
+    phone:        primaryContact.phone||'',
+    email:        primaryContact.email||'',
     // top-level address/lat/lng from first location (backward compat for display)
     address:      locs[0]?.address||'',
     lat:          locs[0]?.lat||null,
@@ -5428,17 +5545,99 @@ function importNEMShowAccounts() {
 }
 
 // ══════════════════════════════════════════════════════════
+//  ACCOUNT MIGRATIONS
+// ══════════════════════════════════════════════════════════
+function migrateAccountContacts() {
+  if (!DB._firestoreReady) return;
+  DB.a('ac').forEach(a => {
+    if (!a.contacts || !a.contacts.length) {
+      if (a.contact || a.email || a.phone) {
+        DB.update('ac', a.id, x => ({
+          ...x,
+          contacts: [{id: uid(), name: x.contact||'', role:'', email: x.email||'', phone: x.phone||'', isPrimary: true}],
+        }));
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+//  PASTE-TO-CREATE ACCOUNT
+// ══════════════════════════════════════════════════════════
+let _pastePreviewData = null;
+
+function openPasteAccountModal() {
+  const inp = qs('#paste-ac-input');
+  if (inp) inp.value = '';
+  const prev = qs('#paste-ac-preview');
+  if (prev) prev.innerHTML = '';
+  const btn = qs('#paste-ac-confirm-btn');
+  if (btn) btn.style.display = 'none';
+  openModal('modal-paste-account');
+}
+
+function parsePasteRow(text) {
+  const parts = text.includes('__') ? text.split('__') : text.split('\t');
+  const [name='', phone='', email='', address='', city='', state='', dateContacted='', ...noteParts] = parts.map(s=>s.trim());
+  const notes = noteParts.join(' ').trim();
+  const fullAddress = [address, city, state].filter(Boolean).join(', ');
+  return { name, phone, email, address: fullAddress, dateContacted, notes };
+}
+
+function previewPasteAccount() {
+  const text = (qs('#paste-ac-input')?.value || '').trim();
+  if (!text) { toast('Paste something first'); return; }
+  const parsed = parsePasteRow(text);
+  _pastePreviewData = parsed;
+  const prev = qs('#paste-ac-preview');
+  if (prev) {
+    prev.innerHTML = `
+      <div style="background:var(--surface-2,#f9f8ff);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;display:flex;flex-direction:column;gap:4px">
+        <div><strong>Name:</strong> ${escHtml(parsed.name)||'<em style="color:var(--muted)">blank</em>'}</div>
+        ${parsed.phone?`<div><strong>Phone:</strong> ${escHtml(parsed.phone)}</div>`:''}
+        ${parsed.email?`<div><strong>Email:</strong> ${escHtml(parsed.email)}</div>`:''}
+        ${parsed.address?`<div><strong>Address:</strong> ${escHtml(parsed.address)}</div>`:''}
+        ${parsed.dateContacted?`<div><strong>Date Contacted:</strong> ${escHtml(parsed.dateContacted)}</div>`:''}
+        ${parsed.notes?`<div><strong>Notes:</strong> ${escHtml(parsed.notes)}</div>`:''}
+      </div>`;
+  }
+  const btn = qs('#paste-ac-confirm-btn');
+  if (btn) btn.style.display = '';
+}
+
+function confirmPasteAccount() {
+  if (!_pastePreviewData) return;
+  const d = _pastePreviewData;
+  _pastePreviewData = null;
+  closeModal('modal-paste-account');
+  // Open edit modal with a fresh ID
+  const newId = uid();
+  editAccount(newId);
+  // Pre-fill name
+  if (qs('#eac-name')) qs('#eac-name').value = d.name;
+  // Pre-fill contacts section with name + phone/email
+  if (d.name || d.phone || d.email) {
+    eacRenderContacts([{id: uid(), name: d.name||'', role:'', email: d.email||'', phone: d.phone||'', isPrimary: true}]);
+  }
+  // Pre-fill address into first location row
+  const firstLocAddr = qs('#eac-locs-list .eac-loc-address');
+  if (firstLocAddr && d.address) firstLocAddr.value = d.address;
+}
+
+// ══════════════════════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════════════════════
 window.onAppReady = function() {
   seedIfEmpty();
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
+  migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
 
   // Allow db.js real-time listener to refresh whichever page is open.
   // Also used to retry one-time migrations that were skipped because the
   // 10s startup timeout fired before Firestore data arrived.
   window.refreshCurrentPage = () => {
     restoreMyData();
+    migrateAccountContacts();
     renders[currentPage]?.();
   };
 

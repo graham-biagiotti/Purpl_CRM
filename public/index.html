@@ -284,11 +284,12 @@
           <option>Restaurant</option><option>Spa / Wellness</option><option>Specialty / Gift</option>
           <option>Farm / Country Store</option><option>Co-op</option><option>Online</option><option>Other</option>
         </select>
-        <select id="ac-brand-filter">
-          <option value="">All Brands</option>
-          <option value="lf">🌿 Lavender Fields + purpl</option>
-          <option value="purpl">purpl Only</option>
-        </select>
+        <div id="ac-brand-btns" class="ac-brand-btns">
+          <button class="ac-brand-btn active" data-brand="" onclick="setAcBrandFilter('')">All</button>
+          <button class="ac-brand-btn" data-brand="purpl" onclick="setAcBrandFilter('purpl')">💜 purpl only</button>
+          <button class="ac-brand-btn" data-brand="lf" onclick="setAcBrandFilter('lf')">🌿 LF only</button>
+          <button class="ac-brand-btn" data-brand="both" onclick="setAcBrandFilter('both')">Both lines</button>
+        </div>
         <select id="ac-fulfill-filter">
           <option value="">All Fulfillment</option>
           <option value="direct">Direct</option>
@@ -301,6 +302,8 @@
         </select>
         <div class="spacer"></div>
         <span id="ac-count" style="font-size:13px;color:var(--muted)"></span>
+        <button class="btn" id="ac-compact-btn" onclick="toggleAcCompact()" title="Toggle compact view">Compact</button>
+        <button class="btn" onclick="openPasteAccountModal()">📋 Paste</button>
         <button class="btn primary" onclick="editAccount(uid())">+ Add Account</button>
       </div>
       <div id="ac-cards"></div>
@@ -1481,13 +1484,13 @@
 <div class="overlay" id="modal-edit-account">
   <div class="modal">
     <div class="modal-hdr"><h2>Edit Account</h2><button class="modal-close btn sm">✕</button></div>
-    <div class="form-row col2">
-      <div class="form-group"><label>Account name *</label><input id="eac-name"></div>
-      <div class="form-group"><label>Contact person</label><input id="eac-contact"></div>
-    </div>
-    <div class="form-row col2">
-      <div class="form-group"><label>Phone</label><input id="eac-phone" type="tel"></div>
-      <div class="form-group"><label>Email</label><input id="eac-email" type="email"></div>
+    <div class="form-group" style="margin-bottom:12px"><label>Account name *</label><input id="eac-name"></div>
+    <div id="eac-contacts-section" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;font-weight:600;color:var(--fg)">Contacts</label>
+        <button type="button" class="btn sm" onclick="eacAddContact()">+ Add Contact</button>
+      </div>
+      <div id="eac-contacts-list"></div>
     </div>
     <div class="form-row col3">
       <div class="form-group"><label>Type</label>
@@ -1545,6 +1548,24 @@
       <button class="btn red" id="eac-delete-btn" style="margin-right:auto">Delete</button>
       <button class="modal-close btn">Cancel</button>
       <button class="btn primary" id="eac-save-btn">Save Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Paste to create account -->
+<div class="overlay" id="modal-paste-account">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-hdr"><h2>📋 Paste to Create Account</h2><button class="modal-close btn sm">✕</button></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      Paste a row from Google Sheets. Expected columns (tab or __ separated):<br>
+      <code style="font-size:11px">Name __ Phone __ Email __ Address __ City __ State __ DateContacted __ Notes</code>
+    </p>
+    <textarea id="paste-ac-input" rows="4" placeholder="Paste row here..." style="width:100%;box-sizing:border-box;resize:vertical;min-height:80px"></textarea>
+    <div id="paste-ac-preview" style="margin-top:12px"></div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn" onclick="previewPasteAccount()">Preview</button>
+      <button class="btn primary" id="paste-ac-confirm-btn" style="display:none" onclick="confirmPasteAccount()">Use This →</button>
     </div>
   </div>
 </div>
