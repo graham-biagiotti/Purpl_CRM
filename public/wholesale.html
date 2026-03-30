@@ -3,118 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>purpl — Wholesale</title>
+<title>Wholesale — Pumpkin Blossom Farm</title>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#faf8ff;
-  --purple:#7B4FA0;
-  --purple2:#9B6DC0;
+  --purpl:#8B5FBF;
+  --purpl-dark:#2D1B4E;
+  --purpl-soft:#F0EBF8;
+  --lf:#4a7c59;
+  --lf-dark:#2d4a38;
+  --lf-soft:#f0f7f1;
+  --neutral:#f8f7f4;
   --text:#1a1a2e;
   --muted:#6b7280;
-  --border:#e9d5ff;
-  --section-alt:#f5f0ff;
+  --border:#e5e7eb;
 }
 html{scroll-behavior:smooth}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6}
-.container{max-width:1100px;margin:0 auto;padding:0 24px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:var(--text);font-size:16px;line-height:1.6}
 
-/* NAV */
-nav{height:64px;background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);position:fixed;top:0;width:100%;z-index:100;display:flex;align-items:center}
+/* ── NAV ─────────────────────────────── */
+nav{height:60px;background:rgba(45,27,78,0.97);position:fixed;top:0;width:100%;z-index:200;display:flex;align-items:center}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1100px;margin:0 auto;padding:0 24px}
-.nav-logo{height:36px}
-.nav-links{display:flex;gap:28px;list-style:none}
-.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;transition:color .15s}
-.nav-links a:hover{color:var(--purple)}
-.nav-signin{font-size:13px;color:var(--purple);font-weight:500;text-decoration:none;border-bottom:1px solid #c4b5fd;padding-bottom:1px}
+.nav-logo{height:30px;filter:brightness(10)}
+.nav-links{display:flex;gap:24px;list-style:none}
+.nav-links a{font-size:13px;color:rgba(255,255,255,0.55);text-decoration:none;transition:color .15s}
+.nav-links a:hover{color:rgba(255,255,255,0.9)}
+.nav-order{font-size:13px;color:rgba(255,255,255,0.8);text-decoration:none;border:1px solid rgba(255,255,255,0.25);border-radius:5px;padding:6px 14px;transition:background .15s}
+.nav-order:hover{background:rgba(255,255,255,0.1)}
 @media(max-width:768px){.nav-links{display:none}}
 
-/* HERO */
-.hero{min-height:85vh;background:linear-gradient(160deg,#1e1035 0%,#3d1f6b 50%,#7B4FA0 100%);display:flex;align-items:center;justify-content:center;padding:130px 24px 80px}
-.hero-content{max-width:680px;text-align:center}
-.hero-logo{height:64px;margin-bottom:24px;filter:brightness(10)}
-.hero h1{font-size:clamp(36px,6vw,64px);font-weight:700;color:#fff;letter-spacing:-1.5px;line-height:1.1;margin-bottom:20px}
-.hero p{font-size:18px;color:rgba(255,255,255,0.75);line-height:1.6;margin-bottom:36px}
-.hero-btns{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
-.btn-primary{background:#fff;color:var(--purple);border:none;border-radius:8px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s}
-.btn-primary:hover{opacity:0.9}
-.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:8px;padding:14px 28px;font-size:15px;cursor:pointer;transition:background .15s}
-.btn-ghost:hover{background:rgba(255,255,255,0.08)}
-@media(max-width:480px){.hero-btns{flex-direction:column;align-items:center}}
+/* ── HERO ────────────────────────────── */
+.hero{min-height:90vh;background:var(--purpl-dark);display:flex;align-items:center;justify-content:center;padding:100px 24px 80px;text-align:center}
+.hero-inner{max-width:700px;width:100%}
+.hero-farm-label{font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:36px}
+.hero-brands{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:40px}
+.hero-brand{flex:1;max-width:220px;padding:0 28px;text-align:center}
+.hero-brand-divider{width:1px;height:64px;background:rgba(255,255,255,0.15);flex-shrink:0}
+.hero-purpl-logo{height:52px;filter:brightness(10);display:block;margin:0 auto}
+.hero-lf-name{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#9dc4a8;letter-spacing:0.02em;line-height:1.2}
+.hero-lf-sub{font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:0.05em}
+.hero h1{font-size:clamp(28px,5vw,52px);font-weight:300;color:#fff;letter-spacing:-0.5px;line-height:1.15;margin-bottom:20px}
+.hero p{font-size:17px;color:rgba(255,255,255,0.7);max-width:520px;margin:0 auto 36px;line-height:1.65}
+.hero-cta{display:inline-block;background:var(--purpl);color:#fff;border:none;border-radius:6px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:background .15s;margin-bottom:20px}
+.hero-cta:hover{background:#7a51ae}
+.hero-order-link{display:block;font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color .15s}
+.hero-order-link:hover{color:rgba(255,255,255,0.8)}
+@media(max-width:600px){
+  .hero-brands{flex-direction:column;gap:24px}
+  .hero-brand-divider{width:64px;height:1px}
+}
 
-/* SECTIONS */
-section{padding:100px 0}
-section:first-of-type{padding-top:130px}
-.section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:12px}
-.section-heading{font-size:40px;font-weight:700;color:var(--text);margin-bottom:16px;letter-spacing:-0.5px;line-height:1.15}
-.section-sub{font-size:17px;color:var(--muted);max-width:560px;margin-bottom:60px;line-height:1.6}
+/* ── SHARED SECTION STRUCTURE ─────────── */
+.section{padding:80px 24px}
+.container{max-width:1100px;margin:0 auto}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:14px}
+.eyebrow-purpl{color:var(--purpl)}
+.eyebrow-lf{color:var(--lf)}
+.section-h2{font-size:clamp(26px,4vw,40px);font-weight:400;color:var(--text);margin-bottom:16px;line-height:1.2;letter-spacing:-0.3px}
+.section-desc{font-size:16px;color:var(--muted);max-width:640px;line-height:1.75;margin-bottom:48px}
 
-/* THREE COLS */
-.three-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
-@media(max-width:768px){.three-cols{grid-template-columns:1fr}}
-.feature-card{border-top:2px solid var(--purple);padding-top:28px}
-.feature-card .card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#9ca3af;margin-bottom:12px}
-.feature-card h3{font-size:20px;font-weight:700;margin-bottom:12px;color:var(--text)}
-.feature-card p{font-size:15px;color:var(--muted);line-height:1.7}
+/* ── WHY CARRY (3 items inline) ────────── */
+.why-list{display:flex;gap:32px;flex-wrap:wrap;margin-top:40px;padding-top:32px;border-top:1px solid var(--border)}
+.why-item{flex:1;min-width:200px;display:flex;gap:12px;align-items:flex-start}
+.why-dot{width:6px;height:6px;border-radius:50%;margin-top:8px;flex-shrink:0}
+.why-dot-purpl{background:var(--purpl)}
+.why-dot-lf{background:var(--lf)}
+.why-text{font-size:14px;color:#374151;line-height:1.6}
 
-/* TWO COLS */
-.two-cols{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
-@media(max-width:768px){.two-cols{grid-template-columns:1fr;gap:40px}}
-.two-cols-40-60{display:grid;grid-template-columns:40% 60%;gap:60px;align-items:flex-start}
-@media(max-width:768px){.two-cols-40-60{grid-template-columns:1fr;gap:40px}}
+/* ── SKU GRID (purpl — 5 col) ─────────── */
+.sku-grid-purpl{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:8px}
+@media(max-width:768px){.sku-grid-purpl{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:480px){.sku-grid-purpl{grid-template-columns:repeat(2,1fr)}}
+.sku-card-purpl{background:var(--purpl-soft);border-radius:8px;padding:18px 12px;text-align:center}
+.sku-card-purpl .sku-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.sku-card-purpl .sku-meta{font-size:11px;color:#7c3aed;opacity:0.7}
 
-/* BG ALTS */
-.bg-white{background:#fff}
-.bg-alt{background:var(--bg)}
-.bg-gradient{background:linear-gradient(135deg,#f5f0ff,#ede9fe)}
+/* ── SKU GRID (LF — 3 col) ──────────── */
+.sku-grid-lf{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+@media(max-width:600px){.sku-grid-lf{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:400px){.sku-grid-lf{grid-template-columns:1fr}}
+.sku-card-lf{background:#fff;border:1px solid #d4e8da;border-radius:8px;padding:18px 14px}
+.sku-card-lf .sku-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.sku-card-lf .sku-meta{font-size:11px;color:var(--muted)}
 
-/* PRODUCT PILLS */
-.pills{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:48px}
-.pill{background:#f5f0ff;border:1px solid var(--border);border-radius:40px;padding:10px 20px;font-size:13px;color:#5b21b6}
+/* ── TERMS SECTION ──────────────────── */
+.terms-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:flex-start}
+@media(max-width:700px){.terms-grid{grid-template-columns:1fr;gap:40px}}
+.terms-h3{font-size:18px;font-weight:600;color:var(--text);margin-bottom:20px}
+.terms-list{list-style:none}
+.terms-list li{font-size:15px;color:#374151;line-height:1.7;padding:6px 0;border-bottom:1px solid var(--border)}
+.terms-list li:last-child{border-bottom:none}
+.terms-list li::before{content:"—";color:var(--muted);margin-right:10px;font-size:12px}
+.terms-p{font-size:15px;color:#374151;line-height:1.75;margin-bottom:20px}
+.stockist-note{font-size:13px;color:var(--muted);margin-top:20px}
+.stockist-names{font-size:13px;color:#374151;line-height:2;margin-top:8px}
 
-/* COMING SOON */
-.coming-soon-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-@media(max-width:768px){.coming-soon-grid{grid-template-columns:1fr}}
-.coming-soon-card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:24px;opacity:0.6;text-align:center}
-.coming-soon-card h4{font-size:15px;font-weight:600;margin-bottom:6px}
-.coming-soon-card p{font-size:12px;color:#9ca3af}
+/* ── APPLICATION FORM ───────────────── */
+.apply-section{padding:80px 24px;background:var(--purpl-soft)}
+.apply-inner{max-width:620px;margin:0 auto}
+.apply-h2{font-size:clamp(24px,4vw,36px);font-weight:600;color:var(--purpl-dark);margin-bottom:10px}
+.apply-sub{font-size:16px;color:#374151;margin-bottom:36px;line-height:1.65}
+.form-card{background:#fff;border-radius:12px;padding:36px;box-shadow:0 4px 24px rgba(45,27,78,0.1)}
+.form-label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em}
+.form-input{width:100%;padding:11px 13px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;background:#fff;color:var(--text);transition:border-color .15s;margin-bottom:4px}
+.form-input:focus{outline:none;border-color:var(--purpl)}
+.form-group{margin-bottom:18px}
+.field-error-msg{font-size:11px;color:#dc2626;margin-top:2px;display:none}
+.input-error{border-color:#f87171}
 
-/* STOCKISTS */
-.stockist-cols{display:grid;grid-template-columns:1fr 1fr;gap:32px}
-@media(max-width:600px){.stockist-cols{grid-template-columns:1fr}}
-.stockist-list{list-style:none}
-.stockist-list li{font-size:15px;line-height:2.4;color:#374151}
+/* Brand selection cards */
+.brand-select-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px}
+@media(max-width:500px){.brand-select-row{grid-template-columns:1fr}}
+.ws-brand-card{border:2px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fff;transition:all .2s;user-select:none}
+.ws-brand-card:hover{border-color:#c4b5fd}
+.ws-brand-card.selected-purpl{border-color:var(--purpl);background:var(--purpl-soft)}
+.ws-brand-card.selected-lf{border-color:var(--lf);background:var(--lf-soft)}
+.ws-card-purpl-logo{height:36px;display:block;margin:0 auto 8px;opacity:0.85}
+.ws-card-purpl-name{font-size:13px;font-weight:600;color:var(--text)}
+.ws-card-lf-name{font-family:Georgia,'Times New Roman',serif;font-size:17px;color:var(--lf);margin-bottom:2px}
+.ws-card-lf-sub{font-size:11px;color:var(--muted)}
+.brand-err{font-size:11px;color:#dc2626;margin-top:2px;display:none}
 
-/* FORM */
-.form-card{background:#fff;border-radius:16px;padding:40px;box-shadow:0 8px 32px rgba(123,79,160,0.12)}
-.form-card input,.form-card select,.form-card textarea{
-  border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:14px;
-  font-family:inherit;width:100%;margin-bottom:16px;transition:outline .1s,border-color .1s;
-  background:#fff;color:var(--text)}
-.form-card input:focus,.form-card select:focus,.form-card textarea:focus{
-  outline:2px solid var(--purple2);border-color:transparent}
-.form-card label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
-.submit-btn{width:100%;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:16px;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .15s}
-.submit-btn:hover:not(:disabled){background:#6a3f8f}
-.submit-btn:disabled{background:#c4b5fd;cursor:not-allowed}
-.form-hint{font-size:12px;color:#9ca3af;text-align:center;margin-top:12px}
-.field-error{border-color:#f87171 !important}
-.field-error-msg{font-size:11px;color:#dc2626;margin-top:-12px;margin-bottom:12px;display:none}
+/* Submit */
+.apply-submit{width:100%;background:var(--purpl);color:#fff;border:none;border-radius:6px;padding:14px;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .15s}
+.apply-submit:hover:not(:disabled){background:#7a51ae}
+.apply-submit:disabled{background:#c4b5fd;cursor:not-allowed}
+.apply-hint{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.6}
+.apply-err{background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 14px;font-size:13px;margin-top:12px;display:none}
+.apply-success{text-align:center;padding:40px 20px}
+.apply-success h3{font-size:22px;font-weight:600;color:var(--purpl-dark);margin-bottom:12px}
+.apply-success p{font-size:15px;color:var(--muted);line-height:1.65;max-width:420px;margin:0 auto}
 
-/* FOOTER */
-footer{background:#1e1035;padding:60px 0;color:rgba(255,255,255,0.6);text-align:center}
-.footer-logo{height:32px;opacity:0.9;margin-bottom:20px}
-.footer-name{font-size:14px;color:rgba(255,255,255,0.8);margin-bottom:8px}
-.footer-address{font-size:13px;margin-bottom:8px}
-.footer-links{display:flex;gap:16px;justify-content:center;margin-bottom:24px}
-.footer-links a{font-size:12px;color:rgba(255,255,255,0.4);text-decoration:none}
-.footer-links a:hover{color:rgba(255,255,255,0.7)}
-.footer-copy{font-size:12px}
+/* ── FOOTER ─────────────────────────── */
+footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rgba(255,255,255,0.55)}
+.footer-farm{font-size:14px;color:rgba(255,255,255,0.8);margin-bottom:12px;font-weight:500}
+.footer-links{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;margin-bottom:16px}
+.footer-links a{font-size:13px;color:rgba(255,255,255,0.45);text-decoration:none;transition:color .15s}
+.footer-links a:hover{color:rgba(255,255,255,0.85)}
+.footer-contact{font-size:13px;color:rgba(255,255,255,0.4)}
 
-/* Error msg */
-.form-submit-error{background:#fee2e2;color:#991b1b;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px;display:none}
+@media(max-width:480px){
+  .section{padding:48px 16px}
+  .apply-section{padding:48px 16px}
+  .form-card{padding:24px 18px}
+}
 </style>
 </head>
 <body>
@@ -124,276 +158,266 @@ footer{background:#1e1035;padding:60px 0;color:rgba(255,255,255,0.6);text-align:
   <div class="nav-inner">
     <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="nav-logo">
     <ul class="nav-links">
-      <li><a href="#why-carry">Why Carry purpl</a></li>
-      <li><a href="#story">Our Story</a></li>
-      <li><a href="#product">The Product</a></li>
-      <li><a href="#terms">Terms</a></li>
-      <li><a href="#apply">Apply Now</a></li>
+      <li><a href="#purpl-section">purpl</a></li>
+      <li><a href="#lf-section">Lavender Fields</a></li>
+      <li><a href="#terms-section">Terms</a></li>
+      <li><a href="#apply-section">Apply</a></li>
     </ul>
-    <a href="/order" class="nav-signin">Wholesale Sign In</a>
+    <a href="/order" class="nav-order">Stockist Login</a>
   </div>
 </nav>
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-content">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="hero-logo">
-    <h1>Bring calm to your shelves.</h1>
-    <p>purpl is a lavender-infused lemonade crafted for independent retail. Born on a New Hampshire lavender farm. Designed for the shelf.</p>
-    <div class="hero-btns">
-      <button class="btn-primary" onclick="document.getElementById('apply').scrollIntoView({behavior:'smooth'})">Apply for Wholesale</button>
-      <button class="btn-ghost" onclick="document.getElementById('why-carry').scrollIntoView({behavior:'smooth'})">Learn More</button>
+  <div class="hero-inner">
+    <div class="hero-farm-label">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</div>
+    <div class="hero-brands">
+      <div class="hero-brand">
+        <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="hero-purpl-logo">
+      </div>
+      <div class="hero-brand-divider"></div>
+      <div class="hero-brand">
+        <div class="hero-lf-name">lavender fields</div>
+        <div class="hero-lf-sub">at Pumpkin Blossom Farm</div>
+      </div>
+    </div>
+    <h1>Two farm-made brands. One wholesale partner.</h1>
+    <p>Lavender lemonade and handcrafted lavender goods, grown and made in Warner, New Hampshire.</p>
+    <a href="#apply-section" class="hero-cta">Apply to Carry Our Products</a>
+    <a href="/order" class="hero-order-link">Already a stockist? Place an order &rarr;</a>
+  </div>
+</div>
+
+<!-- SECTION 2 — PURPL -->
+<div class="section" id="purpl-section" style="background:#fff">
+  <div class="container">
+    <div class="eyebrow eyebrow-purpl">purpl</div>
+    <h2 class="section-h2">Lavender lemonade that earns its shelf space</h2>
+    <p class="section-desc">purpl is a lavender-infused sparkling lemonade available in five flavors — Classic, Blueberry, Peach, Raspberry, and a Variety 12-pack. Sold in 12-pack cases at an MSRP of $3.29 per can, purpl sits at the intersection of the functional beverage and specialty lemonade categories. It is NH-made, clean-ingredient, and built for specialty grocery, co-ops, cafes, and wellness retail.</p>
+
+    <div class="sku-grid-purpl">
+      <div class="sku-card-purpl">
+        <div class="sku-name">Classic</div>
+        <div class="sku-meta">12-pack</div>
+      </div>
+      <div class="sku-card-purpl">
+        <div class="sku-name">Blueberry</div>
+        <div class="sku-meta">12-pack</div>
+      </div>
+      <div class="sku-card-purpl">
+        <div class="sku-name">Peach</div>
+        <div class="sku-meta">12-pack</div>
+      </div>
+      <div class="sku-card-purpl">
+        <div class="sku-name">Raspberry</div>
+        <div class="sku-meta">12-pack</div>
+      </div>
+      <div class="sku-card-purpl">
+        <div class="sku-name">Variety Pack</div>
+        <div class="sku-meta">12-pack</div>
+      </div>
+    </div>
+
+    <div class="why-list">
+      <div class="why-item">
+        <div class="why-dot why-dot-purpl"></div>
+        <div class="why-text">Trending category — lavender and lemonade, together</div>
+      </div>
+      <div class="why-item">
+        <div class="why-dot why-dot-purpl"></div>
+        <div class="why-text">Clean ingredients, NH farm story</div>
+      </div>
+      <div class="why-item">
+        <div class="why-dot why-dot-purpl"></div>
+        <div class="why-text">Available direct or through select regional distributors</div>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:20px">Currently available for direct wholesale and through select New England distributors.</p>
+  </div>
+</div>
+
+<!-- SECTION 3 — LAVENDER FIELDS -->
+<div class="section" id="lf-section" style="background:var(--lf-soft)">
+  <div class="container">
+    <div class="eyebrow eyebrow-lf">Lavender Fields</div>
+    <h2 class="section-h2">Handcrafted lavender goods from our fields</h2>
+    <p class="section-desc">Lavender Fields at Pumpkin Blossom Farm is home to over 7,000 lavender plants grown without pesticides in Warner, New Hampshire. We handcraft a range of self-care and culinary products using our farm-grown lavender — from simple syrup to aromatherapy accessories. Woman-owned, NH-made, and designed for specialty, gift, spa, and wellness retail.</p>
+
+    <div class="sku-grid-lf">
+      <div class="sku-card-lf">
+        <div class="sku-name">Lavender Simple Syrup</div>
+        <div class="sku-meta">12.7 oz &nbsp;·&nbsp; culinary &amp; mixology</div>
+      </div>
+      <div class="sku-card-lf">
+        <div class="sku-name">Aromatherapy Scrunchie</div>
+        <div class="sku-meta">Farm-grown lavender filled</div>
+      </div>
+      <div class="sku-card-lf">
+        <div class="sku-name">Seatbelt Sachet</div>
+        <div class="sku-meta">On-the-go aromatherapy</div>
+      </div>
+      <div class="sku-card-lf">
+        <div class="sku-name">Soy Candle</div>
+        <div class="sku-meta">Three scents &nbsp;·&nbsp; 9 oz</div>
+      </div>
+      <div class="sku-card-lf">
+        <div class="sku-name">Aromatherapy Roll-On</div>
+        <div class="sku-meta">10ml &nbsp;·&nbsp; fractionated coconut oil</div>
+      </div>
+      <div class="sku-card-lf">
+        <div class="sku-name">Dryer Sachet 2-Pack</div>
+        <div class="sku-meta">Natural laundry scenting</div>
+      </div>
+    </div>
+
+    <div class="why-list">
+      <div class="why-item">
+        <div class="why-dot why-dot-lf"></div>
+        <div class="why-text">Trending lavender wellness and aromatherapy category</div>
+      </div>
+      <div class="why-item">
+        <div class="why-dot why-dot-lf"></div>
+        <div class="why-text">Handmade with farm-grown, organic-practice lavender</div>
+      </div>
+      <div class="why-item">
+        <div class="why-dot why-dot-lf"></div>
+        <div class="why-text">Giftable — works across spa, wellness, and specialty retail</div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- SECTION 1: WHY CARRY PURPL -->
-<section id="why-carry" class="bg-white">
+<!-- SECTION 4 — TERMS -->
+<div class="section" id="terms-section" style="background:#fff">
   <div class="container">
-    <div class="section-label">For Retailers</div>
-    <h2 class="section-heading">Why carry purpl?</h2>
-    <p class="section-sub">A differentiated product in a crowded beverage aisle. Lavender lemonade brings a calm, intentional story to your shelf — one that resonates with wellness-minded consumers.</p>
-    <div class="three-cols">
-      <div class="feature-card">
-        <div class="card-label">Provenance</div>
-        <h3>Farm to shelf.</h3>
-        <p>Born on Pumpkin Blossom Farm in Warner, NH. Every can carries a story your customers can connect with and talk about.</p>
-      </div>
-      <div class="feature-card">
-        <div class="card-label">Velocity</div>
-        <h3>Moves off shelf.</h3>
-        <p>A unique product in a growing functional beverage category. Stands out in-store, on social, and at the point of decision.</p>
-      </div>
-      <div class="feature-card">
-        <div class="card-label">Partnership</div>
-        <h3>We make it easy.</h3>
-        <p>Direct relationship with the brand. Flexible minimums, personal service, and a team that actually picks up the phone.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION 2: OUR STORY -->
-<section id="story" class="bg-alt">
-  <div class="container">
-    <div class="two-cols">
+    <div class="terms-grid">
       <div>
-        <div class="section-label">Our Story</div>
-        <h2 class="section-heading" style="font-size:36px">From the farm.</h2>
-        <p style="font-size:16px;line-height:1.8;color:#374151;margin-bottom:20px">
-          purpl began on a small lavender farm in Warner, New Hampshire. What started as a farm-stand favorite became something bigger — a beverage brand built to bring those calm farm moments into everyday life.
-        </p>
-        <p style="font-size:16px;line-height:1.8;color:#374151">
-          We are Pumpkin Blossom Farm. We grow the lavender, we craft the product, and we personally bring it to your shelf. Every wholesale account is a relationship we take seriously.
-        </p>
+        <h3 class="terms-h3">Wholesale Terms</h3>
+        <ul class="terms-list">
+          <li>Minimum order quantities vary by product line</li>
+          <li>Net-30 payment terms</li>
+          <li>Free local delivery and pickup available (New Hampshire and New England)</li>
+          <li>Nationwide shipping available</li>
+          <li>Turnaround time: 1 day to 6 weeks depending on order size and product availability</li>
+        </ul>
       </div>
       <div>
-        <img src="https://static.wixstatic.com/media/81a2ff_f49a459982ef47a3b52a71ff0ec89ac8~mv2.png/v1/fill/w_701,h_701,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/Untitled%20design-39.png" alt="Pumpkin Blossom Farm" style="width:100%;border-radius:16px;object-fit:cover">
+        <h3 class="terms-h3">Who We Work With</h3>
+        <p class="terms-p">We partner with specialty grocery stores, co-ops, natural food retailers, gift shops, spas, wellness studios, farm stores, and cafes. We keep our stockist list intentional — we're selective about the retail partners we bring on so we can support each one well.</p>
+        <p class="stockist-note">Current stockists include:</p>
+        <div class="stockist-names">
+          Artisans New London &nbsp;·&nbsp; Sweet Beet Market &nbsp;·&nbsp; Gilford Country Store<br>
+          Goffstown Green Thumb &nbsp;·&nbsp; Calefs Country Store &nbsp;·&nbsp; Fuller Gardens<br>
+          Something Wonderful Shop &nbsp;·&nbsp; Zebs General Store<br>
+          Rockywold Deephaven Camps &nbsp;·&nbsp; Bedrock Gardens
+        </div>
       </div>
     </div>
   </div>
-</section>
+</div>
 
-<!-- SECTION 3: THE PRODUCT -->
-<section id="product" class="bg-white" style="text-align:center">
-  <div class="container">
-    <div class="section-label">The Product</div>
-    <h2 class="section-heading">Classic Lavender Lemonade</h2>
-    <p style="font-size:16px;color:var(--muted);margin-bottom:48px">Available now. Additional flavors launching soon.</p>
-    <img src="https://static.wixstatic.com/media/81a2ff_1b91772c7dec4607bb70ab8f3e73a680~mv2.png/v1/fill/w_436,h_545,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/81a2ff_1b91772c7dec4607bb70ab8f3e73a680~mv2.png" alt="purpl Classic Lavender Lemonade" style="height:300px;object-fit:contain;margin-bottom:48px">
-    <div class="pills">
-      <span class="pill">Real lavender</span>
-      <span class="pill">Clean ingredients</span>
-      <span class="pill">12 fl oz cans</span>
-      <span class="pill">12 cans per case</span>
-    </div>
-    <div style="margin:48px 0">
-      <div class="section-label">Coming Soon</div>
-      <div class="coming-soon-grid" style="margin-top:16px">
-        <div class="coming-soon-card">
-          <h4>Blueberry Lavender</h4>
-          <p>Available at launch</p>
-        </div>
-        <div class="coming-soon-card">
-          <h4>Peach Lavender</h4>
-          <p>Available at launch</p>
-        </div>
-        <div class="coming-soon-card">
-          <h4>Raspberry Lavender</h4>
-          <p>Available at launch</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+<!-- SECTION 5 — APPLICATION FORM -->
+<div class="apply-section" id="apply-section">
+  <div class="apply-inner">
+    <h2 class="apply-h2">Apply to Become a Stockist</h2>
+    <p class="apply-sub">Tell us about your store and which lines interest you. We'll be in touch within 1 business day.</p>
 
-<!-- SECTION 4: WHOLESALE TERMS -->
-<section id="terms" class="bg-alt">
-  <div class="container">
-    <div class="section-label">Wholesale Terms</div>
-    <h2 class="section-heading">Simple and straightforward.</h2>
-    <p class="section-sub">We believe good partnerships start with clear expectations.</p>
-    <div class="three-cols">
-      <div class="feature-card">
-        <div class="card-label">Minimum Order</div>
-        <p style="font-size:15px;color:#374151;line-height:1.7">One case minimum (12 cans). No long-term commitment required for your first order. Scale at your own pace.</p>
-      </div>
-      <div class="feature-card">
-        <div class="card-label">Territory</div>
-        <p style="font-size:15px;color:#374151;line-height:1.7">Direct delivery across New England and surrounding states. Expanding distribution — reach out to discuss your area.</p>
-      </div>
-      <div class="feature-card">
-        <div class="card-label">Payment</div>
-        <p style="font-size:15px;color:#374151;line-height:1.7">Wholesale pricing provided upon application. Net 30 payment terms. All invoices issued by Pumpkin Blossom Farm LLC.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SECTION 5: WHO CARRIES PURPL -->
-<section id="stockists" class="bg-white">
-  <div class="container">
-    <div class="section-label">Where You'll Find purpl</div>
-    <h2 class="section-heading">A growing network of independent retailers.</h2>
-    <p class="section-sub">Specialty shops, co-ops, farm stores, and cafes across New England.</p>
-    <div class="stockist-cols">
-      <ul class="stockist-list">
-        <li>Artisans New London — New London, NH</li>
-        <li>Sweet Beet Market — Bradford, NH</li>
-        <li>Gilford Country Store — Gilford, NH</li>
-        <li>Goffstown Green Thumb — Goffstown, NH</li>
-        <li>Calefs Country Store — Barrington, NH</li>
-      </ul>
-      <ul class="stockist-list">
-        <li>Fuller Gardens — North Hampton, NH</li>
-        <li>Something Wonderful Shop — Sharon, VT</li>
-        <li>Zebs General Store — North Conway, NH</li>
-        <li>Rockywold Deephaven Camps — Holderness, NH</li>
-        <li>Bedrock Gardens — Lee, NH</li>
-      </ul>
-    </div>
-    <p style="font-size:14px;color:#9ca3af;margin-top:24px;text-align:center">And many more across New England and beyond.</p>
-  </div>
-</section>
-
-<!-- SECTION 6: APPLICATION FORM -->
-<section id="apply" class="bg-gradient">
-  <div class="container">
-    <div class="two-cols-40-60">
-      <div>
-        <div class="section-label">Get Started</div>
-        <h2 class="section-heading" style="font-size:36px">Apply for a wholesale account.</h2>
-        <p style="font-size:16px;line-height:1.8;color:#374151;margin-bottom:32px">Tell us about your store and we'll be in touch within two business days. We review every application personally.</p>
-        <div style="font-size:14px;color:var(--muted)">
-          <div style="margin-bottom:8px;font-weight:500;color:#374151">Questions before applying?</div>
-          <div>sales@drinkpurpl.com</div>
-          <div>603-748-3038</div>
+    <div class="form-card" id="apply-form-card">
+      <!-- Brand selection -->
+      <div class="form-group">
+        <label class="form-label">Which line(s) are you interested in carrying?</label>
+        <div class="brand-select-row">
+          <div class="ws-brand-card" id="ws-brand-purpl" onclick="wsToggleBrand('purpl')">
+            <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="ws-card-purpl-logo">
+            <div class="ws-card-purpl-name">purpl lemonade</div>
+          </div>
+          <div class="ws-brand-card" id="ws-brand-lf" onclick="wsToggleBrand('lf')">
+            <div class="ws-card-lf-name">lavender fields</div>
+            <div class="ws-card-lf-sub">at Pumpkin Blossom Farm</div>
+          </div>
         </div>
+        <div class="brand-err" id="ws-brand-err">Please select at least one line.</div>
       </div>
-      <div id="form-wrapper">
-        <div class="form-card" id="apply-form-card">
-          <div class="form-group">
-            <label>Business Name *</label>
-            <input type="text" id="f-business" placeholder="Your store or business name" required minlength="1">
-            <div class="field-error-msg" id="e-business">Please enter your business name.</div>
-          </div>
-          <div class="form-group">
-            <label>Your Name *</label>
-            <input type="text" id="f-name" placeholder="First and last name" required>
-            <div class="field-error-msg" id="e-name">Please enter your name.</div>
-          </div>
-          <div class="form-group">
-            <label>Email Address *</label>
-            <input type="email" id="f-email" placeholder="your@email.com" required>
-            <div class="field-error-msg" id="e-email">Please enter a valid email address.</div>
-          </div>
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input type="tel" id="f-phone" placeholder="Optional">
-          </div>
-          <div class="form-group">
-            <label>Store Address *</label>
-            <input type="text" id="f-address" placeholder="City, State is fine" required>
-            <div class="field-error-msg" id="e-address">Please enter your store address.</div>
-          </div>
-          <div class="form-group">
-            <label>Store Type *</label>
-            <select id="f-store-type" required>
-              <option value="">-- Select store type --</option>
-              <option value="Specialty / Gift">Specialty / Gift</option>
-              <option value="Co-op / Natural Foods">Co-op / Natural Foods</option>
-              <option value="Farm / Country Store">Farm / Country Store</option>
-              <option value="Cafe / Coffee Shop">Cafe / Coffee Shop</option>
-              <option value="Grocery Store">Grocery Store</option>
-              <option value="Spa / Wellness">Spa / Wellness</option>
-              <option value="Convenience">Convenience</option>
-              <option value="Online / E-commerce">Online / E-commerce</option>
-              <option value="Other">Other</option>
-            </select>
-            <div class="field-error-msg" id="e-store-type">Please select your store type.</div>
-          </div>
-          <div class="form-group">
-            <label>How did you hear about purpl?</label>
-            <input type="text" id="f-how-heard" placeholder="Trade show, referral, social media...">
-          </div>
-          <div class="form-group">
-            <label>Monthly Beverage Volume</label>
-            <select id="f-volume">
-              <option value="">-- Select volume --</option>
-              <option value="Not sure yet">Not sure yet</option>
-              <option value="Under 50 cases per month">Under 50 cases per month</option>
-              <option value="50 to 100 cases per month">50 to 100 cases per month</option>
-              <option value="100 to 500 cases per month">100 to 500 cases per month</option>
-              <option value="500 or more cases per month">500 or more cases per month</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Do you work with a beverage distributor?</label>
-            <select id="f-uses-dist" onchange="toggleDistField()">
-              <option value="">-- Select --</option>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-              <option value="Sometimes">Sometimes</option>
-            </select>
-          </div>
-          <div class="form-group" id="dist-field" style="display:none">
-            <label>Which distributor(s)?</label>
-            <input type="text" id="f-dist-name" placeholder="List any distributors you work with">
-          </div>
-          <div class="form-group">
-            <label>Tell us about your store</label>
-            <textarea id="f-description" rows="4" placeholder="Your customers, your vibe, what makes your store unique — optional but helpful"></textarea>
-          </div>
-          <div class="form-group">
-            <label>Preferred Contact Method</label>
-            <select id="f-contact-pref">
-              <option value="">-- Select --</option>
-              <option value="Email">Email</option>
-              <option value="Phone">Phone</option>
-              <option value="Either works">Either works</option>
-            </select>
-          </div>
-          <button class="submit-btn" id="apply-submit-btn" onclick="submitApplication()">Submit Application</button>
-          <div class="form-hint">We review every application personally and respond within two business days.</div>
-          <div class="form-submit-error" id="apply-error"></div>
-        </div>
+
+      <!-- Business name -->
+      <div class="form-group">
+        <label class="form-label" for="ws-business">Business Name *</label>
+        <input class="form-input" type="text" id="ws-business" placeholder="Your store or business name">
+        <div class="field-error-msg" id="e-ws-business">Please enter your business name.</div>
       </div>
+
+      <!-- Your name -->
+      <div class="form-group">
+        <label class="form-label" for="ws-name">Your Name *</label>
+        <input class="form-input" type="text" id="ws-name" placeholder="First and last name">
+        <div class="field-error-msg" id="e-ws-name">Please enter your name.</div>
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label class="form-label" for="ws-email">Email Address *</label>
+        <input class="form-input" type="email" id="ws-email" placeholder="you@yourbusiness.com">
+        <div class="field-error-msg" id="e-ws-email">Please enter a valid email address.</div>
+      </div>
+
+      <!-- Phone -->
+      <div class="form-group">
+        <label class="form-label" for="ws-phone">Phone</label>
+        <input class="form-input" type="tel" id="ws-phone" placeholder="Optional">
+      </div>
+
+      <!-- Store address -->
+      <div class="form-group">
+        <label class="form-label" for="ws-address">Store Address</label>
+        <input class="form-input" type="text" id="ws-address" placeholder="City, State is fine">
+      </div>
+
+      <!-- Business type -->
+      <div class="form-group">
+        <label class="form-label" for="ws-type">Business Type</label>
+        <select class="form-input" id="ws-type">
+          <option value="">— Select —</option>
+          <option value="Grocery / Co-op">Grocery / Co-op</option>
+          <option value="Specialty / Gift">Specialty / Gift</option>
+          <option value="Spa / Wellness">Spa / Wellness</option>
+          <option value="Cafe / Coffee Shop">Cafe / Coffee Shop</option>
+          <option value="Farm / Country Store">Farm / Country Store</option>
+          <option value="Online Retailer">Online Retailer</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <!-- About your store -->
+      <div class="form-group">
+        <label class="form-label" for="ws-message">Tell us about your store</label>
+        <textarea class="form-input" id="ws-message" rows="4" placeholder="What you carry, who your customers are, why you're interested..." style="resize:vertical;min-height:100px"></textarea>
+      </div>
+
+      <!-- How heard -->
+      <div class="form-group">
+        <label class="form-label" for="ws-how-heard">How did you hear about us? <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted)">(optional)</span></label>
+        <input class="form-input" type="text" id="ws-how-heard" placeholder="Trade show, referral, social media...">
+      </div>
+
+      <button class="apply-submit" id="ws-submit-btn" onclick="wsSubmitApplication()">Submit Application</button>
+      <p class="apply-hint">We review every application and will follow up at the email address you provided within 1 business day.</p>
+      <div class="apply-err" id="ws-apply-err"></div>
     </div>
   </div>
-</section>
+</div>
 
 <!-- FOOTER -->
 <footer>
   <div class="container">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="footer-logo">
-    <div class="footer-name">purpl by Pumpkin Blossom Farm</div>
-    <div class="footer-address">Warner, NH &nbsp;·&nbsp; sales@drinkpurpl.com &nbsp;·&nbsp; 603-748-3038</div>
+    <div class="footer-farm">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH 03278</div>
     <div class="footer-links">
-      <a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a>
-      <a href="/wholesale">Wholesale</a>
-      <a href="/order">Order Portal</a>
+      <a href="https://drinkpurpl.com" target="_blank" rel="noopener">drinkpurpl.com</a>
+      <span style="color:rgba(255,255,255,0.2)">&middot;</span>
+      <a href="https://pumpkinblossomfarm.com" target="_blank" rel="noopener">pumpkinblossomfarm.com</a>
+      <span style="color:rgba(255,255,255,0.2)">&middot;</span>
+      <a href="/order">Place an Order</a>
     </div>
-    <div class="footer-copy">&copy; 2026 Pumpkin Blossom Farm LLC. All rights reserved.</div>
+    <div class="footer-contact">Questions? graham@pumpkinblossomfarm.com &nbsp;&middot;&nbsp; 603-748-3038</div>
   </div>
 </footer>
 
@@ -408,53 +432,58 @@ var firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 
-function toggleDistField() {
-  var val = document.getElementById('f-uses-dist').value;
-  document.getElementById('dist-field').style.display =
-    (val === 'Yes' || val === 'Sometimes') ? 'block' : 'none';
+// ── Brand selection ────────────────────────────────────
+var selectedBrands = [];
+
+function wsToggleBrand(brand) {
+  var card = document.getElementById('ws-brand-' + brand);
+  var cls  = brand === 'purpl' ? 'selected-purpl' : 'selected-lf';
+  var idx  = selectedBrands.indexOf(brand);
+  if (idx === -1) {
+    selectedBrands.push(brand);
+    card.classList.add(cls);
+  } else {
+    selectedBrands.splice(idx, 1);
+    card.classList.remove(cls);
+  }
+  document.getElementById('ws-brand-err').style.display = 'none';
 }
 
-function showFieldError(fieldId, errorId, show) {
-  var el = document.getElementById(fieldId);
-  var err = document.getElementById(errorId);
-  if (el) {
-    if (show) {
-      el.classList.add('field-error');
-    } else {
-      el.classList.remove('field-error');
-    }
-  }
+// ── Field validation helper ────────────────────────────
+function wsFieldError(inputId, errId, show) {
+  var el  = document.getElementById(inputId);
+  var err = document.getElementById(errId);
+  if (el)  el.classList.toggle('input-error', show);
   if (err) err.style.display = show ? 'block' : 'none';
 }
 
-function submitApplication() {
-  var btn = document.getElementById('apply-submit-btn');
-  var errEl = document.getElementById('apply-error');
+// ── Submit ─────────────────────────────────────────────
+function wsSubmitApplication() {
+  var btn    = document.getElementById('ws-submit-btn');
+  var errEl  = document.getElementById('ws-apply-err');
   errEl.style.display = 'none';
 
-  var businessName = document.getElementById('f-business').value.trim();
-  var contactName = document.getElementById('f-name').value.trim();
-  var email = document.getElementById('f-email').value.trim();
-  var address = document.getElementById('f-address').value.trim();
-  var storeType = document.getElementById('f-store-type').value;
+  var businessName = document.getElementById('ws-business').value.trim();
+  var contactName  = document.getElementById('ws-name').value.trim();
+  var email        = document.getElementById('ws-email').value.trim();
+  var emailValid   = email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   var hasError = false;
 
-  showFieldError('f-business', 'e-business', !businessName);
+  // Brand selection
+  if (!selectedBrands.length) {
+    document.getElementById('ws-brand-err').style.display = 'block';
+    hasError = true;
+  }
+
+  wsFieldError('ws-business', 'e-ws-business', !businessName);
   if (!businessName) hasError = true;
 
-  showFieldError('f-name', 'e-name', !contactName);
+  wsFieldError('ws-name', 'e-ws-name', !contactName);
   if (!contactName) hasError = true;
 
-  var emailValid = email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  showFieldError('f-email', 'e-email', !emailValid);
+  wsFieldError('ws-email', 'e-ws-email', !emailValid);
   if (!emailValid) hasError = true;
-
-  showFieldError('f-address', 'e-address', !address);
-  if (!address) hasError = true;
-
-  showFieldError('f-store-type', 'e-store-type', !storeType);
-  if (!storeType) hasError = true;
 
   if (hasError) return;
 
@@ -462,31 +491,28 @@ function submitApplication() {
   btn.textContent = 'Submitting...';
 
   firebase.firestore().collection('portal_inquiries').add({
-    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    businessName: businessName,
-    contactName: contactName,
-    email: email,
-    phone: document.getElementById('f-phone').value.trim(),
-    address: address,
-    storeType: storeType,
-    howHeard: document.getElementById('f-how-heard').value.trim(),
-    monthlyVolume: document.getElementById('f-volume').value,
-    usesDistributor: document.getElementById('f-uses-dist').value,
-    distributorName: document.getElementById('f-dist-name').value.trim(),
-    storeDescription: document.getElementById('f-description').value.trim(),
-    contactPreference: document.getElementById('f-contact-pref').value,
-    status: 'new',
-    source: 'wholesale_page'
+    submittedAt:     firebase.firestore.FieldValue.serverTimestamp(),
+    businessName:    businessName,
+    contactName:     contactName,
+    email:           email,
+    phone:           document.getElementById('ws-phone').value.trim(),
+    address:         document.getElementById('ws-address').value.trim(),
+    storeType:       document.getElementById('ws-type').value,
+    message:         document.getElementById('ws-message').value.trim(),
+    howHeard:        document.getElementById('ws-how-heard').value.trim(),
+    brandsInterested: selectedBrands.slice(),
+    source:          'wholesale_page',
+    status:          'new'
   }).then(function() {
-    document.getElementById('apply-form-card').innerHTML =
-      '<div style="text-align:center;padding:40px 20px">' +
-      '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" style="height:40px;margin-bottom:20px">' +
-      '<h3 style="font-size:22px;font-weight:700;color:#7B4FA0;margin-bottom:12px">Application received.</h3>' +
-      '<p style="font-size:15px;color:#6b7280;line-height:1.6">Thanks ' + contactName + ' — we\'ll be in touch within two business days. We\'re looking forward to learning more about ' + businessName + '.</p>' +
+    var card = document.getElementById('apply-form-card');
+    card.innerHTML =
+      '<div class="apply-success">' +
+        '<h3>Application received.</h3>' +
+        '<p>We review every application and will follow up at the email address you provided within 1 business day.</p>' +
       '</div>';
   }).catch(function(e) {
     console.error('Application submit error:', e);
-    errEl.textContent = 'Submission failed — please try again or email sales@drinkpurpl.com';
+    errEl.textContent = 'Submission failed. Please try again or email graham@pumpkinblossomfarm.com';
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Submit Application';
