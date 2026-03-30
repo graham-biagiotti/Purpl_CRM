@@ -112,21 +112,24 @@ input:focus,textarea:focus,select:focus{
 
     <!-- Brand selector -->
     <div id="brand-selector" style="margin-bottom:20px">
-      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:12px;font-weight:500">What would you like to order?</p>
+      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:12px;font-weight:500">Select one or both — you can carry both lines</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="brand-card sel-purpl" id="brand-card-purpl" onclick="toggleBrand('purpl')">
           <div class="brand-checkmark bck-purpl">✓</div>
           <div style="font-size:28px;margin-bottom:6px">💜</div>
           <div style="font-size:15px;font-weight:700;color:#1a1a2e">purpl lemonade</div>
           <div style="font-size:12px;color:#6b7280;margin-top:4px">Lavender-infused lemonade<br>12-pack cases</div>
+          <div id="bc-add-hint-purpl" style="display:none;font-size:12px;color:#8B5FBF;margin-top:8px;font-style:italic">+ Add this line too</div>
         </div>
         <div class="brand-card" id="brand-card-lf" onclick="toggleBrand('lf')">
           <div class="brand-checkmark bck-lf">✓</div>
           <div style="font-size:28px;margin-bottom:6px">🌿</div>
           <div style="font-size:15px;font-weight:700;color:#1a1a2e">Lavender Fields</div>
           <div style="font-size:12px;color:#6b7280;margin-top:4px">Farm products &amp; gifts<br>wholesale</div>
+          <div id="bc-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:8px;font-style:italic">+ Add this line too</div>
         </div>
       </div>
+      <div id="bc-both-badge" style="display:none;text-align:center;color:#15803d;font-size:13px;font-weight:600;margin-top:10px">Both lines selected ✓</div>
     </div>
 
     <div id="returning-banner" style="display:none;
@@ -521,6 +524,14 @@ function updateBrandVisibility() {
   if (purplSec) purplSec.style.display = _brandPurpl ? '' : 'none';
   if (lfSec)    lfSec.style.display    = _brandLf    ? '' : 'none';
   if (notice)   notice.style.display   = (_brandPurpl && _brandLf) ? '' : 'none';
+  // Selection affordance hints
+  var both     = _brandPurpl && _brandLf;
+  var hintP = document.getElementById('bc-add-hint-purpl');
+  var hintL = document.getElementById('bc-add-hint-lf');
+  var badge = document.getElementById('bc-both-badge');
+  if (hintP) hintP.style.display = (!_brandPurpl && _brandLf)  ? '' : 'none';
+  if (hintL) hintL.style.display = (!_brandLf   && _brandPurpl) ? '' : 'none';
+  if (badge) badge.style.display = both ? '' : 'none';
 }
 
 function renderLfSkus(skus, prevOrder) {

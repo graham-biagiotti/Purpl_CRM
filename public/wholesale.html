@@ -163,7 +163,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
       <li><a href="#terms-section">Terms</a></li>
       <li><a href="#apply-section">Apply</a></li>
     </ul>
-    <a href="/order" class="nav-order">Stockist Login</a>
+    <a href="/order" class="nav-order">Retailer Login</a>
   </div>
 </nav>
 
@@ -184,7 +184,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
     <h1>Two farm-made brands. One wholesale partner.</h1>
     <p>Lavender lemonade and handcrafted lavender goods, grown and made in Warner, New Hampshire.</p>
     <a href="#apply-section" class="hero-cta">Apply to Carry Our Products</a>
-    <a href="/order" class="hero-order-link">Already a stockist? Place an order &rarr;</a>
+    <a href="/order" class="hero-order-link">Already a retailer? Place an order &rarr;</a>
   </div>
 </div>
 
@@ -303,8 +303,8 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
       </div>
       <div>
         <h3 class="terms-h3">Who We Work With</h3>
-        <p class="terms-p">We partner with specialty grocery stores, co-ops, natural food retailers, gift shops, spas, wellness studios, farm stores, and cafes. We keep our stockist list intentional — we're selective about the retail partners we bring on so we can support each one well.</p>
-        <p class="stockist-note">Current stockists include:</p>
+        <p class="terms-p">We partner with specialty grocery stores, co-ops, natural food retailers, gift shops, spas, wellness studios, farm stores, and cafes. We keep our retailer list intentional — we're selective about the retail partners we bring on so we can support each one well.</p>
+        <p class="stockist-note">Current retailers include:</p>
         <div class="stockist-names">
           Artisans New London &nbsp;·&nbsp; Sweet Beet Market &nbsp;·&nbsp; Gilford Country Store<br>
           Goffstown Green Thumb &nbsp;·&nbsp; Calefs Country Store &nbsp;·&nbsp; Fuller Gardens<br>
@@ -319,23 +319,28 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- SECTION 5 — APPLICATION FORM -->
 <div class="apply-section" id="apply-section">
   <div class="apply-inner">
-    <h2 class="apply-h2">Apply to Become a Stockist</h2>
+    <h2 class="apply-h2">Apply to Become a Retailer</h2>
     <p class="apply-sub">Tell us about your store and which lines interest you. We'll be in touch within 1 business day.</p>
 
     <div class="form-card" id="apply-form-card">
       <!-- Brand selection -->
       <div class="form-group">
         <label class="form-label">Which line(s) are you interested in carrying?</label>
+        <p style="font-size:13px;color:var(--muted,#6b7280);text-align:center;margin:0 0 10px">Select one or both — you can carry both lines</p>
         <div class="brand-select-row">
           <div class="ws-brand-card" id="ws-brand-purpl" onclick="wsToggleBrand('purpl')">
             <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="ws-card-purpl-logo">
             <div class="ws-card-purpl-name">purpl lemonade</div>
+            <div id="ws-add-hint-purpl" style="display:none;font-size:12px;color:#8B5FBF;margin-top:6px;font-style:italic">+ Add this line too</div>
           </div>
           <div class="ws-brand-card" id="ws-brand-lf" onclick="wsToggleBrand('lf')">
             <div class="ws-card-lf-name">lavender fields</div>
             <div class="ws-card-lf-sub">at Pumpkin Blossom Farm</div>
+            <div id="ws-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:6px;font-style:italic">+ Add this line too</div>
           </div>
         </div>
+        <div id="ws-both-badge" style="display:none;text-align:center;color:#15803d;font-size:13px;font-weight:600;margin-top:8px">Both lines selected ✓</div>
+        <p style="font-size:12px;color:var(--muted,#6b7280);text-align:center;margin:6px 0 0">Most of our retail partners carry both lines.</p>
         <div class="brand-err" id="ws-brand-err">Please select at least one line.</div>
       </div>
 
@@ -447,6 +452,16 @@ function wsToggleBrand(brand) {
     card.classList.remove(cls);
   }
   document.getElementById('ws-brand-err').style.display = 'none';
+  // Update selection affordance hints
+  var hasPurpl = selectedBrands.indexOf('purpl') !== -1;
+  var hasLf    = selectedBrands.indexOf('lf')    !== -1;
+  var both     = hasPurpl && hasLf;
+  var hintP = document.getElementById('ws-add-hint-purpl');
+  var hintL = document.getElementById('ws-add-hint-lf');
+  var badge = document.getElementById('ws-both-badge');
+  if (hintP) hintP.style.display = (!hasPurpl && hasLf)  ? '' : 'none';
+  if (hintL) hintL.style.display = (!hasLf    && hasPurpl) ? '' : 'none';
+  if (badge) badge.style.display = both ? '' : 'none';
 }
 
 // ── Field validation helper ────────────────────────────

@@ -1524,6 +1524,13 @@
             <label>Body</label>
             <textarea id="me-body" rows="10" placeholder="Email body..."></textarea>
           </div>
+          <div class="form-row" style="margin-bottom:8px">
+            <label>Send from</label>
+            <div class="ac-brand-btns" id="me-from-btns" style="margin-top:4px">
+              <button type="button" class="ac-brand-btn active" data-val="sales@drinkpurpl.com" onclick="setMeFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
+              <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMeFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
+            </div>
+          </div>
           <div id="me-broadcast-status" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
           <button class="btn primary" id="me-send-btn" onclick="meBroadcastSend()">📧 Create mailto: Drafts (<span id="me-send-count">0</span> accounts)</button>
         </div>
@@ -1698,6 +1705,14 @@
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
       <input type="checkbox" id="mdo-log-check" style="width:14px;height:14px">
       <label for="mdo-log-check" style="font-size:13px;cursor:pointer">Auto-log as outreach when draft is generated</label>
+    </div>
+    <!-- Send from -->
+    <div class="form-row" style="margin-bottom:10px">
+      <label>Send from</label>
+      <div class="ac-brand-btns" id="mdo-from-btns" style="margin-top:4px">
+        <button type="button" class="ac-brand-btn active" data-val="sales@drinkpurpl.com" onclick="setMdoFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
+        <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMdoFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
+      </div>
     </div>
     <!-- Generate button -->
     <button class="btn primary" id="mdo-generate-btn" onclick="generateOutreachDraft()" style="margin-bottom:14px">✨ Generate Draft</button>
@@ -2317,47 +2332,49 @@
   </div>
 </div>
 
-<!-- Add Retail Invoice -->
+<!-- Add / Edit purpl Invoice (line-item) -->
 <div class="overlay" id="modal-add-inv">
-  <div class="modal" style="max-width:580px">
-    <div class="modal-hdr"><h2>Add Invoice</h2><button class="modal-close btn sm">✕</button></div>
+  <div class="modal" style="max-width:660px">
+    <div class="modal-hdr"><h2 id="iv-modal-title">New purpl Invoice</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
-      <div class="form-group"><label>Account *</label>
-        <select id="iv-account" onchange="_ivAutoFillPrice()"></select>
-      </div>
-      <div class="form-group"><label>Invoice Date (can be post-dated)</label>
-        <input type="date" id="iv-date">
-        <div style="font-size:11px;color:var(--muted);margin-top:3px">You can post-date this invoice — set any date you need.</div>
-      </div>
+      <div class="form-group"><label>Invoice #</label><input id="iv-number" placeholder="INV-001"></div>
+      <div class="form-group"><label>Account *</label><select id="iv-account" onchange="ivAccountChange()"></select></div>
     </div>
     <div class="form-row col2">
-      <div class="form-group"><label>Pricing Type</label>
-        <select id="iv-price-type" onchange="_ivAutoFillPrice()">
-          <option value="direct">Direct Retailer</option>
+      <div class="form-group"><label>Issued</label><input type="date" id="iv-date"></div>
+      <div class="form-group"><label>Due</label><input type="date" id="iv-due"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Pricing Tier</label>
+        <select id="iv-tier" onchange="ivTierChange()">
+          <option value="direct">Direct</option>
           <option value="dist">Distributor</option>
           <option value="custom">Custom</option>
-          <option value="manual">Manual</option>
         </select>
       </div>
-      <div class="form-group"><label>Price per Case ($)</label>
-        <input type="number" id="iv-ppc" step="0.01" min="0" placeholder="0.00" oninput="calcInvTotal()">
-        <input type="hidden" id="iv-price-per-case">
+      <div class="form-group"><label>Status</label>
+        <select id="iv-status">
+          <option value="draft">Draft</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
+        </select>
       </div>
     </div>
-    <div class="form-row col2">
-      <div class="form-group"><label>Cases</label>
-        <input type="number" id="iv-cases" min="1" step="1" placeholder="0" oninput="calcInvTotal()">
-      </div>
-      <div class="form-group"><label>Total Amount ($) — auto-calculated</label>
-        <input type="number" id="iv-amt" step="0.01" readonly style="background:var(--surface);color:var(--muted)">
+    <div style="margin-bottom:14px">
+      <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
+      <div id="iv-line-items"></div>
+      <div style="text-align:right;font-weight:700;font-size:15px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px">
+        Total: <span id="iv-total">$0.00</span>
       </div>
     </div>
     <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
-      <textarea id="iv-notes" rows="3" style="width:100%;resize:vertical" placeholder="Optional notes…"></textarea>
+      <textarea id="iv-notes" rows="2" style="width:100%;resize:vertical;box-sizing:border-box" placeholder="Optional notes…"></textarea>
     </div>
     <div class="modal-footer">
+      <button class="btn red" id="iv-delete-btn" style="display:none;margin-right:auto">Delete</button>
       <button class="modal-close btn">Cancel</button>
-      <button class="btn primary" onclick="saveInv()">Save Invoice</button>
+      <button class="btn primary" id="iv-save-btn">Save Invoice</button>
     </div>
   </div>
 </div>

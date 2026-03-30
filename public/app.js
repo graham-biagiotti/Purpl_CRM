@@ -607,65 +607,163 @@ function setInvStatus(id, status) {
 //  RETAIL INVOICES (standalone customer invoices)
 // ══════════════════════════════════════════════════════════
 
-function openAddInv(accountId=null, priceType='direct', cases=null, notesText='') {
-  // Populate account dropdown
-  const sel = qs('#iv-account');
-  if (sel) {
-    const accounts = DB.a('ac').filter(a=>a.status==='active').sort((a,b)=>a.name>b.name?1:-1);
-    sel.innerHTML = '<option value="">— Select account —</option>' +
-      accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
-    if (accountId) sel.value = accountId;
-  }
-  if (qs('#iv-date'))       qs('#iv-date').value = today();
-  if (qs('#iv-price-type')) qs('#iv-price-type').value = priceType || 'direct';
-  if (qs('#iv-cases'))      qs('#iv-cases').value = cases || '';
-  if (qs('#iv-amt'))        qs('#iv-amt').value = '';
-  if (qs('#iv-notes'))      qs('#iv-notes').value = notesText || '';
+// purpl invoice SKUs
+const IV_SKUS = [
+  {id:'classic',   name:'Classic 12-pack'},
+  {id:'blueberry', name:'Blueberry 12-pack'},
+  {id:'peach',     name:'Peach 12-pack'},
+  {id:'raspberry', name:'Raspberry 12-pack'},
+  {id:'variety',   name:'Variety 12-pack'},
+];
 
-  // Auto-fill price from account's saved pricing
-  if (accountId) {
-    const ac = DB.a('ac').find(a=>a.id===accountId);
-    const acct = ac || {};
-    // Auto-detect best price: type-specific → direct → custom fallback
-    let price = null;
-    if (priceType === 'direct') price = acct.pricePerCaseDirect || null;
-    if (priceType === 'dist')   price = acct.pricePerCaseDist   || null;
-    if (priceType === 'custom') price = acct.pricePerCaseCustom || null;
-    if (!price) price = acct.pricePerCaseDirect || acct.pricePerCaseCustom || null;
-    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = price || '';
-    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = price || '';
-  } else {
-    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = '';
-    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = '';
+// openAddInv kept as entry-point alias (called from portal approval flows etc.)
+function openAddInv(accountId=null, priceType='direct', cases=null, notesText='') {
+  openInvModal(null, accountId, priceType, notesText);
+}
+
+function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNotes='') {
+  const isNew = !id;
+  const inv   = id ? DB.a('iv').find(x => x.id === id && x.number) : null;
+
+  qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
+
+  if (isNew) {
+    const existing = DB.a('iv').filter(x => x.number);
+    const num = existing.length + 1;
+    if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
+    if (qs('#iv-date'))   qs('#iv-date').value   = today();
+    const terms  = DB.obj('invoice_settings',{}).terms || 30;
+    const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
+    if (qs('#iv-due'))    qs('#iv-due').value    = dueStr;
+    if (qs('#iv-status')) qs('#iv-status').value = 'draft';
+    if (qs('#iv-notes'))  qs('#iv-notes').value  = prefillNotes || '';
+    if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
+  } else if (inv) {
+    if (qs('#iv-number')) qs('#iv-number').value = inv.number||'';
+    if (qs('#iv-date'))   qs('#iv-date').value   = inv.date||today();
+    if (qs('#iv-due'))    qs('#iv-due').value    = inv.due||'';
+    if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
+    if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
+    if (qs('#iv-delete-btn')) {
+      qs('#iv-delete-btn').style.display = '';
+      qs('#iv-delete-btn').onclick = () => deleteInvRecord(id);
+    }
   }
-  _ivCalcTotal();
-  calcInvTotal();
+
+  // Account selector
+  const acSel = qs('#iv-account');
+  if (acSel) {
+    const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+    acSel.innerHTML = '<option value="">— Select Account —</option>' +
+      accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+    const acId = inv?.accountId || prefillAccountId;
+    if (acId) acSel.value = acId;
+  }
+
+  // Pricing tier
+  const tierSel = qs('#iv-tier');
+  if (tierSel) tierSel.value = inv?.priceType || prefillTier || 'direct';
+
+  // Line items
+  _ivRenderLineRows(inv?.lineItems || []);
+
+  qs('#iv-save-btn').onclick = () => saveInv(id, isNew);
   openModal('modal-add-inv');
 }
 
-function _ivAutoFillPrice() {
+function _ivGetPrice(ac, tier) {
+  if (!ac) return 0;
+  if (tier === 'direct') return parseFloat(ac.pricePerCaseDirect) || 0;
+  if (tier === 'dist')   return parseFloat(ac.pricePerCaseDist)   || 0;
+  if (tier === 'custom') return parseFloat(ac.pricePerCaseCustom) || 0;
+  return 0;
+}
+
+function _ivRenderLineRows(existingItems) {
+  const container = qs('#iv-line-items');
+  if (!container) return;
+  container.innerHTML = '';
   const acId = qs('#iv-account')?.value;
-  const type = qs('#iv-price-type')?.value;
-  if (!acId || type === 'manual') return;
-  const ac = DB.a('ac').find(a=>a.id===acId);
-  if (!ac) return;
-  let price = null;
-  if (type === 'direct')  price = ac.pricePerCaseDirect  || null;
-  if (type === 'dist')    price = ac.pricePerCaseDist    || null;
-  if (type === 'custom')  price = ac.pricePerCaseCustom  || null;
-  if (price) {
-    if (qs('#iv-price-per-case')) qs('#iv-price-per-case').value = price;
-    if (qs('#iv-ppc'))            qs('#iv-ppc').value            = price;
-    _ivCalcTotal();
-    calcInvTotal();
-  }
+  const tier = qs('#iv-tier')?.value || 'direct';
+  const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  const basePrice = _ivGetPrice(ac, tier);
+  IV_SKUS.forEach(sku => {
+    const existing  = existingItems.find(x => x.skuId === sku.id);
+    const ppc       = existing?.pricePerCase ?? basePrice;
+    const cases     = existing?.cases || 0;
+    const lineTotal = cases * ppc;
+    const row = document.createElement('div');
+    row.className     = 'lfi-item-row';
+    row.dataset.skuId = sku.id;
+    row.innerHTML = `
+      <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
+      <input class="iv-cases" type="number" min="0" step="1" value="${cases}" style="width:70px" oninput="_ivRowCalc('${sku.id}')">
+      <span class="lfi-cases-label">cases</span>
+      <span class="lfi-units-display">= <strong class="iv-units">${cases * CANS_PER_CASE}</strong> cans</span>
+      <input class="iv-ppc" type="number" min="0" step="0.01" value="${ppc||''}" placeholder="$/cs" style="width:76px" oninput="_ivRowCalc('${sku.id}')">
+      <span class="lfi-line-amt iv-line-total">${fmtC(lineTotal)}</span>`;
+    container.appendChild(row);
+  });
+  _ivCalcTotal();
+}
+
+function ivAccountChange() {
+  const acId = qs('#iv-account')?.value;
+  const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  const tier = qs('#iv-tier')?.value || 'direct';
+  const basePrice = _ivGetPrice(ac, tier);
+  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+    const ppcEl = row.querySelector('.iv-ppc');
+    if (ppcEl && (!ppcEl.value || ppcEl.value === '0')) {
+      ppcEl.value = basePrice || '';
+    }
+    _ivRowCalc(row.dataset.skuId);
+  });
+}
+
+function ivTierChange() {
+  const acId = qs('#iv-account')?.value;
+  const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  const tier = qs('#iv-tier')?.value || 'direct';
+  const basePrice = _ivGetPrice(ac, tier);
+  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+    const ppcEl = row.querySelector('.iv-ppc');
+    if (ppcEl) ppcEl.value = basePrice || '';
+    _ivRowCalc(row.dataset.skuId);
+  });
+}
+
+function _ivRowCalc(skuId) {
+  const container = qs('#iv-line-items');
+  if (!container) return;
+  const row = container.querySelector(`[data-sku-id="${skuId}"]`);
+  if (!row) return;
+  const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
+  const ppc   = parseFloat(row.querySelector('.iv-ppc')?.value || 0);
+  const units = cases * CANS_PER_CASE;
+  const lt    = cases * ppc;
+  const unitsEl = row.querySelector('.iv-units');
+  const ltEl    = row.querySelector('.iv-line-total');
+  if (unitsEl) unitsEl.textContent = units;
+  if (ltEl)    ltEl.textContent    = fmtC(lt);
+  _ivCalcTotal();
 }
 
 function _ivCalcTotal() {
-  const cases = parseFloat(qs('#iv-cases')?.value)||0;
-  const price = parseFloat(qs('#iv-price-per-case')?.value)||0;
-  if (qs('#iv-amt')) qs('#iv-amt').value = cases && price ? (cases * price).toFixed(2) : '';
+  const container = qs('#iv-line-items');
+  if (!container) return;
+  let total = 0;
+  container.querySelectorAll('.lfi-item-row').forEach(row => {
+    const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
+    const ppc   = parseFloat(row.querySelector('.iv-ppc')?.value || 0);
+    total += cases * ppc;
+  });
+  const el = qs('#iv-total');
+  if (el) el.textContent = fmtC(total);
 }
+
+// Legacy alias called from old oninput handlers
+function calcInvTotal() { _ivCalcTotal(); }
 
 function saveRetailInv() {
   const acId  = qs('#iv-account')?.value;
@@ -1398,6 +1496,7 @@ function renderAccounts() {
           <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).join(' · ')}</div>
           ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).join(' · ')}</div>`:''}
           ${a.email?`<div class="ac-card-email">✉ ${a.email}</div>`:''}
+          ${lastNote?.text?`<div class="ac-compact-notes">${escHtml(lastNote.text.slice(0,80))}</div>`:''}
           ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
         </div>
         <div class="ac-card-badges">
@@ -1432,7 +1531,7 @@ function renderAccounts() {
         <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
         <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
         <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
-        <button class="btn sm run" onclick="openNewOrder('${a.id}')">+ Run</button>
+        <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
         <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
         <button class="btn sm" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button>
       </div>
@@ -1672,8 +1771,19 @@ async function _callAnthropicApi(userPrompt) {
   return JSON.parse(clean);
 }
 
+function _defaultFromForRegarding(r) {
+  return (r === 'purpl') ? 'sales@drinkpurpl.com' : 'graham@pumpkinblossomfarm.com';
+}
+
 function setMdoRegarding(val) {
   qs('#mdo-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+  setMdoFrom(_defaultFromForRegarding(val));
+}
+
+function setMdoFrom(val) {
+  qs('#mdo-from-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.val === val);
   });
 }
@@ -1770,7 +1880,10 @@ function mdoOpenMailto() {
   const body    = encodeURIComponent(qs('#mdo-body')?.value || '');
   const accountId = qs('#mdo-account-id').value;
   const a = DB.a('ac').find(x=>x.id===accountId);
-  const email = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
+  const email   = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
+  const fromAddr = qs('#mdo-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
+  // Show which account to use before opening
+  toast(`Opening — send from: ${fromAddr}`, 3500);
   window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
 }
 
@@ -1910,6 +2023,13 @@ function setMeRegarding(val) {
   qs('#me-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.val === val);
   });
+  setMeFrom(_defaultFromForRegarding(val));
+}
+
+function setMeFrom(val) {
+  qs('#me-from-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
 }
 
 async function meBroadcastGenerate() {
@@ -1937,11 +2057,12 @@ async function meBroadcastSend() {
   const subject  = qs('#me-subject')?.value || '';
   const body     = qs('#me-body')?.value    || '';
   const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
+  const fromAddr  = qs('#me-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
   const statusEl = qs('#me-broadcast-status');
 
   for (let i = 0; i < accounts.length; i++) {
     const a = accounts[i];
-    if (statusEl) statusEl.textContent = `Opening email ${i+1} of ${accounts.length}…`;
+    if (statusEl) statusEl.textContent = `Opening email ${i+1} of ${accounts.length}… (send from ${fromAddr})`;
     const email = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
     const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(mailto);
@@ -1956,7 +2077,7 @@ async function meBroadcastSend() {
     }));
     if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 500));
   }
-  if (statusEl) statusEl.textContent = `✓ Done — ${accounts.length} emails opened`;
+  if (statusEl) statusEl.textContent = `✓ Done — ${accounts.length} emails opened · Send from: ${fromAddr}`;
   toast(`${accounts.length} mailto: links opened ✓`);
 }
 
@@ -1984,7 +2105,8 @@ function _renderBatchWorker() {
   const a = _meBatchQueue[_meBatchIdx];
   const entries = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,2);
   const histHtml = entries.map(e=>`<div style="font-size:12px;color:var(--muted);margin-bottom:4px">${fmtD(e.date)} · ${e.type||'—'} — ${escHtml((e.notes||e.note||'').slice(0,80))}</div>`).join('') || '<div style="font-size:12px;color:var(--muted)">No history</div>';
-  const defaultReg = a.isPbf ? 'lf' : 'purpl';
+  const defaultReg  = a.isPbf ? 'lf' : 'purpl';
+  const defaultFrom = _defaultFromForRegarding(defaultReg);
 
   worker.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -2002,6 +2124,13 @@ function _renderBatchWorker() {
         <button type="button" class="ac-brand-btn ${defaultReg==='purpl'?'active':''}" data-val="purpl" onclick="setMebwRegarding('purpl')">💜 purpl</button>
         <button type="button" class="ac-brand-btn ${defaultReg==='lf'?'active':''}" data-val="lf" onclick="setMebwRegarding('lf')">🌿 LF</button>
         <button type="button" class="ac-brand-btn" data-val="both" onclick="setMebwRegarding('both')">Both</button>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:8px">
+      <label>Send from</label>
+      <div class="ac-brand-btns" id="mebw-from-btns">
+        <button type="button" class="ac-brand-btn ${defaultFrom==='sales@drinkpurpl.com'?'active':''}" data-val="sales@drinkpurpl.com" onclick="setMebwFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
+        <button type="button" class="ac-brand-btn ${defaultFrom!=='sales@drinkpurpl.com'?'active':''}" data-val="graham@pumpkinblossomfarm.com" onclick="setMebwFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:8px">
@@ -2030,6 +2159,13 @@ function _renderBatchWorker() {
 
 function setMebwRegarding(val) {
   qs('#mebw-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+  setMebwFrom(_defaultFromForRegarding(val));
+}
+
+function setMebwFrom(val) {
+  qs('#mebw-from-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
     b.classList.toggle('active', b.dataset.val === val);
   });
 }
@@ -2062,9 +2198,11 @@ async function meBatchGenerate(accountId) {
 
 function mebwOpenMailto(accountId) {
   const a = DB.a('ac').find(x=>x.id===accountId);
-  const email   = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
-  const subject = encodeURIComponent(qs('#mebw-subject')?.value||'');
-  const body    = encodeURIComponent(qs('#mebw-body')?.value||'');
+  const email    = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
+  const subject  = encodeURIComponent(qs('#mebw-subject')?.value||'');
+  const body     = encodeURIComponent(qs('#mebw-body')?.value||'');
+  const fromAddr = qs('#mebw-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
+  toast(`Opening — send from: ${fromAddr}`, 3500);
   window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
 }
 
@@ -4823,6 +4961,19 @@ function _renderDelLfInputs() {
     </div>`).join('');
 }
 
+function addAccountToRun(accountId) {
+  nav('orders-delivery');
+  switchODTab('route-builder');
+  setTimeout(() => {
+    const sel = qs('#del-account-sel');
+    if (sel) {
+      sel.value = accountId;
+      prefillStop(accountId);
+    }
+    qs('#del-stop-name')?.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 120);
+}
+
 function setDeliveryFulfillFilter(mode) {
   _deliveryFulfillFilter = mode;
   ['direct','all','dist'].forEach(m=>{
@@ -4901,6 +5052,16 @@ function prefillStop(accountId) {
       el.value = parCans > 0 ? Math.ceil(parCans / CANS_PER_CASE) : 0;
     }
   });
+  // Auto-show LF section for isPbf accounts, hide for others
+  const lfSec = qs('#del-lf-section');
+  if (lfSec) {
+    if (ac2.isPbf) {
+      lfSec.style.display = '';
+      _renderDelLfInputs();
+    } else {
+      lfSec.style.display = 'none';
+    }
+  }
 }
 
 function addStop() {
@@ -7909,11 +8070,9 @@ function markPaid(id) {
   toast('Marked as paid ✓');
 }
 
-// editInv — open add invoice modal pre-filled
+// editInv — open invoice modal pre-filled
 function editInv(id) {
-  const iv = DB.a('iv').find(x => x.id === id);
-  if (!iv) return;
-  openAddInv(iv.accountId || null, iv.priceType || 'direct', iv.cases || null, iv.notes || '');
+  openInvModal(id);
 }
 
 function renderInvoicesPage() {
@@ -8226,21 +8385,28 @@ function generateInvoicePrint(invoiceId) {
     <th style="text-align:right">Total</th>
   </tr></thead>
   <tbody>
-    <tr>
-      <td>
-        <strong>Classic Lavender Lemonade</strong>
-        <div style="font-size:11px;color:#9ca3af">
-          purpl · 12 fl oz · 12 cans/case</div>
-        ${iv.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(iv.notes)}</div>` : ''}
-      </td>
-      <td style="text-align:center">${iv.cases||'—'}</td>
-      <td style="text-align:center">${cans||'—'}</td>
-      <td style="text-align:right">
-        ${iv.pricePerCase ? fmt$(iv.pricePerCase) : '—'}</td>
-      <td style="text-align:right">
-        ${amt != null ? fmt$(amt) :
-          '<span style="color:#9ca3af">TBD</span>'}</td>
-    </tr>
+    ${(iv.lineItems||[]).length
+      ? iv.lineItems.map(li => `
+        <tr>
+          <td><strong>${esc(li.skuName||li.skuId||'purpl')}</strong>
+            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · ${CANS_PER_CASE} cans/case</div>
+          </td>
+          <td style="text-align:center">${li.cases||'—'}</td>
+          <td style="text-align:center">${(li.cases||0)*CANS_PER_CASE}</td>
+          <td style="text-align:right">${li.pricePerCase ? fmt$(li.pricePerCase) : '—'}</td>
+          <td style="text-align:right">${li.lineTotal != null ? fmt$(li.lineTotal) : '—'}</td>
+        </tr>`).join('')
+      : `<tr>
+          <td>
+            <strong>Classic Lavender Lemonade</strong>
+            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · 12 cans/case</div>
+            ${iv.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(iv.notes)}</div>` : ''}
+          </td>
+          <td style="text-align:center">${iv.cases||'—'}</td>
+          <td style="text-align:center">${cans||'—'}</td>
+          <td style="text-align:right">${iv.pricePerCase ? fmt$(iv.pricePerCase) : '—'}</td>
+          <td style="text-align:right">${amt != null ? fmt$(amt) : '<span style="color:#9ca3af">TBD</span>'}</td>
+        </tr>`}
   </tbody>
   <tfoot>
     <tr class="total-row">
@@ -8287,49 +8453,85 @@ function calcInvTotal() {
   }
 }
 
-function saveInv() {
-  const acId  = document.getElementById('iv-account')?.value;
-  const date  = document.getElementById('iv-date')?.value  || today();
-  const cases = parseInt(document.getElementById('iv-cases')?.value) || null;
-  const ppc   = parseFloat(document.getElementById('iv-ppc')?.value) || null;
-  const notes = document.getElementById('iv-notes')?.value?.trim() || '';
-  const type  = document.getElementById('iv-price-type')?.value || 'direct';
+function saveInv(id, isNew) {
+  const number    = qs('#iv-number')?.value?.trim() || '';
+  const accountId = qs('#iv-account')?.value;
+  const date      = qs('#iv-date')?.value || today();
+  const due       = qs('#iv-due')?.value || '';
+  const status    = qs('#iv-status')?.value || 'draft';
+  const notes     = qs('#iv-notes')?.value?.trim() || '';
+  const tier      = qs('#iv-tier')?.value || 'direct';
 
-  if (!acId)   { toast('Select an account'); return; }
-  if (!cases)  { toast('Enter case quantity'); return; }
+  if (!accountId) { toast('Select an account'); return; }
 
-  const ac = DB.a('ac').find(x => x.id === acId) || {};
+  const ac          = DB.a('ac').find(x => x.id === accountId) || {};
   const invSettings = DB.obj('invoice_settings', {});
-  const terms = invSettings.terms || 30;
-  const dueDate = new Date(new Date(date + 'T12:00:00').getTime() + terms * 864e5)
-    .toISOString().slice(0, 10);
 
-  const existing = DB.a('iv').filter(x => x.number);
-  const num = existing.length + 1;
-  const number = 'INV-' + new Date().getFullYear() + '-' + String(num).padStart(3, '0');
+  // Collect line items from DOM
+  const lineItems = [];
+  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+    const skuId = row.dataset.skuId;
+    const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
+    if (!cases) return;
+    const ppc    = parseFloat(row.querySelector('.iv-ppc')?.value || 0);
+    const skuObj = IV_SKUS.find(s => s.id === skuId);
+    lineItems.push({
+      skuId,
+      skuName:      skuObj?.name || skuId,
+      cases,
+      units:        cases * CANS_PER_CASE,
+      pricePerCase: ppc,
+      lineTotal:    cases * ppc,
+    });
+  });
 
-  DB.push('iv', {
-    id:           uid(),
-    number,
-    accountId:    acId,
+  if (!lineItems.length) { toast('Enter at least one case quantity'); return; }
+
+  const totalCases = lineItems.reduce((s, l) => s + l.cases, 0);
+  const totalCans  = totalCases * CANS_PER_CASE;
+  const totalAmt   = lineItems.reduce((s, l) => s + l.lineTotal, 0);
+
+  // isNew may be undefined if called from old code paths — treat missing id as new
+  const _isNew   = isNew !== false && !id;
+  const existing = _isNew ? null : DB.a('iv').find(x => x.id === id && x.number);
+  const saveId   = _isNew ? uid() : id;
+
+  const rec = {
+    ...(existing||{}),
+    id:           saveId,
+    number:       number || existing?.number || ('INV-' + String(DB.a('iv').filter(x=>x.number).length+1).padStart(3,'0')),
+    accountId,
     accountName:  ac.name || '',
     date,
-    due:          dueDate,
-    cases,
-    cans:         (cases || 0) * CANS_PER_CASE,
-    pricePerCase: ppc,
-    amount:       cases && ppc ? cases * ppc : null,
-    priceType:    type,
-    status:       'draft',
-    source:       'manual',
+    due,
+    cases:        totalCases,
+    cans:         totalCans,
+    pricePerCase: lineItems[0]?.pricePerCase || null,
+    amount:       totalAmt,
+    priceType:    tier,
+    status,
     notes,
+    lineItems,
+    source:       existing?.source || 'manual',
     fromEmail:    invSettings.fromEmail || 'sales@drinkpurpl.com',
-  });
+  };
+
+  if (_isNew) DB.push('iv', rec);
+  else DB.update('iv', id, () => rec);
 
   closeModal('modal-add-inv');
   if (currentPage === 'invoices') renderInvoicesPage();
   renderInvoiceStatus();
   toast('Invoice saved ✓');
+}
+
+function deleteInvRecord(id) {
+  if (!confirm2('Delete this invoice?')) return;
+  DB.remove('iv', id);
+  closeModal('modal-add-inv');
+  if (currentPage === 'invoices') renderInvoicesPage();
+  renderInvoiceStatus();
+  toast('Invoice deleted');
 }
 
 async function importWholesaleInquiries() {
