@@ -32,6 +32,12 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Wholesale page: public can submit inquiries
+    match /portal_inquiries/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
     // Everything else requires auth
     match /{document=**} {
       allow read, write: if request.auth != null;
