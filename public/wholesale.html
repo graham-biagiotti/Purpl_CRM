@@ -26,7 +26,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* ── NAV ─────────────────────────────── */
 nav{height:60px;background:rgba(45,27,78,0.97);position:fixed;top:0;width:100%;z-index:200;display:flex;align-items:center}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1100px;margin:0 auto;padding:0 24px}
-.nav-logo{height:30px;filter:brightness(10)}
+.nav-logo{height:34px;filter:brightness(0) invert(1)}
 .nav-links{display:flex;gap:24px;list-style:none}
 .nav-links a{font-size:13px;color:rgba(255,255,255,0.55);text-decoration:none;transition:color .15s}
 .nav-links a:hover{color:rgba(255,255,255,0.9)}
@@ -156,7 +156,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- NAV -->
 <nav>
   <div class="nav-inner">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="nav-logo">
+    <img src="/images/double-logo.png" alt="Pumpkin Blossom Farm" class="nav-logo">
     <ul class="nav-links">
       <li><a href="#purpl-section">purpl</a></li>
       <li><a href="#lf-section">Lavender Fields</a></li>
@@ -172,18 +172,12 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   <div class="hero-inner">
     <div class="hero-farm-label">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</div>
     <div class="hero-brands">
-      <div class="hero-brand">
-        <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" class="hero-purpl-logo">
-      </div>
-      <div class="hero-brand-divider"></div>
-      <div class="hero-brand">
-        <div class="hero-lf-name">lavender fields</div>
-        <div class="hero-lf-sub">at Pumpkin Blossom Farm</div>
-      </div>
+      <img src="/images/double-logo.png" alt="purpl + Lavender Fields at Pumpkin Blossom Farm" style="max-width:420px;width:90%;filter:brightness(0) invert(1);display:block;margin:0 auto">
     </div>
     <h1>Two farm-made brands. One wholesale partner.</h1>
     <p>Lavender lemonade and handcrafted lavender goods, grown and made in Warner, New Hampshire.</p>
     <a href="#apply-section" class="hero-cta">Apply to Carry Our Products</a>
+    <a href="/images/wholesale-catalog.pdf" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:16px;font-size:14px;color:rgba(255,255,255,0.7);text-decoration:none;border:1px solid rgba(255,255,255,0.2);border-radius:5px;padding:8px 18px;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background=''">📄 Download Wholesale Catalog</a>
     <a href="/order" class="hero-order-link">Already a retailer? Place an order &rarr;</a>
   </div>
 </div>
@@ -239,6 +233,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- SECTION 3 — LAVENDER FIELDS -->
 <div class="section" id="lf-section" style="background:var(--lf-soft)">
   <div class="container">
+    <img src="/images/lf-logo.jpg" alt="Lavender Fields at Pumpkin Blossom Farm" style="height:64px;display:block;margin-bottom:20px;border-radius:4px">
     <div class="eyebrow eyebrow-lf">Lavender Fields</div>
     <h2 class="section-h2">Handcrafted lavender goods from our fields</h2>
     <p class="section-desc">Lavender Fields at Pumpkin Blossom Farm is home to over 7,000 lavender plants grown without pesticides in Warner, New Hampshire. We handcraft a range of self-care and culinary products using our farm-grown lavender — from simple syrup to aromatherapy accessories. Woman-owned, NH-made, and designed for specialty, gift, spa, and wellness retail.</p>
@@ -316,6 +311,12 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   </div>
 </div>
 
+<!-- CATALOG STRIP -->
+<div style="background:var(--purpl-dark);padding:32px 24px;text-align:center">
+  <p style="color:rgba(255,255,255,0.7);font-size:15px;margin-bottom:16px">Want full product details, pricing tiers, and SKU info?</p>
+  <a href="/images/wholesale-catalog.pdf" target="_blank" rel="noopener" style="display:inline-block;background:var(--purpl);color:#fff;border-radius:6px;padding:12px 28px;font-size:15px;font-weight:600;text-decoration:none">📄 Download Wholesale Catalog</a>
+</div>
+
 <!-- SECTION 5 — APPLICATION FORM -->
 <div class="apply-section" id="apply-section">
   <div class="apply-inner">
@@ -334,6 +335,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
             <div id="ws-add-hint-purpl" style="display:none;font-size:12px;color:#8B5FBF;margin-top:6px;font-style:italic">+ Add this line too</div>
           </div>
           <div class="ws-brand-card" id="ws-brand-lf" onclick="wsToggleBrand('lf')">
+            <img src="/images/lf-logo-circle.jpg" alt="Lavender Fields" style="height:40px;display:block;margin:0 auto 8px;border-radius:50%">
             <div class="ws-card-lf-name">lavender fields</div>
             <div class="ws-card-lf-sub">at Pumpkin Blossom Farm</div>
             <div id="ws-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:6px;font-style:italic">+ Add this line too</div>
