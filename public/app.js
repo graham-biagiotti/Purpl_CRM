@@ -568,19 +568,38 @@ function renderCadenceOverdue() {
   const card = qs('#dash-cadence-card');
   const el   = qs('#dash-cadence-overdue');
   if (!el) return;
-  const items = DB.a('ac').filter(a => {
-    if (a.cadence?.length) return false;
-    return daysAgo(a.created) >= 1;
+
+  const flags = [];
+
+  // Active accounts with no welcome email sent
+  DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
+    const cadence = a.cadence||[];
+    if (!cadence.some(c=>c.stage==='approved_welcome') && daysAgo(a.created)>=1) {
+      flags.push({id:a.id, name:a.name, reason:'Welcome email not sent', invoiceId:null});
+    }
   });
-  if (!items.length) { if (card) card.style.display = 'none'; return; }
-  if (card) card.style.display = '';
-  el.innerHTML = items.slice(0,8).map(a=>`
-    <div class="attn-item" onclick="openAccount('${a.id}')" style="cursor:pointer">
+
+  // Invoices without a sent notification
+  DB.a('ac').forEach(a=>{
+    const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
+    DB.a('iv').filter(x=>x.accountId===a.id&&x.number&&!sentIds.has(x.id)).forEach(inv=>{
+      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
+    });
+    DB.a('lf_invoices').filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
+      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number||inv.id} not sent to retailer`, invoiceId:inv.id});
+    });
+  });
+
+  if (!flags.length) { if (card) card.style.display='none'; return; }
+  if (card) card.style.display='';
+  el.innerHTML = flags.slice(0,8).map(f=>`
+    <div class="attn-item">
       <div class="attn-icon">⚠️</div>
       <div class="attn-info" style="flex:1">
-        <div class="attn-name">${a.name}</div>
-        <div class="attn-reason">No order cadence set &middot; added ${daysAgo(a.created)}d ago</div>
+        <div class="attn-name">${f.name}</div>
+        <div class="attn-reason">${f.reason}</div>
       </div>
+      <button class="btn xs primary" onclick="openAccountToEmailsTab('${f.id}')">Send Now</button>
     </div>`).join('');
 }
 
@@ -1780,14 +1799,22 @@ function openAccount(id) {
       t.classList.add('active');
       const pane = document.getElementById('mac-tab-'+t.dataset.tab);
       if (pane) pane.style.display='block';
-      // Lazy-load portal orders tab
       if (t.dataset.tab === 'portal-orders') renderMacPortalOrdersTab(id);
+      if (t.dataset.tab === 'emails') renderMacEmailsTab(id);
     };
   });
   // Default to first tab
   document.querySelectorAll('#modal-account .tab')[0]?.click();
 
   openModal('modal-account');
+}
+
+function openAccountToEmailsTab(id) {
+  openAccount(id);
+  setTimeout(() => {
+    const emailTab = document.querySelector('#modal-account .tab[data-tab="emails"]');
+    if (emailTab) emailTab.click();
+  }, 50);
 }
 
 function renderAccountNotes(a) {
@@ -1847,6 +1874,121 @@ function renderAccountOutreach(a) {
 }
 
 // ══════════════════════════════════════════════════════════
+//  EMAIL CADENCE TAB
+// ══════════════════════════════════════════════════════════
+
+function renderMacEmailsTab(id) {
+  const a     = DB.a('ac').find(x=>x.id===id);
+  const stEl  = qs('#mac-cadence-stages');
+  const logEl = qs('#mac-cadence-log');
+  if (!stEl || !a) return;
+
+  const cadence = a.cadence || [];
+
+  stEl.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Email Cadence</div>' +
+    CADENCE_STAGES.map(stage=>{
+      const sent = cadence.filter(c=>c.stage===stage.id).sort((x,y)=>y.sentAt>x.sentAt?1:-1);
+      const last = sent[0];
+      const isSent = !!last;
+      const dotCls = isSent ? 'cadence-dot sent' : 'cadence-dot pending';
+      const btnLabel = isSent ? 'Resend' : 'Send ✉️';
+      const btnCls = isSent ? 'btn xs' : 'btn xs primary';
+      // For invoice_sent, find latest invoice to pass along
+      const invArg = stage.id==='invoice_sent' ? `,'${_latestAccountInvoiceId(id)}'` : '';
+      return `<div class="cadence-stage">
+        <div class="${dotCls}"></div>
+        <div class="cadence-info">
+          <div class="cadence-label">${stage.label}</div>
+          <div class="cadence-desc">${stage.desc}</div>
+          ${isSent?`<div class="cadence-date">Sent ${fmtD(last.sentAt)} · ${last.method||'manual'}</div>`:''}
+        </div>
+        <button class="${btnCls}" onclick="openCadenceEmailPreview('${id}','${stage.id}'${invArg})">${btnLabel}</button>
+      </div>`;
+    }).join('');
+
+  if (cadence.length) {
+    const rows = cadence.slice().sort((a,b)=>b.sentAt>a.sentAt?1:-1).map(c=>{
+      const s = CADENCE_STAGES.find(x=>x.id===c.stage);
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'graham'}</td></tr>`;
+    }).join('');
+    logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } else {
+    logEl.innerHTML = '<div class="empty" style="padding:12px 0">No cadence emails sent yet</div>';
+  }
+}
+
+function _latestAccountInvoiceId(accountId) {
+  const purpl = DB.a('iv').filter(x=>x.accountId===accountId&&x.number).sort((a,b)=>b.created>a.created?1:-1)[0];
+  const lf    = DB.a('lf_invoices').filter(x=>x.accountId===accountId).sort((a,b)=>b.created>a.created?1:-1)[0];
+  if (!purpl && !lf) return '';
+  if (!purpl) return lf.id;
+  if (!lf)   return purpl.id;
+  return (purpl.created||'') >= (lf.created||'') ? purpl.id : lf.id;
+}
+
+function openCadenceEmailPreview(accountId, stageId, invoiceId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  const stage = CADENCE_STAGES.find(s=>s.id===stageId);
+  if (!stage) return;
+
+  let inv = null;
+  if (stageId === 'invoice_sent' && invoiceId) {
+    inv = DB.a('iv').find(x=>x.id===invoiceId) || DB.a('lf_invoices').find(x=>x.id===invoiceId);
+  }
+
+  const toEmail = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
+  const fromEmail = stage.from;
+  const subject   = stage.subject(inv);
+  const body      = stage.body(a, inv);
+
+  const el = qs('#mce-content');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="margin-bottom:14px;display:grid;gap:6px;font-size:13px;background:var(--bg);border-radius:8px;padding:12px">
+      <div><span style="font-size:11px;color:var(--muted);display:block">From</span><strong>${fromEmail}</strong></div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">To</span>${toEmail||'<em style="color:var(--muted)">(no email on file)</em>'}</div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">Subject</span><strong>${subject}</strong></div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px">Body
+        <button class="btn xs" style="font-weight:400" onclick="qs('#mce-body').readOnly=false;this.textContent='Editing';this.disabled=true">Edit</button>
+      </label>
+      <textarea id="mce-body" rows="12" style="font-size:13px;font-family:inherit;white-space:pre-wrap" readonly>${escHtml(body)}</textarea>
+    </div>`;
+
+  const gmailBtn = qs('#mce-gmail-btn');
+  if (gmailBtn) {
+    gmailBtn.onclick = () => {
+      const finalBody = qs('#mce-body')?.value || body;
+      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
+      markCadenceSent(accountId, stageId, 'mailto', invoiceId||null);
+      closeModal('modal-cadence-email');
+    };
+  }
+  const markBtn = qs('#mce-mark-sent-btn');
+  if (markBtn) {
+    markBtn.onclick = () => {
+      markCadenceSent(accountId, stageId, 'manual', invoiceId||null);
+      closeModal('modal-cadence-email');
+    };
+  }
+
+  openModal('modal-cadence-email');
+}
+
+function markCadenceSent(accountId, stageId, method, invoiceId) {
+  const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: 'graham', method: method||'manual' };
+  if (invoiceId) entry.invoiceId = invoiceId;
+  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
+  renderMacEmailsTab(accountId);
+  renderCadenceOverdue();
+  toast('Email logged as sent');
+}
+
+// ══════════════════════════════════════════════════════════
 //  AI EMAIL DRAFTING
 // ══════════════════════════════════════════════════════════
 const _AI_SYSTEM_PROMPT = `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`;
@@ -1855,6 +1997,55 @@ const _AI_SIGNATURE = `Graham Biagiotti - Director of Sales
 Direct: 603-748-3038
 393 Pumpkin Hill Rd. Warner, NH 03278
 Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages`;
+
+const SIGNATURE = _AI_SIGNATURE;
+
+const CADENCE_STAGES = [
+  {
+    id: 'application_received',
+    label: 'Application Received',
+    desc: 'Thank you for applying',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => 'Thank you for your wholesale application — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products at ${a.name}. We've received your application and will be in touch within 1 business day.\n\nIn the meantime, feel free to reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'approved_welcome',
+    label: 'Approved — Welcome + Login',
+    desc: 'Welcome + portal access',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => 'Welcome to the purpl wholesale program — your retailer portal is ready',
+    body: (a) => {
+      const token = a.orderPortalToken || '';
+      const portalLink = token ? `https://purpl-crm.web.app/order?token=${token}` : '[portal link — generate from account settings]';
+      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pumpkinblossomfarm.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
+    }
+  },
+  {
+    id: 'rejected_decline',
+    label: 'Rejected — Polite Decline',
+    desc: 'Polite decline',
+    from: 'graham@pumpkinblossomfarm.com',
+    subject: () => 'Re: Your wholesale application — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'invoice_sent',
+    label: 'Invoice Sent Notification',
+    desc: 'Invoice notification to retailer',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: (inv) => `Invoice ${inv?.number||''} from Pumpkin Blossom Farm`,
+    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||''} for ${fmtC(inv?.amount||inv?.total||0)} attached. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'first_order_followup',
+    label: 'First Order Follow-Up',
+    desc: 'Thank you for your first order',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => "Thanks for your order — we're on it",
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with purpl on your shelves.\n\nWarmly,\n${SIGNATURE}`
+  }
+];
 
 async function _callAnthropicApi(userPrompt) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {

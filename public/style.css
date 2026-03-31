@@ -409,6 +409,17 @@ th{padding:11px 14px}
   padding:2px 8px;font-size:11px;font-weight:600;display:inline-block;
 }
 
+/* ── Cadence email timeline ──────────────────────────────── */
+.cadence-stage{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.cadence-stage:last-child{border-bottom:none}
+.cadence-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.cadence-dot.sent{background:#16a34a}
+.cadence-dot.pending{background:#fff;border:2px solid #f59e0b}
+.cadence-info{flex:1}
+.cadence-label{font-weight:600;font-size:14px}
+.cadence-desc{font-size:12px;color:var(--muted)}
+.cadence-date{font-size:11px;color:var(--muted);margin-top:2px}
+
 /* ── Prospect compact mode ───────────────────────────────── */
 .pr-compact .pr-card{padding:10px 14px}
 .pr-compact .ac-card-metrics,.pr-compact .ac-card-email,.pr-compact .ac-card-section{display:none}

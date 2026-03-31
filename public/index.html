@@ -1745,6 +1745,7 @@
       <button class="tab" data-tab="outreach">Outreach</button>
       <button class="tab" data-tab="notes">Notes</button>
       <button class="tab" data-tab="portal-orders">Portal Orders</button>
+      <button class="tab" data-tab="emails">✉️ Emails</button>
     </div>
     <!-- Overview -->
     <div id="mac-tab-overview" class="tab-pane">
@@ -1804,11 +1805,32 @@
         <div style="text-align:center;padding:24px;color:var(--muted)">Loading portal orders…</div>
       </div>
     </div>
+    <!-- Emails tab -->
+    <div id="mac-tab-emails" class="tab-pane" style="display:none">
+      <div id="mac-cadence-stages"></div>
+      <div id="mac-cadence-log" style="margin-top:20px"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn sm" id="mac-copy-link-btn" onclick="">🔗 Copy Order Link</button>
       <button class="btn sm" id="mac-draft-btn">✉️ Draft Outreach</button>
       <button class="btn" id="mac-order-btn">+ New Order</button>
       <button class="btn primary" id="mac-edit-btn">Edit Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cadence email preview -->
+<div class="overlay" id="modal-cadence-email">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-hdr">
+      <h2>Email Preview</h2>
+      <button class="modal-close btn sm">✕</button>
+    </div>
+    <div id="mce-content" style="padding:4px 0"></div>
+    <div class="modal-footer">
+      <button class="btn sm" onclick="closeModal('modal-cadence-email')">Cancel</button>
+      <button class="btn sm" id="mce-mark-sent-btn">✓ Mark as Sent</button>
+      <button class="btn primary" id="mce-gmail-btn">Open in Gmail ✉️</button>
     </div>
   </div>
 </div>
