@@ -682,7 +682,7 @@ function renderAttention() {
   el.innerHTML = items.slice(0,10).map(i=>`
     <div class="attn-item" style="cursor:pointer;border-left:3px solid ${i.borderColor||'#d97706'}" onclick="${i.action}">
       <div class="attn-icon">${i.icon}</div>
-      <div class="attn-info" style="flex:1"><div class="attn-name">${i.name}</div><div class="attn-reason">${i.reason}</div></div>
+      <div class="attn-info" style="flex:1"><div class="attn-name">${escHtml(i.name)}</div><div class="attn-reason">${escHtml(i.reason)}</div></div>
       ${i.accountId ? `<button class="btn xs" onclick="event.stopPropagation();openAccount('${i.accountId}')" title="Log contact">Log Contact</button>` : ''}
     </div>`).join('');
 }
@@ -739,8 +739,8 @@ function renderFollowUps() {
     <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
       <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
       <div class="attn-info" style="flex:1">
-        <div class="attn-name">${i.name}</div>
-        <div class="attn-reason">${i.action} &middot; ${fmtD(i.date)}</div>
+        <div class="attn-name">${escHtml(i.name)}</div>
+        <div class="attn-reason">${escHtml(i.action)} &middot; ${fmtD(i.date)}</div>
       </div>
       ${chipHtml(i.daysUntil)}
       <button class="btn xs green" onclick="event.stopPropagation();dashMarkFollowUpDone('${i.id}','${i.type}')" title="Mark done">Done</button>
@@ -792,8 +792,8 @@ function renderCadenceOverdue() {
     <div class="attn-item">
       <div class="attn-icon">⚠️</div>
       <div class="attn-info" style="flex:1">
-        <div class="attn-name">${f.name}</div>
-        <div class="attn-reason">${f.reason}</div>
+        <div class="attn-name">${escHtml(f.name)}</div>
+        <div class="attn-reason">${escHtml(f.reason)}</div>
       </div>
       <button class="btn xs primary" onclick="openAccountToEmailsTab('${f.id}')">Send Now</button>
     </div>`).join('');
@@ -810,7 +810,7 @@ function renderPendingOrders() {
     return `<div class="attn-item">
       <div class="attn-icon" onclick="openOrderDetail('${o.id}')" style="cursor:pointer">${isOverdue?'⚠️':'📋'}</div>
       <div class="attn-info" style="flex:1;cursor:pointer" onclick="openOrderDetail('${o.id}')">
-        <div class="attn-name">${ac2?.name||'Unknown'}</div>
+        <div class="attn-name">${escHtml(ac2?.name||'Unknown')}</div>
         <div class="attn-reason">${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}`).join(' ')} &middot; Due ${fmtD(o.dueDate)}${isOverdue?' <span class="badge red">Overdue</span>':''}</div>
       </div>
       <button class="btn xs" onclick="rescheduleOrder('${o.id}')" title="Change due date">Reschedule</button>
@@ -879,7 +879,7 @@ function renderInvoiceStatus() {
       const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
       return `<div class="attn-item">
         <div class="attn-icon">💰</div>
-        <div class="attn-info"><div class="attn-name">${ac2?.name||'Unknown'}</div><div class="attn-reason">Invoice overdue &middot; ${fmtD(o.dueDate)}</div></div>
+        <div class="attn-info"><div class="attn-name">${escHtml(ac2?.name||'Unknown')}</div><div class="attn-reason">Invoice overdue &middot; ${fmtD(o.dueDate)}</div></div>
         <button class="btn xs green" onclick="setInvStatus('${o.id}','paid')">Mark Paid</button>
       </div>`;
     }).join('') : '<div class="empty">No invoice issues</div>'}
@@ -1522,14 +1522,14 @@ function renderAccounts() {
       <div class="ac-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
-            <span class="ac-card-name">${a.name}</span>
+            <span class="ac-card-name">${escHtml(a.name)}</span>
             ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
             ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
             ${_getFulfillBadge(a)}
           </div>
-          <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).join(' · ')}</div>
-          ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).join(' · ')}</div>`:''}
-          ${a.email?`<div class="ac-card-email">✉ ${a.email}</div>`:''}
+          <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).map(escHtml).join(' · ')}</div>
+          ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
+          ${a.email?`<div class="ac-card-email">✉ ${escHtml(a.email)}</div>`:''}
           ${lastNote?.text?`<div class="ac-compact-notes">${escHtml(lastNote.text.slice(0,80))}</div>`:''}
           ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
         </div>
@@ -1557,7 +1557,7 @@ function renderAccounts() {
         <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
       </div>
       ${nfuHtml}
-      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
+      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
       ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
       ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
       ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
@@ -3220,12 +3220,12 @@ function renderProspects() {
       <div class="pr-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <span class="pr-card-name">${p.name}</span>
+            <span class="pr-card-name">${escHtml(p.name)}</span>
             ${p.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
           </div>
-          <div class="ac-card-sub">${[p.type,p.address||p.territory].filter(Boolean).join(' · ')}</div>
-          ${p.contact||p.phone?`<div class="ac-card-sub">${[p.contact,p.phone].filter(Boolean).join(' · ')}</div>`:''}
-          ${p.email?`<div class="ac-card-email">✉ ${p.email}</div>`:''}
+          <div class="ac-card-sub">${[p.type,p.address||p.territory].filter(Boolean).map(escHtml).join(' · ')}</div>
+          ${p.contact||p.phone?`<div class="ac-card-sub">${[p.contact,p.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
+          ${p.email?`<div class="ac-card-email">✉ ${escHtml(p.email)}</div>`:''}
         </div>
         <div class="ac-card-badges">
           ${statusBadge(PR_STATUS,p.status)}
@@ -3237,7 +3237,7 @@ function renderProspects() {
         <div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val">${nextFollowHtml}</div></div>
         <div><div class="ac-metric-label">Stage</div><div class="ac-metric-val">${PR_STATUS[p.status]?.label||p.status||'—'}</div></div>
       </div>
-      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${lastNote.text}</div></div>`:''}
+      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
       ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}</div></div>`:''}
       <div class="pr-card-nextsteps pr-card-nextsteps-tap" onclick="openLogOutreachModal('pr','${p.id}')">
         <div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps <span style="font-size:10px;color:#93c5fd">(tap to log)</span></div>
@@ -3624,7 +3624,7 @@ function _renderDistListKPIs() {
       items.push(`<div class="attn-item" onclick="openDistributor('${i.distId}')" style="cursor:pointer">
         <div class="attn-icon">💸</div>
         <div class="attn-info">
-          <div class="attn-name">${d?.name||'Distributor'}</div>
+          <div class="attn-name">${escHtml(d?.name||'Distributor')}</div>
           <div class="attn-reason">Invoice overdue: ${fmtC(i.total||0)} — due ${fmtD(i.dueDate)}</div>
         </div>
         <span class="badge red">Overdue</span>
@@ -3638,7 +3638,7 @@ function _renderDistListKPIs() {
         items.push(`<div class="attn-item" onclick="openDistributor('${d.id}')" style="cursor:pointer">
           <div class="attn-icon">📦</div>
           <div class="attn-info">
-            <div class="attn-name">${d.name}</div>
+            <div class="attn-name">${escHtml(d.name)}</div>
             <div class="attn-reason">${lastDist?`No PO in ${daysAgo(lastDist)} days`:'No POs on record'}</div>
           </div>
           <span class="badge amber">No PO 60d+</span>
@@ -3835,8 +3835,8 @@ function renderDistRepsHTML(d) {
   const rows = reps.map(r=>`
     <div class="attn-item" style="flex-wrap:wrap;gap:8px">
       <div class="attn-info" style="flex:1;min-width:180px">
-        <div class="attn-name">${r.name}</div>
-        <div class="attn-reason">${[r.title, r.territory].filter(Boolean).join(' · ')}</div>
+        <div class="attn-name">${escHtml(r.name)}</div>
+        <div class="attn-reason">${[r.title, r.territory].filter(Boolean).map(escHtml).join(' · ')}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:3px">
           ${r.phone?`📞 ${r.phone} &nbsp;`:''}
           ${r.email?`✉ ${r.email}`:''}
@@ -3962,7 +3962,7 @@ function renderDistStoresHTML(d) {
   const rows = chains.map(c=>`
     <div class="attn-item">
       <div class="attn-info" style="flex:1">
-        <div class="attn-name">${c.chainName}</div>
+        <div class="attn-name">${escHtml(c.chainName)}</div>
         <div class="attn-reason">${c.doorCount||0} doors &nbsp;·&nbsp; ${(c.authorizedSkus||[]).map(s=>skuBadge(s)).join(' ')}</div>
         ${c.notes?`<div style="font-size:12px;color:var(--muted)">${c.notes}</div>`:''}
       </div>
@@ -5554,8 +5554,8 @@ function _showInvoiceSuggestion(ship) {
     yesBtn.onclick = () => {
       dismiss();
       // Try to match customer name to an account
-      const ac = DB.a('ac').find(a=>a.name.toLowerCase()===ship.customer.toLowerCase())
-              || DB.a('ac').find(a=>a.name.toLowerCase().includes(ship.customer.toLowerCase()));
+      const ac = DB.a('ac').find(a=>(a.name||'').toLowerCase()===(ship.customer||'').toLowerCase())
+              || DB.a('ac').find(a=>(a.name||'').toLowerCase().includes((ship.customer||'').toLowerCase()));
       openAddInv(
         ac?.id || null,
         'dist',
