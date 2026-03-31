@@ -3391,7 +3391,9 @@ async function saveProspect(id, isNew) {
     lng = parseFloat(addrEl.dataset.lng);
   }
 
+  const existing = DB.a('pr').find(x=>x.id===id);
   const rec = {
+    ...(existing||{}),
     id, name,
     contact:    qs('#epr-contact')?.value?.trim()||'',
     phone:      qs('#epr-phone')?.value?.trim()||'',
@@ -3496,6 +3498,7 @@ function saveLogOutreach() {
       contact,
       outcome,
       notes: note,
+      nextSteps: next,
       nextFollowUp: nextDate || null,
       regarding,
     };
@@ -7589,6 +7592,8 @@ function saveLfInvoice(id, isNew) {
 function deleteLfInvoice(id) {
   if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
   DB.remove('lf_invoices', id);
+  const orphans = DB.a('lf_wix_deductions').filter(d => d.invoiceId === id);
+  orphans.forEach(d => DB.remove('lf_wix_deductions', d.id));
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
