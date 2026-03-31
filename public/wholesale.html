@@ -191,10 +191,13 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-lf .ws-eyebrow{color:var(--lf-green)}
 .ws-lf h2{color:var(--lf-dark)}
 .ws-product-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:40px}
-.ws-product-card{background:var(--white);border:1px solid var(--lf-border);border-radius:10px;padding:24px 20px;transition:transform 0.2s,box-shadow 0.2s}
+.ws-product-card{background:var(--white);border:1px solid var(--lf-border);border-radius:10px;padding:0 0 16px;overflow:hidden;transition:transform 0.2s,box-shadow 0.2s}
 .ws-product-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(74,124,89,0.10)}
-.ws-product-name{font-family:'Playfair Display',serif;font-size:16px;color:var(--lf-dark)}
-.ws-product-desc{font-size:12px;color:var(--muted);margin-top:6px;font-family:Inter,sans-serif}
+.ws-product-img-wrap{width:100%;aspect-ratio:1;overflow:hidden;margin-bottom:14px;background:var(--cream)}
+.ws-product-img{width:100%;height:100%;object-fit:cover;transition:transform 0.3s}
+.ws-product-card:hover .ws-product-img{transform:scale(1.03)}
+.ws-product-name{font-family:'Playfair Display',serif;font-size:16px;color:var(--lf-dark);padding:0 16px}
+.ws-product-desc{font-size:12px;color:var(--muted);margin-top:6px;font-family:Inter,sans-serif;padding:0 16px}
 .ws-lf .ws-bullet-dot{color:var(--lf-green)}
 
 /* ── TERMS SECTION ───────────────────── */
@@ -249,6 +252,8 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 @media(max-width:768px){
   .ws-section{padding:64px 20px}
   .ws-apply{padding:64px 20px}
+}
+@media(max-width:700px){
   .ws-product-grid{grid-template-columns:repeat(2,1fr)}
   .ws-form-container{padding:28px 20px}
   .ws-brand-cards{grid-template-columns:1fr}
@@ -258,7 +263,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 @media(max-width:600px){
   .ws-sku-grid{grid-template-columns:repeat(2,1fr)}
 }
-@media(max-width:500px){
+@media(max-width:480px){
   .ws-product-grid{grid-template-columns:1fr}
   .ws-form-container{padding:24px 16px}
 }
@@ -337,7 +342,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   <div class="container ws-section-inner">
     <div class="eyebrow eyebrow-purpl ws-eyebrow">purpl</div>
     <h2 class="section-h2">Lavender lemonade that earns its shelf space</h2>
-    <p class="section-desc ws-section-desc">purpl is a lavender-infused sparkling lemonade available in five flavors — Classic, Blueberry, Peach, Raspberry, and a Variety 12-pack. NH-made, clean-ingredient, and built for specialty grocery, co-ops, cafes, and wellness retail.</p>
+    <p class="section-desc ws-section-desc">purpl is a lavender-infused sparkling lemonade available in five flavors — Classic, Blueberry, Peach, Raspberry, and a Variety 12-pack. Sold in 12-pack cases at an MSRP of $3.29 per can, purpl sits at the intersection of the functional beverage and specialty lemonade categories. NH-made, clean-ingredient, and built for specialty grocery, co-ops, cafes, and wellness retail.</p>
 
     <div class="sku-grid-purpl ws-sku-grid">
       <div class="sku-card-purpl ws-sku-card">
@@ -424,30 +429,55 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
     <h2 class="section-h2">Handcrafted lavender goods from our fields</h2>
     <p class="section-desc ws-section-desc">Lavender Fields at Pumpkin Blossom Farm is home to over 7,000 lavender plants grown without pesticides in Warner, New Hampshire. We handcraft a range of self-care and culinary products using our farm-grown lavender — from simple syrup to aromatherapy accessories. Woman-owned, NH-made, and designed for specialty, gift, spa, and wellness retail.</p>
 
-    <div class="sku-grid-lf ws-product-grid">
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Lavender Simple Syrup</div>
-        <div class="sku-meta ws-product-desc">12.7 oz &nbsp;·&nbsp; culinary &amp; mixology</div>
+    <div class="ws-product-grid">
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-syrup.PNG" alt="Lavender Simple Syrup" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Lavender Simple Syrup</div>
+        <div class="ws-product-desc">12.7 oz · culinary &amp; mixology</div>
       </div>
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Aromatherapy Scrunchie</div>
-        <div class="sku-meta ws-product-desc">Farm-grown lavender filled</div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-scrunchies.PNG" alt="Aromatherapy Scrunchie" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Aromatherapy Scrunchie</div>
+        <div class="ws-product-desc">Farm-grown lavender filled</div>
       </div>
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Seatbelt Sachet</div>
-        <div class="sku-meta ws-product-desc">On-the-go aromatherapy</div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-sachets.PNG" alt="Seatbelt Sachet" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Seatbelt Sachet</div>
+        <div class="ws-product-desc">On-the-go aromatherapy</div>
       </div>
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Soy Candle</div>
-        <div class="sku-meta ws-product-desc">Three scents &nbsp;·&nbsp; 9 oz</div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-candles.PNG" alt="Soy Candle" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Soy Candle</div>
+        <div class="ws-product-desc">Three scents · 9 oz soy wax</div>
       </div>
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Aromatherapy Roll-On</div>
-        <div class="sku-meta ws-product-desc">10ml &nbsp;·&nbsp; fractionated coconut oil</div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-rollon.PNG" alt="Aromatherapy Roll-On" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Aromatherapy Roll-On</div>
+        <div class="ws-product-desc">10ml · fractionated coconut oil</div>
       </div>
-      <div class="sku-card-lf ws-product-card">
-        <div class="sku-name ws-product-name">Dryer Sachet 2-Pack</div>
-        <div class="sku-meta ws-product-desc">Natural laundry scenting</div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-dryer-sachet.jpg" alt="Dryer Sachet 2-Pack" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Dryer Sachet 2-Pack</div>
+        <div class="ws-product-desc">Refillable · natural laundry scenting</div>
+      </div>
+      <div class="ws-product-card">
+        <div class="ws-product-img-wrap">
+          <img src="/images/lf-refresh-powder.PNG" alt="Lavender Refresh Powder" class="ws-product-img" onerror="this.parentElement.style.display='none'">
+        </div>
+        <div class="ws-product-name">Lavender Refresh Powder</div>
+        <div class="ws-product-desc">Baking soda + lavender · home freshener</div>
       </div>
     </div>
 
