@@ -187,6 +187,29 @@ function seedIfEmpty() {
   DB.setObj('settings', settings);
 }
 
+// ── LF SKU variant migration (idempotent) ─────────────────
+function migrateLfSkuVariants() {
+  if (!DB._firestoreReady) return;
+  const VARIANT_DEFS = {
+    'Aromatherapy Scrunchie': [
+      'Blossom Satin','Blossom Corduroy','Blossom Velvet',
+      'Sage Satin','Sage Corduroy','Sage Velvet',
+      'Dusk Satin','Dusk Corduroy','Dusk Velvet',
+      'Chai Satin','Chai Corduroy','Chai Velvet',
+    ],
+    'Seatbelt Sachet': ['Sage Corduroy','Blue Floral','Chai Corduroy','Purple Floral'],
+    'Soy Candle':      ['Simply Lavender','Lavender Lemonade','Lavender White Birch'],
+  };
+  DB.a('lf_skus').forEach(s => {
+    if (s.variants !== undefined) return; // already migrated
+    const names = VARIANT_DEFS[s.name] || [];
+    DB.update('lf_skus', s.id, sk => ({
+      ...sk,
+      variants: names.map(n => ({id: uid(), name: n, archived: false})),
+    }));
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
@@ -6019,16 +6042,35 @@ function renderLfReports() {
   const skuMap = {};
   paid.forEach(inv=>{
     (inv.lineItems||[]).forEach(l=>{
-      if (!skuMap[l.skuName]) skuMap[l.skuName] = {cases:0, rev:0};
-      skuMap[l.skuName].cases += (l.cases||0);
-      skuMap[l.skuName].rev   += (l.lineTotal||0);
+      const key = l.skuName;
+      if (!skuMap[key]) skuMap[key] = {cases:0, rev:0, variants:{}};
+      if (l.hasVariants && l.variantLines?.length) {
+        l.variantLines.forEach(vl=>{
+          skuMap[key].cases += (vl.cases||0);
+          skuMap[key].rev   += (vl.lineTotal||0);
+          if (vl.variantName) {
+            if (!skuMap[key].variants[vl.variantName]) skuMap[key].variants[vl.variantName] = {cases:0, rev:0};
+            skuMap[key].variants[vl.variantName].cases += (vl.cases||0);
+            skuMap[key].variants[vl.variantName].rev   += (vl.lineTotal||0);
+          }
+        });
+      } else {
+        skuMap[key].cases += (l.cases||0);
+        skuMap[key].rev   += (l.lineTotal||0);
+      }
     });
   });
   const skuRows = Object.entries(skuMap).sort((a,b)=>b[1].rev-a[1].rev);
   const skuTbody = qs('#lf-rep-sku-tbody');
   if (skuTbody) {
     skuTbody.innerHTML = skuRows.length
-      ? skuRows.map(([name,d])=>`<tr><td>${escHtml(name)}</td><td>${fmt(d.cases)}</td><td>${fmtC(d.rev)}</td></tr>`).join('')
+      ? skuRows.map(([name,d])=>{
+          const varEntries = Object.entries(d.variants||{}).sort((a,b)=>b[1].rev-a[1].rev);
+          const varHtml = varEntries.map(([vn,vd])=>
+            `<tr><td style="padding-left:28px;color:var(--muted);font-size:12px">${escHtml(vn)}</td><td style="color:var(--muted);font-size:12px">${fmt(vd.cases)}</td><td style="color:var(--muted);font-size:12px">${fmtC(vd.rev)}</td></tr>`
+          ).join('');
+          return `<tr><td>${escHtml(name)}</td><td>${fmt(d.cases)}</td><td>${fmtC(d.rev)}</td></tr>${varHtml}`;
+        }).join('')
       : '<tr><td colspan="3" style="color:var(--muted);text-align:center">No paid LF invoices in period</td></tr>';
   }
 
@@ -6750,17 +6792,54 @@ function renderLfSkuSettings() {
   let skus = DB.a('lf_skus').slice();
   if (!showArchived) skus = skus.filter(s => !s.archived);
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-  tbody.innerHTML = skus.map(s => `
-    <tr data-sku-id="${s.id}" class="${s.archived ? 'lf-sku-archived' : ''}">
-      <td><input class="lfs-name" value="${esc(s.name)}" style="width:220px"></td>
-      <td><input class="lfs-price" type="number" step="0.01" value="${s.wholesalePrice||''}" style="width:80px"> /unit</td>
-      <td><input class="lfs-case" type="number" step="1" value="${s.caseSize||''}" style="width:60px"></td>
-      <td><input class="lfs-msrp" type="number" step="0.01" value="${s.msrp||''}" placeholder="—" style="width:80px"></td>
-      <td style="white-space:nowrap">
-        <button class="btn sm primary" onclick="saveLfSkuRow('${s.id}')">Save</button>
-        <button class="btn sm ${s.archived?'':'amber'}" onclick="toggleLfSkuArchive('${s.id}')">${s.archived?'Restore':'Archive'}</button>
-      </td>
-    </tr>`).join('') || '<tr><td colspan="5" class="empty">No SKUs yet. Click "+ Add SKU" to get started.</td></tr>';
+  if (!skus.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No SKUs yet. Click "+ Add SKU" to get started.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = skus.map(s => {
+    const activeV = (s.variants||[]).filter(v => !v.archived).length;
+    const totalV  = (s.variants||[]).length;
+    const varBtnLabel = totalV > 0
+      ? `▸ Variants (${activeV}${activeV < totalV ? '/'+totalV : ''})`
+      : '+ Variants';
+    const variantRowsHtml = (s.variants||[]).map(v => `
+      <tr data-variant-id="${v.id}" class="${v.archived?'lf-sku-archived':''}">
+        <td style="padding-left:32px"><input class="lfv-name" value="${esc(v.name)}" style="width:200px"></td>
+        <td colspan="3" style="color:var(--muted);font-size:12px">variant</td>
+        <td style="white-space:nowrap">
+          <button class="btn sm primary" onclick="saveLfVariantRow('${s.id}','${v.id}')">Save</button>
+          <button class="btn sm ${v.archived?'':'amber'}" onclick="toggleLfVariantArchive('${s.id}','${v.id}')">${v.archived?'Restore':'Archive'}</button>
+          <button class="btn sm red" onclick="deleteLfVariant('${s.id}','${v.id}')">✕</button>
+        </td>
+        <td></td>
+      </tr>`).join('');
+    return `
+      <tr data-sku-id="${s.id}" class="${s.archived ? 'lf-sku-archived' : ''}">
+        <td><input class="lfs-name" value="${esc(s.name)}" style="width:220px"></td>
+        <td><input class="lfs-price" type="number" step="0.01" value="${s.wholesalePrice||''}" style="width:80px"> /unit</td>
+        <td><input class="lfs-case" type="number" step="1" value="${s.caseSize||''}" style="width:60px"></td>
+        <td><input class="lfs-msrp" type="number" step="0.01" value="${s.msrp||''}" placeholder="—" style="width:80px"></td>
+        <td style="white-space:nowrap">
+          <button class="btn sm primary" onclick="saveLfSkuRow('${s.id}')">Save</button>
+          <button class="btn sm ${s.archived?'':'amber'}" onclick="toggleLfSkuArchive('${s.id}')">${s.archived?'Restore':'Archive'}</button>
+        </td>
+        <td>
+          <button class="btn sm" onclick="toggleLfVariantPanel('${s.id}')" style="font-size:11px">${varBtnLabel}</button>
+        </td>
+      </tr>
+      <tr id="lf-var-panel-${s.id}" style="display:none">
+        <td colspan="6" style="padding:0 0 4px 0;background:var(--bg-alt,#f9fafb)">
+          <table style="width:100%;border-collapse:collapse">
+            <tbody>
+              ${variantRowsHtml}
+              <tr><td colspan="6" style="padding:6px 0 6px 32px">
+                <button class="btn sm green" onclick="addLfVariant('${s.id}')">+ Add Variant</button>
+              </td></tr>
+            </tbody>
+          </table>
+        </td>
+      </tr>`;
+  }).join('');
 }
 
 function saveLfSkuRow(id) {
@@ -6785,10 +6864,60 @@ function toggleLfSkuArchive(id) {
 }
 
 function addLfSku() {
-  const newSku = {id:uid(), name:'New SKU', wholesalePrice:0, caseSize:1, msrp:null, archived:false};
+  const newSku = {id:uid(), name:'New SKU', wholesalePrice:0, caseSize:1, msrp:null, archived:false, variants:[]};
   DB.push('lf_skus', newSku);
   renderLfSkuSettings();
   toast('New SKU added — edit name and save');
+}
+
+function toggleLfVariantPanel(skuId) {
+  const panel = qs(`#lf-var-panel-${skuId}`);
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function addLfVariant(skuId) {
+  const newVariant = {id: uid(), name: 'New Variant', archived: false};
+  DB.update('lf_skus', skuId, s => ({...s, variants: [...(s.variants||[]), newVariant]}));
+  renderLfSkuSettings();
+  const panel = qs(`#lf-var-panel-${skuId}`);
+  if (panel) panel.style.display = '';
+  toast('Variant added — edit name and save');
+}
+
+function saveLfVariantRow(skuId, variantId) {
+  const panel = qs(`#lf-var-panel-${skuId}`);
+  const row = panel?.querySelector(`[data-variant-id="${variantId}"]`);
+  if (!row) return;
+  const name = row.querySelector('.lfv-name')?.value?.trim();
+  if (!name) { toast('Variant name required'); return; }
+  DB.update('lf_skus', skuId, s => ({
+    ...s,
+    variants: (s.variants||[]).map(v => v.id === variantId ? {...v, name} : v),
+  }));
+  toast('Variant saved ✓');
+}
+
+function deleteLfVariant(skuId, variantId) {
+  if (!confirm2('Delete this variant?')) return;
+  DB.update('lf_skus', skuId, s => ({...s, variants: (s.variants||[]).filter(v => v.id !== variantId)}));
+  renderLfSkuSettings();
+  const panel = qs(`#lf-var-panel-${skuId}`);
+  if (panel) panel.style.display = '';
+}
+
+function toggleLfVariantArchive(skuId, variantId) {
+  const sku = DB.a('lf_skus').find(s => s.id === skuId);
+  const variant = sku?.variants?.find(v => v.id === variantId);
+  if (!variant) return;
+  DB.update('lf_skus', skuId, s => ({
+    ...s,
+    variants: (s.variants||[]).map(v => v.id === variantId ? {...v, archived: !v.archived} : v),
+  }));
+  renderLfSkuSettings();
+  const panel = qs(`#lf-var-panel-${skuId}`);
+  if (panel) panel.style.display = '';
+  toast(variant.archived ? 'Variant restored' : 'Variant archived');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6930,27 +7059,73 @@ function _lfInvRenderLineRow(item) {
   const skus  = DB.a('lf_skus').filter(s => !s.archived);
   const rowId = uid();
   const row   = document.createElement('div');
-  row.className    = 'lfi-item-row';
+  row.className     = 'lfi-item-row';
   row.dataset.rowId = rowId;
   const selOpts = skus.map(s => {
     const sel = item && s.id === item.skuId ? 'selected' : '';
     return `<option value="${s.id}" data-price="${s.wholesalePrice}" data-case="${s.caseSize}" ${sel}>${escHtml(s.name)}</option>`;
   }).join('');
-  const cases = item?.cases || 1;
-  const units = item?.units || 0;
-  const lineTotal = item?.lineTotal || 0;
   row.innerHTML = `
-    <select class="lfi-sku-sel" onchange="_lfInvRowCalc('${rowId}')">
-      <option value="">— Select SKU —</option>${selOpts}
-    </select>
-    <input class="lfi-cases" type="number" min="1" step="1" value="${cases}" style="width:70px" oninput="_lfInvRowCalc('${rowId}')">
-    <span class="lfi-cases-label">cases</span>
-    <span class="lfi-units-display">= <strong class="lfi-units">${units}</strong> units</span>
-    <span class="lfi-line-total lfi-line-amt">${fmtC(lineTotal)}</span>
-    <button type="button" class="btn sm red" onclick="_lfInvRemoveRow('${rowId}')">✕</button>`;
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <select class="lfi-sku-sel" onchange="_lfInvSkuChanged('${rowId}')">
+        <option value="">— Select SKU —</option>${selOpts}
+      </select>
+      <button type="button" class="btn sm red" onclick="_lfInvRemoveRow('${rowId}')">✕</button>
+    </div>
+    <div class="lfi-variant-area" style="margin-top:6px"></div>
+    <div style="display:flex;justify-content:flex-end;font-size:13px;margin-top:4px">
+      Row total: <strong class="lfi-line-amt" style="margin-left:6px">${fmtC(item?.lineTotal||0)}</strong>
+    </div>`;
   container.appendChild(row);
-  // Trigger calc if pre-filled
-  if (item?.skuId) _lfInvRowCalc(rowId);
+  if (item?.skuId) _lfInvBuildVariantArea(rowId, item);
+}
+
+function _lfInvSkuChanged(rowId) {
+  _lfInvBuildVariantArea(rowId, null);
+  _lfInvCalcTotal();
+}
+
+function _lfInvBuildVariantArea(rowId, item) {
+  const row  = qs(`#lfi-line-items [data-row-id="${rowId}"]`);
+  if (!row) return;
+  const sel    = row.querySelector('.lfi-sku-sel');
+  const skuId  = sel?.value;
+  const area   = row.querySelector('.lfi-variant-area');
+  if (!area) return;
+  if (!skuId) { area.innerHTML = ''; return; }
+
+  const skuObj   = DB.a('lf_skus').find(s => s.id === skuId);
+  const variants = (skuObj?.variants||[]).filter(v => !v.archived);
+
+  if (variants.length > 0) {
+    const varRows = variants.map(v => {
+      const vl = item?.variantLines?.find(x => x.variantId === v.id);
+      return `
+        <div class="lfi-variant-row" data-variant-id="${v.id}"
+          style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
+          <span style="width:180px;flex-shrink:0">${escHtml(v.name)}</span>
+          <input class="lfi-var-cases" type="number" min="0" step="1" value="${vl?.cases||0}"
+            style="width:60px" oninput="_lfInvRowCalc('${rowId}')">
+          <span>cases</span>
+          <span>= <strong class="lfi-var-units">${vl?.units||0}</strong> units</span>
+          <span class="lfi-var-total" style="margin-left:auto">${fmtC(vl?.lineTotal||0)}</span>
+        </div>`;
+    }).join('');
+    area.innerHTML = `
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
+        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/case · ${skuObj.caseSize} units/case
+      </div>
+      <div class="lfi-variants-container">${varRows}</div>`;
+  } else {
+    area.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+        <input class="lfi-cases" type="number" min="0" step="1" value="${item?.cases||0}"
+          style="width:70px" oninput="_lfInvRowCalc('${rowId}')">
+        <span>cases</span>
+        <span>= <strong class="lfi-units">${item?.units||0}</strong> units</span>
+      </div>`;
+  }
+  _lfInvRowCalc(rowId);
 }
 
 function lfInvAddLineItem() {
@@ -6965,13 +7140,29 @@ function _lfInvRowCalc(rowId) {
   const opt       = sel?.options[sel?.selectedIndex];
   const unitPrice = parseFloat(opt?.dataset?.price || 0);
   const caseSize  = parseInt(opt?.dataset?.case    || 0);
-  const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
-  const units     = cases * caseSize;
-  const lineTotal = units * unitPrice;
-  const unitsEl   = row.querySelector('.lfi-units');
-  if (unitsEl) unitsEl.textContent = units;
+  let rowTotal = 0;
+
+  const variantRows = row.querySelectorAll('.lfi-variant-row');
+  if (variantRows.length > 0) {
+    variantRows.forEach(vr => {
+      const cases     = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
+      const units     = cases * caseSize;
+      const lineTotal = units * unitPrice;
+      const unitsEl   = vr.querySelector('.lfi-var-units');
+      if (unitsEl) unitsEl.textContent = units;
+      const ltEl = vr.querySelector('.lfi-var-total');
+      if (ltEl) ltEl.textContent = fmtC(lineTotal);
+      rowTotal += lineTotal;
+    });
+  } else {
+    const cases   = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+    const unitsEl = row.querySelector('.lfi-units');
+    if (unitsEl) unitsEl.textContent = cases * caseSize;
+    rowTotal = cases * caseSize * unitPrice;
+  }
+
   const ltEl = row.querySelector('.lfi-line-amt');
-  if (ltEl) ltEl.textContent = fmtC(lineTotal);
+  if (ltEl) ltEl.textContent = fmtC(rowTotal);
   _lfInvCalcTotal();
 }
 
@@ -6989,8 +7180,16 @@ function _lfInvCalcTotal() {
     const opt       = sel?.options[sel?.selectedIndex];
     const unitPrice = parseFloat(opt?.dataset?.price || 0);
     const caseSize  = parseInt(opt?.dataset?.case    || 0);
-    const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
-    total += cases * caseSize * unitPrice;
+    const variantRows = row.querySelectorAll('.lfi-variant-row');
+    if (variantRows.length > 0) {
+      variantRows.forEach(vr => {
+        const cases = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
+        total += cases * caseSize * unitPrice;
+      });
+    } else {
+      const cases = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+      total += cases * caseSize * unitPrice;
+    }
   });
   const el = qs('#lfi-total');
   if (el) el.textContent = fmtC(total);
@@ -7013,25 +7212,43 @@ function saveLfInvoice(id, isNew) {
   // Collect line items from DOM
   const lineItems = [];
   qs('#lfi-line-items').querySelectorAll('.lfi-item-row').forEach(row => {
-    const sel       = row.querySelector('.lfi-sku-sel');
-    const skuId     = sel?.value;
+    const sel     = row.querySelector('.lfi-sku-sel');
+    const skuId   = sel?.value;
     if (!skuId) return;
     const opt       = sel.options[sel.selectedIndex];
     const unitPrice = parseFloat(opt?.dataset?.price || 0);
     const caseSize  = parseInt(opt?.dataset?.case    || 0);
-    const cases     = parseInt(row.querySelector('.lfi-cases')?.value || 0);
-    if (!cases) return;
-    const units     = cases * caseSize;
     const skuObj    = skus.find(s => s.id === skuId);
-    lineItems.push({
-      skuId,
-      skuName:   skuObj?.name || opt?.textContent?.trim() || '',
-      unitPrice,
-      caseSize,
-      cases,
-      units,
-      lineTotal: units * unitPrice,
-    });
+    const variantRows = row.querySelectorAll('.lfi-variant-row');
+    if (variantRows.length > 0) {
+      const variantLines = [];
+      variantRows.forEach(vr => {
+        const variantId  = vr.dataset.variantId;
+        const variantObj = skuObj?.variants?.find(v => v.id === variantId);
+        const cases      = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
+        if (!cases) return;
+        const units     = cases * caseSize;
+        const lineTotal = units * unitPrice;
+        variantLines.push({variantId, variantName: variantObj?.name || '', cases, units, lineTotal});
+      });
+      if (!variantLines.length) return;
+      const totalCases = variantLines.reduce((s,v)=>s+v.cases, 0);
+      const totalUnits = variantLines.reduce((s,v)=>s+v.units, 0);
+      const totalLine  = variantLines.reduce((s,v)=>s+v.lineTotal, 0);
+      lineItems.push({
+        skuId, skuName: skuObj?.name || opt?.textContent?.trim() || '',
+        unitPrice, caseSize, hasVariants: true,
+        variantLines, cases: totalCases, units: totalUnits, lineTotal: totalLine,
+      });
+    } else {
+      const cases = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+      if (!cases) return;
+      const units = cases * caseSize;
+      lineItems.push({
+        skuId, skuName: skuObj?.name || opt?.textContent?.trim() || '',
+        unitPrice, caseSize, cases, units, lineTotal: units * unitPrice,
+      });
+    }
   });
 
   if (!lineItems.length) { toast('Add at least one line item'); return; }
@@ -7061,7 +7278,9 @@ function saveLfInvoice(id, isNew) {
     accountId:     rec.accountId,
     accountName:   rec.accountName,
     date:          today(),
-    items:         lineItems.map(l => ({skuName: l.skuName, cases: l.cases, units: l.units})),
+    items:         lineItems.flatMap(l => l.hasVariants
+      ? l.variantLines.map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
+      : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
     confirmed:     false,
   };
   if (isNew) DB.push('lf_wix_deductions', deduction);
@@ -7093,11 +7312,27 @@ function showWixPullModal(inv, deductionId) {
   if (numEl) numEl.textContent = inv.number || '—';
   const itemsEl = qs('#wix-pull-items');
   if (itemsEl) {
-    itemsEl.innerHTML = (inv.lineItems||[]).map(l => `
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-        <span>${escHtml(l.skuName)}</span>
-        <span><strong>${l.cases}</strong> case${l.cases!==1?'s':''} (${l.units} units)</span>
-      </div>`).join('') || '<div style="color:var(--muted)">No items</div>';
+    itemsEl.innerHTML = (inv.lineItems||[]).map(l => {
+      if (l.hasVariants && l.variantLines?.length) {
+        const varHtml = l.variantLines.map(vl => `
+          <div style="display:flex;justify-content:space-between;padding:3px 0 3px 24px;font-size:12px;color:var(--muted)">
+            <span>${escHtml(vl.variantName)}</span>
+            <span>${vl.cases} case${vl.cases!==1?'s':''} (${vl.units} units)</span>
+          </div>`).join('');
+        return `
+          <div style="padding:6px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600">
+              <span>${escHtml(l.skuName)}</span>
+              <span>${l.cases} cases (${l.units} units)</span>
+            </div>${varHtml}
+          </div>`;
+      }
+      return `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span>${escHtml(l.skuName)}</span>
+          <span><strong>${l.cases}</strong> case${l.cases!==1?'s':''} (${l.units} units)</span>
+        </div>`;
+    }).join('') || '<div style="color:var(--muted)">No items</div>';
   }
   openModal('modal-wix-pull');
 }
@@ -7221,6 +7456,7 @@ function confirmPasteAccount() {
 // ══════════════════════════════════════════════════════════
 window.onAppReady = function() {
   seedIfEmpty();
+  migrateLfSkuVariants();
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
   migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
 
@@ -7228,6 +7464,7 @@ window.onAppReady = function() {
   // Also used to retry one-time migrations that were skipped because the
   // 10s startup timeout fired before Firestore data arrived.
   window.refreshCurrentPage = () => {
+    migrateLfSkuVariants();
     restoreMyData();
     migrateAccountContacts();
     renders[currentPage]?.();
