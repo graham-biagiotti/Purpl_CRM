@@ -230,6 +230,15 @@ function renderDash() {
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
   if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('Wix Pulls', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
+  const allPr      = DB.a('pr');
+  const prPurplCount = allPr.filter(p => !p.isPbf).length;
+  const prLfCount    = allPr.filter(p => !!p.isPbf).length;
+  const prDueCount   = allPr.filter(p => !['won','lost'].includes(p.status) && p.nextDate && p.nextDate <= today()).length;
+  if (qs('#dash-kpi-pr-total')) qs('#dash-kpi-pr-total').innerHTML = kpiHtml('Prospects', allPr.length, 'blue');
+  if (qs('#dash-kpi-pr-purpl')) qs('#dash-kpi-pr-purpl').innerHTML = kpiHtml('💜 purpl Prospects', prPurplCount, 'purple');
+  if (qs('#dash-kpi-pr-lf'))    qs('#dash-kpi-pr-lf').innerHTML    = kpiHtml('🌿 LF Prospects', prLfCount, 'green');
+  if (qs('#dash-kpi-pr-due'))   qs('#dash-kpi-pr-due').innerHTML   = kpiHtml('Follow-up Due', prDueCount, prDueCount > 0 ? 'red' : 'gray');
+
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
     `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
@@ -255,10 +264,9 @@ function renderDash() {
   renderPendingOrders();
   renderInvoiceStatus();
   renderProjections();
-  renderVelocities();
+  renderCadenceOverdue();
   renderDistDashKPIs();
   renderLfDashKpis();
-  renderQuickNotes();
 }
 
 function renderQuickNotes() {
@@ -490,50 +498,109 @@ function renderFollowUps() {
   const in14  = new Date(Date.now()+14*864e5).toISOString().slice(0,10);
 
   DB.a('ac').forEach(a=>{
-    // Prefer nextFollowUp field (set by log follow-up), fall back to note-based date
-    if (a.nextFollowUp && a.nextFollowUp >= now && a.nextFollowUp <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5));
+    if (a.nextFollowUp && a.nextFollowUp <= in14) {
+      const daysUntil = Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:a.nextFollowUp, action:'Follow up', id:a.id, daysUntil});
       return;
     }
     if (!a.notes?.length) return;
     const ln = a.notes[a.notes.length-1];
-    if (ln?.nextDate && ln.nextDate >= now && ln.nextDate <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5));
+    if (ln?.nextDate && ln.nextDate <= in14) {
+      const daysUntil = Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:ln.nextDate, action:ln.nextAction||'Follow up', id:a.id, daysUntil});
     }
   });
 
   DB.a('pr').filter(p=>!['won','lost'].includes(p.status)).forEach(p=>{
-    if (p.nextDate && p.nextDate >= now && p.nextDate <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(p.nextDate+'T12:00:00')-Date.now())/864e5));
+    if (p.nextDate && p.nextDate <= in14) {
+      const daysUntil = Math.ceil((new Date(p.nextDate+'T12:00:00')-Date.now())/864e5);
       items.push({type:'prospect', name:p.name, date:p.nextDate, action:p.nextAction||'Follow up', id:p.id, daysUntil});
     }
   });
 
   items.sort((a,b)=>a.date>b.date?1:-1);
 
+  // Update badge
+  const badge = qs('#dash-followup-badge');
+  if (badge) {
+    if (items.length > 0) { badge.textContent = items.length; badge.style.display = 'inline-flex'; }
+    else { badge.style.display = 'none'; }
+  }
+
   const el = qs('#dash-followups');
   if (!el) return;
-  el.innerHTML = items.length ? items.map(i=>`
+
+  function chipHtml(daysUntil) {
+    let color, label;
+    if (daysUntil <= 0)      { color='background:#fee2e2;color:#991b1b'; label = daysUntil===0?'Today':'Overdue'; }
+    else if (daysUntil <= 2) { color='background:#fef3c7;color:#92400e'; label = daysUntil===1?'Tomorrow':'in 2d'; }
+    else if (daysUntil <= 7) { color='background:#dbeafe;color:#1e40af'; label = 'in '+daysUntil+'d'; }
+    else                     { color='background:#f3f4f6;color:#6b7280'; label = 'in '+daysUntil+'d'; }
+    return `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:12px;${color}">${label}</span>`;
+  }
+
+  el.innerHTML = items.length ? items.slice(0,10).map(i=>`
     <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
       <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
       <div class="attn-info" style="flex:1">
         <div class="attn-name">${i.name}</div>
-        <div class="attn-reason">${i.action} &middot; <strong>${i.daysUntil===0?'Today':i.daysUntil===1?'Tomorrow':'in '+i.daysUntil+'d'}</strong> (${fmtD(i.date)})</div>
+        <div class="attn-reason">${i.action} &middot; ${fmtD(i.date)}</div>
       </div>
+      ${chipHtml(i.daysUntil)}
       <button class="btn xs green" onclick="event.stopPropagation();dashMarkFollowUpDone('${i.id}','${i.type}')" title="Mark done">Done</button>
     </div>`).join('') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
 }
 
 function dashMarkFollowUpDone(id, type) {
   if (type === 'account') {
-    DB.update('ac', id, x => ({...x, nextFollowUp: null}));
+    const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
+    DB.update('ac', id, x => ({...x, nextFollowUp: null, outreach: [...(x.outreach||[]), entry]}));
   } else {
-    DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null}));
+    const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
+    DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null, outreach: [...(x.outreach||[]), entry]}));
   }
   renderFollowUps();
   toast('Follow-up marked done');
+}
+
+// ── Cadence Overdue ───────────────────────────────────────
+function renderCadenceOverdue() {
+  const card = qs('#dash-cadence-card');
+  const el   = qs('#dash-cadence-overdue');
+  if (!el) return;
+
+  const flags = [];
+
+  // Active accounts with no welcome email sent
+  DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
+    const cadence = a.cadence||[];
+    if (!cadence.some(c=>c.stage==='approved_welcome') && daysAgo(a.created)>=1) {
+      flags.push({id:a.id, name:a.name, reason:'Welcome email not sent', invoiceId:null});
+    }
+  });
+
+  // Invoices without a sent notification
+  DB.a('ac').forEach(a=>{
+    const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
+    DB.a('iv').filter(x=>x.accountId===a.id&&x.number&&!sentIds.has(x.id)).forEach(inv=>{
+      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
+    });
+    DB.a('lf_invoices').filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
+      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number||inv.id} not sent to retailer`, invoiceId:inv.id});
+    });
+  });
+
+  if (!flags.length) { if (card) card.style.display='none'; return; }
+  if (card) card.style.display='';
+  el.innerHTML = flags.slice(0,8).map(f=>`
+    <div class="attn-item">
+      <div class="attn-icon">⚠️</div>
+      <div class="attn-info" style="flex:1">
+        <div class="attn-name">${f.name}</div>
+        <div class="attn-reason">${f.reason}</div>
+      </div>
+      <button class="btn xs primary" onclick="openAccountToEmailsTab('${f.id}')">Send Now</button>
+    </div>`).join('');
 }
 
 // ── Pending Orders (with reschedule button) ───────────────
@@ -885,7 +952,7 @@ function generateInvoicePrint(invoiceId) {
   const invSettings = DB.obj('invoice_settings', {});
 
   const fromName    = invSettings.fromName    || 'Pumpkin Blossom Farm LLC';
-  const fromEmail   = invSettings.fromEmail   || 'sales@drinkpurpl.com';
+  const fromEmail   = invSettings.fromEmail   || 'lavender@pumpkinblossomfarm.com';
   const fromAddress = invSettings.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const payInstr    = invSettings.paymentInstructions || '';
   const achRouting  = invSettings.achRouting  || '';
@@ -1732,14 +1799,22 @@ function openAccount(id) {
       t.classList.add('active');
       const pane = document.getElementById('mac-tab-'+t.dataset.tab);
       if (pane) pane.style.display='block';
-      // Lazy-load portal orders tab
       if (t.dataset.tab === 'portal-orders') renderMacPortalOrdersTab(id);
+      if (t.dataset.tab === 'emails') renderMacEmailsTab(id);
     };
   });
   // Default to first tab
   document.querySelectorAll('#modal-account .tab')[0]?.click();
 
   openModal('modal-account');
+}
+
+function openAccountToEmailsTab(id) {
+  openAccount(id);
+  setTimeout(() => {
+    const emailTab = document.querySelector('#modal-account .tab[data-tab="emails"]');
+    if (emailTab) emailTab.click();
+  }, 50);
 }
 
 function renderAccountNotes(a) {
@@ -1799,6 +1874,121 @@ function renderAccountOutreach(a) {
 }
 
 // ══════════════════════════════════════════════════════════
+//  EMAIL CADENCE TAB
+// ══════════════════════════════════════════════════════════
+
+function renderMacEmailsTab(id) {
+  const a     = DB.a('ac').find(x=>x.id===id);
+  const stEl  = qs('#mac-cadence-stages');
+  const logEl = qs('#mac-cadence-log');
+  if (!stEl || !a) return;
+
+  const cadence = a.cadence || [];
+
+  stEl.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Email Cadence</div>' +
+    CADENCE_STAGES.map(stage=>{
+      const sent = cadence.filter(c=>c.stage===stage.id).sort((x,y)=>y.sentAt>x.sentAt?1:-1);
+      const last = sent[0];
+      const isSent = !!last;
+      const dotCls = isSent ? 'cadence-dot sent' : 'cadence-dot pending';
+      const btnLabel = isSent ? 'Resend' : 'Send ✉️';
+      const btnCls = isSent ? 'btn xs' : 'btn xs primary';
+      // For invoice_sent, find latest invoice to pass along
+      const invArg = stage.id==='invoice_sent' ? `,'${_latestAccountInvoiceId(id)}'` : '';
+      return `<div class="cadence-stage">
+        <div class="${dotCls}"></div>
+        <div class="cadence-info">
+          <div class="cadence-label">${stage.label}</div>
+          <div class="cadence-desc">${stage.desc}</div>
+          ${isSent?`<div class="cadence-date">Sent ${fmtD(last.sentAt)} · ${last.method||'manual'}</div>`:''}
+        </div>
+        <button class="${btnCls}" onclick="openCadenceEmailPreview('${id}','${stage.id}'${invArg})">${btnLabel}</button>
+      </div>`;
+    }).join('');
+
+  if (cadence.length) {
+    const rows = cadence.slice().sort((a,b)=>b.sentAt>a.sentAt?1:-1).map(c=>{
+      const s = CADENCE_STAGES.find(x=>x.id===c.stage);
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'graham'}</td></tr>`;
+    }).join('');
+    logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  } else {
+    logEl.innerHTML = '<div class="empty" style="padding:12px 0">No cadence emails sent yet</div>';
+  }
+}
+
+function _latestAccountInvoiceId(accountId) {
+  const purpl = DB.a('iv').filter(x=>x.accountId===accountId&&x.number).sort((a,b)=>b.created>a.created?1:-1)[0];
+  const lf    = DB.a('lf_invoices').filter(x=>x.accountId===accountId).sort((a,b)=>b.created>a.created?1:-1)[0];
+  if (!purpl && !lf) return '';
+  if (!purpl) return lf.id;
+  if (!lf)   return purpl.id;
+  return (purpl.created||'') >= (lf.created||'') ? purpl.id : lf.id;
+}
+
+function openCadenceEmailPreview(accountId, stageId, invoiceId) {
+  const a = DB.a('ac').find(x=>x.id===accountId);
+  if (!a) return;
+  const stage = CADENCE_STAGES.find(s=>s.id===stageId);
+  if (!stage) return;
+
+  let inv = null;
+  if (stageId === 'invoice_sent' && invoiceId) {
+    inv = DB.a('iv').find(x=>x.id===invoiceId) || DB.a('lf_invoices').find(x=>x.id===invoiceId);
+  }
+
+  const toEmail = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
+  const fromEmail = stage.from;
+  const subject   = stage.subject(inv);
+  const body      = stage.body(a, inv);
+
+  const el = qs('#mce-content');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="margin-bottom:14px;display:grid;gap:6px;font-size:13px;background:var(--bg);border-radius:8px;padding:12px">
+      <div><span style="font-size:11px;color:var(--muted);display:block">From</span><strong>${fromEmail}</strong></div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">To</span>${toEmail||'<em style="color:var(--muted)">(no email on file)</em>'}</div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">Subject</span><strong>${subject}</strong></div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px">Body
+        <button class="btn xs" style="font-weight:400" onclick="qs('#mce-body').readOnly=false;this.textContent='Editing';this.disabled=true">Edit</button>
+      </label>
+      <textarea id="mce-body" rows="12" style="font-size:13px;font-family:inherit;white-space:pre-wrap" readonly>${escHtml(body)}</textarea>
+    </div>`;
+
+  const gmailBtn = qs('#mce-gmail-btn');
+  if (gmailBtn) {
+    gmailBtn.onclick = () => {
+      const finalBody = qs('#mce-body')?.value || body;
+      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
+      markCadenceSent(accountId, stageId, 'mailto', invoiceId||null);
+      closeModal('modal-cadence-email');
+    };
+  }
+  const markBtn = qs('#mce-mark-sent-btn');
+  if (markBtn) {
+    markBtn.onclick = () => {
+      markCadenceSent(accountId, stageId, 'manual', invoiceId||null);
+      closeModal('modal-cadence-email');
+    };
+  }
+
+  openModal('modal-cadence-email');
+}
+
+function markCadenceSent(accountId, stageId, method, invoiceId) {
+  const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: 'graham', method: method||'manual' };
+  if (invoiceId) entry.invoiceId = invoiceId;
+  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
+  renderMacEmailsTab(accountId);
+  renderCadenceOverdue();
+  toast('Email logged as sent');
+}
+
+// ══════════════════════════════════════════════════════════
 //  AI EMAIL DRAFTING
 // ══════════════════════════════════════════════════════════
 const _AI_SYSTEM_PROMPT = `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`;
@@ -1807,6 +1997,55 @@ const _AI_SIGNATURE = `Graham Biagiotti - Director of Sales
 Direct: 603-748-3038
 393 Pumpkin Hill Rd. Warner, NH 03278
 Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages`;
+
+const SIGNATURE = _AI_SIGNATURE;
+
+const CADENCE_STAGES = [
+  {
+    id: 'application_received',
+    label: 'Application Received',
+    desc: 'Thank you for applying',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => 'Thank you for your wholesale application — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products at ${a.name}. We've received your application and will be in touch within 1 business day.\n\nIn the meantime, feel free to reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'approved_welcome',
+    label: 'Approved — Welcome + Login',
+    desc: 'Welcome + portal access',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => 'Welcome to the purpl wholesale program — your retailer portal is ready',
+    body: (a) => {
+      const token = a.orderPortalToken || '';
+      const portalLink = token ? `https://purpl-crm.web.app/order?token=${token}` : '[portal link — generate from account settings]';
+      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pumpkinblossomfarm.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
+    }
+  },
+  {
+    id: 'rejected_decline',
+    label: 'Rejected — Polite Decline',
+    desc: 'Polite decline',
+    from: 'graham@pumpkinblossomfarm.com',
+    subject: () => 'Re: Your wholesale application — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'invoice_sent',
+    label: 'Invoice Sent Notification',
+    desc: 'Invoice notification to retailer',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: (inv) => `Invoice ${inv?.number||''} from Pumpkin Blossom Farm`,
+    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||''} for ${fmtC(inv?.amount||inv?.total||0)} attached. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'first_order_followup',
+    label: 'First Order Follow-Up',
+    desc: 'Thank you for your first order',
+    from: 'lavender@pumpkinblossomfarm.com',
+    subject: () => "Thanks for your order — we're on it",
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with purpl on your shelves.\n\nWarmly,\n${SIGNATURE}`
+  }
+];
 
 async function _callAnthropicApi(userPrompt) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2604,6 +2843,16 @@ const PRIORITY_CFG = {
 };
 const PRIORITY_ORDER = {high:0, medium:1, low:2};
 
+let _prCompact = localStorage.getItem('pbf_pr_compact') === '1';
+function togglePrCompact() {
+  _prCompact = !_prCompact;
+  localStorage.setItem('pbf_pr_compact', _prCompact ? '1' : '0');
+  const btn = qs('#pr-compact-btn');
+  if (btn) btn.classList.toggle('active', _prCompact);
+  const el = qs('#pr-cards');
+  if (el) el.classList.toggle('pr-compact', _prCompact);
+}
+
 function renderProspects() {
   let list = DB.a('pr');
   const search       = qs('#pr-search')?.value?.toLowerCase().trim() || '';
@@ -2628,6 +2877,9 @@ function renderProspects() {
 
   const el = qs('#pr-cards');
   if (!el) return;
+  el.classList.toggle('pr-compact', _prCompact);
+  const btn = qs('#pr-compact-btn');
+  if (btn) btn.classList.toggle('active', _prCompact);
 
   el.innerHTML = list.map(p=>{
     const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
@@ -6184,7 +6436,7 @@ function loadInvoiceSettings() {
   if (qs('#inv-stripe-link'))          qs('#inv-stripe-link').value          = inv.stripeLink||'';
   if (qs('#inv-terms'))                qs('#inv-terms').value                = inv.terms||30;
   if (qs('#inv-from-name'))            qs('#inv-from-name').value            = inv.fromName||'Pumpkin Blossom Farm LLC';
-  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'sales@drinkpurpl.com';
+  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'lavender@pumpkinblossomfarm.com';
   if (qs('#inv-from-address'))         qs('#inv-from-address').value         = inv.fromAddress||'393 Pumpkin Hill Rd, Warner, NH 03278';
 }
 
@@ -6196,7 +6448,7 @@ function saveInvoiceSettings() {
     stripeLink:          qs('#inv-stripe-link')?.value?.trim()||'',
     terms:               parseInt(qs('#inv-terms')?.value)||30,
     fromName:            qs('#inv-from-name')?.value?.trim()||'Pumpkin Blossom Farm LLC',
-    fromEmail:           qs('#inv-from-email')?.value?.trim()||'sales@drinkpurpl.com',
+    fromEmail:           qs('#inv-from-email')?.value?.trim()||'lavender@pumpkinblossomfarm.com',
     fromAddress:         qs('#inv-from-address')?.value?.trim()||'393 Pumpkin Hill Rd, Warner, NH 03278',
   });
   toast('Invoice settings saved');
@@ -8286,7 +8538,7 @@ function saveInvoiceSettings() {
     fromName: document.getElementById('inv-from-name')?.value ||
       'Pumpkin Blossom Farm LLC',
     fromEmail: document.getElementById('inv-from-email')?.value ||
-      'sales@drinkpurpl.com',
+      'lavender@pumpkinblossomfarm.com',
     fromAddress: document.getElementById('inv-from-address')?.value ||
       '393 Pumpkin Hill Rd, Warner, NH 03278',
     terms: parseInt(document.getElementById('inv-terms')?.value)||30,
@@ -8326,7 +8578,7 @@ function generateInvoicePrint(invoiceId) {
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
   const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
-  const fromEmail = s.fromEmail || 'sales@drinkpurpl.com';
+  const fromEmail = s.fromEmail || 'lavender@pumpkinblossomfarm.com';
   const fromAddr  = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const cans      = iv.cans || ((iv.cases||0) * CANS_PER_CASE);
   const invNum    = iv.number || iv.invoiceNumber || '—';
@@ -8492,7 +8744,7 @@ function generateInvoicePrint(invoiceId) {
 
 <div class="footer">
   Thank you for your business — purpl by Pumpkin Blossom Farm
-  <br>drinkpurpl.com · sales@drinkpurpl.com
+  <br>drinkpurpl.com · lavender@pumpkinblossomfarm.com
 </div>
 
 </body></html>`);
@@ -8561,7 +8813,7 @@ function saveInv(id, isNew) {
     notes,
     lineItems,
     source:       existing?.source || 'manual',
-    fromEmail:    invSettings.fromEmail || 'sales@drinkpurpl.com',
+    fromEmail:    invSettings.fromEmail || 'lavender@pumpkinblossomfarm.com',
   };
 
   if (_isNew) DB.push('iv', rec);

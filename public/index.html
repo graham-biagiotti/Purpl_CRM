@@ -106,7 +106,7 @@
         Orders &amp; Delivery
       </a>
       <a data-page="invoices" id="nav-invoices" onclick="nav('invoices')">
-        🧾 Invoices
+        🧾 purpl Invoices
       </a>
       <a data-page="lf-invoices" id="nav-lf-invoices" onclick="nav('lf-invoices')">
         🌿 LF Invoices
@@ -209,6 +209,14 @@
         <div id="dash-kpi-lf-overdue"></div><div id="dash-kpi-lf-wix"></div>
       </div>
 
+      <!-- Prospect KPI row -->
+      <div class="card-grid grid-4" id="dash-prospect-kpis" style="margin-bottom:20px">
+        <div id="dash-kpi-pr-total"></div>
+        <div id="dash-kpi-pr-purpl"></div>
+        <div id="dash-kpi-pr-lf"></div>
+        <div id="dash-kpi-pr-due"></div>
+      </div>
+
       <!-- Row 2+3: Two-column layout — left 60% / right 40% -->
       <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px" id="dash-main-cols">
         <!-- Left column: Attention + Follow-ups -->
@@ -222,7 +230,7 @@
           </div>
           <div class="card">
             <div class="section-hdr">
-              <h2>Upcoming Follow-ups</h2>
+              <h2>📅 Follow-ups <span id="dash-followup-badge" style="display:none;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
               <small style="color:var(--muted);font-size:12px">Next 14 days</small>
             </div>
             <div id="dash-followups"></div>
@@ -244,6 +252,12 @@
             </div>
             <div id="dash-pending-orders"></div>
           </div>
+          <div class="card" id="dash-cadence-card" style="display:none">
+            <div class="section-hdr">
+              <h2>⚠️ Action Required</h2>
+            </div>
+            <div id="dash-cadence-overdue"></div>
+          </div>
         </div>
       </div>
 
@@ -260,43 +274,6 @@
         <div id="dash-projection-notes" style="font-size:12px;color:var(--muted)"></div>
       </div>
 
-      <!-- Row 5: Store by Store Velocity -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="section-hdr">
-          <h2>Store by Store Velocity</h2>
-          <small style="color:var(--muted);font-size:12px">Last 90 days · units/week</small>
-        </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Account</th>
-              <th>Avg Cycle</th>
-              <th>Next Order (est.)</th>
-              <th>Classic/wk</th>
-              <th>Blueberry/wk</th>
-              <th>Peach/wk</th>
-              <th>Raspberry/wk</th>
-              <th>Variety/wk</th>
-              <th>Total/wk</th>
-              <th>Avg Order $</th>
-            </tr></thead>
-            <tbody id="dash-velocities"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Row 6: Quick Notes -->
-      <div class="card">
-        <div class="section-hdr">
-          <h2>Quick Notes</h2>
-          <small style="color:var(--muted);font-size:12px">Team scratchpad</small>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <textarea id="qn-input" rows="2" placeholder="Add a note…" style="flex:1;resize:vertical;font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-family:inherit"></textarea>
-          <button class="btn primary" style="align-self:flex-end;min-width:72px" onclick="addQuickNote()">Add</button>
-        </div>
-        <div id="dash-quick-notes"></div>
-      </div>
 
     </div>
 
@@ -357,6 +334,7 @@
         </select>
         <div class="spacer"></div>
         <button class="btn no-print" onclick="importWholesaleInquiries()">Import Wholesale Inquiries</button>
+        <button class="btn" id="pr-compact-btn" onclick="togglePrCompact()">Compact</button>
         <button class="btn primary" onclick="editProspect(uid())">+ Add Prospect</button>
       </div>
       <div id="pr-cards"></div>
@@ -1767,6 +1745,7 @@
       <button class="tab" data-tab="outreach">Outreach</button>
       <button class="tab" data-tab="notes">Notes</button>
       <button class="tab" data-tab="portal-orders">Portal Orders</button>
+      <button class="tab" data-tab="emails">✉️ Emails</button>
     </div>
     <!-- Overview -->
     <div id="mac-tab-overview" class="tab-pane">
@@ -1826,11 +1805,32 @@
         <div style="text-align:center;padding:24px;color:var(--muted)">Loading portal orders…</div>
       </div>
     </div>
+    <!-- Emails tab -->
+    <div id="mac-tab-emails" class="tab-pane" style="display:none">
+      <div id="mac-cadence-stages"></div>
+      <div id="mac-cadence-log" style="margin-top:20px"></div>
+    </div>
     <div class="modal-footer">
       <button class="btn sm" id="mac-copy-link-btn" onclick="">🔗 Copy Order Link</button>
       <button class="btn sm" id="mac-draft-btn">✉️ Draft Outreach</button>
       <button class="btn" id="mac-order-btn">+ New Order</button>
       <button class="btn primary" id="mac-edit-btn">Edit Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- Cadence email preview -->
+<div class="overlay" id="modal-cadence-email">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-hdr">
+      <h2>Email Preview</h2>
+      <button class="modal-close btn sm">✕</button>
+    </div>
+    <div id="mce-content" style="padding:4px 0"></div>
+    <div class="modal-footer">
+      <button class="btn sm" onclick="closeModal('modal-cadence-email')">Cancel</button>
+      <button class="btn sm" id="mce-mark-sent-btn">✓ Mark as Sent</button>
+      <button class="btn primary" id="mce-gmail-btn">Open in Gmail ✉️</button>
     </div>
   </div>
 </div>
