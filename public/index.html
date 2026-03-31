@@ -1311,6 +1311,19 @@
         </div>
       </div>
 
+      <!-- AI Settings -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr">
+          <h2>AI Settings</h2>
+          <button class="btn sm primary" onclick="saveApiSettings()">Save</button>
+        </div>
+        <div class="form-group" style="max-width:480px">
+          <label>Anthropic API Key</label>
+          <input type="password" id="set-anthropic-key" placeholder="sk-ant-..." autocomplete="off">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Required for AI draft generation and mass email AI. Key is stored in your Firestore database.</div>
+        </div>
+      </div>
+
       <!-- One-time NEM show accounts import — hidden after run -->
       <div class="card" id="nem-import-card" style="border:2px solid var(--amber,#f59e0b)">
         <div class="section-hdr"><h2>Import NEM Show Accounts (March 2026)</h2></div>

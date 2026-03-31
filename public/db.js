@@ -43,7 +43,7 @@ const ARRAY_KEYS = [
   'retail_invoices',    // delivery-run invoices (already used — registering here)
 ];
 // Collections stored as plain objects (settings, costs, today_run)
-const OBJ_KEYS = ['settings','costs','today_run'];
+const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];
 
 const DB = {
   _cache: {},

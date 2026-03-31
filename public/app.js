@@ -1094,46 +1094,6 @@ function _ivCalcTotal() {
 // Legacy alias called from old oninput handlers
 function calcInvTotal() { _ivCalcTotal(); }
 
-function saveRetailInv() {
-  const acId  = qs('#iv-account')?.value;
-  const date  = qs('#iv-date')?.value;
-  const cases = parseFloat(qs('#iv-cases')?.value)||0;
-  const price = parseFloat(qs('#iv-price-per-case')?.value)||0;
-  if (!acId)   { toast('Select an account'); return; }
-  if (!date)   { toast('Invoice date required'); return; }
-  if (!cases)  { toast('Enter case quantity'); return; }
-  if (!price)  { toast('Enter price per case'); return; }
-
-  const invSettings = DB.obj('invoice_settings', {});
-  const terms = invSettings.terms || 30;
-  const dueDate = new Date(new Date(date+'T12:00:00').getTime() + terms*864e5).toISOString().slice(0,10);
-
-  // Auto-generate invoice number (max-scan ensures no collisions across sources)
-  const lastNum = DB.a('retail_invoices').reduce((max, inv) => {
-    const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
-    return Math.max(max, n);
-  }, 0);
-  const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
-
-  const rec = {
-    id: uid(),
-    invoiceNumber,
-    accountId: acId,
-    date,
-    dueDate,
-    priceType:    qs('#iv-price-type')?.value || 'direct',
-    pricePerCase: price,
-    cases,
-    total: cases * price,
-    notes: qs('#iv-notes')?.value?.trim() || '',
-    status: 'unpaid',
-    createdAt: today(),
-  };
-  DB.push('retail_invoices', rec);
-  closeModal('modal-add-inv');
-  renderInvoiceStatus();
-  toast('Invoice saved');
-}
 
 function markRetailInvPaid(id) {
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
@@ -1148,156 +1108,6 @@ function deleteRetailInv(id) {
   toast('Invoice deleted');
 }
 
-function generateInvoicePrint(invoiceId) {
-  const inv = DB.a('retail_invoices').find(i=>i.id===invoiceId);
-  if (!inv) { toast('Invoice not found'); return; }
-  const ac = DB.a('ac').find(a=>a.id===inv.accountId) || {};
-  const invSettings = DB.obj('invoice_settings', {});
-
-  const fromName    = invSettings.fromName    || 'Pumpkin Blossom Farm LLC';
-  const fromEmail   = invSettings.fromEmail   || 'lavender@pumpkinblossomfarm.com';
-  const fromAddress = invSettings.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
-  const payInstr    = invSettings.paymentInstructions || '';
-  const achRouting  = invSettings.achRouting  || '';
-  const achAccount  = invSettings.achAccount  || '';
-  const stripeLink  = invSettings.stripeLink  || '';
-  const terms       = invSettings.terms       || 30;
-
-  const cans      = (inv.cases || 0) * CANS_PER_CASE;
-  const subtotal  = inv.total || 0;
-  const dueDateFmt = fmtD(inv.dueDate);
-  const invDateFmt = fmtD(inv.date);
-
-  // Status badge color
-  const statusColor = inv.status === 'paid' ? '#16a34a' : daysAgo(inv.dueDate) > 0 ? '#dc2626' : '#1d4ed8';
-  const statusLabel = inv.status === 'paid' ? 'PAID' : daysAgo(inv.dueDate) > 0 ? 'OVERDUE' : 'UNPAID';
-
-  // Account address (first location)
-  const acAddr = ac.locs?.[0]?.address || ac.address || '';
-
-  // Payment section
-  let paymentHtml = '';
-  if (achRouting && achAccount) {
-    paymentHtml += `
-      <div style="margin-bottom:8px">
-        <strong>ACH / Bank Transfer:</strong><br>
-        Routing: <strong>${achRouting}</strong><br>
-        Account: <strong>${achAccount}</strong>
-      </div>`;
-  }
-  if (stripeLink) {
-    paymentHtml += `
-      <div style="margin-bottom:8px">
-        <a href="${stripeLink}" style="display:inline-block;background:#635bff;color:#fff;padding:8px 20px;border-radius:6px;text-decoration:none;font-weight:600">Pay Now →</a>
-      </div>`;
-  }
-  if (payInstr) {
-    paymentHtml += `<div style="white-space:pre-line;font-size:13px;color:#555">${payInstr}</div>`;
-  }
-  if (!paymentHtml) {
-    paymentHtml = `<div style="font-size:13px;color:#555">Make checks payable to ${fromName}</div>`;
-  }
-
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${inv.invoiceNumber}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a1a; padding: 40px; max-width: 800px; margin: 0 auto; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 2px solid #e5e7eb; }
-    .logo-block img { height: 56px; margin-bottom: 8px; display: block; }
-    .company-name { font-size: 17px; font-weight: 700; color: #1a1a1a; }
-    .company-sub { font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.5; }
-    .invoice-meta { text-align: right; }
-    .inv-label { font-size: 32px; font-weight: 800; color: #7c3aed; letter-spacing: -1px; }
-    .inv-detail { font-size: 13px; color: #374151; margin-top: 6px; line-height: 1.8; }
-    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; color: #fff; background: ${statusColor}; margin-top: 4px; }
-    .bill-to { margin-bottom: 28px; }
-    .bill-to h3 { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
-    .bill-to .account-name { font-size: 18px; font-weight: 700; }
-    .bill-to .account-addr { font-size: 13px; color: #555; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    thead th { background: #7c3aed; color: #fff; padding: 10px 12px; font-size: 12px; font-weight: 600; text-align: left; }
-    tbody td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
-    tbody tr:hover { background: #faf5ff; }
-    .totals { text-align: right; margin-bottom: 28px; }
-    .totals table { width: auto; margin-left: auto; margin-bottom: 0; }
-    .totals td { padding: 4px 12px; font-size: 14px; }
-    .totals .total-due td { font-size: 18px; font-weight: 800; color: #7c3aed; border-top: 2px solid #7c3aed; padding-top: 10px; }
-    .payment-section { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 28px; }
-    .payment-section h3 { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: #374151; }
-    .footer { text-align: center; font-size: 12px; color: #9ca3af; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-    @media print { body { padding: 24px; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo-block">
-      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl logo">
-      <div class="company-name">${fromName}</div>
-      <div class="company-sub">${fromAddress}<br>${fromEmail} &nbsp;·&nbsp; 603-748-3038</div>
-    </div>
-    <div class="invoice-meta">
-      <div class="inv-label">INVOICE</div>
-      <div class="inv-detail">
-        <strong>Invoice #:</strong> ${inv.invoiceNumber}<br>
-        <strong>Invoice Date:</strong> ${invDateFmt}<br>
-        <strong>Due Date:</strong> ${dueDateFmt}<br>
-        <strong>Terms:</strong> Net ${terms}
-      </div>
-      <div class="status-badge">${statusLabel}</div>
-    </div>
-  </div>
-
-  <div class="bill-to">
-    <h3>Bill To</h3>
-    <div class="account-name">${ac.name || '—'}</div>
-    ${acAddr ? `<div class="account-addr">${acAddr}</div>` : ''}
-    ${ac.contact ? `<div class="account-addr">${ac.contact}</div>` : ''}
-    ${ac.email ? `<div class="account-addr">${ac.email}</div>` : ''}
-  </div>
-
-  <table>
-    <thead>
-      <tr><th>Product</th><th>Cases</th><th>Cans</th><th>Price / Case</th><th>Total</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><strong>purpl by Pumpkin Blossom Farm</strong>${inv.notes ? `<br><small style="color:#6b7280">${inv.notes}</small>` : ''}</td>
-        <td>${fmt(inv.cases)}</td>
-        <td>${fmt(cans)}</td>
-        <td>${fmtC(inv.pricePerCase)}</td>
-        <td>${fmtC(subtotal)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div class="totals">
-    <table>
-      <tr><td>Subtotal</td><td>${fmtC(subtotal)}</td></tr>
-      <tr class="total-due"><td><strong>Total Due</strong></td><td><strong>${fmtC(subtotal)}</strong></td></tr>
-    </table>
-  </div>
-
-  <div class="payment-section">
-    <h3>Payment Options</h3>
-    ${paymentHtml}
-  </div>
-
-  <div class="footer">
-    Thank you for your business — purpl by Pumpkin Blossom Farm<br>
-    <a href="https://drinkpurpl.com" style="color:#7c3aed">drinkpurpl.com</a>
-  </div>
-
-  <script>window.onload = () => window.print();<\/script>
-</body>
-</html>`;
-
-  const w = window.open('', '_blank');
-  if (w) { w.document.write(html); w.document.close(); }
-}
 
 // ══════════════════════════════════════════════════════════
 //  INVOICES PAGE
@@ -1311,104 +1121,6 @@ function sortInv(key) {
   renderInvoicesPage();
 }
 
-function renderInvoicesPage() {
-  const allInv = DB.a('retail_invoices');
-  const todayStr = today();
-
-  // Populate account filter
-  const acSel = qs('#inv-filter-account');
-  if (acSel && acSel.options.length <= 1) {
-    const names = [...new Set(allInv.map(i=>i.accountName||'').filter(Boolean))].sort();
-    names.forEach(n=>{
-      const o = document.createElement('option');
-      o.value = n; o.textContent = n;
-      acSel.appendChild(o);
-    });
-  }
-
-  const statusFilter  = qs('#inv-filter-status')?.value  || '';
-  const accountFilter = qs('#inv-filter-account')?.value || '';
-
-  // Compute effective status (mark overdue if unpaid + past due)
-  function effectiveStatus(inv) {
-    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
-    if (inv.dueDate && inv.dueDate < todayStr && inv.status !== 'paid') return 'overdue';
-    return inv.status || 'unpaid';
-  }
-
-  let invs = allInv.map(i=>({...i, _status: effectiveStatus(i)}));
-
-  if (statusFilter)  invs = invs.filter(i=>i._status === statusFilter);
-  if (accountFilter) invs = invs.filter(i=>(i.accountName||'')=== accountFilter);
-
-  // Sort
-  invs.sort((a,b)=>{
-    const av = a[_invSortKey] ?? a.invoiceNumber ?? '';
-    const bv = b[_invSortKey] ?? b.invoiceNumber ?? '';
-    return av < bv ? -_invSortDir : av > bv ? _invSortDir : 0;
-  });
-
-  // KPI row
-  const kpiEl = qs('#inv-kpi-row');
-  if (kpiEl) {
-    const total   = allInv.length;
-    const unpaid  = allInv.filter(i=>effectiveStatus(i)==='unpaid').length;
-    const overdue = allInv.filter(i=>effectiveStatus(i)==='overdue').length;
-    const paidAmt = allInv.filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
-    const outAmt  = allInv.filter(i=>!['paid','draft'].includes(effectiveStatus(i))).reduce((s,i)=>s+(i.total||0),0);
-    kpiEl.innerHTML = `
-      <div>${kpiHtml('Total Invoices', total, 'purple')}</div>
-      <div>${kpiHtml('Unpaid', unpaid, 'blue')}</div>
-      <div>${kpiHtml('Overdue', overdue, 'red')}</div>
-      <div>${kpiHtml('Outstanding $', fmtC(outAmt), 'amber')}</div>`;
-  }
-
-  // Overdue card
-  const overdueList = allInv.filter(i=>effectiveStatus(i)==='overdue');
-  const overdueEl = qs('#inv-overdue-list');
-  const overdueCard = qs('#inv-overdue-card');
-  if (overdueCard) overdueCard.style.display = overdueList.length ? '' : 'none';
-  if (overdueEl) {
-    overdueEl.innerHTML = overdueList.length ? overdueList.map(inv=>{
-      const days = daysAgo(inv.dueDate);
-      return `<div class="attn-item">
-        <div class="attn-icon">💰</div>
-        <div class="attn-info">
-          <div class="attn-name">${inv.accountName||'—'} — ${inv.invoiceNumber||'—'}</div>
-          <div class="attn-reason">${fmtC(inv.total||0)} · ${days}d overdue (due ${fmtD(inv.dueDate)})</div>
-        </div>
-        <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print</button>
-        <button class="btn xs green" onclick="markRetailInvPaid('${inv.id}');renderInvoicesPage()">Mark Paid</button>
-      </div>`;
-    }).join('') : '<div class="empty">No overdue invoices</div>';
-  }
-
-  // Main table
-  const tbody = qs('#inv-main-tbody');
-  if (!tbody) return;
-
-  const STATUS_CLS = {paid:'green', draft:'gray', overdue:'red', unpaid:'blue', sent:'blue', partial:'amber'};
-
-  tbody.innerHTML = invs.length ? invs.map(inv=>{
-    const st = inv._status;
-    const cls = STATUS_CLS[st] || 'gray';
-    const label = st.charAt(0).toUpperCase() + st.slice(1);
-    return `<tr>
-      <td><strong>${inv.invoiceNumber||'—'}</strong></td>
-      <td>${inv.accountName||'—'}</td>
-      <td>${fmtD(inv.date)}</td>
-      <td>${fmtD(inv.dueDate)}</td>
-      <td>${inv.total != null ? fmtC(inv.total) : '—'}</td>
-      <td>${inv.cases||'—'}</td>
-      <td><span class="badge ${cls}">${label}</span></td>
-      <td class="no-print" style="white-space:nowrap">
-        <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
-        ${st!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}');renderInvoicesPage()">Mark Paid</button>`:''}
-        <button class="btn xs red" onclick="deleteRetailInv('${inv.id}');renderInvoicesPage()">✕</button>
-      </td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="8" class="empty">No invoices found</td></tr>`;
-}
 
 // ── Revenue Projections ───────────────────────────────────
 function renderProjections() {
@@ -2353,9 +2065,19 @@ const CADENCE_STAGES = [
 ];
 
 async function _callAnthropicApi(userPrompt) {
+  const key = DB.obj('api_settings', {}).anthropicKey || '';
+  if (!key) {
+    toast('Add your Anthropic API key in Settings → AI to enable AI features', 5000);
+    throw new Error('No API key configured');
+  }
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
@@ -7054,31 +6776,6 @@ function saveSettings() {
   toast('Settings saved');
 }
 
-function loadInvoiceSettings() {
-  const inv = DB.obj('invoice_settings', {});
-  if (qs('#inv-payment-instructions')) qs('#inv-payment-instructions').value = inv.paymentInstructions||'';
-  if (qs('#inv-ach-routing'))          qs('#inv-ach-routing').value          = inv.achRouting||'';
-  if (qs('#inv-ach-account'))          qs('#inv-ach-account').value          = inv.achAccount||'';
-  if (qs('#inv-stripe-link'))          qs('#inv-stripe-link').value          = inv.stripeLink||'';
-  if (qs('#inv-terms'))                qs('#inv-terms').value                = inv.terms||30;
-  if (qs('#inv-from-name'))            qs('#inv-from-name').value            = inv.fromName||'Pumpkin Blossom Farm LLC';
-  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'lavender@pumpkinblossomfarm.com';
-  if (qs('#inv-from-address'))         qs('#inv-from-address').value         = inv.fromAddress||'393 Pumpkin Hill Rd, Warner, NH 03278';
-}
-
-function saveInvoiceSettings() {
-  DB.setObj('invoice_settings', {
-    paymentInstructions: qs('#inv-payment-instructions')?.value?.trim()||'',
-    achRouting:          qs('#inv-ach-routing')?.value?.trim()||'',
-    achAccount:          qs('#inv-ach-account')?.value?.trim()||'',
-    stripeLink:          qs('#inv-stripe-link')?.value?.trim()||'',
-    terms:               parseInt(qs('#inv-terms')?.value)||30,
-    fromName:            qs('#inv-from-name')?.value?.trim()||'Pumpkin Blossom Farm LLC',
-    fromEmail:           qs('#inv-from-email')?.value?.trim()||'lavender@pumpkinblossomfarm.com',
-    fromAddress:         qs('#inv-from-address')?.value?.trim()||'393 Pumpkin Hill Rd, Warner, NH 03278',
-  });
-  toast('Invoice settings saved');
-}
 
 // ══════════════════════════════════════════════════════════
 //  MODAL HELPERS
@@ -9184,6 +8881,7 @@ function renderSettings() {
   _origRenderSettings();
   renderPortalSettings();
   loadInvoiceSettings();
+  loadApiSettings();
 }
 
 
@@ -9208,137 +8906,133 @@ function editInv(id) {
 }
 
 function renderInvoicesPage() {
-  const invs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
-  const statusFilter = document.getElementById(
-    'inv-filter-status')?.value || '';
-  const acctFilter = document.getElementById(
-    'inv-filter-account')?.value || '';
+  const todayStr = today();
 
-  // Populate account filter
+  // Normalize both collections to a common shape
+  const ivRecs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber).map(x => ({
+    ...x,
+    _src:         'iv',
+    _num:         x.number || x.invoiceNumber || '—',
+    _due:         x.due || x.dueDate || '',
+    _amt:         x.amount != null ? x.amount : (x.total != null ? x.total : null),
+    _accountName: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '?',
+  }));
+  const rrRecs = DB.a('retail_invoices').map(x => ({
+    ...x,
+    _src:         'retail',
+    _num:         x.invoiceNumber || x.number || '—',
+    _due:         x.dueDate || x.due || '',
+    _amt:         x.total != null ? x.total : (x.amount != null ? x.amount : null),
+    _accountName: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '?',
+  }));
+  const allInv = [...ivRecs, ...rrRecs];
+
+  function effectiveStatus(inv) {
+    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
+    if (inv._due && inv._due < todayStr) return 'overdue';
+    return inv.status || 'unpaid';
+  }
+
+  // Populate account filter (by name, covers both collections)
   const acctSel = document.getElementById('inv-filter-account');
   if (acctSel && acctSel.options.length <= 1) {
-    const accts = DB.a('ac');
-    accts.forEach(a => {
+    const names = [...new Set(allInv.map(x => x._accountName).filter(Boolean))].sort();
+    names.forEach(n => {
       const opt = document.createElement('option');
-      opt.value = a.id;
-      opt.textContent = a.name;
+      opt.value = n; opt.textContent = n;
       acctSel.appendChild(opt);
     });
   }
 
+  const statusFilter = document.getElementById('inv-filter-status')?.value || '';
+  const acctFilter   = document.getElementById('inv-filter-account')?.value || '';
+
   // KPIs
-  const total = invs.reduce((s,x) => s + parseFloat(x.amount||0), 0);
-  const paid = invs.filter(x => x.status === 'paid')
-    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
-  const overdueInvs = invs.filter(x =>
-    x.status !== 'paid' && x.due && x.due < today());
-  const overdueAmt = overdueInvs
-    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
-  const drafts = invs.filter(x => x.status === 'draft').length;
+  const totalAmt    = allInv.reduce((s,x) => s + parseFloat(x._amt||0), 0);
+  const paidAmt     = allInv.filter(x=>x.status==='paid').reduce((s,x)=>s+parseFloat(x._amt||0),0);
+  const overdueInvs = allInv.filter(x => effectiveStatus(x) === 'overdue');
+  const overdueAmt  = overdueInvs.reduce((s,x)=>s+parseFloat(x._amt||0),0);
+  const drafts      = allInv.filter(x=>x.status==='draft').length;
 
   const kpiEl = document.getElementById('inv-kpi-row');
   if (kpiEl) kpiEl.innerHTML = `
-    <div class="kpi purple">
-      <div class="num" style="font-size:20px">${fmt$(total)}</div>
-      <div class="label">Total Invoiced</div></div>
-    <div class="kpi green">
-      <div class="num" style="font-size:20px">${fmt$(paid)}</div>
-      <div class="label">Collected</div></div>
-    <div class="kpi red">
-      <div class="num" style="font-size:20px">${fmt$(overdueAmt)}</div>
-      <div class="label">Overdue</div></div>
-    <div class="kpi amber">
-      <div class="num" style="font-size:20px">${drafts}</div>
-      <div class="label">Drafts</div></div>`;
+    <div class="kpi purple"><div class="num" style="font-size:20px">${fmtC(totalAmt)}</div><div class="label">Total Invoiced</div></div>
+    <div class="kpi green"><div class="num" style="font-size:20px">${fmtC(paidAmt)}</div><div class="label">Collected</div></div>
+    <div class="kpi red"><div class="num" style="font-size:20px">${fmtC(overdueAmt)}</div><div class="label">Overdue</div></div>
+    <div class="kpi amber"><div class="num" style="font-size:20px">${drafts}</div><div class="label">Drafts</div></div>`;
 
-  // Overdue section
-  const overdueEl = document.getElementById('inv-overdue-list');
+  // Overdue card
+  const overdueEl   = document.getElementById('inv-overdue-list');
   const overdueCard = document.getElementById('inv-overdue-card');
+  if (overdueCard) overdueCard.style.display = overdueInvs.length ? '' : 'none';
   if (overdueEl) {
-    if (!overdueInvs.length) {
-      if (overdueCard) overdueCard.style.display = 'none';
-    } else {
-      if (overdueCard) overdueCard.style.display = 'block';
-      overdueEl.innerHTML = overdueInvs.map(iv => `
-        <div style="display:flex;justify-content:space-between;
-          align-items:center;padding:8px 0;
-          border-bottom:1px solid var(--border)">
-          <div>
-            <div style="font-weight:600">${esc(iv.accountName||'?')}
-              · ${esc(iv.number||iv.invoiceNumber||'')}</div>
-            <div style="font-size:11px;color:var(--muted)">
-              Due ${fmtDate(iv.due||iv.dueDate)} ·
-              ${daysSince(iv.due||iv.dueDate)} days overdue</div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <span style="font-weight:700;color:var(--red)">
-              ${fmt$(iv.amount||iv.total)}</span>
-            <button class="btn xs green"
-              onclick="markPaid('${iv.id}');renderInvoicesPage()">
-              ✓ Paid</button>
-            <button class="btn xs"
-              onclick="generateInvoicePrint('${iv.id}')">
-              🖨️</button>
-          </div>
-        </div>`).join('');
-    }
+    overdueEl.innerHTML = overdueInvs.map(iv => {
+      const days = daysAgo(iv._due);
+      const markPaidBtn = iv._src === 'iv'
+        ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`
+        : `<button class="btn xs green" onclick="markRetailInvPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600">${escHtml(iv._accountName)} · ${escHtml(iv._num)}</div>
+          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(iv._due)} · ${days} days overdue</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-weight:700;color:var(--red)">${fmtC(iv._amt||0)}</span>
+          ${markPaidBtn}
+          <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+        </div>
+      </div>`;
+    }).join('');
   }
 
-  // Main table
-  let filtered = [...invs];
-  if (statusFilter) filtered = filtered.filter(
-    x => x.status === statusFilter);
-  if (acctFilter) filtered = filtered.filter(
-    x => x.accountId === acctFilter);
-  filtered.sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+  // Main table — filter, sort (honours sortInv() column headers), render
+  const SORT_KEY_MAP = {number:'_num', accountName:'_accountName', date:'date', due:'_due', amount:'_amt'};
+  let filtered = allInv.map(x => ({...x, _status: effectiveStatus(x)}));
+  if (statusFilter) filtered = filtered.filter(x => x._status === statusFilter);
+  if (acctFilter)   filtered = filtered.filter(x => x._accountName === acctFilter);
+  filtered.sort((a,b) => {
+    const k  = SORT_KEY_MAP[_invSortKey] || 'date';
+    const av = a[k] ?? '';
+    const bv = b[k] ?? '';
+    return av < bv ? -_invSortDir : av > bv ? _invSortDir : 0;
+  });
 
-  const statColor = {
-    paid:'green', draft:'gray', sent:'blue',
-    overdue:'red', partial:'amber', unpaid:'blue'
-  };
+  const statColor = {paid:'green', draft:'gray', sent:'blue', overdue:'red', partial:'amber', unpaid:'blue'};
   const tbody = document.getElementById('inv-main-tbody');
-  if (tbody) tbody.innerHTML = !filtered.length ?
-    '<tr><td colspan="8" class="empty">No invoices yet</td></tr>' :
-    filtered.map(iv => {
-      const st = (iv.status !== 'paid' && (iv.due||iv.dueDate) && (iv.due||iv.dueDate) < today())
-        ? 'overdue' : (iv.status || 'draft');
-      const num = iv.number || iv.invoiceNumber || '—';
-      const due = iv.due || iv.dueDate || '';
-      const amt = iv.amount != null ? iv.amount : (iv.total != null ? iv.total : null);
-      const acName = iv.accountName || DB.a('ac').find(a=>a.id===iv.accountId)?.name || '?';
-      return `<tr>
-      <td><strong>${esc(num)}</strong></td>
-      <td>${esc(acName)}</td>
-      <td>${fmtDate(iv.date)}</td>
-      <td style="color:${due&&due<today()&&iv.status!=='paid'?
-        'var(--red)':'inherit'}">${fmtDate(due)}</td>
-      <td><strong>${amt != null ? fmt$(amt) :
-        '<span style="color:var(--muted)">Draft</span>'}</strong></td>
-      <td style="font-size:12px;color:var(--muted)">
-        ${iv.cases||'—'}</td>
-      <td><span class="badge ${statColor[st]||'gray'}">
-        ${st}</span></td>
-      <td class="no-print">
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          ${st!=='paid' ?
-            `<button class="btn xs green"
-              onclick="markPaid('${iv.id}');renderInvoicesPage()">
-              ✓ Paid</button>` : ''}
-          ${st==='draft' ?
-            `<button class="btn xs blue"
-              onclick="markInvoiceSent('${iv.id}')">
-              ✉ Sent</button>` : ''}
-          <button class="btn xs"
-            onclick="generateInvoicePrint('${iv.id}')">
-            🖨️ Print</button>
-          <button class="btn xs"
-            onclick="editInv('${iv.id}')">Edit</button>
-          <button class="btn xs red"
-            onclick="deleteInvoice('${iv.id}')">✕</button>
-        </div>
-      </td>
-    </tr>`;
-    }).join('');
+  if (!tbody) return;
+
+  tbody.innerHTML = !filtered.length
+    ? '<tr><td colspan="8" class="empty">No invoices yet</td></tr>'
+    : filtered.map(iv => {
+        const st  = iv._status;
+        const due = iv._due;
+        const markPaidBtn = iv._src === 'iv'
+          ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`
+          : `<button class="btn xs green" onclick="markRetailInvPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`;
+        const deleteBtn = iv._src === 'iv'
+          ? `<button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>`
+          : `<button class="btn xs red" onclick="deleteRetailInv('${iv.id}');renderInvoicesPage()">✕</button>`;
+        const editBtn = iv._src === 'iv' ? `<button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>` : '';
+        const sentBtn = (iv._src === 'iv' && st === 'draft') ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : '';
+        return `<tr>
+        <td><strong>${escHtml(iv._num)}</strong></td>
+        <td>${escHtml(iv._accountName)}</td>
+        <td>${fmtD(iv.date)}</td>
+        <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
+        <td><strong>${iv._amt != null ? fmtC(iv._amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
+        <td style="font-size:12px;color:var(--muted)">${iv.cases||'—'}</td>
+        <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
+        <td class="no-print">
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${st!=='paid' ? markPaidBtn : ''}
+            ${sentBtn}
+            <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️ Print</button>
+            ${editBtn}
+            ${deleteBtn}
+          </div>
+        </td>
+      </tr>`;
+      }).join('');
 }
 
 function markInvoiceSent(id) {
@@ -9389,6 +9083,19 @@ function loadInvoiceSettings() {
   set('inv-check-instructions', s.checkInstructions);
   // legacy field aliases
   set('inv-payment-instructions', s.checkInstructions || s.paymentInstructions);
+}
+
+function saveApiSettings() {
+  DB.setObj('api_settings', {
+    anthropicKey: document.getElementById('set-anthropic-key')?.value?.trim() || '',
+  });
+  toast('API settings saved ✓');
+}
+
+function loadApiSettings() {
+  const s = DB.obj('api_settings', {});
+  const el = document.getElementById('set-anthropic-key');
+  if (el && s.anthropicKey) el.value = s.anthropicKey;
 }
 
 function generateInvoicePrint(invoiceId) {
