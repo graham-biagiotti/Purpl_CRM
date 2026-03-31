@@ -230,6 +230,15 @@ function renderDash() {
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
   if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('Wix Pulls', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
+  const allPr      = DB.a('pr');
+  const prPurplCount = allPr.filter(p => !p.isPbf).length;
+  const prLfCount    = allPr.filter(p => !!p.isPbf).length;
+  const prDueCount   = allPr.filter(p => !['won','lost'].includes(p.status) && p.nextDate && p.nextDate <= today()).length;
+  if (qs('#dash-kpi-pr-total')) qs('#dash-kpi-pr-total').innerHTML = kpiHtml('Prospects', allPr.length, 'blue');
+  if (qs('#dash-kpi-pr-purpl')) qs('#dash-kpi-pr-purpl').innerHTML = kpiHtml('💜 purpl Prospects', prPurplCount, 'purple');
+  if (qs('#dash-kpi-pr-lf'))    qs('#dash-kpi-pr-lf').innerHTML    = kpiHtml('🌿 LF Prospects', prLfCount, 'green');
+  if (qs('#dash-kpi-pr-due'))   qs('#dash-kpi-pr-due').innerHTML   = kpiHtml('Follow-up Due', prDueCount, prDueCount > 0 ? 'red' : 'gray');
+
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
     `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
@@ -255,10 +264,9 @@ function renderDash() {
   renderPendingOrders();
   renderInvoiceStatus();
   renderProjections();
-  renderVelocities();
+  renderCadenceOverdue();
   renderDistDashKPIs();
   renderLfDashKpis();
-  renderQuickNotes();
 }
 
 function renderQuickNotes() {
@@ -490,50 +498,90 @@ function renderFollowUps() {
   const in14  = new Date(Date.now()+14*864e5).toISOString().slice(0,10);
 
   DB.a('ac').forEach(a=>{
-    // Prefer nextFollowUp field (set by log follow-up), fall back to note-based date
-    if (a.nextFollowUp && a.nextFollowUp >= now && a.nextFollowUp <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5));
+    if (a.nextFollowUp && a.nextFollowUp <= in14) {
+      const daysUntil = Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:a.nextFollowUp, action:'Follow up', id:a.id, daysUntil});
       return;
     }
     if (!a.notes?.length) return;
     const ln = a.notes[a.notes.length-1];
-    if (ln?.nextDate && ln.nextDate >= now && ln.nextDate <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5));
+    if (ln?.nextDate && ln.nextDate <= in14) {
+      const daysUntil = Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:ln.nextDate, action:ln.nextAction||'Follow up', id:a.id, daysUntil});
     }
   });
 
   DB.a('pr').filter(p=>!['won','lost'].includes(p.status)).forEach(p=>{
-    if (p.nextDate && p.nextDate >= now && p.nextDate <= in14) {
-      const daysUntil = Math.max(0, Math.ceil((new Date(p.nextDate+'T12:00:00')-Date.now())/864e5));
+    if (p.nextDate && p.nextDate <= in14) {
+      const daysUntil = Math.ceil((new Date(p.nextDate+'T12:00:00')-Date.now())/864e5);
       items.push({type:'prospect', name:p.name, date:p.nextDate, action:p.nextAction||'Follow up', id:p.id, daysUntil});
     }
   });
 
   items.sort((a,b)=>a.date>b.date?1:-1);
 
+  // Update badge
+  const badge = qs('#dash-followup-badge');
+  if (badge) {
+    if (items.length > 0) { badge.textContent = items.length; badge.style.display = 'inline-flex'; }
+    else { badge.style.display = 'none'; }
+  }
+
   const el = qs('#dash-followups');
   if (!el) return;
-  el.innerHTML = items.length ? items.map(i=>`
+
+  function chipHtml(daysUntil) {
+    let color, label;
+    if (daysUntil <= 0)      { color='background:#fee2e2;color:#991b1b'; label = daysUntil===0?'Today':'Overdue'; }
+    else if (daysUntil <= 2) { color='background:#fef3c7;color:#92400e'; label = daysUntil===1?'Tomorrow':'in 2d'; }
+    else if (daysUntil <= 7) { color='background:#dbeafe;color:#1e40af'; label = 'in '+daysUntil+'d'; }
+    else                     { color='background:#f3f4f6;color:#6b7280'; label = 'in '+daysUntil+'d'; }
+    return `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:12px;${color}">${label}</span>`;
+  }
+
+  el.innerHTML = items.length ? items.slice(0,10).map(i=>`
     <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
       <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
       <div class="attn-info" style="flex:1">
         <div class="attn-name">${i.name}</div>
-        <div class="attn-reason">${i.action} &middot; <strong>${i.daysUntil===0?'Today':i.daysUntil===1?'Tomorrow':'in '+i.daysUntil+'d'}</strong> (${fmtD(i.date)})</div>
+        <div class="attn-reason">${i.action} &middot; ${fmtD(i.date)}</div>
       </div>
+      ${chipHtml(i.daysUntil)}
       <button class="btn xs green" onclick="event.stopPropagation();dashMarkFollowUpDone('${i.id}','${i.type}')" title="Mark done">Done</button>
     </div>`).join('') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
 }
 
 function dashMarkFollowUpDone(id, type) {
   if (type === 'account') {
-    DB.update('ac', id, x => ({...x, nextFollowUp: null}));
+    const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
+    DB.update('ac', id, x => ({...x, nextFollowUp: null, outreach: [...(x.outreach||[]), entry]}));
   } else {
-    DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null}));
+    const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
+    DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null, outreach: [...(x.outreach||[]), entry]}));
   }
   renderFollowUps();
   toast('Follow-up marked done');
+}
+
+// ── Cadence Overdue ───────────────────────────────────────
+function renderCadenceOverdue() {
+  const card = qs('#dash-cadence-card');
+  const el   = qs('#dash-cadence-overdue');
+  if (!el) return;
+  const items = DB.a('ac').filter(a => {
+    if (a.cadence?.length) return false;
+    return daysAgo(a.created) >= 1;
+  });
+  if (!items.length) { if (card) card.style.display = 'none'; return; }
+  if (card) card.style.display = '';
+  el.innerHTML = items.slice(0,8).map(a=>`
+    <div class="attn-item" onclick="openAccount('${a.id}')" style="cursor:pointer">
+      <div class="attn-icon">⚠️</div>
+      <div class="attn-info" style="flex:1">
+        <div class="attn-name">${a.name}</div>
+        <div class="attn-reason">No order cadence set &middot; added ${daysAgo(a.created)}d ago</div>
+      </div>
+    </div>`).join('');
 }
 
 // ── Pending Orders (with reschedule button) ───────────────
@@ -885,7 +933,7 @@ function generateInvoicePrint(invoiceId) {
   const invSettings = DB.obj('invoice_settings', {});
 
   const fromName    = invSettings.fromName    || 'Pumpkin Blossom Farm LLC';
-  const fromEmail   = invSettings.fromEmail   || 'sales@drinkpurpl.com';
+  const fromEmail   = invSettings.fromEmail   || 'lavender@pumpkinblossomfarm.com';
   const fromAddress = invSettings.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const payInstr    = invSettings.paymentInstructions || '';
   const achRouting  = invSettings.achRouting  || '';
@@ -2604,6 +2652,16 @@ const PRIORITY_CFG = {
 };
 const PRIORITY_ORDER = {high:0, medium:1, low:2};
 
+let _prCompact = localStorage.getItem('pbf_pr_compact') === '1';
+function togglePrCompact() {
+  _prCompact = !_prCompact;
+  localStorage.setItem('pbf_pr_compact', _prCompact ? '1' : '0');
+  const btn = qs('#pr-compact-btn');
+  if (btn) btn.classList.toggle('active', _prCompact);
+  const el = qs('#pr-cards');
+  if (el) el.classList.toggle('pr-compact', _prCompact);
+}
+
 function renderProspects() {
   let list = DB.a('pr');
   const search       = qs('#pr-search')?.value?.toLowerCase().trim() || '';
@@ -2628,6 +2686,9 @@ function renderProspects() {
 
   const el = qs('#pr-cards');
   if (!el) return;
+  el.classList.toggle('pr-compact', _prCompact);
+  const btn = qs('#pr-compact-btn');
+  if (btn) btn.classList.toggle('active', _prCompact);
 
   el.innerHTML = list.map(p=>{
     const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
@@ -6184,7 +6245,7 @@ function loadInvoiceSettings() {
   if (qs('#inv-stripe-link'))          qs('#inv-stripe-link').value          = inv.stripeLink||'';
   if (qs('#inv-terms'))                qs('#inv-terms').value                = inv.terms||30;
   if (qs('#inv-from-name'))            qs('#inv-from-name').value            = inv.fromName||'Pumpkin Blossom Farm LLC';
-  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'sales@drinkpurpl.com';
+  if (qs('#inv-from-email'))           qs('#inv-from-email').value           = inv.fromEmail||'lavender@pumpkinblossomfarm.com';
   if (qs('#inv-from-address'))         qs('#inv-from-address').value         = inv.fromAddress||'393 Pumpkin Hill Rd, Warner, NH 03278';
 }
 
@@ -6196,7 +6257,7 @@ function saveInvoiceSettings() {
     stripeLink:          qs('#inv-stripe-link')?.value?.trim()||'',
     terms:               parseInt(qs('#inv-terms')?.value)||30,
     fromName:            qs('#inv-from-name')?.value?.trim()||'Pumpkin Blossom Farm LLC',
-    fromEmail:           qs('#inv-from-email')?.value?.trim()||'sales@drinkpurpl.com',
+    fromEmail:           qs('#inv-from-email')?.value?.trim()||'lavender@pumpkinblossomfarm.com',
     fromAddress:         qs('#inv-from-address')?.value?.trim()||'393 Pumpkin Hill Rd, Warner, NH 03278',
   });
   toast('Invoice settings saved');
@@ -8286,7 +8347,7 @@ function saveInvoiceSettings() {
     fromName: document.getElementById('inv-from-name')?.value ||
       'Pumpkin Blossom Farm LLC',
     fromEmail: document.getElementById('inv-from-email')?.value ||
-      'sales@drinkpurpl.com',
+      'lavender@pumpkinblossomfarm.com',
     fromAddress: document.getElementById('inv-from-address')?.value ||
       '393 Pumpkin Hill Rd, Warner, NH 03278',
     terms: parseInt(document.getElementById('inv-terms')?.value)||30,
@@ -8326,7 +8387,7 @@ function generateInvoicePrint(invoiceId) {
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
   const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
-  const fromEmail = s.fromEmail || 'sales@drinkpurpl.com';
+  const fromEmail = s.fromEmail || 'lavender@pumpkinblossomfarm.com';
   const fromAddr  = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const cans      = iv.cans || ((iv.cases||0) * CANS_PER_CASE);
   const invNum    = iv.number || iv.invoiceNumber || '—';
@@ -8492,7 +8553,7 @@ function generateInvoicePrint(invoiceId) {
 
 <div class="footer">
   Thank you for your business — purpl by Pumpkin Blossom Farm
-  <br>drinkpurpl.com · sales@drinkpurpl.com
+  <br>drinkpurpl.com · lavender@pumpkinblossomfarm.com
 </div>
 
 </body></html>`);
@@ -8561,7 +8622,7 @@ function saveInv(id, isNew) {
     notes,
     lineItems,
     source:       existing?.source || 'manual',
-    fromEmail:    invSettings.fromEmail || 'sales@drinkpurpl.com',
+    fromEmail:    invSettings.fromEmail || 'lavender@pumpkinblossomfarm.com',
   };
 
   if (_isNew) DB.push('iv', rec);

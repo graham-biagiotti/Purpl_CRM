@@ -409,6 +409,11 @@ th{padding:11px 14px}
   padding:2px 8px;font-size:11px;font-weight:600;display:inline-block;
 }
 
+/* ── Prospect compact mode ───────────────────────────────── */
+.pr-compact .pr-card{padding:10px 14px}
+.pr-compact .ac-card-metrics,.pr-compact .ac-card-email,.pr-compact .ac-card-section{display:none}
+.pr-compact .pr-card-hdr{margin-bottom:4px}
+
 /* ── Prospect stage border colors ───────────────────────── */
 .pr-card{border-left:4px solid #d1d5db}
 .pr-card.stage-lead       {border-left-color:#9ca3af}
