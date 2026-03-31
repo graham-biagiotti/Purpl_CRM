@@ -113,7 +113,6 @@ const renders = {
   settings:         renderSettings,
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
-  'lf-invoices':    renderLfInvoicesPage,
   emails:           renderEmailsPage,
 };
 
@@ -7225,17 +7224,37 @@ function setLfInvFilter(status) {
 
 function renderLfInvoicesPage() {
   const all = DB.a('lf_invoices');
+  const todayStr = today();
 
-  // KPIs
-  const totalInvoiced  = all.reduce((s,i) => s + (i.total||0), 0);
-  const collected      = all.filter(i => i.status === 'paid').reduce((s,i) => s + (i.total||0), 0);
-  const overdueCnt     = all.filter(i => i.status === 'overdue').length;
-  const pendingWix     = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  // KPIs — outstanding, overdue, pending Wix pulls
+  const overdueList = all.filter(i => i.status === 'overdue' || (i.status !== 'paid' && i.due && i.due < todayStr));
+  const outstanding = all.filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
+  const overdueAmt  = overdueList.reduce((s,i) => s + (i.total||0), 0);
+  const pendingWix  = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
 
-  if (qs('#lf-inv-kpi-total'))     qs('#lf-inv-kpi-total').innerHTML     = kpiHtml('Total Invoiced (LF)', fmtC(totalInvoiced), 'purple');
-  if (qs('#lf-inv-kpi-collected')) qs('#lf-inv-kpi-collected').innerHTML = kpiHtml('Collected', fmtC(collected), 'green');
-  if (qs('#lf-inv-kpi-overdue'))   qs('#lf-inv-kpi-overdue').innerHTML   = kpiHtml('Overdue', overdueCnt, overdueCnt > 0 ? 'red' : 'gray');
-  if (qs('#lf-inv-kpi-wix'))       qs('#lf-inv-kpi-wix').innerHTML       = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+  if (qs('#lf-inv-kpi-outstanding')) qs('#lf-inv-kpi-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(outstanding), 'blue');
+  if (qs('#lf-inv-kpi-overdue'))     qs('#lf-inv-kpi-overdue').innerHTML     = kpiHtml('Overdue', fmtC(overdueAmt), overdueAmt > 0 ? 'red' : 'gray');
+  if (qs('#lf-inv-kpi-wix'))         qs('#lf-inv-kpi-wix').innerHTML         = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+
+  // Overdue list
+  const overdueCard = qs('#inv-lf-overdue-card');
+  const overdueEl   = qs('#inv-lf-overdue-list');
+  if (overdueCard) overdueCard.style.display = overdueList.length ? '' : 'none';
+  if (overdueEl) {
+    overdueEl.innerHTML = overdueList.map(inv => {
+      const days = daysAgo(inv.due||'');
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:13px">${escHtml(inv.accountName||'—')} · ${escHtml(inv.number||'—')}</div>
+          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(inv.due)} · ${days}d overdue</div>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-weight:700;color:var(--red);font-size:13px">${fmtC(inv.total||0)}</span>
+          <button class="btn xs green" onclick="markLfInvPaid('${inv.id}')">✓ Paid</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
 
   // Filter + sort
   let list = all.slice();
@@ -7248,22 +7267,21 @@ function renderLfInvoicesPage() {
   tbody.innerHTML = list.map(inv => {
     const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
     const wixHtml = inv.wixPulled
-      ? `<span style="color:var(--green,#16a34a);font-weight:600">✓ Done</span>`
-      : `<span style="color:#f59e0b;font-weight:600">⚠ Pending</span>`;
+      ? `<span style="color:var(--green,#16a34a);font-weight:600">✓</span>`
+      : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
     return `<tr>
       <td><strong>${escHtml(inv.number||'—')}</strong></td>
       <td>${escHtml(inv.accountName||'—')}</td>
-      <td>${fmtD(inv.issued)}</td>
       <td>${fmtD(inv.due)}</td>
       <td><strong>${fmtC(inv.total||0)}</strong></td>
       <td><span class="badge ${sc.cls}">${sc.label}</span></td>
       <td>${wixHtml}</td>
       <td style="white-space:nowrap">
-        <button class="btn sm" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
-        <button class="btn sm ${inv.status==='paid'?'':'primary'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'Mark Paid'}</button>
+        <button class="btn xs" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
+        <button class="btn xs ${inv.status==='paid'?'':'primary'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'✓ Paid'}</button>
       </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" class="empty">No LF invoices yet. Click "+ New LF Invoice" to create one.</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">No LF invoices yet</td></tr>';
 }
 
 function markLfInvPaid(id) {
@@ -7567,7 +7585,7 @@ function saveLfInvoice(id, isNew) {
   if (isNew) DB.push('lf_wix_deductions', deduction);
 
   closeModal('modal-lf-invoice');
-  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
   toast(`Invoice ${rec.number} saved ✓`);
   showWixPullModal(rec, deduction.id);
@@ -7577,7 +7595,7 @@ function deleteLfInvoice(id) {
   if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
   DB.remove('lf_invoices', id);
   closeModal('modal-lf-invoice');
-  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
   toast('Invoice deleted');
 }
@@ -7626,7 +7644,7 @@ function confirmWixPull(confirmed) {
     DB.update('lf_invoices', _wixPullInvoiceId, inv => ({...inv, wixPulled: true, wixPulledAt: today()}));
   }
   closeModal('modal-wix-pull');
-  if (currentPage === 'lf-invoices') renderLfInvoicesPage();
+  if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
   toast(confirmed ? '✓ Wix pull confirmed' : 'Reminder set — pull when ready');
   _wixPullDeductionId = null;
@@ -8437,7 +8455,7 @@ function createLfInvoiceFromPortal(portalOrderId) {
     .then(doc => {
       if (!doc.exists) { toast('Order not found'); return; }
       const o = doc.data();
-      nav('lf-invoices');
+      nav('invoices');
       // Open blank new invoice modal, then fill in from portal order data
       setTimeout(() => {
         openLfInvoiceModal(null);
@@ -8907,132 +8925,100 @@ function editInv(id) {
 
 function renderInvoicesPage() {
   const todayStr = today();
-
-  // Normalize both collections to a common shape
-  const ivRecs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber).map(x => ({
-    ...x,
-    _src:         'iv',
-    _num:         x.number || x.invoiceNumber || '—',
-    _due:         x.due || x.dueDate || '',
-    _amt:         x.amount != null ? x.amount : (x.total != null ? x.total : null),
-    _accountName: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '?',
-  }));
-  const rrRecs = DB.a('retail_invoices').map(x => ({
-    ...x,
-    _src:         'retail',
-    _num:         x.invoiceNumber || x.number || '—',
-    _due:         x.dueDate || x.due || '',
-    _amt:         x.total != null ? x.total : (x.amount != null ? x.amount : null),
-    _accountName: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '?',
-  }));
-  const allInv = [...ivRecs, ...rrRecs];
+  const invs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
 
   function effectiveStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
-    if (inv._due && inv._due < todayStr) return 'overdue';
+    const due = inv.due || inv.dueDate || '';
+    if (due && due < todayStr) return 'overdue';
     return inv.status || 'unpaid';
   }
 
-  // Populate account filter (by name, covers both collections)
-  const acctSel = document.getElementById('inv-filter-account');
-  if (acctSel && acctSel.options.length <= 1) {
-    const names = [...new Set(allInv.map(x => x._accountName).filter(Boolean))].sort();
-    names.forEach(n => {
-      const opt = document.createElement('option');
-      opt.value = n; opt.textContent = n;
-      acctSel.appendChild(opt);
-    });
-  }
+  // ── Left column KPIs (purpl / iv) ──────────────────────
+  const outstanding = invs
+    .filter(x => !['paid','draft'].includes(effectiveStatus(x)))
+    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const overdueAmt = invs
+    .filter(x => effectiveStatus(x) === 'overdue')
+    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const now = new Date();
+  const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const paidThisMonth = invs
+    .filter(x => x.status === 'paid' && (x.paidDate||'') >= firstOfMonth)
+    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
 
-  const statusFilter = document.getElementById('inv-filter-status')?.value || '';
-  const acctFilter   = document.getElementById('inv-filter-account')?.value || '';
-
-  // KPIs
-  const totalAmt    = allInv.reduce((s,x) => s + parseFloat(x._amt||0), 0);
-  const paidAmt     = allInv.filter(x=>x.status==='paid').reduce((s,x)=>s+parseFloat(x._amt||0),0);
-  const overdueInvs = allInv.filter(x => effectiveStatus(x) === 'overdue');
-  const overdueAmt  = overdueInvs.reduce((s,x)=>s+parseFloat(x._amt||0),0);
-  const drafts      = allInv.filter(x=>x.status==='draft').length;
-
-  const kpiEl = document.getElementById('inv-kpi-row');
+  const kpiEl = qs('#inv-purpl-kpis');
   if (kpiEl) kpiEl.innerHTML = `
-    <div class="kpi purple"><div class="num" style="font-size:20px">${fmtC(totalAmt)}</div><div class="label">Total Invoiced</div></div>
-    <div class="kpi green"><div class="num" style="font-size:20px">${fmtC(paidAmt)}</div><div class="label">Collected</div></div>
-    <div class="kpi red"><div class="num" style="font-size:20px">${fmtC(overdueAmt)}</div><div class="label">Overdue</div></div>
-    <div class="kpi amber"><div class="num" style="font-size:20px">${drafts}</div><div class="label">Drafts</div></div>`;
+    <div>${kpiHtml('Outstanding', fmtC(outstanding), 'blue')}</div>
+    <div>${kpiHtml('Overdue', fmtC(overdueAmt), overdueAmt > 0 ? 'red' : 'gray')}</div>
+    <div>${kpiHtml('Paid This Month', fmtC(paidThisMonth), 'green')}</div>`;
 
-  // Overdue card
-  const overdueEl   = document.getElementById('inv-overdue-list');
-  const overdueCard = document.getElementById('inv-overdue-card');
+  // ── Left column overdue list ────────────────────────────
+  const overdueInvs = invs.filter(x => effectiveStatus(x) === 'overdue');
+  const overdueCard = qs('#inv-purpl-overdue-card');
+  const overdueEl   = qs('#inv-purpl-overdue-list');
   if (overdueCard) overdueCard.style.display = overdueInvs.length ? '' : 'none';
   if (overdueEl) {
     overdueEl.innerHTML = overdueInvs.map(iv => {
-      const days = daysAgo(iv._due);
-      const markPaidBtn = iv._src === 'iv'
-        ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`
-        : `<button class="btn xs green" onclick="markRetailInvPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`;
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      const due  = iv.due || iv.dueDate || '';
+      const days = daysAgo(due);
+      const acName = iv.accountName || DB.a('ac').find(a=>a.id===iv.accountId)?.name || '?';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
         <div>
-          <div style="font-weight:600">${escHtml(iv._accountName)} · ${escHtml(iv._num)}</div>
-          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(iv._due)} · ${days} days overdue</div>
+          <div style="font-weight:600;font-size:13px">${escHtml(acName)} · ${escHtml(iv.number||iv.invoiceNumber||'—')}</div>
+          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(due)} · ${days}d overdue</div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span style="font-weight:700;color:var(--red)">${fmtC(iv._amt||0)}</span>
-          ${markPaidBtn}
-          <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-weight:700;color:var(--red);font-size:13px">${fmtC(iv.amount||iv.total||0)}</span>
+          <button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>
         </div>
       </div>`;
     }).join('');
   }
 
-  // Main table — filter, sort (honours sortInv() column headers), render
-  const SORT_KEY_MAP = {number:'_num', accountName:'_accountName', date:'date', due:'_due', amount:'_amt'};
-  let filtered = allInv.map(x => ({...x, _status: effectiveStatus(x)}));
-  if (statusFilter) filtered = filtered.filter(x => x._status === statusFilter);
-  if (acctFilter)   filtered = filtered.filter(x => x._accountName === acctFilter);
-  filtered.sort((a,b) => {
-    const k  = SORT_KEY_MAP[_invSortKey] || 'date';
+  // ── Left column main table (iv, sortable) ───────────────
+  const statColor = {paid:'green', draft:'gray', sent:'blue', overdue:'red', partial:'amber', unpaid:'blue'};
+  const SORT_KEY_MAP = {number:'number', accountName:'_accountName', due:'_due', amount:'amount'};
+  let sorted = invs.map(x => ({
+    ...x,
+    _status:      effectiveStatus(x),
+    _due:         x.due || x.dueDate || '',
+    _accountName: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '?',
+  }));
+  sorted.sort((a,b) => {
+    const k  = SORT_KEY_MAP[_invSortKey] || '_due';
     const av = a[k] ?? '';
     const bv = b[k] ?? '';
     return av < bv ? -_invSortDir : av > bv ? _invSortDir : 0;
   });
 
-  const statColor = {paid:'green', draft:'gray', sent:'blue', overdue:'red', partial:'amber', unpaid:'blue'};
-  const tbody = document.getElementById('inv-main-tbody');
-  if (!tbody) return;
+  const tbody = qs('#inv-purpl-tbody');
+  if (tbody) {
+    tbody.innerHTML = !sorted.length
+      ? '<tr><td colspan="6" class="empty">No purpl invoices yet</td></tr>'
+      : sorted.map(iv => {
+          const st  = iv._status;
+          const due = iv._due;
+          const amt = iv.amount != null ? iv.amount : iv.total;
+          return `<tr>
+          <td><strong>${escHtml(iv.number||iv.invoiceNumber||'—')}</strong></td>
+          <td>${escHtml(iv._accountName)}</td>
+          <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
+          <td><strong>${amt != null ? fmtC(amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
+          <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
+          <td class="no-print"><div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${st!=='paid' ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>` : ''}
+            ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
+            <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+            <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
+            <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
+          </div></td>
+        </tr>`;
+        }).join('');
+  }
 
-  tbody.innerHTML = !filtered.length
-    ? '<tr><td colspan="8" class="empty">No invoices yet</td></tr>'
-    : filtered.map(iv => {
-        const st  = iv._status;
-        const due = iv._due;
-        const markPaidBtn = iv._src === 'iv'
-          ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`
-          : `<button class="btn xs green" onclick="markRetailInvPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>`;
-        const deleteBtn = iv._src === 'iv'
-          ? `<button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>`
-          : `<button class="btn xs red" onclick="deleteRetailInv('${iv.id}');renderInvoicesPage()">✕</button>`;
-        const editBtn = iv._src === 'iv' ? `<button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>` : '';
-        const sentBtn = (iv._src === 'iv' && st === 'draft') ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : '';
-        return `<tr>
-        <td><strong>${escHtml(iv._num)}</strong></td>
-        <td>${escHtml(iv._accountName)}</td>
-        <td>${fmtD(iv.date)}</td>
-        <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
-        <td><strong>${iv._amt != null ? fmtC(iv._amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
-        <td style="font-size:12px;color:var(--muted)">${iv.cases||'—'}</td>
-        <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
-        <td class="no-print">
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
-            ${st!=='paid' ? markPaidBtn : ''}
-            ${sentBtn}
-            <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️ Print</button>
-            ${editBtn}
-            ${deleteBtn}
-          </div>
-        </td>
-      </tr>`;
-      }).join('');
+  // ── Right column (LF) ───────────────────────────────────
+  renderLfInvoicesPage();
 }
 
 function markInvoiceSent(id) {
