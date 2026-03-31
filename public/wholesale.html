@@ -171,7 +171,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 /* ── PURPL SECTION ───────────────────── */
 .ws-purpl{background:var(--white)}
 .ws-purpl .ws-eyebrow{color:var(--purpl)}
-.ws-sku-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:40px}
+.ws-sku-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:40px}
 .ws-sku-card{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:10px;padding:24px 20px;text-align:center;transition:transform 0.2s,box-shadow 0.2s}
 .ws-sku-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(139,95,191,0.12)}
 .ws-sku-name{font-family:'Playfair Display',serif;font-size:16px;color:var(--purpl-dark)}
@@ -241,7 +241,6 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 /* ── RESPONSIVE ──────────────────────── */
 @media(max-width:900px){
   .ws-terms-grid{grid-template-columns:1fr;gap:40px}
-  .ws-sku-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:768px){
   .ws-section{padding:64px 20px}
@@ -252,17 +251,22 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   .ws-form-row-2{grid-template-columns:1fr}
   .ws-bullets{flex-direction:column}
 }
-@media(max-width:500px){
+@media(max-width:600px){
   .ws-sku-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:500px){
   .ws-product-grid{grid-template-columns:1fr}
   .ws-form-container{padding:24px 16px}
+}
+@media(max-width:400px){
+  .ws-sku-grid{grid-template-columns:1fr}
 }
 .ws-hero-purpl-logo{max-width:130px;height:auto;filter:brightness(0) invert(1)}
 .ws-hero-lf-logo{max-width:110px;height:auto;filter:brightness(0) invert(1);border-radius:4px}
 .ws-hero-lf-lockup{display:flex;align-items:center}
 
 /* ── SKU CARD IMAGE ──────────────────── */
-.ws-sku-img{width:80px;height:100px;object-fit:contain;margin:0 auto 12px;display:block}
+.ws-sku-img{width:80px;height:100px;object-fit:contain;margin:0 auto 12px;display:block;mix-blend-mode:multiply;background:transparent}
 
 /* ── LIFESTYLE ROW ───────────────────── */
 .ws-lifestyle-row{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin:48px 0}
@@ -285,7 +289,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- NAV -->
 <nav class="ws-nav">
   <div class="nav-inner ws-nav-inner">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="Pumpkin Blossom Farm" class="nav-logo" style="max-height:36px;width:auto" onerror="this.style.display='none'">
+    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="Pumpkin Blossom Farm" class="nav-logo" style="max-height:36px;width:auto;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
     <ul class="nav-links ws-nav-links">
       <li><a href="#purpl-section">purpl</a></li>
       <li><a href="#lf-section">Lavender Fields</a></li>
@@ -308,13 +312,9 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
         onerror="this.style.display='none'"
       >
       <div class="ws-hero-divider"></div>
-      <div class="ws-hero-lf-lockup">
-        <img
-          src="/images/lf-logo.jpg"
-          alt="Lavender Fields at Pumpkin Blossom Farm"
-          class="ws-hero-lf-logo"
-          onerror="this.parentElement.innerHTML='<span class=\'ws-hero-lf-text\'>lavender fields<small>at Pumpkin Blossom Farm</small></span>'"
-        >
+      <div style="text-align:left">
+        <div style="font-family:'Playfair Display',serif;font-size:22px;color:#9dc4a8;font-weight:400">lavender fields</div>
+        <small style="font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.05em;display:block;margin-top:4px">at Pumpkin Blossom Farm</small>
       </div>
     </div>
     <h1>Two farm-made brands. One wholesale partner.</h1>
@@ -351,10 +351,6 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
       <div class="sku-card-purpl ws-sku-card">
         <img src="/images/can-raspberry.jpg" alt="Raspberry Lavender Lemonade" class="ws-sku-img" onerror="this.style.display='none'">
         <div class="sku-name ws-sku-name">Raspberry</div>
-        <div class="sku-meta ws-sku-type">12-pack</div>
-      </div>
-      <div class="sku-card-purpl ws-sku-card">
-        <div class="sku-name ws-sku-name">Variety Pack</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
       </div>
     </div>
@@ -411,7 +407,10 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- SECTION 3 — LAVENDER FIELDS -->
 <div class="section ws-section ws-lf" id="lf-section">
   <div class="container ws-section-inner">
-    <img src="/images/lf-logo.jpg" alt="Lavender Fields at Pumpkin Blossom Farm" onerror="this.style.display='none'" style="height:64px;display:block;margin-bottom:20px;border-radius:4px">
+    <div style="margin-bottom:20px">
+      <div style="font-family:'Playfair Display',serif;font-size:28px;color:var(--lf-dark);font-weight:400;margin-bottom:8px">lavender fields</div>
+      <div style="font-family:Inter,sans-serif;font-size:13px;color:var(--muted);letter-spacing:0.05em">at Pumpkin Blossom Farm</div>
+    </div>
     <div class="eyebrow eyebrow-lf ws-eyebrow">Lavender Fields</div>
     <h2 class="section-h2">Handcrafted lavender goods from our fields</h2>
     <p class="section-desc ws-section-desc">Lavender Fields at Pumpkin Blossom Farm is home to over 7,000 lavender plants grown without pesticides in Warner, New Hampshire. We handcraft a range of self-care and culinary products using our farm-grown lavender — from simple syrup to aromatherapy accessories. Woman-owned, NH-made, and designed for specialty, gift, spa, and wellness retail.</p>
