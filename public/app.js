@@ -1838,10 +1838,15 @@ function toggleEmailBodyEdit() {
   const el = document.getElementById('email-preview-body-edit');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
   if (el.style.display === 'block') {
-    document.getElementById('email-preview-body-textarea')
-      .addEventListener('input', function() {
-        document.getElementById('email-preview-frame').srcdoc = this.value;
-      });
+    const ta = document.getElementById('email-preview-body-textarea');
+    const frame = document.getElementById('email-preview-frame');
+    if (ta._liveHandler) {
+      ta.removeEventListener('input', ta._liveHandler);
+    }
+    ta._liveHandler = function() {
+      frame.srcdoc = this.value;
+    };
+    ta.addEventListener('input', ta._liveHandler);
   }
 }
 
@@ -3132,9 +3137,9 @@ async function saveAccount(id, isNew) {
     isPbf:        qs('#eac-ispbf')?.checked || false,
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
-    pricePerCaseDirect: parseFloat(qs('#ac-price-direct')?.value)||null,
-    pricePerCaseDist:   parseFloat(qs('#ac-price-dist')?.value)||null,
-    pricePerCaseCustom: parseFloat(qs('#ac-price-custom')?.value)||null,
+    pricePerCaseDirect: (v=>isNaN(v)?null:v)(parseFloat(qs('#ac-price-direct')?.value)),
+    pricePerCaseDist:   (v=>isNaN(v)?null:v)(parseFloat(qs('#ac-price-dist')?.value)),
+    pricePerCaseCustom: (v=>isNaN(v)?null:v)(parseFloat(qs('#ac-price-custom')?.value)),
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
     lastOrder: existing?.lastOrder||null,
@@ -3408,9 +3413,9 @@ async function saveProspect(id, isNew) {
     priority:   qs('#epr-priority')?.value||'medium',
     nextDate:   qs('#epr-next-date')?.value||'',
     isPbf:      qs('#epr-ispbf')?.checked || false,
-    notes:      DB.a('pr').find(x=>x.id===id)?.notes||[],
-    outreach:   DB.a('pr').find(x=>x.id===id)?.outreach||[],
-    lastContact: DB.a('pr').find(x=>x.id===id)?.lastContact||today(),
+    notes:      existing?.notes||[],
+    outreach:   existing?.outreach||[],
+    lastContact: existing?.lastContact||'',
   };
   if (isNew) DB.push('pr', rec);
   else DB.update('pr', id, ()=>rec);
@@ -4222,11 +4227,11 @@ function saveDistributor(id, isNew) {
     id, name,
     platformType:    qs('#edist-platform')?.value||'other',
     territory:       qs('#edist-territory')?.value?.trim()||'',
-    doorCount:       parseInt(qs('#edist-doors')?.value)||0,
+    doorCount:       (v=>isNaN(v)?0:v)(parseInt(qs('#edist-doors')?.value)),
     contractStart:   qs('#edist-contract')?.value||'',
     status:          qs('#edist-status')?.value||'active',
     paymentTerms:    terms,
-    paymentTermsDays: terms==='custom'?(parseInt(qs('#edist-terms-days')?.value)||30):parseInt(terms.replace('Net ','')||30),
+    paymentTermsDays: (v=>isNaN(v)?30:v)(terms==='custom'?parseInt(qs('#edist-terms-days')?.value):parseInt(terms.replace('Net ',''))),
     notes:           qs('#edist-notes')?.value?.trim()||'',
     createdAt:       existing?.createdAt || today(),
     // Preserve contact-history fields that are not editable in this form
@@ -4243,10 +4248,11 @@ function saveDistributor(id, isNew) {
 
 function deleteDistributor(id) {
   if (!confirm2('Delete this distributor? This will also remove all associated reps, pricing, POs, and invoices.')) return;
-  DB.remove('dist_profiles', id);
-  // Clean up related records
-  ['dist_reps','dist_pricing','dist_pos','dist_invoices','dist_chains','dist_imports'].forEach(k=>{
-    DB.set(k, DB.a(k).filter(r=>r.distId!==id));
+  DB.atomicUpdate(cache => {
+    cache['dist_profiles'] = (cache['dist_profiles']||[]).filter(r=>r.id!==id);
+    ['dist_reps','dist_pricing','dist_pos','dist_invoices','dist_chains','dist_imports'].forEach(k=>{
+      cache[k] = (cache[k]||[]).filter(r=>r.distId!==id);
+    });
   });
   closeModal('modal-edit-distributor');
   renderDistributors();
@@ -4438,7 +4444,7 @@ function saveDistInvoice(distId) {
   const items = SKUS.map(s=>({
     sku:s.id,
     cases: parseInt(qs('#mdinv-cases-'+s.id)?.value)||0,
-    pricePerCase: pricing.find(p=>p.sku===s.id)?.pricePerCase||0
+    pricePerCase: (v=>isNaN(v)?0:v)(parseFloat(pricing.find(p=>p.sku===s.id)?.pricePerCase))
   })).filter(i=>i.cases>0);
   if (!items.length) { toast('Enter at least one SKU quantity'); return; }
 
@@ -4508,7 +4514,7 @@ function saveDistChain(chainId, distId, isNew) {
   const rec = {
     id:chainId, distId,
     chainName:    name,
-    doorCount:    parseInt(qs('#mchain-doors')?.value)||0,
+    doorCount:    (v=>isNaN(v)?0:v)(parseInt(qs('#mchain-doors')?.value)),
     authorizedSkus: [...document.querySelectorAll('#mchain-skus input:checked')].map(x=>x.value),
     notes:        qs('#mchain-notes')?.value?.trim()||'',
   };
