@@ -41,14 +41,15 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 /* ── HERO ────────────────────────────── */
 .ws-hero{min-height:100vh;margin-top:0;background:linear-gradient(to bottom,rgba(20,10,40,0.35) 0%,rgba(20,10,40,0.55) 60%,rgba(20,10,40,0.65) 100%),url('/images/farm-field.jpg') center 40% / cover no-repeat;display:flex;align-items:center;justify-content:center;padding:64px 24px 80px}
 .ws-hero-inner{max-width:640px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center}
-.ws-hero-farm-label{font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.7);margin-bottom:40px;font-family:Inter,sans-serif;font-weight:500;text-transform:uppercase}
-.ws-hero-brands{display:flex;gap:56px;align-items:center;justify-content:center;margin-bottom:56px}
+.ws-hero-farm-label{display:flex;align-items:center;gap:16px;justify-content:center;margin-bottom:48px;font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.6);font-family:Inter,sans-serif;font-weight:500;text-transform:uppercase}
+.ws-label-line{display:inline-block;width:60px;height:1px;background:rgba(255,255,255,0.35);flex-shrink:0}
+.ws-hero-brands{display:flex;gap:56px;align-items:center;justify-content:center;margin-bottom:64px}
 .ws-hero-brands img{max-width:140px}
 .ws-hero-divider{width:1px;height:64px;background:rgba(255,255,255,0.2);flex-shrink:0}
 .ws-hero-lf-text{font-family:'Playfair Display',serif;font-size:22px;color:#9dc4a8;font-weight:400;text-align:left}
 .ws-hero-lf-text small{display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.05em;margin-top:4px;font-style:normal}
-.ws-hero h1{font-size:clamp(38px,5.5vw,60px);color:#ffffff;line-height:1.15;margin-bottom:24px;text-align:center}
-.ws-hero-sub{font-size:19px;font-weight:300;color:rgba(255,255,255,0.85);max-width:560px;margin:0 auto 48px;line-height:1.6;font-family:Inter,sans-serif;text-align:center}
+.ws-hero h1{font-size:clamp(38px,5.5vw,60px);color:#ffffff;line-height:1.15;margin-bottom:28px;text-align:center}
+.ws-hero-sub{font-size:19px;font-weight:300;color:rgba(255,255,255,0.85);max-width:560px;margin:0 auto 56px;line-height:1.6;font-family:Inter,sans-serif;text-align:center}
 .ws-hero-cta{background:var(--purpl);color:white;padding:16px 36px;border-radius:4px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;letter-spacing:0.04em;border:none;cursor:pointer;text-decoration:none;display:inline-block;transition:background 0.2s}
 .ws-hero-cta:hover{background:var(--purpl-mid)}
 .ws-hero-secondary{display:block;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.6);text-decoration:none;font-family:Inter,sans-serif;transition:color 0.2s}
@@ -166,11 +167,11 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 }
 
 /* ── SECTION BASE ────────────────────── */
-.ws-section{padding:96px 24px}
+.ws-section{padding:112px 24px}
 .ws-section-inner{max-width:1100px;margin:0 auto}
-.ws-eyebrow{font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:16px;display:block}
-.ws-section h2{font-family:'Playfair Display',serif;font-size:36px;font-weight:400;line-height:1.2;margin-bottom:20px}
-.ws-section-desc{font-size:17px;font-weight:300;color:var(--muted);max-width:620px;line-height:1.75;margin-bottom:48px;font-family:Inter,sans-serif}
+.ws-eyebrow{font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:20px;display:block}
+.ws-section h2{font-family:'Playfair Display',serif;font-size:42px;font-weight:400;line-height:1.2;margin-bottom:24px}
+.ws-section-desc{font-size:18px;font-weight:300;color:var(--muted);max-width:680px;line-height:1.75;margin-bottom:48px;font-family:Inter,sans-serif}
 
 /* ── PURPL SECTION ───────────────────── */
 .ws-purpl{background:var(--white)}
@@ -203,8 +204,8 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 /* ── TERMS SECTION ───────────────────── */
 .ws-terms{background:var(--cream)}
 .ws-terms-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px}
-.ws-terms h3{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;margin-bottom:24px}
-.ws-term-item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border)}
+.ws-terms h3{font-family:'Playfair Display',serif;font-size:24px;font-weight:400;margin-bottom:24px}
+.ws-term-item{display:flex;gap:12px;align-items:flex-start;padding:16px 0;border-bottom:1px solid var(--border)}
 .ws-term-item:last-child{border-bottom:none}
 .ws-term-item::before{display:none}
 .ws-term-dot{color:var(--purpl);font-size:18px;flex-shrink:0;line-height:1.4}
@@ -216,9 +217,9 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-retailer-pill{font-size:13px;color:var(--text);padding:4px 10px;background:var(--cream);border:1px solid var(--border);border-radius:4px;font-family:Inter,sans-serif}
 
 /* ── FORM SECTION ────────────────────── */
-.ws-apply{background:var(--purpl-dark);padding:96px 24px}
-.ws-apply-heading{font-family:'Playfair Display',serif;font-size:36px;color:white;text-align:center;margin-bottom:12px}
-.ws-apply-sub{font-size:17px;font-weight:300;color:rgba(255,255,255,0.65);text-align:center;margin-bottom:48px;font-family:Inter,sans-serif}
+.ws-apply{background:var(--purpl-dark);padding:112px 24px}
+.ws-apply-heading{font-family:'Playfair Display',serif;font-size:42px;color:white;text-align:center;margin-bottom:12px}
+.ws-apply-sub{font-size:18px;font-weight:300;color:rgba(255,255,255,0.65);text-align:center;margin-bottom:48px;font-family:Inter,sans-serif}
 .ws-form-container{background:white;border-radius:16px;padding:48px;max-width:680px;margin:0 auto;box-shadow:0 24px 64px rgba(0,0,0,0.25)}
 .ws-brand-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px}
 .ws-brand-card{border:2px solid var(--border);border-radius:10px;padding:24px 20px;text-align:center;cursor:pointer;transition:all 0.2s;background:white}
@@ -250,8 +251,9 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   .ws-terms-grid{grid-template-columns:1fr;gap:40px}
 }
 @media(max-width:768px){
-  .ws-section{padding:64px 20px}
-  .ws-apply{padding:64px 20px}
+  .ws-section{padding:72px 20px}
+  .ws-apply{padding:72px 20px}
+  .ws-farm-band{padding:72px 20px}
 }
 @media(max-width:700px){
   .ws-product-grid{grid-template-columns:repeat(2,1fr)}
@@ -284,13 +286,13 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 @media(max-width:768px){.ws-lifestyle-row{grid-template-columns:1fr;gap:24px}}
 
 /* ── FARM STORY BAND ─────────────────── */
-.ws-farm-band{background:var(--purpl-dark);padding:96px 24px}
+.ws-farm-band{background:var(--purpl-dark);padding:112px 24px}
 .ws-farm-band-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
 .ws-farm-img{width:100%;border-radius:12px;object-fit:cover;max-height:480px}
-.ws-farm-text h2{color:white;font-size:36px;margin:16px 0 20px}
+.ws-farm-text h2{color:white;font-size:42px;margin:16px 0 20px}
 .ws-farm-text .ws-eyebrow{color:#9dc4a8}
 .ws-farm-text p{color:rgba(255,255,255,0.7);font-size:16px;line-height:1.75;font-family:Inter,sans-serif;font-weight:300}
-@media(max-width:768px){.ws-farm-band-inner{grid-template-columns:1fr;gap:32px}.ws-farm-band{padding:64px 20px}}
+@media(max-width:768px){.ws-farm-band-inner{grid-template-columns:1fr;gap:32px}}
 </style>
 </head>
 <body>
@@ -311,7 +313,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <!-- HERO -->
 <div class="hero ws-hero">
   <div class="hero-inner ws-hero-inner">
-    <div class="hero-farm-label ws-hero-farm-label">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</div>
+    <div class="hero-farm-label ws-hero-farm-label"><span class="ws-label-line"></span>Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH<span class="ws-label-line"></span></div>
     <div class="ws-hero-brands">
       <img
         src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
