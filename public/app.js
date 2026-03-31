@@ -225,6 +225,105 @@ font-family:Inter,Arial,sans-serif">
 </table></body></html>`;
 }
 
+function getCadenceEmailTemplate(stage, account, extra={}) {
+  const isPbf = account.isPbf;
+  const header = isPbf ? LF_HEADER_HTML : PURPL_HEADER_HTML;
+  const accentColor = isPbf ? '#4a7c59' : '#8B5FBF';
+  const contacts = account.contacts||[];
+  const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
+  const contactName = primary.name||account.contact||'there';
+  const businessName = account.name||'your store';
+  const portalLink = account.orderPortalToken
+    ? `https://purpl-crm.web.app/order?token=${account.orderPortalToken}`
+    : 'https://purpl-crm.web.app/order';
+
+  const templates = {
+    'application-received': {
+      subject: `Thank you for your wholesale application — Pumpkin Blossom Farm`,
+      from: 'lavender@pumpkinblossomfarm.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>. We've received your application and will be in touch within 1 business day.</p>
+        <p>In the meantime, feel free to reach out with any questions.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f9fafb;border-left:3px solid ${accentColor};padding:16px 20px;border-radius:0 6px 6px 0">
+            <div style="font-size:13px;color:#6b7280;margin-bottom:4px;font-weight:500">WHAT HAPPENS NEXT</div>
+            <div style="font-size:14px;color:#1a1a2e">We review every application personally. You'll hear from us within 1 business day.</div>
+          </td></tr>
+        </table>
+        <p>Warmly,</p>`)
+    },
+    'approved': {
+      subject: `Welcome to the wholesale program — your retailer portal is ready`,
+      from: 'lavender@pumpkinblossomfarm.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We're thrilled to welcome <strong>${businessName}</strong> as a retail partner. Your wholesale account has been approved.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR RETAILER PORTAL</div>
+            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Access Your Portal →</a>
+            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link for easy access</div>
+          </td></tr>
+        </table>
+        <p>Payment terms: Net 30. Invoices from lavender@pumpkinblossomfarm.com.</p>
+        <p>Warmly,</p>`)
+    },
+    'rejected': {
+      subject: `Re: Your wholesale application — Pumpkin Blossom Farm`,
+      from: 'graham@pumpkinblossomfarm.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>.</p>
+        <p>After reviewing your application, we don't think it's the right fit at this time — but we genuinely appreciate you reaching out and wish you all the best.</p>
+        <p>Please don't hesitate to apply again in the future if circumstances change.</p>
+        <p>Warmly,</p>`)
+    },
+    'invoice-sent': {
+      subject: `Invoice ${extra.invoiceNumber||''} from Pumpkin Blossom Farm`,
+      from: 'lavender@pumpkinblossomfarm.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Please find your invoice for <strong>${businessName}</strong> below.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:24px">
+            <table width="100%">
+              <tr>
+                <td style="font-size:13px;color:#6b7280;padding-bottom:8px">Invoice Number</td>
+                <td align="right" style="font-size:13px;font-weight:600;color:#1a1a2e;padding-bottom:8px">${extra.invoiceNumber||'—'}</td>
+              </tr>
+              <tr>
+                <td style="font-size:13px;color:#6b7280;padding-bottom:8px">Amount Due</td>
+                <td align="right" style="font-size:16px;font-weight:700;color:#1a1a2e">${extra.invoiceTotal||'—'}</td>
+              </tr>
+              <tr>
+                <td style="font-size:13px;color:#6b7280">Payment Terms</td>
+                <td align="right" style="font-size:13px;color:#1a1a2e">Net 30</td>
+              </tr>
+            </table>
+            ${extra.invoiceLink?`<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center"><a href="${extra.invoiceLink}" style="color:${accentColor};font-size:14px;font-weight:500">View Invoice →</a></div>`:''}
+          </td></tr>
+        </table>
+        <p>Please reach out with any questions.</p>
+        <p>Warmly,</p>`)
+    },
+    'first-order': {
+      subject: `Thanks for your order — we're on it`,
+      from: 'lavender@pumpkinblossomfarm.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Thank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f9fafb;border-left:3px solid ${accentColor};padding:16px 20px;border-radius:0 6px 6px 0">
+            <div style="font-size:14px;color:#1a1a2e">We're excited to have <strong>${businessName}</strong> as a retail partner.</div>
+          </td></tr>
+        </table>
+        <p>Warmly,</p>`)
+    }
+  };
+  return templates[stage] || null;
+}
+
 // ── Default demo data (first run only) ──────────────────
 function seedIfEmpty() {
   // SAFETY: never seed if Firestore hasn't confirmed document state yet.
@@ -1977,6 +2076,107 @@ function renderAccountOutreach(a) {
     </div>`).join('');
 }
 
+// ── Stage ID ↔ template ID mapping ─────────────────────
+// CADENCE_STAGES uses underscore IDs; email templates use hyphen IDs.
+const _STAGE_TEMPLATE_IDS = {
+  application_received:  'application-received',
+  approved_welcome:      'approved',
+  rejected_decline:      'rejected',
+  invoice_sent:          'invoice-sent',
+  first_order_followup:  'first-order',
+};
+const _TEMPLATE_STAGE_IDS = Object.fromEntries(
+  Object.entries(_STAGE_TEMPLATE_IDS).map(([k,v])=>[v,k])
+);
+
+// ── Email preview modal state + functions ────────────────
+let _currentEmailPreview = null;
+
+function openEmailPreview(stage, accountId, extra={}) {
+  const account = DB.a('ac').find(x=>x.id===accountId);
+  if (!account) return;
+  const template = getCadenceEmailTemplate(stage, account, extra);
+  if (!template) return;
+  const contacts = account.contacts||[];
+  const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
+  const toEmail = primary.email||account.email||'';
+  _currentEmailPreview = {stage, accountId, template, toEmail};
+  document.getElementById('email-preview-title').textContent = template.subject;
+  document.getElementById('email-preview-from').textContent = template.from;
+  document.getElementById('email-preview-to').textContent = toEmail||'No email on file';
+  document.getElementById('email-preview-subject').value = template.subject;
+  document.getElementById('email-preview-frame').srcdoc = template.body;
+  document.getElementById('email-preview-body-textarea').value = template.body;
+  document.getElementById('email-preview-body-edit').style.display = 'none';
+  openModal('modal-email-preview');
+}
+
+function _openInvEmailPreview(accountId) {
+  const invId = _latestAccountInvoiceId(accountId);
+  const inv = invId
+    ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId))
+    : null;
+  openEmailPreview('invoice-sent', accountId, {
+    invoiceNumber: inv?.number || '',
+    invoiceTotal:  fmtC(inv?.amount || inv?.total || 0),
+    invoiceLink:   inv?.link || '',
+  });
+}
+
+function openEmailPreviewTab() {
+  if (!_currentEmailPreview) return;
+  const blob = new Blob([_currentEmailPreview.template.body], {type:'text/html'});
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+function toggleEmailBodyEdit() {
+  const el = document.getElementById('email-preview-body-edit');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') {
+    document.getElementById('email-preview-body-textarea')
+      .addEventListener('input', function() {
+        document.getElementById('email-preview-frame').srcdoc = this.value;
+      });
+  }
+}
+
+function copyEmailHTML() {
+  if (!_currentEmailPreview) return;
+  const body = document.getElementById('email-preview-body-textarea').value
+    || _currentEmailPreview.template.body;
+  navigator.clipboard.writeText(body)
+    .then(()=>toast('HTML copied to clipboard'))
+    .catch(()=>toast('Copy failed'));
+}
+
+function openEmailMailto() {
+  if (!_currentEmailPreview) return;
+  const t = _currentEmailPreview.template;
+  const to = _currentEmailPreview.toEmail || '';
+  const subject = document.getElementById('email-preview-subject').value || t.subject;
+  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+}
+
+function markCadenceEmailSent() {
+  if (!_currentEmailPreview) return;
+  const {stage, accountId} = _currentEmailPreview;
+  // Map template hyphen-ID back to underscore stage ID for cadence log consistency
+  const stageId = _TEMPLATE_STAGE_IDS[stage] || stage;
+  DB.update('ac', accountId, a => ({
+    ...a,
+    cadence: [...(a.cadence||[]), {
+      id: uid(), stage: stageId,
+      sentAt: new Date().toISOString(),
+      sentBy: 'graham',
+      method: 'manual',
+    }]
+  }));
+  closeModal('modal-email-preview');
+  openAccountToEmailsTab(accountId);
+  renderCadenceOverdue();
+  toast('Email marked as sent');
+}
+
 // ══════════════════════════════════════════════════════════
 //  EMAIL CADENCE TAB
 // ══════════════════════════════════════════════════════════
@@ -1997,8 +2197,9 @@ function renderMacEmailsTab(id) {
       const dotCls = isSent ? 'cadence-dot sent' : 'cadence-dot pending';
       const btnLabel = isSent ? 'Resend' : 'Send ✉️';
       const btnCls = isSent ? 'btn xs' : 'btn xs primary';
-      // For invoice_sent, find latest invoice to pass along
-      const invArg = stage.id==='invoice_sent' ? `,'${_latestAccountInvoiceId(id)}'` : '';
+      const _btnCall = stage.id === 'invoice_sent'
+        ? `_openInvEmailPreview('${id}')`
+        : `openEmailPreview('${_STAGE_TEMPLATE_IDS[stage.id]||stage.id}','${id}')`;
       return `<div class="cadence-stage">
         <div class="${dotCls}"></div>
         <div class="cadence-info">
@@ -2006,7 +2207,7 @@ function renderMacEmailsTab(id) {
           <div class="cadence-desc">${stage.desc}</div>
           ${isSent?`<div class="cadence-date">Sent ${fmtD(last.sentAt)} · ${last.method||'manual'}</div>`:''}
         </div>
-        <button class="${btnCls}" onclick="openCadenceEmailPreview('${id}','${stage.id}'${invArg})">${btnLabel}</button>
+        <button class="${btnCls}" onclick="${_btnCall}">${btnLabel}</button>
       </div>`;
     }).join('');
 
