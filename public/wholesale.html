@@ -24,36 +24,47 @@ img{max-width:100%;display:block}
 h1,h2,h3{font-family:'Playfair Display',serif;font-weight:400}
 
 /* ── NAV ─────────────────────────────── */
-nav{height:60px;background:rgba(45,27,78,0.97);position:fixed;top:0;width:100%;z-index:200;display:flex;align-items:center}
-.nav-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1100px;margin:0 auto;padding:0 24px}
-.nav-logo{height:34px;border-radius:4px;padding:2px 6px;background:rgba(255,255,255,0.92)}
-.nav-links{display:flex;gap:24px;list-style:none}
-.nav-links a{font-size:13px;color:rgba(255,255,255,0.55);text-decoration:none;transition:color .15s}
-.nav-links a:hover{color:rgba(255,255,255,0.9)}
-.nav-order{font-size:13px;color:rgba(255,255,255,0.8);text-decoration:none;border:1px solid rgba(255,255,255,0.25);border-radius:5px;padding:6px 14px;transition:background .15s}
-.nav-order:hover{background:rgba(255,255,255,0.1)}
-@media(max-width:768px){.nav-links{display:none}}
+.ws-nav,nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.ws-nav-inner{max-width:1100px;margin:0 auto;height:100%;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{height:34px;border-radius:4px}
+.ws-nav-links{display:flex;gap:28px;align-items:center;list-style:none}
+.ws-nav-links a{font-size:13px;color:var(--muted);text-decoration:none;text-transform:uppercase;letter-spacing:0.08em;transition:color 0.15s}
+.ws-nav-links a:hover{color:var(--text)}
+.ws-nav-login{border:1px solid var(--purpl);color:var(--purpl);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
+.ws-nav-login:hover{background:var(--purpl);color:white}
+@media(max-width:768px){.ws-nav-links a:not(.ws-nav-login){display:none}}
 
 /* ── HERO ────────────────────────────── */
-.hero{min-height:90vh;background:var(--purpl-dark);display:flex;align-items:center;justify-content:center;padding:100px 24px 80px;text-align:center}
-.hero-inner{max-width:700px;width:100%}
-.hero-farm-label{font-size:11px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:36px}
-.hero-brands{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:40px}
-.hero-brand{flex:1;max-width:220px;padding:0 28px;text-align:center}
-.hero-brand-divider{width:1px;height:64px;background:rgba(255,255,255,0.15);flex-shrink:0}
-.hero-purpl-logo{height:52px;filter:brightness(10);display:block;margin:0 auto}
-.hero-lf-name{font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:400;color:#9dc4a8;letter-spacing:0.02em;line-height:1.2}
-.hero-lf-sub{font-size:11px;color:rgba(255,255,255,0.5);margin-top:6px;letter-spacing:0.05em}
-.hero h1{font-size:clamp(28px,5vw,52px);font-weight:300;color:#fff;letter-spacing:-0.5px;line-height:1.15;margin-bottom:20px}
-.hero p{font-size:17px;color:rgba(255,255,255,0.7);max-width:520px;margin:0 auto 36px;line-height:1.65}
-.hero-cta{display:inline-block;background:var(--purpl);color:#fff;border:none;border-radius:6px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:background .15s;margin-bottom:20px}
-.hero-cta:hover{background:#7a51ae}
-.hero-order-link{display:block;font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;transition:color .15s}
-.hero-order-link:hover{color:rgba(255,255,255,0.8)}
-@media(max-width:600px){
-  .hero-brands{flex-direction:column;gap:24px}
-  .hero-brand-divider{width:64px;height:1px}
+.ws-hero{min-height:100vh;background:var(--purpl-dark);display:flex;align-items:center;justify-content:center;padding:120px 24px 80px}
+.ws-hero-inner{max-width:640px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center}
+.ws-hero-farm-label{font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.45);margin-bottom:40px;font-family:Inter,sans-serif;font-weight:500;text-transform:uppercase}
+.ws-hero-brands{display:flex;gap:32px;align-items:center;justify-content:center;margin-bottom:48px}
+.ws-hero-brands img{max-width:140px}
+.ws-hero-divider{width:1px;height:48px;background:rgba(255,255,255,0.2);flex-shrink:0}
+.ws-hero-lf-text{font-family:'Playfair Display',serif;font-size:22px;color:#9dc4a8;font-weight:400;text-align:left}
+.ws-hero-lf-text small{display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.05em;margin-top:4px;font-style:normal}
+.ws-hero h1{font-size:clamp(32px,5vw,52px);color:white;line-height:1.2;margin-bottom:20px}
+.ws-hero-sub{font-size:17px;font-weight:300;color:rgba(255,255,255,0.7);max-width:480px;margin:0 auto 48px;line-height:1.6;font-family:Inter,sans-serif}
+.ws-hero-cta{background:var(--purpl);color:white;padding:16px 36px;border-radius:4px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;letter-spacing:0.04em;border:none;cursor:pointer;text-decoration:none;display:inline-block;transition:background 0.2s}
+.ws-hero-cta:hover{background:var(--purpl-mid)}
+.ws-hero-secondary{display:block;margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);text-decoration:none;font-family:Inter,sans-serif;transition:color 0.2s}
+.ws-hero-secondary:hover{color:rgba(255,255,255,0.8)}
+.ws-hero-scroll{margin-top:60px;font-size:20px;color:rgba(255,255,255,0.3);animation:wsPulse 2s ease-in-out infinite}
+@keyframes wsPulse{0%,100%{opacity:0.3}50%{opacity:0.8}}
+@keyframes wsFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.ws-hero-farm-label{animation:wsFadeUp 0.6s ease 0.1s both}
+.ws-hero-brands{animation:wsFadeUp 0.6s ease 0.25s both}
+.ws-hero h1{animation:wsFadeUp 0.6s ease 0.4s both}
+.ws-hero-sub{animation:wsFadeUp 0.6s ease 0.5s both}
+.ws-hero-cta{animation:wsFadeUp 0.6s ease 0.6s both}
+@media(max-width:768px){
+  .ws-hero{padding:100px 20px 60px}
+  .ws-hero h1{font-size:28px}
+  .ws-hero-brands{flex-direction:column;gap:16px}
+  .ws-hero-divider{width:40px;height:1px}
+  .ws-hero-lf-text{text-align:center}
 }
+@media(max-width:480px){.ws-hero h1{font-size:24px}}
 
 /* ── SHARED SECTION STRUCTURE ─────────── */
 .section{padding:80px 24px}
@@ -154,30 +165,33 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <body>
 
 <!-- NAV -->
-<nav>
-  <div class="nav-inner">
+<nav class="ws-nav">
+  <div class="nav-inner ws-nav-inner">
     <img src="/images/double-logo.png" alt="Pumpkin Blossom Farm" class="nav-logo" onerror="this.style.display='none'">
-    <ul class="nav-links">
+    <ul class="nav-links ws-nav-links">
       <li><a href="#purpl-section">purpl</a></li>
       <li><a href="#lf-section">Lavender Fields</a></li>
       <li><a href="#terms-section">Terms</a></li>
       <li><a href="#apply-section">Apply</a></li>
     </ul>
-    <a href="/order" class="nav-order">Retailer Login</a>
+    <a href="/order" class="nav-order ws-nav-login">Retailer Login</a>
   </div>
 </nav>
 
 <!-- HERO -->
-<div class="hero">
-  <div class="hero-inner">
-    <div class="hero-farm-label">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</div>
-    <div class="hero-brands">
-      <img src="/images/double-logo.png" alt="purpl + Lavender Fields at Pumpkin Blossom Farm" onerror="this.style.display='none'" style="max-width:400px;width:85%;display:block;margin:0 auto;background:rgba(255,255,255,0.95);border-radius:10px;padding:18px 28px">
+<div class="hero ws-hero">
+  <div class="hero-inner ws-hero-inner">
+    <div class="hero-farm-label ws-hero-farm-label">Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</div>
+    <div class="hero-brands ws-hero-brands">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl">
+      <div class="hero-brand-divider ws-hero-divider"></div>
+      <div class="ws-hero-lf-text">lavender fields<small>at Pumpkin Blossom Farm</small></div>
     </div>
     <h1>Two farm-made brands. One wholesale partner.</h1>
-    <p>Lavender lemonade and handcrafted lavender goods, grown and made in Warner, New Hampshire.</p>
-    <a href="#apply-section" class="hero-cta">Apply to Carry Our Products</a>
-    <a href="/order" class="hero-order-link">Already a retailer? Place an order &rarr;</a>
+    <p class="ws-hero-sub">Lavender lemonade and handcrafted lavender goods, grown and made in Warner, New Hampshire.</p>
+    <a href="#apply-section" class="hero-cta ws-hero-cta">Apply to Carry Our Products</a>
+    <a href="/order" class="hero-order-link ws-hero-secondary">Already a retailer? Place an order &rarr;</a>
+    <div class="ws-hero-scroll">↓</div>
   </div>
 </div>
 
