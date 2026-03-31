@@ -260,6 +260,24 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-hero-purpl-logo{max-width:130px;height:auto;filter:brightness(0) invert(1)}
 .ws-hero-lf-logo{max-width:110px;height:auto;filter:brightness(0) invert(1);border-radius:4px}
 .ws-hero-lf-lockup{display:flex;align-items:center}
+
+/* ── SKU CARD IMAGE ──────────────────── */
+.ws-sku-img{width:80px;height:100px;object-fit:contain;margin:0 auto 12px;display:block}
+
+/* ── LIFESTYLE ROW ───────────────────── */
+.ws-lifestyle-row{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin:48px 0}
+.ws-lifestyle-img{width:100%;border-radius:12px;object-fit:cover;max-height:400px}
+.ws-lifestyle-text p{font-size:17px;font-weight:300;color:var(--muted);line-height:1.75;margin-top:16px;font-family:Inter,sans-serif}
+@media(max-width:768px){.ws-lifestyle-row{grid-template-columns:1fr;gap:24px}}
+
+/* ── FARM STORY BAND ─────────────────── */
+.ws-farm-band{background:var(--purpl-dark);padding:96px 24px}
+.ws-farm-band-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+.ws-farm-img{width:100%;border-radius:12px;object-fit:cover;max-height:480px}
+.ws-farm-text h2{color:white;font-size:36px;margin:16px 0 20px}
+.ws-farm-text .ws-eyebrow{color:#9dc4a8}
+.ws-farm-text p{color:rgba(255,255,255,0.7);font-size:16px;line-height:1.75;font-family:Inter,sans-serif;font-weight:300}
+@media(max-width:768px){.ws-farm-band-inner{grid-template-columns:1fr;gap:32px}.ws-farm-band{padding:64px 20px}}
 </style>
 </head>
 <body>
@@ -316,24 +334,41 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 
     <div class="sku-grid-purpl ws-sku-grid">
       <div class="sku-card-purpl ws-sku-card">
+        <img src="/images/can-classic.jpg" alt="Classic Lavender Lemonade" class="ws-sku-img" onerror="this.style.display='none'">
         <div class="sku-name ws-sku-name">Classic</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
       </div>
       <div class="sku-card-purpl ws-sku-card">
+        <img src="/images/can-blueberry.jpg" alt="Blueberry Lavender Lemonade" class="ws-sku-img" onerror="this.style.display='none'">
         <div class="sku-name ws-sku-name">Blueberry</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
       </div>
       <div class="sku-card-purpl ws-sku-card">
+        <img src="/images/can-peach.jpg" alt="Peach Lavender Lemonade" class="ws-sku-img" onerror="this.style.display='none'">
         <div class="sku-name ws-sku-name">Peach</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
       </div>
       <div class="sku-card-purpl ws-sku-card">
+        <img src="/images/can-raspberry.jpg" alt="Raspberry Lavender Lemonade" class="ws-sku-img" onerror="this.style.display='none'">
         <div class="sku-name ws-sku-name">Raspberry</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
       </div>
       <div class="sku-card-purpl ws-sku-card">
         <div class="sku-name ws-sku-name">Variety Pack</div>
         <div class="sku-meta ws-sku-type">12-pack</div>
+      </div>
+    </div>
+
+    <div class="ws-lifestyle-row">
+      <img
+        src="/images/lifestyle-hands.jpg"
+        alt="purpl lavender lemonade"
+        class="ws-lifestyle-img"
+        onerror="this.style.display='none'"
+      >
+      <div class="ws-lifestyle-text">
+        <span class="ws-eyebrow" style="color:var(--purpl)">Real lavender. Real farm.</span>
+        <p>Every can of purpl starts at our lavender fields in Warner, New Hampshire — grown without pesticides, crafted for the shelf.</p>
       </div>
     </div>
 
@@ -354,6 +389,24 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
     <p class="ws-dist-note">Currently available for direct wholesale and through select New England distributors.</p>
   </div>
 </div>
+
+<!-- FARM STORY BAND -->
+<section class="ws-farm-band">
+  <div class="ws-farm-band-inner">
+    <img
+      src="/images/lifestyle-truck.jpg"
+      alt="Pumpkin Blossom Farm"
+      class="ws-farm-img"
+      onerror="this.style.display='none'"
+    >
+    <div class="ws-farm-text">
+      <span class="ws-eyebrow" style="color:#9dc4a8">Our story</span>
+      <h2>Born from the farm.<br>Built for the shelf.</h2>
+      <p>Pumpkin Blossom Farm is a family-owned, woman-owned lavender farm on nearly 14 acres in Warner, New Hampshire — home to over 10,000 lavender plants and recognized as one of the largest lavender growers in New England.</p>
+      <p style="margin-top:16px">The same proven expertise that built our award-winning Lavender Fields wholesale program now powers purpl — crafted for scale, made in New Hampshire.</p>
+    </div>
+  </div>
+</section>
 
 <!-- SECTION 3 — LAVENDER FIELDS -->
 <div class="section ws-section ws-lf" id="lf-section">
