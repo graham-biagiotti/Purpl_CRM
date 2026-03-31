@@ -27,17 +27,16 @@ h1,h2,h3{font-family:'Playfair Display',serif;font-weight:400}
 nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
 .ws-nav{position:fixed;top:0;left:0;right:0;height:64px;z-index:100;background:transparent;border-bottom:none;backdrop-filter:none;transition:background 0.3s,border-bottom 0.3s,backdrop-filter 0.3s}
 .ws-nav.scrolled{background:rgba(255,255,255,0.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
-.ws-nav-inner{max-width:1100px;margin:0 auto;height:100%;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
-.nav-logo{height:34px;border-radius:4px}
-.ws-nav-links{display:flex;gap:28px;align-items:center;list-style:none}
+.ws-nav-inner{max-width:1100px;margin:0 auto;height:100%;padding:0 24px;display:flex;align-items:center;position:relative}
+.ws-nav-links{position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;list-style:none}
 .ws-nav-links a{font-size:12px;color:rgba(255,255,255,0.9);text-decoration:none;border:1px solid rgba(255,255,255,0.4);border-radius:20px;padding:6px 14px;transition:all 0.2s}
 .ws-nav-links a:hover{background:rgba(255,255,255,0.15)}
 .ws-nav.scrolled .ws-nav-links a{border-color:var(--border);color:var(--muted)}
 .ws-nav.scrolled .ws-nav-links a:hover{background:var(--cream)}
-.ws-nav-login{border:1px solid rgba(255,255,255,0.6);color:rgba(255,255,255,0.9);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
+.ws-nav-login{margin-left:auto;border:1px solid rgba(255,255,255,0.6);color:rgba(255,255,255,0.9);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
 .ws-nav-login:hover{background:var(--purpl);color:white}
 .ws-nav.scrolled .ws-nav-login{border-color:var(--purpl);color:var(--purpl)}
-@media(max-width:768px){.ws-nav-links a:not(.ws-nav-login){display:none}}
+@media(max-width:768px){.ws-nav-links{display:none}}
 
 /* ── HERO ────────────────────────────── */
 .ws-hero{min-height:100vh;margin-top:0;background:linear-gradient(to bottom,rgba(20,10,40,0.35) 0%,rgba(20,10,40,0.55) 60%,rgba(20,10,40,0.65) 100%),url('/images/farm-field.jpg') center 40% / cover no-repeat;display:flex;align-items:center;justify-content:center;padding:64px 24px 80px}
