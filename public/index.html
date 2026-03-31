@@ -183,55 +183,67 @@
       <!-- Welcome header (populated by JS) -->
       <div id="dash-welcome-hdr"></div>
 
-      <!-- Row 1: KPIs -->
-      <div class="card-grid grid-4" id="dash-kpis" style="margin-bottom:20px">
-        <div id="dash-kpi-revenue"></div>
-        <div id="dash-kpi-accounts"></div>
-        <div id="dash-kpi-pipeline"></div>
-        <div id="dash-kpi-alerts"></div>
-      </div>
-
-      <!-- Row 1b: LF KPIs -->
-      <div class="card-grid grid-4" id="dash-lf-kpis" style="margin-bottom:20px">
-        <div id="dash-kpi-lf-accounts"></div>
-        <div id="dash-kpi-lf-outstanding"></div>
-        <div id="dash-kpi-lf-overdue"></div>
-        <div id="dash-kpi-lf-wix"></div>
-      </div>
-
-      <!-- Row 2: Needs Attention + Upcoming Follow-ups -->
-      <div class="card-grid grid-2" style="margin-bottom:20px">
-        <div class="card">
-          <div class="section-hdr">
-            <h2>Needs Attention</h2>
-            <small style="color:var(--muted);font-size:12px">30+ days no contact</small>
-          </div>
-          <div id="dash-attention"></div>
-        </div>
-        <div class="card">
-          <div class="section-hdr">
-            <h2>Upcoming Follow-ups</h2>
-            <small style="color:var(--muted);font-size:12px">Next 14 days</small>
-          </div>
-          <div id="dash-followups"></div>
+      <!-- Scratchpad -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">📝 Quick Notes</div>
+        <div style="position:relative">
+          <textarea id="dash-scratchpad" placeholder="Quick notes — thoughts, to-dos, reminders..." style="width:100%;min-height:72px;max-height:160px;resize:vertical;font-size:13px;padding:10px 12px;border:none;border-radius:8px;background:#fafaf8;font-family:inherit;box-shadow:inset 0 0 0 1px var(--border);line-height:1.5;box-sizing:border-box" oninput="debounceSaveScratchpad()"></textarea>
+          <span id="dash-scratchpad-saved" style="position:absolute;bottom:8px;right:10px;font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s">Saved</span>
         </div>
       </div>
 
-      <!-- Row 3: Pending Orders + Invoice Status -->
-      <div class="card-grid grid-2" style="margin-bottom:20px">
-        <div class="card">
-          <div class="section-hdr">
-            <h2>Pending Orders</h2>
-            <button class="btn sm" onclick="nav('orders-delivery')">View all →</button>
+      <!-- Row 1: Combined 6-card KPI row -->
+      <div class="card-grid grid-6" id="dash-combined-kpis" style="margin-bottom:20px">
+        <div id="dash-kpi-total-ac"></div>
+        <div id="dash-kpi-purpl-ac"></div>
+        <div id="dash-kpi-lf-ac"></div>
+        <div id="dash-kpi-combined-outstanding"></div>
+        <div id="dash-kpi-combined-overdue"></div>
+        <div id="dash-kpi-wix"></div>
+      </div>
+      <!-- Legacy KPI targets (kept for JS compatibility) -->
+      <div style="display:none">
+        <div id="dash-kpi-revenue"></div><div id="dash-kpi-accounts"></div>
+        <div id="dash-kpi-pipeline"></div><div id="dash-kpi-alerts"></div>
+        <div id="dash-kpi-lf-accounts"></div><div id="dash-kpi-lf-outstanding"></div>
+        <div id="dash-kpi-lf-overdue"></div><div id="dash-kpi-lf-wix"></div>
+      </div>
+
+      <!-- Row 2+3: Two-column layout — left 60% / right 40% -->
+      <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px" id="dash-main-cols">
+        <!-- Left column: Attention + Follow-ups -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Needs Attention <span id="dash-attention-badge" style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
+              <small style="color:var(--muted);font-size:12px">30+ days no contact</small>
+            </div>
+            <div id="dash-attention"></div>
           </div>
-          <div id="dash-pending-orders"></div>
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Upcoming Follow-ups</h2>
+              <small style="color:var(--muted);font-size:12px">Next 14 days</small>
+            </div>
+            <div id="dash-followups"></div>
+          </div>
         </div>
-        <div class="card">
-          <div class="section-hdr">
-            <h2>Invoice Status</h2>
-            <button class="btn sm primary" onclick="openAddInv()">+ Add Invoice</button>
+        <!-- Right column: Invoice Status + Pending Orders -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Invoice Status</h2>
+              <button class="btn sm primary" onclick="openAddInv()">+ Add Invoice</button>
+            </div>
+            <div id="dash-invoice-status"></div>
           </div>
-          <div id="dash-invoice-status"></div>
+          <div class="card">
+            <div class="section-hdr">
+              <h2>Pending Orders</h2>
+              <button class="btn sm" onclick="nav('orders-delivery')">View all →</button>
+            </div>
+            <div id="dash-pending-orders"></div>
+          </div>
         </div>
       </div>
 

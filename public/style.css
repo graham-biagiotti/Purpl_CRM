@@ -103,6 +103,7 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 .grid-3{grid-template-columns:1fr 1fr 1fr}
 .grid-4{grid-template-columns:repeat(4,1fr)}
 .grid-5{grid-template-columns:repeat(5,1fr)}
+.grid-6{grid-template-columns:repeat(6,1fr)}
 
 /* KPI */
 .kpi{background:var(--card);border:1px solid #e9d5ff;border-radius:10px;padding:16px;text-align:center;box-shadow:0 2px 8px rgba(123,79,160,0.06)}
@@ -503,10 +504,13 @@ th{padding:11px 14px}
 
   /* KPIs: 2×2 grid */
   .grid-4{grid-template-columns:1fr 1fr}
+  .grid-5{grid-template-columns:1fr 1fr 1fr}
+  .grid-6{grid-template-columns:1fr 1fr 1fr}
   .grid-3{grid-template-columns:1fr 1fr}
 
   /* Stacked panels */
   .card-grid.grid-2{grid-template-columns:1fr}
+  #dash-main-cols{grid-template-columns:1fr!important}
 
   /* Form rows collapse */
   .form-row.col2,.form-row.col3{grid-template-columns:1fr}

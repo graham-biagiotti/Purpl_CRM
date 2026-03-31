@@ -212,6 +212,24 @@ function renderDash() {
   const directCount  = allAc.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct').length;
   const viaDistCount = allAc.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
 
+  // ── Combined 6-card KPI row ──────────────────────────────
+  loadScratchpad();
+  const purplAcCount = allAc.filter(a => !a.isPbf).length;
+  const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
+  const purplOutstanding = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid').reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const lfOutstanding    = DB.a('lf_invoices').filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
+  const combinedOutstanding  = purplOutstanding + lfOutstanding;
+  const purplOverdueCount    = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid' && x.due && x.due < today()).length;
+  const lfOverdueCount       = DB.a('lf_invoices').filter(i => i.status !== 'paid' && i.due && i.due < today()).length;
+  const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
+  const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
+  if (qs('#dash-kpi-purpl-ac'))             qs('#dash-kpi-purpl-ac').innerHTML             = kpiHtml('💜 purpl', purplAcCount, 'purple');
+  if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🌿 LF', lfAcCount, 'green');
+  if (qs('#dash-kpi-combined-outstanding')) qs('#dash-kpi-combined-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(combinedOutstanding), combinedOutstanding > 0 ? 'amber' : 'gray');
+  if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
+  if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('Wix Pulls', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
+
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
     `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
@@ -254,6 +272,24 @@ function renderQuickNotes() {
       <div class="qn-text">${escHtml(n.text)}</div>
       <button class="btn xs red" style="margin-top:4px" onclick="deleteQuickNote('${n.id}')">Delete</button>
     </div>`).join('');
+}
+
+// ── Dashboard personal scratchpad (localStorage) ─────────
+let _scratchDebounceTimer = null;
+function loadScratchpad() {
+  const el = qs('#dash-scratchpad');
+  if (!el) return;
+  el.value = localStorage.getItem('pbf_dash_notes') || '';
+}
+function debounceSaveScratchpad() {
+  clearTimeout(_scratchDebounceTimer);
+  _scratchDebounceTimer = setTimeout(() => {
+    const el = qs('#dash-scratchpad');
+    if (!el) return;
+    localStorage.setItem('pbf_dash_notes', el.value);
+    const savedEl = qs('#dash-scratchpad-saved');
+    if (savedEl) { savedEl.style.opacity = '1'; setTimeout(() => { savedEl.style.opacity = '0'; }, 1200); }
+  }, 500);
 }
 
 function addQuickNote() {
@@ -365,22 +401,20 @@ function calcOrderValue(o) {
 function renderAttention() {
   const items = [];
   const ac = DB.a('ac');
+  const todayStr = today();
 
   ac.filter(a=>a.status==='active').forEach(a=>{
     const last = a.lastOrder;
-    if (daysAgo(last) >= 30) {
+    const days = daysAgo(last);
+    if (days >= 30) {
+      const urgency = days >= 60 ? 'red' : 'amber';
+      const borderColor = urgency === 'red' ? '#dc2626' : '#d97706';
       const isDistFulfilled = a.fulfilledBy && a.fulfilledBy !== 'direct';
       if (isDistFulfilled) {
         const dist = DB.a('dist_profiles').find(d=>d.id===a.fulfilledBy);
-        items.push({
-          icon:'⚠️',
-          name: a.name,
-          reason: `No order in ${daysAgo(last)} days — fulfilled via ${dist?.name||'distributor'}`,
-          action: `openAccount('${a.id}')`,
-          color: '#d97706',
-        });
+        items.push({icon:'⚠️', name:a.name, reason:`No order in ${days} days — fulfilled via ${dist?.name||'distributor'}`, action:`openAccount('${a.id}')`, accountId:a.id, borderColor});
       } else {
-        items.push({icon:'🕐', name:a.name, reason:`No order in ${daysAgo(last)} days`, action:`openAccount('${a.id}')`});
+        items.push({icon:'🕐', name:a.name, reason:`No order in ${days} days`, action:`openAccount('${a.id}')`, accountId:a.id, borderColor});
       }
     }
   });
@@ -389,50 +423,64 @@ function renderAttention() {
     const inv = DB.a('iv');
     const oh = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
              - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    if (oh < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${oh} units on hand`, action:`nav('inventory')`});
+    if (oh < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${oh} units on hand`, action:`nav('inventory')`, borderColor:'#d97706'});
   });
 
-  DB.a('pr').filter(p=>p.nextDate&&p.nextDate<today()&&!['won','lost'].includes(p.status)).forEach(p=>{
-    items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`openProspect('${p.id}')`});
+  DB.a('pr').filter(p=>p.nextDate&&p.nextDate<todayStr&&!['won','lost'].includes(p.status)).forEach(p=>{
+    items.push({icon:'🎯', name:p.name, reason:`Follow-up overdue: ${p.nextAction||'check in'}`, action:`openProspect('${p.id}')`, borderColor:'#d97706'});
   });
 
   // Accounts with overdue follow-up dates and no newer contact logged
-  const todayNow = today();
-  ac.filter(a=>a.status==='active'&&a.nextFollowUp&&a.nextFollowUp<todayNow).forEach(a=>{
+  ac.filter(a=>a.status==='active'&&a.nextFollowUp&&a.nextFollowUp<todayStr).forEach(a=>{
     const lastContact = acLastContacted(a);
     if (!lastContact || lastContact < a.nextFollowUp) {
-      items.push({icon:'📅', name:a.name, reason:`Follow-up overdue — was due ${fmtD(a.nextFollowUp)}`, action:`openAccount('${a.id}')`});
+      items.push({icon:'📅', name:a.name, reason:`Follow-up overdue — was due ${fmtD(a.nextFollowUp)}`, action:`openAccount('${a.id}')`, accountId:a.id, borderColor:'#d97706'});
     }
   });
 
   // Overdue distributor invoices
-  const todayStr = today();
   DB.a('dist_invoices').filter(i=>i.status==='unpaid'&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
     const d = DB.a('dist_profiles').find(x=>x.id===i.distId);
-    items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`});
+    items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`, borderColor:'#dc2626'});
   });
 
-  // Distributors with no contact in 30+ days (phase 7: lowered from 60 to 30)
+  // Distributors with no contact in 30+ days
   DB.a('dist_profiles').filter(d=>d.status==='active').forEach(d=>{
     const out = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
     const lastDate = out[0]?.date || d.lastContacted || null;
     if (daysAgo(lastDate) >= 30) {
-      items.push({icon:'🚚', name:`${d.name} — No Recent Contact`, reason:`Last contacted ${lastDate?daysAgo(lastDate)+' days ago':'never'}`, action:`openDistributor('${d.id}')`});
+      items.push({icon:'🚚', name:`${d.name} — No Recent Contact`, reason:`Last contacted ${lastDate?daysAgo(lastDate)+' days ago':'never'}`, action:`openDistributor('${d.id}')`, borderColor:'#d97706'});
     }
   });
 
   // Overdue distributor follow-ups
   DB.a('dist_profiles').filter(d=>d.nextFollowup&&d.nextFollowup<todayStr).forEach(d=>{
-    items.push({icon:'📅', name:`${d.name} — Follow-Up Overdue`, reason:`Scheduled ${fmtD(d.nextFollowup)}`, action:`openDistributor('${d.id}')`});
+    items.push({icon:'📅', name:`${d.name} — Follow-Up Overdue`, reason:`Scheduled ${fmtD(d.nextFollowup)}`, action:`openDistributor('${d.id}')`, borderColor:'#d97706'});
   });
+
+  // Update badge
+  const badge = qs('#dash-attention-badge');
+  if (badge) {
+    if (items.length > 0) {
+      badge.textContent = items.length;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
 
   const el = qs('#dash-attention');
   if (!el) return;
-  el.innerHTML = items.length ? items.slice(0,10).map(i=>`
-    <div class="attn-item" onclick="${i.action}" style="cursor:pointer${i.color?';border-left:3px solid '+i.color:''}">
+  if (!items.length) {
+    el.innerHTML = '<div class="empty" style="color:var(--green)">✓ All clear — no immediate action needed.</div>';
+    return;
+  }
+  el.innerHTML = items.slice(0,10).map(i=>`
+    <div class="attn-item" style="cursor:pointer;border-left:3px solid ${i.borderColor||'#d97706'}" onclick="${i.action}">
       <div class="attn-icon">${i.icon}</div>
-      <div class="attn-info"><div class="attn-name">${i.name}</div><div class="attn-reason" style="${i.color?'color:'+i.color:''}">${i.reason}</div></div>
-    </div>`).join('') : '<div class="empty">All clear! No immediate action needed.</div>';
+      <div class="attn-info" style="flex:1"><div class="attn-name">${i.name}</div><div class="attn-reason">${i.reason}</div></div>
+      ${i.accountId ? `<button class="btn xs" onclick="event.stopPropagation();openAccount('${i.accountId}')" title="Log contact">Log Contact</button>` : ''}
+    </div>`).join('');
 }
 
 // ── Upcoming Follow-ups (next 14 days from notes / prospects) ─
@@ -470,11 +518,22 @@ function renderFollowUps() {
   el.innerHTML = items.length ? items.map(i=>`
     <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
       <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
-      <div class="attn-info">
+      <div class="attn-info" style="flex:1">
         <div class="attn-name">${i.name}</div>
         <div class="attn-reason">${i.action} &middot; <strong>${i.daysUntil===0?'Today':i.daysUntil===1?'Tomorrow':'in '+i.daysUntil+'d'}</strong> (${fmtD(i.date)})</div>
       </div>
+      <button class="btn xs green" onclick="event.stopPropagation();dashMarkFollowUpDone('${i.id}','${i.type}')" title="Mark done">Done</button>
     </div>`).join('') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
+}
+
+function dashMarkFollowUpDone(id, type) {
+  if (type === 'account') {
+    DB.update('ac', id, x => ({...x, nextFollowUp: null}));
+  } else {
+    DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null}));
+  }
+  renderFollowUps();
+  toast('Follow-up marked done');
 }
 
 // ── Pending Orders (with reschedule button) ───────────────
