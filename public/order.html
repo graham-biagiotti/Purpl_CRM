@@ -609,22 +609,27 @@ function renderLfSkus(skus, prevOrder) {
 
     if (activeVariants.length > 0) {
       var prevVariants = prevOrder ? (prevOrder['variants_'+s.id] || {}) : {};
-      var totalPrevCases = activeVariants.reduce(function(sum,v){return sum+(prevVariants[v.id]||0);},0);
+      var totalPrevUnits = activeVariants.reduce(function(sum,v){return sum+(prevVariants[v.id]||0)*s.caseSize;},0);
+      var totalPrevCases = totalPrevUnits / s.caseSize;
       var variantHtml = activeVariants.map(function(v) {
-        var prevCases = prevVariants[v.id] || 0;
-        var prevNote = prevCases > 0 ? ' <span style="font-size:11px;color:#9ca3af">Last: '+prevCases+'cs</span>' : '';
-        return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'" '+
-          'style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">' +
-          '<span style="flex:1;min-width:0">'+v.name+prevNote+'</span>' +
-          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevCases||0)+'" '+
-            'placeholder="0" style="width:60px" oninput="updateLfVariantCalc(\''+s.id+'\',\''+v.id+'\')">' +
-          '<span style="white-space:nowrap">cases</span>' +
-          '<span id="lf-vtotal-'+s.id+'-'+v.id+'" style="min-width:60px;text-align:right;font-size:13px">'+
-            (prevCases > 0 ? '$'+(prevCases*parseFloat(s.wholesalePrice)).toFixed(2) : '')+
-          '</span>' +
+        var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
+        var prevNote = prevUnits > 0 ? ' <span style="font-size:11px;color:#9ca3af">Last: '+prevUnits+'u</span>' : '';
+        return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
+          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+prevNote+'</span>' +
+          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
+          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" '+
+            'placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
+          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
+          '<span style="font-size:11px;color:#9ca3af;min-width:30px;text-align:right">units</span>' +
         '</div>';
       }).join('');
       var prevNoteHtml = totalPrevCases > 0 ? '<div class="lf-prev-note">Last order: '+totalPrevCases+' cases total</div>' : '';
+      var initParts = activeVariants.filter(function(v){return (prevVariants[v.id]||0)>0;}).map(function(v){
+        return v.name+' \xd7'+(prevVariants[v.id]*s.caseSize);
+      });
+      var initSummary = totalPrevCases > 0
+        ? totalPrevCases+' case'+(totalPrevCases!==1?'s':'')+' total'+(initParts.length?' ('+initParts.join(', ')+')':'')
+        : '';
       return '<div class="lf-sku-row lf-sku-has-variants" id="lf-row-'+s.id+'">' +
         '<div class="lf-sku-info">' +
           '<div class="lf-sku-name">'+s.name+'</div>' +
@@ -633,11 +638,9 @@ function renderLfSkus(skus, prevOrder) {
           prevNoteHtml +
         '</div>' +
         '<div style="flex:1">' +
-          '<button type="button" onclick="toggleLfVariantPicker(\''+s.id+'\')" '+
-            'style="font-size:12px;padding:4px 10px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;margin-bottom:4px">' +
-            '&#9656; Choose variants ('+activeVariants.length+')' +
-          '</button>' +
-          '<div id="lf-vpicker-'+s.id+'" style="display:'+(totalPrevCases>0?'block':'none')+'">'+variantHtml+'</div>' +
+          '<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">1 case = '+s.caseSize+' units total across all variants</div>' +
+          variantHtml +
+          '<div id="lf-vsum-'+s.id+'" style="font-size:12px;color:#6b7280;margin-top:6px">'+initSummary+'</div>' +
           '<div class="lf-line-total" id="lf-total-'+s.id+'" style="text-align:right;font-size:14px;font-weight:600;margin-top:4px">'+
             (totalPrevCases > 0 ? '$'+(totalPrevCases*parseFloat(s.wholesalePrice)).toFixed(2) : '')+
           '</div>' +
@@ -685,20 +688,33 @@ function toggleLfVariantPicker(skuId) {
   picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
 }
 
-function updateLfVariantCalc(skuId, variantId) {
+function stepLfUnit(skuId, varId, delta) {
+  var el = document.getElementById('lf-vqty-'+skuId+'-'+varId);
+  if (!el) return;
+  el.value = Math.max(0, (parseInt(el.value)||0) + delta);
+  updateLfVariantCalc(skuId);
+}
+
+function updateLfVariantCalc(skuId) {
   var sku = _lfSkus.find(function(s){return s.id===skuId;});
   if (!sku) return;
-  // Update individual variant total
-  var cases = parseInt(document.getElementById('lf-vqty-'+skuId+'-'+variantId)?.value)||0;
-  var vtEl = document.getElementById('lf-vtotal-'+skuId+'-'+variantId);
-  if (vtEl) vtEl.textContent = cases > 0 ? '$'+(cases*parseFloat(sku.wholesalePrice)).toFixed(2) : '';
-  // Update SKU row total (sum of all variants)
   var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
-  var totalCases = activeVariants.reduce(function(sum,v){
+  var totalUnits = activeVariants.reduce(function(sum,v){
     return sum + (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0);
   },0);
+  var totalCases = totalUnits / sku.caseSize;
   var ltEl = document.getElementById('lf-total-'+skuId);
   if (ltEl) ltEl.textContent = totalCases > 0 ? '$'+(totalCases*parseFloat(sku.wholesalePrice)).toFixed(2) : '';
+  var varParts = activeVariants.filter(function(v){
+    return (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0) > 0;
+  }).map(function(v){
+    var units = parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0;
+    return v.name+' \xd7'+units;
+  });
+  var sumEl = document.getElementById('lf-vsum-'+skuId);
+  if (sumEl) sumEl.textContent = totalCases > 0
+    ? totalCases+' case'+(totalCases!==1?'s':'')+' total'+(varParts.length?' ('+varParts.join(', ')+')':'')
+    : '';
   updateLfSubtotal();
   checkSubmitEnabled();
 }
@@ -714,16 +730,14 @@ function getLfItems() {
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
     if (activeVariants.length > 0) {
       var variantLines = activeVariants.map(function(v){
-        var cases = parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0;
-        if (cases <= 0) return null;
-        var units = cases * s.caseSize;
-        var lineTotal = cases * parseFloat(s.wholesalePrice);
-        return {variantId:v.id, variantName:v.name, cases:cases, units:units, lineTotal:lineTotal};
+        var units = parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0;
+        if (units <= 0) return null;
+        return {variantId:v.id, variantName:v.name, units:units, cases: units / s.caseSize};
       }).filter(Boolean);
       if (!variantLines.length) return null;
-      var totalCases = variantLines.reduce(function(acc,v){return acc+v.cases;},0);
       var totalUnits = variantLines.reduce(function(acc,v){return acc+v.units;},0);
-      var totalLine  = variantLines.reduce(function(acc,v){return acc+v.lineTotal;},0);
+      var totalCases = totalUnits / s.caseSize;
+      var totalLine  = totalCases * parseFloat(s.wholesalePrice);
       return {skuId:s.id, skuName:s.name, hasVariants:true, variantLines:variantLines,
               cases:totalCases, units:totalUnits, unitPrice:parseFloat(s.wholesalePrice), lineTotal:totalLine};
     }
@@ -739,10 +753,10 @@ function getLfTotal() {
   return _lfSkus.reduce(function(sum,s){
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
     if (activeVariants.length > 0) {
-      return sum + activeVariants.reduce(function(vs,v){
-        var cases = parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0;
-        return vs + cases * parseFloat(s.wholesalePrice);
+      var totalUnits = activeVariants.reduce(function(vs,v){
+        return vs + (parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0);
       },0);
+      return sum + (totalUnits / s.caseSize) * parseFloat(s.wholesalePrice);
     }
     var cases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
     return sum + cases * parseFloat(s.wholesalePrice);

@@ -389,6 +389,30 @@ function migrateLfSkuVariants() {
   });
 }
 
+// ── LF SKU price migration (idempotent) ───────────────────
+function migrateLfSkuPrices() {
+  if (!DB._firestoreReady) return;
+  const PRICE_CATALOG = {
+    'Lavender Simple Syrup 12.7oz': {wholesalePrice:8.99,  caseSize:12, msrp:17.99},
+    'Lavender Simple Syrup 1 gal':  {wholesalePrice:49.99, caseSize:1,  msrp:null},
+    'Aromatherapy Scrunchie':        {wholesalePrice:7.49,  caseSize:6,  msrp:14.99},
+    'Seatbelt Sachet':               {wholesalePrice:4.99,  caseSize:12, msrp:9.99},
+    'Soy Candle':                    {wholesalePrice:14.99, caseSize:12, msrp:24.99},
+    'Lavender Refresh Powder':       {wholesalePrice:4.99,  caseSize:12, msrp:9.99},
+    'Aromatherapy Roll-On':          {wholesalePrice:9.99,  caseSize:24, msrp:19.99},
+    'Dryer Sachet 2-Pack':           {wholesalePrice:5.49,  caseSize:12, msrp:9.99},
+  };
+  DB.a('lf_skus').forEach(s => {
+    const catalog = PRICE_CATALOG[s.name];
+    if (!catalog) return;
+    const needsUpdate = s.wholesalePrice !== catalog.wholesalePrice ||
+                        s.caseSize !== catalog.caseSize ||
+                        s.msrp !== catalog.msrp;
+    if (!needsUpdate) return;
+    DB.update('lf_skus', s.id, sk => ({...sk, ...catalog}));
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
@@ -7756,6 +7780,7 @@ function confirmPasteAccount() {
 window.onAppReady = function() {
   seedIfEmpty();
   migrateLfSkuVariants();
+  migrateLfSkuPrices();
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
   migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
 
