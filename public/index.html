@@ -109,10 +109,7 @@
         Orders &amp; Delivery
       </a>
       <a data-page="invoices" id="nav-invoices" onclick="nav('invoices')">
-        🧾 purpl Invoices
-      </a>
-      <a data-page="lf-invoices" id="nav-lf-invoices" onclick="nav('lf-invoices')">
-        🌿 LF Invoices
+        🧾 Invoices
       </a>
       <a data-page="pre-orders">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
@@ -1368,93 +1365,71 @@
 
     <!-- ═══════ INVOICES ═══════ -->
     <div class="page" id="page-invoices">
+      <div class="invoices-split">
 
-      <!-- KPI row -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px" id="inv-kpi-row"></div>
-
-      <!-- Overdue section -->
-      <div class="card" style="margin-bottom:16px" id="inv-overdue-card">
-        <div class="section-hdr">
-          <h2 style="color:var(--red)">🔴 Overdue</h2>
-        </div>
-        <div id="inv-overdue-list"></div>
-      </div>
-
-      <!-- Main table -->
-      <div class="card">
-        <div class="section-hdr">
-          <h2>All Invoices</h2>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="inv-filter-status" style="width:130px" onchange="renderInvoicesPage()">
-              <option value="">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-              <option value="partial">Partial</option>
-            </select>
-            <select id="inv-filter-account" style="width:160px" onchange="renderInvoicesPage()">
-              <option value="">All Accounts</option>
-            </select>
-            <button class="btn primary" onclick="openAddInv(null,null)">+ New Invoice</button>
+        <!-- ── LEFT: purpl (iv) ── -->
+        <div class="card">
+          <div class="invoices-col-header purpl">
+            <span style="font-weight:600;font-size:15px;color:var(--purple)">💜 purpl Invoices</span>
+            <button class="btn sm primary" onclick="openAddInv()">+ New Invoice</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px" id="inv-purpl-kpis"></div>
+          <div id="inv-purpl-overdue-card" style="display:none;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🔴 Overdue</div>
+            <div id="inv-purpl-overdue-list"></div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr>
+                <th onclick="sortInv('number')" style="cursor:pointer">Invoice #</th>
+                <th onclick="sortInv('accountName')" style="cursor:pointer">Account</th>
+                <th onclick="sortInv('due')" style="cursor:pointer">Due</th>
+                <th onclick="sortInv('amount')" style="cursor:pointer">Amount</th>
+                <th>Status</th>
+                <th class="no-print">Actions</th>
+              </tr></thead>
+              <tbody id="inv-purpl-tbody"></tbody>
+            </table>
           </div>
         </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th onclick="sortInv('number')" style="cursor:pointer">Invoice #</th>
-              <th onclick="sortInv('accountName')" style="cursor:pointer">Account</th>
-              <th onclick="sortInv('date')" style="cursor:pointer">Invoice Date</th>
-              <th onclick="sortInv('due')" style="cursor:pointer">Due Date</th>
-              <th onclick="sortInv('amount')" style="cursor:pointer">Amount</th>
-              <th>Cases</th>
-              <th>Status</th>
-              <th class="no-print">Actions</th>
-            </tr></thead>
-            <tbody id="inv-main-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
 
-    <!-- ═══════ LF INVOICES ═══════ -->
-    <div class="page" id="page-lf-invoices">
-      <!-- KPI row -->
-      <div class="card-grid grid-4" style="margin-bottom:16px">
-        <div id="lf-inv-kpi-total"></div>
-        <div id="lf-inv-kpi-collected"></div>
-        <div id="lf-inv-kpi-overdue"></div>
-        <div id="lf-inv-kpi-wix"></div>
-      </div>
-      <!-- Main card -->
-      <div class="card">
-        <div class="section-hdr">
-          <h2>🌿 Lavender Fields Invoices</h2>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <div class="ac-brand-btns" id="lf-inv-tabs">
-              <button class="ac-brand-btn active" data-status="" onclick="setLfInvFilter('')">All</button>
-              <button class="ac-brand-btn" data-status="unpaid" onclick="setLfInvFilter('unpaid')">Unpaid</button>
-              <button class="ac-brand-btn" data-status="paid" onclick="setLfInvFilter('paid')">Paid</button>
-              <button class="ac-brand-btn" data-status="overdue" onclick="setLfInvFilter('overdue')">Overdue</button>
-            </div>
-            <button class="btn primary" onclick="openLfInvoiceModal(null)">+ New LF Invoice</button>
+        <!-- ── RIGHT: LF (lf_invoices) ── -->
+        <div class="card">
+          <div class="invoices-col-header lf">
+            <span style="font-weight:600;font-size:15px;color:#4a7c59">🌿 Lavender Fields Invoices</span>
+            <button class="btn sm" style="background:#4a7c59;color:#fff;border-color:#4a7c59" onclick="openLfInvoiceModal(null)">+ New LF Invoice</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+            <div id="lf-inv-kpi-outstanding"></div>
+            <div id="lf-inv-kpi-overdue"></div>
+            <div id="lf-inv-kpi-wix"></div>
+          </div>
+          <div id="inv-lf-overdue-card" style="display:none;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">🔴 Overdue</div>
+            <div id="inv-lf-overdue-list"></div>
+          </div>
+          <div class="ac-brand-btns" id="lf-inv-tabs" style="margin-bottom:10px">
+            <button class="ac-brand-btn active" data-status="" onclick="setLfInvFilter('')">All</button>
+            <button class="ac-brand-btn" data-status="unpaid" onclick="setLfInvFilter('unpaid')">Unpaid</button>
+            <button class="ac-brand-btn" data-status="paid" onclick="setLfInvFilter('paid')">Paid</button>
+            <button class="ac-brand-btn" data-status="overdue" onclick="setLfInvFilter('overdue')">Overdue</button>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr>
+                <th>Invoice #</th>
+                <th>Account</th>
+                <th>Due</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Wix</th>
+                <th class="no-print">Actions</th>
+              </tr></thead>
+              <tbody id="lf-inv-tbody"></tbody>
+            </table>
           </div>
         </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Invoice #</th>
-              <th>Account</th>
-              <th>Issued</th>
-              <th>Due</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Wix Pulled</th>
-              <th>Actions</th>
-            </tr></thead>
-            <tbody id="lf-inv-tbody"></tbody>
-          </table>
-        </div>
+
       </div>
     </div>
 
