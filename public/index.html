@@ -2629,6 +2629,44 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<!-- Email preview modal -->
+<div class="overlay" id="modal-email-preview">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-hdr">
+      <div>
+        <h2 id="email-preview-title">Email Preview</h2>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          <span id="email-preview-from"></span> →
+          <span id="email-preview-to"></span>
+        </div>
+      </div>
+      <button class="btn xs" onclick="closeModal('modal-email-preview')">✕</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:4px">Subject</label>
+      <input id="email-preview-subject" style="width:100%;font-size:14px">
+    </div>
+    <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
+      <div style="background:#f9fafb;padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--muted)">Preview</span>
+        <button class="btn xs" onclick="openEmailPreviewTab()">Open in new tab ↗</button>
+      </div>
+      <iframe id="email-preview-frame" style="width:100%;height:420px;border:none"></iframe>
+    </div>
+    <div id="email-preview-body-edit" style="display:none;margin-bottom:14px">
+      <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:4px">Edit Body HTML</label>
+      <textarea id="email-preview-body-textarea" rows="8" style="font-size:12px;font-family:monospace;width:100%"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn xs" onclick="toggleEmailBodyEdit()">✏️ Edit</button>
+      <div style="flex:1"></div>
+      <button class="btn" onclick="copyEmailHTML()">📋 Copy HTML</button>
+      <button class="btn" onclick="openEmailMailto()">✉️ Open in Gmail</button>
+      <button class="btn primary" onclick="markCadenceEmailSent()">✓ Mark as Sent</button>
+    </div>
+  </div>
+</div>
+
 <!-- PWA service worker -->
 <script>
 if ('serviceWorker' in navigator) {

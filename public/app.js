@@ -144,6 +144,87 @@ function statusBadge(map, val) {
   return `<span class="badge ${s.cls}">${s.label}</span>`;
 }
 
+// ── Email template HTML constants ───────────────────────
+const SIGNATURE_HTML = `
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="padding-top:16px;border-top:1px solid #e5e7eb;
+      font-family:Inter,Arial,sans-serif;font-size:13px;
+      color:#6b7280;line-height:1.6">
+      <strong style="color:#1a1a2e">Graham Biagiotti</strong>
+      — Director of Sales<br>
+      Direct: 603-748-3038<br>
+      393 Pumpkin Hill Rd. Warner, NH 03278<br>
+      Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages
+    </td>
+  </tr>
+</table>`;
+
+const PURPL_HEADER_HTML = `
+<table width="100%" cellpadding="0" cellspacing="0"
+  style="background:#2D1B4E;border-radius:8px 8px 0 0">
+  <tr>
+    <td style="padding:28px 32px;text-align:center">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+        alt="purpl" width="120"
+        style="display:block;margin:0 auto">
+    </td>
+  </tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+</table>`;
+
+const LF_HEADER_HTML = `
+<table width="100%" cellpadding="0" cellspacing="0"
+  style="background:#2d4a38;border-radius:8px 8px 0 0">
+  <tr>
+    <td style="padding:28px 32px;text-align:center">
+      <div style="font-family:Georgia,serif;font-size:26px;
+        color:#9dc4a8;font-weight:400">lavender fields</div>
+      <div style="font-family:Arial,sans-serif;font-size:11px;
+        color:rgba(255,255,255,0.55);letter-spacing:0.1em;
+        text-transform:uppercase;margin-top:4px">
+        at Pumpkin Blossom Farm</div>
+    </td>
+  </tr>
+  <tr><td style="background:#4a7c59;height:4px"></td></tr>
+</table>`;
+
+function buildEmailHTML(headerHTML, accentColor, bodyHTML) {
+  return `<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head><body style="margin:0;padding:0;background:#f4f4f5;
+font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0"
+  style="background:#f4f4f5;padding:32px 16px">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0"
+      style="max-width:600px;width:100%;background:#ffffff;
+      border-radius:8px;overflow:hidden;
+      box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+      <tr><td>${headerHTML}</td></tr>
+      <tr><td style="padding:36px 40px;font-family:Inter,
+        Arial,sans-serif;font-size:15px;color:#1a1a2e;
+        line-height:1.7">
+        ${bodyHTML}
+        <br><br>${SIGNATURE_HTML}
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:20px 40px;
+        border-top:1px solid #e5e7eb;text-align:center;
+        font-size:11px;color:#9ca3af;line-height:1.6">
+        Pumpkin Blossom Farm · 393 Pumpkin Hill Rd ·
+        Warner, NH 03278<br>
+        <a href="https://pumpkinblossomfarm.com"
+          style="color:#9ca3af">pumpkinblossomfarm.com</a>
+        &nbsp;·&nbsp;
+        <a href="https://drinkpurpl.com"
+          style="color:#9ca3af">drinkpurpl.com</a>
+      </td></tr>
+    </table>
+  </td></tr>
+</table></body></html>`;
+}
+
 // ── Default demo data (first run only) ──────────────────
 function seedIfEmpty() {
   // SAFETY: never seed if Firestore hasn't confirmed document state yet.
