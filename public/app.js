@@ -2504,6 +2504,9 @@ let _meSelectedIds = new Set();
 //  EMAILS PAGE
 // ══════════════════════════════════════════════════════════
 
+let _emailsSelectedTemplate = null;
+let _emailsSelectedAccountId = null;
+
 function renderEmailsPage() {
   const accounts = DB.a('ac');
 
@@ -2523,10 +2526,138 @@ function renderEmailsPage() {
     <div class="kpi red"><div class="num">${neverContacted}</div><div class="label">No Email Sent Yet</div></div>
   `;
 
+  _renderEmailsTemplatesCol();
+  _renderEmailsRightCol();
   renderEmailsTabOverview(accounts);
-  renderEmailsTabOverdue(overdue);
   renderEmailsTabHistory(accounts);
-  renderEmailsTabCompose(accounts);
+}
+
+function _renderEmailsTemplatesCol() {
+  const el = document.getElementById('emails-templates-col');
+  if (!el) return;
+  const TEMPLATES = [
+    {id:'application-received', name:'Application Received',  desc:'Auto-sent on form submit',     from:'lavender@lavenderfieldsco.com'},
+    {id:'approved',             name:'Approved — Welcome',    desc:'Portal link + next steps',      from:'lavender@lavenderfieldsco.com'},
+    {id:'rejected',             name:'Rejected — Decline',    desc:'Polite decline email',          from:'graham@purplcbd.com'},
+    {id:'invoice-sent',         name:'Invoice Sent',          desc:'Sends latest invoice details',  from:'lavender@lavenderfieldsco.com'},
+    {id:'first-order',          name:'First Order Follow-up', desc:'Post-first-order check-in',     from:'lavender@lavenderfieldsco.com'},
+  ];
+  const cards = TEMPLATES.map(t => `
+    <div class="email-template-card${_emailsSelectedTemplate === t.id ? ' active' : ''}"
+         onclick="selectEmailTemplate('${t.id}')">
+      <div class="etc-name">${t.name}</div>
+      <div class="etc-desc">${t.desc}</div>
+      <div class="etc-from">${t.from}</div>
+    </div>`).join('');
+  el.innerHTML = cards + `
+    <div class="email-template-card" onclick="nav('mass-email')" style="border-style:dashed;margin-top:4px">
+      <div class="etc-name">📢 Mass Email</div>
+      <div class="etc-desc">Broadcast to all accounts</div>
+    </div>`;
+}
+
+function selectEmailTemplate(templateId) {
+  _emailsSelectedTemplate = templateId;
+  _renderEmailsTemplatesCol();
+  _renderEmailsRightCol();
+}
+
+function selectEmailsAccount(accountId) {
+  _emailsSelectedAccountId = accountId;
+  _renderEmailsRightCol();
+}
+
+function _renderEmailsRightCol() {
+  const el = document.getElementById('emails-preview-col');
+  if (!el) return;
+
+  if (!_emailsSelectedTemplate) {
+    el.innerHTML = `<div class="emails-placeholder">
+      <div style="font-size:32px">📧</div>
+      <div>Select a template to get started</div>
+    </div>`;
+    return;
+  }
+
+  const accounts = DB.a('ac');
+  const acctOptions = accounts.map(a =>
+    `<option value="${a.id}"${_emailsSelectedAccountId === a.id ? ' selected' : ''}>${escHtml(a.name)}</option>`
+  ).join('');
+
+  const account = _emailsSelectedAccountId
+    ? accounts.find(x => x.id === _emailsSelectedAccountId)
+    : null;
+
+  let previewHtml = '';
+  if (account) {
+    const extra = {};
+    if (_emailsSelectedTemplate === 'invoice-sent') {
+      const invId = _latestAccountInvoiceId(account.id);
+      const inv = invId ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+      if (inv) {
+        extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
+        extra.invoiceTotal = inv.total || inv.grandTotal || 0;
+      }
+    }
+    const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
+    if (tpl) {
+      previewHtml = `
+        <div style="margin-bottom:8px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Subject</div>
+          <div style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">${escHtml(tpl.subject)}</div>
+        </div>
+        <iframe class="emails-preview-frame" srcdoc="${tpl.body.replace(/"/g,'&quot;')}"></iframe>
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
+          <button class="btn xs" onclick="emailsPageCopyHTML()">📋 Copy HTML</button>
+          <button class="btn xs" onclick="emailsPageOpenGmail()">✉️ Open in Gmail</button>
+          <button class="btn xs primary" onclick="emailsPageMarkSent()">✅ Mark as Sent</button>
+        </div>`;
+    } else {
+      previewHtml = `<div class="emails-placeholder"><div>No template available for this combination</div></div>`;
+    }
+  } else {
+    previewHtml = `<div class="emails-placeholder" style="height:200px">
+      <div style="font-size:24px">👆</div>
+      <div>Select an account to preview</div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">ACCOUNT</label>
+      <select onchange="selectEmailsAccount(this.value)" style="width:100%">
+        <option value="">Select account...</option>
+        ${acctOptions}
+      </select>
+    </div>
+    ${previewHtml}`;
+}
+
+function emailsPageCopyHTML() {
+  if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
+  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
+  if (!account) return;
+  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
+  if (tpl) navigator.clipboard.writeText(tpl.body).then(() => toast('HTML copied'));
+}
+
+function emailsPageOpenGmail() {
+  if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
+  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
+  if (!account) return;
+  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
+  if (tpl) window.open(`mailto:${encodeURIComponent(account.email||'')}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+}
+
+function emailsPageMarkSent() {
+  if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
+  const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+  DB.update('ac', _emailsSelectedAccountId, a => ({
+    ...a,
+    cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'manual'}]
+  }));
+  toast('Email marked as sent');
+  renderEmailsPage();
 }
 
 function getOverdueCadence(accounts) {
@@ -2546,6 +2677,27 @@ function getOverdueCadence(accounts) {
 }
 
 function renderEmailsTabOverview(accounts) {
+  const overdue = getOverdueCadence(accounts);
+  const el = document.getElementById('emails-tab-overview');
+  if (!el) return;
+
+  let overdueHtml = '';
+  if (overdue.length) {
+    const items = overdue.map(o => `
+      <div class="attn-item" style="border-left:3px solid var(--red);margin-bottom:8px">
+        <div class="attn-info">
+          <div class="attn-name">${escHtml(o.account.name)}</div>
+          <div class="attn-reason">${escHtml(o.reason)}</div>
+        </div>
+        <button class="btn xs primary" onclick="selectEmailTemplate('${o.stage}');selectEmailsAccount('${o.account.id}');switchEmailsTab('compose')">Compose Now</button>
+        <button class="btn xs" onclick="openAccount('${o.account.id}')">View</button>
+      </div>`).join('');
+    overdueHtml = `<div class="card" style="margin-bottom:16px;border-left:3px solid var(--red)">
+      <div class="section-hdr" style="margin-bottom:8px"><h3 style="color:var(--red)">⚠️ Overdue (${overdue.length})</h3></div>
+      ${items}
+    </div>`;
+  }
+
   const STAGES = [
     {id:'application-received', label:'Received'},
     {id:'approved',             label:'Approved'},
@@ -2579,8 +2731,7 @@ function renderEmailsTabOverview(accounts) {
     </tr>`;
   }).join('');
 
-  const el = document.getElementById('emails-tab-overview');
-  if (el) el.innerHTML = `
+  el.innerHTML = overdueHtml + `
     <div class="card">
       <div class="tbl-wrap">
         <table>
@@ -2596,25 +2747,6 @@ function renderEmailsTabOverview(accounts) {
         </table>
       </div>
     </div>`;
-}
-
-function renderEmailsTabOverdue(overdue) {
-  const el = document.getElementById('emails-tab-overdue');
-  if (!el) return;
-  if (!overdue.length) {
-    el.innerHTML = '<div class="empty" style="padding:40px">✅ No overdue email actions</div>';
-    return;
-  }
-  const rows = overdue.map(o => `
-    <div class="attn-item" style="border-left:3px solid var(--red);margin-bottom:8px">
-      <div class="attn-info">
-        <div class="attn-name">${escHtml(o.account.name)}</div>
-        <div class="attn-reason">${escHtml(o.reason)}</div>
-      </div>
-      <button class="btn xs primary" onclick="openEmailPreview('${o.stage}','${o.account.id}')">Send Now</button>
-      <button class="btn xs" onclick="openAccount('${o.account.id}')">View Account</button>
-    </div>`).join('');
-  el.innerHTML = `<div class="card">${rows}</div>`;
 }
 
 function renderEmailsTabHistory(accounts) {
@@ -2658,76 +2790,8 @@ function renderEmailsTabHistory(accounts) {
     </div>`;
 }
 
-function renderEmailsTabCompose(accounts) {
-  const acctOptions = accounts.map(a =>
-    `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
-  const el = document.getElementById('emails-tab-compose');
-  if (el) el.innerHTML = `
-    <div class="card" style="max-width:600px">
-      <div class="section-hdr"><h2>Quick Send</h2></div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Account</label>
-          <select id="qs-account" onchange="qsUpdateTemplate()">
-            <option value="">Select account...</option>
-            ${acctOptions}
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Email Template</label>
-          <select id="qs-template" onchange="qsUpdateTemplate()">
-            <option value="">Select template...</option>
-            <option value="application-received">Application Received</option>
-            <option value="approved">Approved — Welcome + Portal Link</option>
-            <option value="rejected">Rejected — Polite Decline</option>
-            <option value="invoice-sent">Invoice Sent Notification</option>
-            <option value="first-order">First Order Follow-up</option>
-          </select>
-        </div>
-      </div>
-      <div id="qs-preview-area" style="display:none;margin-top:12px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preview</div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
-          <iframe id="qs-preview-frame" style="width:100%;height:300px;border:none"></iframe>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
-          <button class="btn" onclick="qsOpenFull()">Open Full Preview</button>
-          <button class="btn primary" onclick="qsSend()">✉️ Open in Gmail</button>
-        </div>
-      </div>
-    </div>`;
-}
-
-function qsUpdateTemplate() {
-  const aid   = document.getElementById('qs-account')?.value;
-  const stage = document.getElementById('qs-template')?.value;
-  const area  = document.getElementById('qs-preview-area');
-  if (!aid || !stage) { if (area) area.style.display = 'none'; return; }
-  const account  = DB.a('ac').find(x => x.id === aid);
-  if (!account) return;
-  const template = getCadenceEmailTemplate(stage, account);
-  if (!template) return;
-  const frame = document.getElementById('qs-preview-frame');
-  if (frame) frame.srcdoc = template.body;
-  if (area) area.style.display = 'block';
-}
-
-function qsOpenFull() {
-  const aid   = document.getElementById('qs-account')?.value;
-  const stage = document.getElementById('qs-template')?.value;
-  if (aid && stage) openEmailPreview(stage, aid);
-}
-
-function qsSend() {
-  const aid   = document.getElementById('qs-account')?.value;
-  const stage = document.getElementById('qs-template')?.value;
-  if (aid && stage) openEmailPreview(stage, aid);
-}
-
 function switchEmailsTab(tab) {
-  ['overview','overdue','history','compose'].forEach(t => {
+  ['compose','overview','history'].forEach(t => {
     const el = document.getElementById('emails-tab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });

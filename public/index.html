@@ -1452,15 +1452,18 @@
     <div class="page" id="page-emails">
       <div id="emails-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
       <div class="tabs" style="margin-bottom:16px">
-        <button class="tab active" onclick="switchEmailsTab('overview')">📋 Overview</button>
-        <button class="tab" onclick="switchEmailsTab('overdue')">⚠️ Overdue</button>
-        <button class="tab" onclick="switchEmailsTab('history')">📬 Sent History</button>
-        <button class="tab" onclick="switchEmailsTab('compose')">✏️ Quick Send</button>
+        <button class="tab active" onclick="switchEmailsTab('compose')">📧 Compose</button>
+        <button class="tab" onclick="switchEmailsTab('overview')">📋 Overview</button>
+        <button class="tab" onclick="switchEmailsTab('history')">📬 History</button>
       </div>
-      <div id="emails-tab-overview"></div>
-      <div id="emails-tab-overdue" style="display:none"></div>
+      <div id="emails-tab-compose">
+        <div class="emails-layout">
+          <div class="emails-templates-col" id="emails-templates-col"></div>
+          <div class="emails-preview-col" id="emails-preview-col"></div>
+        </div>
+      </div>
+      <div id="emails-tab-overview" style="display:none"></div>
       <div id="emails-tab-history" style="display:none"></div>
-      <div id="emails-tab-compose" style="display:none"></div>
     </div>
 
     <!-- ═══════ MASS EMAIL ═══════ -->
