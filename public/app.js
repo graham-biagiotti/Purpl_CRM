@@ -3329,6 +3329,7 @@ function convertProspect(id) {
     // Record conversion
     convertedFrom: 'prospect',
     convertedDate: today(),
+    isPbf:      p.isPbf || false,
   };
 
   // Atomic: mark prospect won + create account in one Firestore write
