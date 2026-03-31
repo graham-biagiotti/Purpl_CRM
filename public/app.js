@@ -114,7 +114,6 @@ const renders = {
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   'lf-invoices':    renderLfInvoicesPage,
-  'mass-email':     renderMassEmail,
   emails:           renderEmailsPage,
 };
 
@@ -2530,6 +2529,7 @@ function renderEmailsPage() {
   _renderEmailsRightCol();
   renderEmailsTabOverview(accounts);
   renderEmailsTabHistory(accounts);
+  renderMassEmail();
 }
 
 function _renderEmailsTemplatesCol() {
@@ -2550,7 +2550,7 @@ function _renderEmailsTemplatesCol() {
       <div class="etc-from">${t.from}</div>
     </div>`).join('');
   el.innerHTML = cards + `
-    <div class="email-template-card" onclick="nav('mass-email')" style="border-style:dashed;margin-top:4px">
+    <div class="email-template-card" onclick="switchEmailsTab('mass')" style="border-style:dashed;margin-top:4px">
       <div class="etc-name">📢 Mass Email</div>
       <div class="etc-desc">Broadcast to all accounts</div>
     </div>`;
@@ -2791,13 +2791,14 @@ function renderEmailsTabHistory(accounts) {
 }
 
 function switchEmailsTab(tab) {
-  ['compose','overview','history'].forEach(t => {
+  ['compose','overview','history','mass'].forEach(t => {
     const el = document.getElementById('emails-tab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
   document.querySelectorAll('#page-emails .tab').forEach(btn => {
     btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tab));
   });
+  if (tab === 'mass') renderMassEmail();
 }
 
 let _meBatchQueue  = [];
