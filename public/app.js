@@ -91,6 +91,16 @@ function nav(page) {
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
+  const ta = document.getElementById('topbar-actions');
+  if (ta) {
+    if (page === 'dashboard') {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+      ta.innerHTML = `<span style="font-size:12px;color:var(--muted);font-weight:400">${dateStr}</span>`;
+    } else {
+      ta.innerHTML = '';
+    }
+  }
   currentPage = page;
   renders[page]?.();
 }
@@ -484,7 +494,6 @@ function renderDash() {
   qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
-  renderWelcomeHeader(ac, ord, inv);
   renderAttention();
   renderFollowUps();
   renderPendingOrders();
@@ -550,45 +559,6 @@ function fmtDt(ts) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function renderWelcomeHeader(ac, ord, inv) {
-  const el = qs('#dash-welcome-hdr');
-  if (!el) return;
-
-  const dateStr = new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
-
-  // Today's run stops
-  const run = DB.obj('today_run', {stops:[]});
-  const stopsToday = (run.stops||[]).length;
-
-  // Overdue invoices
-  const terms = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
-  const overdueInv = ord.filter(o=>o.status==='delivered'&&(o.invoiceStatus||'none')==='invoiced'&&daysAgo(o.invoiceDate||o.dueDate)>terms).length;
-
-  // Total can stock
-  const totalCans = SKUS.reduce((sum,s)=>{
-    const ins  = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
-    const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    return sum + Math.max(0, ins-outs);
-  }, 0);
-
-  const summaryParts = [];
-  if (stopsToday > 0) summaryParts.push(`<strong>${stopsToday} stop${stopsToday!==1?'s':''}</strong> on today's run`);
-  if (overdueInv > 0) summaryParts.push(`<strong>${overdueInv} invoice${overdueInv!==1?'s':''}</strong> overdue`);
-  if (totalCans > 0)  summaryParts.push(`<strong>${fmt(totalCans)}</strong> cans in stock`);
-  const summary = summaryParts.length ? summaryParts.join(' &nbsp;·&nbsp; ') : 'Everything looks good — have a great day!';
-
-  el.innerHTML = `
-    <div class="dash-welcome">
-      <div class="dash-welcome-left">
-        <div class="dw-date">${dateStr}</div>
-        <div class="dw-greeting">Welcome back to purpl CRM</div>
-      </div>
-      <div class="dash-welcome-right">
-        <div class="dw-summary">${summary}</div>
-      </div>
-    </div>`;
 }
 
 function kpiHtml(label, val, color) {
