@@ -24,26 +24,30 @@ img{max-width:100%;display:block}
 h1,h2,h3{font-family:'Playfair Display',serif;font-weight:400}
 
 /* ── NAV ─────────────────────────────── */
-.ws-nav,nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;background:rgba(255,255,255,0.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.ws-nav{position:fixed;top:0;left:0;right:0;height:64px;z-index:100;background:transparent;border-bottom:none;transition:background 0.3s,border-bottom 0.3s}
+.ws-nav.scrolled{background:rgba(255,255,255,0.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
 .ws-nav-inner{max-width:1100px;margin:0 auto;height:100%;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
 .nav-logo{height:34px;border-radius:4px}
 .ws-nav-links{display:flex;gap:28px;align-items:center;list-style:none}
-.ws-nav-links a{font-size:13px;color:var(--muted);text-decoration:none;text-transform:uppercase;letter-spacing:0.08em;transition:color 0.15s}
+.ws-nav-links a{font-size:13px;color:rgba(255,255,255,0.85);text-decoration:none;text-transform:uppercase;letter-spacing:0.08em;transition:color 0.15s}
 .ws-nav-links a:hover{color:var(--text)}
-.ws-nav-login{border:1px solid var(--purpl);color:var(--purpl);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
+.ws-nav.scrolled .ws-nav-links a{color:var(--muted)}
+.ws-nav-login{border:1px solid rgba(255,255,255,0.6);color:rgba(255,255,255,0.9);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
 .ws-nav-login:hover{background:var(--purpl);color:white}
+.ws-nav.scrolled .ws-nav-login{border-color:var(--purpl);color:var(--purpl)}
 @media(max-width:768px){.ws-nav-links a:not(.ws-nav-login){display:none}}
 
 /* ── HERO ────────────────────────────── */
 .ws-hero{min-height:100vh;background:linear-gradient(135deg,rgba(45,27,78,0.72) 0%,rgba(245,240,232,0.45) 100%),url('/images/farm-field.jpg') center center / cover no-repeat;display:flex;align-items:center;justify-content:center;padding:120px 24px 80px}
 .ws-hero-inner{max-width:640px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center}
 .ws-hero-farm-label{font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.7);margin-bottom:40px;font-family:Inter,sans-serif;font-weight:500;text-transform:uppercase}
-.ws-hero-brands{display:flex;gap:40px;align-items:center;justify-content:center;margin-bottom:48px}
+.ws-hero-brands{display:flex;gap:48px;align-items:center;justify-content:center;margin-bottom:56px}
 .ws-hero-brands img{max-width:140px}
 .ws-hero-divider{width:1px;height:48px;background:rgba(255,255,255,0.2);flex-shrink:0}
 .ws-hero-lf-text{font-family:'Playfair Display',serif;font-size:22px;color:#9dc4a8;font-weight:400;text-align:left}
 .ws-hero-lf-text small{display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.05em;margin-top:4px;font-style:normal}
-.ws-hero h1{font-size:clamp(32px,5vw,52px);color:#ffffff;line-height:1.2;margin-bottom:20px}
+.ws-hero h1{font-size:clamp(32px,5vw,52px);color:#ffffff;line-height:1.2;margin-bottom:24px}
 .ws-hero-sub{font-size:17px;font-weight:300;color:rgba(255,255,255,0.85);max-width:480px;margin:0 auto 48px;line-height:1.6;font-family:Inter,sans-serif}
 .ws-hero-cta{background:var(--purpl);color:white;padding:16px 36px;border-radius:4px;font-family:Inter,sans-serif;font-size:14px;font-weight:500;letter-spacing:0.04em;border:none;cursor:pointer;text-decoration:none;display:inline-block;transition:background 0.2s}
 .ws-hero-cta:hover{background:var(--purpl-mid)}
@@ -261,7 +265,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 @media(max-width:400px){
   .ws-sku-grid{grid-template-columns:1fr}
 }
-.ws-hero-purpl-logo{max-width:130px;height:auto;filter:brightness(0) invert(1)}
+.ws-hero-purpl-logo{max-width:180px;height:auto;filter:brightness(0) invert(1)}
 .ws-hero-lf-logo{max-width:110px;height:auto;filter:brightness(0) invert(1);border-radius:4px}
 .ws-hero-lf-lockup{display:flex;align-items:center}
 
@@ -315,7 +319,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
         <img
           src="/images/lf-logo-circle-transparent.png"
           alt="Lavender Fields at Pumpkin Blossom Farm"
-          style="max-width:80px;height:auto;filter:brightness(0) invert(1);opacity:0.9"
+          style="max-width:120px;height:auto;filter:brightness(0) invert(1);opacity:0.9"
           onerror="this.style.display='none'"
         >
       </div>
@@ -726,6 +730,12 @@ function wsSubmitApplication() {
     btn.textContent = 'Submit Application';
   });
 }
+</script>
+<script>
+window.addEventListener('scroll',function(){
+  var nav=document.querySelector('.ws-nav');
+  if(nav)nav.classList.toggle('scrolled',window.scrollY>60);
+});
 </script>
 </body>
 </html>
