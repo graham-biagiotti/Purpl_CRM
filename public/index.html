@@ -101,6 +101,9 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Prospects
       </a>
+      <a data-page="emails" id="nav-emails" onclick="nav('emails')">
+        ✉️ Emails
+      </a>
       <a data-page="orders-delivery">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Orders &amp; Delivery
@@ -1443,6 +1446,21 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- ═══════ EMAILS ═══════ -->
+    <div class="page" id="page-emails">
+      <div id="emails-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab active" onclick="switchEmailsTab('overview')">📋 Overview</button>
+        <button class="tab" onclick="switchEmailsTab('overdue')">⚠️ Overdue</button>
+        <button class="tab" onclick="switchEmailsTab('history')">📬 Sent History</button>
+        <button class="tab" onclick="switchEmailsTab('compose')">✏️ Quick Send</button>
+      </div>
+      <div id="emails-tab-overview"></div>
+      <div id="emails-tab-overdue" style="display:none"></div>
+      <div id="emails-tab-history" style="display:none"></div>
+      <div id="emails-tab-compose" style="display:none"></div>
     </div>
 
     <!-- ═══════ MASS EMAIL ═══════ -->
