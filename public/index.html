@@ -323,6 +323,7 @@
           <option value="name">Sort: Name A–Z</option>
         </select>
         <div class="spacer"></div>
+        <span id="pr-count" style="font-size:13px;color:var(--muted)"></span>
         <button class="btn no-print" onclick="importWholesaleInquiries()">Import Wholesale Inquiries</button>
         <button class="btn no-print" onclick="openImportProspects()">Import Prospects</button>
         <button class="btn" id="pr-compact-btn" onclick="togglePrCompact()">Compact</button>
@@ -2059,31 +2060,71 @@
 
 <!-- Prospect view -->
 <div class="overlay" id="modal-prospect">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-hdr">
-      <div><h2 id="mpr-name">Prospect</h2><div id="mpr-status-badge" style="margin-top:4px"></div></div>
+      <div>
+        <h2 id="mpr-name">Prospect</h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+          <div id="mpr-status-badge"></div>
+          <div id="mpr-priority-badge"></div>
+        </div>
+      </div>
       <button class="modal-close btn sm">✕</button>
     </div>
-    <div class="card-grid grid-2" style="margin-bottom:14px">
-      <div><span style="font-size:11px;color:var(--muted)">Contact</span><div id="mpr-contact"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Phone</span><div id="mpr-phone"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Email</span><div id="mpr-email"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Type</span><div id="mpr-type"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Territory</span><div id="mpr-territory"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Source</span><div id="mpr-source"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Last Contact</span><div id="mpr-last-contact"></div></div>
-      <div><span style="font-size:11px;color:var(--muted)">Next Date</span><div id="mpr-next-date"></div></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="outreach">Outreach</button>
+      <button class="tab" data-tab="notes">Notes</button>
     </div>
-    <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Next action</span><div id="mpr-next-action"></div></div>
-    <div class="notes-list" id="mpr-notes-list" style="max-height:180px;overflow-y:auto"></div>
-    <hr class="light">
-    <div class="form-group" style="margin-bottom:8px">
-      <label>Add note</label>
-      <textarea id="mpr-note-text" placeholder="What happened?…"></textarea>
+    <!-- Overview tab -->
+    <div id="mpr-tab-overview" class="tab-pane">
+      <div class="card-grid grid-2" style="margin-bottom:14px">
+        <div><span style="font-size:11px;color:var(--muted)">Contact</span><div id="mpr-contact"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Phone</span><div id="mpr-phone"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Email</span><div id="mpr-email"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Type</span><div id="mpr-type"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Territory</span><div id="mpr-territory"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Source</span><div id="mpr-source"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Last Contact</span><div id="mpr-last-contact"></div></div>
+        <div><span style="font-size:11px;color:var(--muted)">Next Follow-Up</span><div id="mpr-next-date"></div></div>
+      </div>
+      <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Next action</span><div id="mpr-next-action" style="margin-top:2px"></div></div>
+      <div id="mpr-lost-row" style="display:none;margin-bottom:12px;padding:10px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+        <div style="font-size:12px;font-weight:600;color:var(--red);margin-bottom:4px" id="mpr-lost-reason"></div>
+        <div id="mpr-lost-notes" style="font-size:13px"></div>
+        <button class="btn sm green" style="margin-top:8px" id="mpr-reactivate-btn">↩ Reactivate</button>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">Samples</span>
+          <button class="btn xs" id="mpr-log-sample-btn">+ Log Sample</button>
+        </div>
+        <div id="mpr-samples-list" style="font-size:13px;color:var(--muted)">No samples logged.</div>
+      </div>
     </div>
-    <button class="btn primary sm" id="mpr-add-note-btn">Save Note</button>
+    <!-- Outreach tab -->
+    <div id="mpr-tab-outreach" class="tab-pane" style="display:none">
+      <div style="margin-bottom:12px">
+        <button class="btn sm primary" id="mpr-log-outreach-btn">+ Log Follow-Up</button>
+      </div>
+      <div id="mpr-outreach-list"></div>
+    </div>
+    <!-- Notes tab -->
+    <div id="mpr-tab-notes" class="tab-pane" style="display:none">
+      <div class="notes-list" id="mpr-notes-list" style="max-height:180px;overflow-y:auto"></div>
+      <hr class="light">
+      <div class="form-group" style="margin-bottom:8px">
+        <label>Add note</label>
+        <textarea id="mpr-note-text" placeholder="What happened?…"></textarea>
+      </div>
+      <div class="form-row col2">
+        <div class="form-group"><label>Next action</label><input id="mpr-note-next" placeholder="e.g. follow up call"></div>
+        <div class="form-group"><label>Next date</label><input type="date" id="mpr-note-next-date"></div>
+      </div>
+      <button class="btn primary sm" id="mpr-add-note-btn">Save Note</button>
+    </div>
     <div class="modal-footer">
-      <button class="btn green" id="mpr-convert-btn">Convert to Account</button>
+      <button class="btn green" id="mpr-convert-btn">→ Convert to Account</button>
       <button class="btn primary" id="mpr-edit-btn">Edit</button>
     </div>
   </div>

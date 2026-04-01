@@ -1667,6 +1667,7 @@ function renderAccounts() {
           ${a.type?`<span class="badge gray">${a.type}</span>`:''}
           ${statusBadge(AC_STATUS,a.status)}
           ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
+          ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
         </div>
       </div>
       ${locs.length>1?`<div id="ac-locs-${a.id}" class="ac-locs-drawer" style="display:none">${locs.map(l=>`
@@ -3365,6 +3366,7 @@ function renderProspects() {
   el.classList.toggle('pr-compact', _prCompact);
   const btn = qs('#pr-compact-btn');
   if (btn) btn.classList.toggle('active', _prCompact);
+  if (qs('#pr-count')) qs('#pr-count').textContent = `${list.length} prospect${list.length!==1?'s':''}`;
 
   el.innerHTML = list.map(p=>{
     const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
@@ -3421,10 +3423,10 @@ function renderProspects() {
         <div class="pr-card-nextsteps-text">${p.nextAction||'<span style="color:#93c5fd">No next steps set — tap to add</span>'}${p.nextDate?' &nbsp;·&nbsp; <strong>'+fmtD(p.nextDate)+'</strong>':''}</div>
       </div>
       <div class="ac-card-actions">
-        <button class="btn sm primary" onclick="logProspectOutreach('${p.id}')">📞 Log Follow-Up</button>
+        <button class="btn sm primary" onclick="openProspect('${p.id}')">View</button>
+        <button class="btn sm" onclick="logProspectOutreach('${p.id}')">📞 Log</button>
         <button class="btn sm" onclick="editProspect('${p.id}')">Edit</button>
         <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert</button>
-        <button class="btn xs" onclick="generateOrderLink('${p.id}','${escHtml(p.name)}','${escHtml(p.email||'')}','prospects')">🔗 Order Link</button>
         <button class="btn xs" onclick="openLogSampleModal('pr','${p.id}')">🧪 Sample</button>
         ${p.status==='lost'
           ?`<button class="btn sm green" onclick="reactivateProspect('${p.id}')">↩ Reactivate</button>`
@@ -3440,40 +3442,148 @@ function openProspect(id) {
   const m = document.getElementById('modal-prospect');
   if (!m) return;
 
+  // Header
   qs('#mpr-name').textContent = p.name;
   qs('#mpr-status-badge').innerHTML = statusBadge(PR_STATUS, p.status);
+  const priCfg = PRIORITY_CFG[p.priority||'medium'] || PRIORITY_CFG.medium;
+  const priBadgeEl = qs('#mpr-priority-badge');
+  if (priBadgeEl) priBadgeEl.innerHTML = `<span class="badge ${priCfg.cls}">${priCfg.label}</span>`;
+
+  // Overview fields
   qs('#mpr-contact').textContent = p.contact||'—';
   qs('#mpr-phone').textContent = p.phone||'—';
   qs('#mpr-email').textContent = p.email||'—';
   qs('#mpr-type').textContent = p.type||'—';
   qs('#mpr-territory').textContent = p.territory||'—';
   qs('#mpr-source').textContent = p.source||'—';
-  qs('#mpr-last-contact').textContent = fmtD(p.lastContact);
+  qs('#mpr-last-contact').textContent = p.lastContact
+    ? `${fmtD(p.lastContact)} (${daysAgo(p.lastContact)}d ago)` : '—';
+  const nextDateEl = qs('#mpr-next-date');
+  if (nextDateEl) {
+    if (p.nextDate) {
+      const nfuColor = p.nextDate < today() ? '#dc2626' : p.nextDate === today() ? '#d97706' : '#1d4ed8';
+      nextDateEl.innerHTML = `<span style="color:${nfuColor};font-weight:600">${fmtD(p.nextDate)}</span>`;
+    } else {
+      nextDateEl.textContent = p.nextFollowUpLabel || '—';
+    }
+  }
   qs('#mpr-next-action').textContent = p.nextAction||'—';
-  qs('#mpr-next-date').textContent = p.nextDate ? fmtD(p.nextDate) : (p.nextFollowUpLabel || '—');
 
-  // Notes
-  const nl = qs('#mpr-notes-list');
-  if (nl) nl.innerHTML = (p.notes||[]).slice().reverse().map(n=>`
-    <div class="note-item">
-      <div class="note-date">${fmtD(n.date)}</div>
-      <div>${escHtml(n.text||'')}</div>
-    </div>`).join('') || '<div class="empty" style="padding:12px">No notes yet</div>';
+  // Lost row
+  const lostRow = qs('#mpr-lost-row');
+  if (lostRow) {
+    if (p.status === 'lost') {
+      lostRow.style.display = '';
+      if (qs('#mpr-lost-reason')) qs('#mpr-lost-reason').textContent = p.lostReason ? `Lost — ${p.lostReason}` : 'Marked as lost';
+      if (qs('#mpr-lost-notes')) qs('#mpr-lost-notes').textContent = p.lostNotes || '';
+      const reactBtn = qs('#mpr-reactivate-btn');
+      if (reactBtn) reactBtn.onclick = () => { closeModal('modal-prospect'); reactivateProspect(id); };
+    } else {
+      lostRow.style.display = 'none';
+    }
+  }
+
+  // Samples section
+  const smpList = qs('#mpr-samples-list');
+  if (smpList) {
+    const samples = (p.samples||[]).slice().reverse();
+    smpList.innerHTML = samples.length
+      ? samples.map(s=>`<div class="note-item" style="margin-bottom:8px">
+          <div class="note-date">${fmtD(s.date)}${s.flavors?` — ${escHtml(s.flavors)}`:''}</div>
+          ${s.notes?`<div style="font-size:12px">${escHtml(s.notes)}</div>`:''}
+          ${s.followUpDate?`<div style="font-size:12px;color:${s.followUpDone?'var(--muted)':s.followUpDate<today()?'var(--red)':'var(--blue)'}">Follow-up: ${fmtD(s.followUpDate)}${s.followUpDone?' ✓':''}</div>`:''}
+          ${!s.followUpDone&&s.followUpDate?`<button class="btn xs" style="margin-top:4px" onclick="markSampleFollowUpDone('pr','${id}','${s.id}')">Mark Done</button>`:''}
+        </div>`).join('')
+      : '<div style="color:var(--muted);font-size:13px">No samples logged.</div>';
+  }
+  const smpBtn = qs('#mpr-log-sample-btn');
+  if (smpBtn) smpBtn.onclick = () => openLogSampleModal('pr', id);
+
+  // Outreach tab
+  renderProspectOutreach(p);
+  const logOutreachBtn = qs('#mpr-log-outreach-btn');
+  if (logOutreachBtn) logOutreachBtn.onclick = () => {
+    openLogOutreachModal('pr', id);
+  };
+
+  // Notes tab
+  _renderProspectNotes(p);
+  if (qs('#mpr-note-text')) qs('#mpr-note-text').value = '';
+  if (qs('#mpr-note-next')) qs('#mpr-note-next').value = '';
+  if (qs('#mpr-note-next-date')) qs('#mpr-note-next-date').value = '';
 
   qs('#mpr-edit-btn').onclick = () => { closeModal('modal-prospect'); editProspect(id); };
   qs('#mpr-add-note-btn').onclick = () => addProspectNote(id);
   qs('#mpr-convert-btn').onclick = () => { if(confirm2('Convert to active account?')) convertProspect(id); };
 
+  // Tab switching
+  document.querySelectorAll('#modal-prospect .tab').forEach(t=>{
+    t.onclick = () => {
+      document.querySelectorAll('#modal-prospect .tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('#modal-prospect .tab-pane').forEach(x=>x.style.display='none');
+      t.classList.add('active');
+      const pane = document.getElementById('mpr-tab-'+t.dataset.tab);
+      if (pane) pane.style.display='';
+    };
+  });
+  document.querySelectorAll('#modal-prospect .tab')[0]?.click();
+
   openModal('modal-prospect');
+}
+
+function _renderProspectNotes(p) {
+  const nl = qs('#mpr-notes-list');
+  if (!nl) return;
+  nl.innerHTML = (p.notes||[]).slice().reverse().map(n=>`
+    <div class="note-item">
+      <div class="note-date">${fmtD(n.date)}</div>
+      <div>${escHtml(n.text||'')}</div>
+      ${n.nextAction?`<div class="note-next">📅 Next: ${escHtml(n.nextAction)}${n.nextDate?' on '+fmtD(n.nextDate):''}</div>`:''}
+    </div>`).join('') || '<div class="empty" style="padding:16px">No notes yet</div>';
+}
+
+function renderProspectOutreach(p) {
+  const ol = qs('#mpr-outreach-list');
+  if (!ol) return;
+  const entries = (p.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1);
+  if (!entries.length) {
+    ol.innerHTML = '<div class="empty" style="padding:16px">No follow-ups logged yet. Use the button above to log your first one.</div>';
+    return;
+  }
+  const TYPE_LABELS = {call:'Call',email:'Email','in-person':'In Person',text:'Text',other:'Other'};
+  const TYPE_CLS    = {call:'blue',email:'green','in-person':'purple',text:'gray',other:'gray'};
+  const OUT_CLS     = {'Interested':'green','Ordered':'green','Needs Follow-Up':'amber','No Response':'gray','Not Interested':'red','Left Voicemail':'gray','Other':'gray'};
+  ol.innerHTML = entries.map(e=>`
+    <div class="note-item">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--muted)">${fmtD(e.date)}</span>
+        <span class="badge ${TYPE_CLS[e.type]||'gray'}" style="font-size:10px">${TYPE_LABELS[e.type]||e.type||'Other'}</span>
+        ${e.outcome?`<span class="badge ${OUT_CLS[e.outcome]||'gray'}" style="font-size:10px">${escHtml(e.outcome)}</span>`:''}
+      </div>
+      ${(e.notes||e.note)?`<div style="font-size:13px">${escHtml(e.notes||e.note||'')}</div>`:''}
+      ${e.nextSteps?`<div style="font-size:12px;color:var(--muted);margin-top:2px">Next: ${escHtml(e.nextSteps)}</div>`:''}
+      ${e.nextFollowUp?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px">📅 Next follow-up: <strong>${fmtD(e.nextFollowUp)}</strong></div>`:''}
+    </div>`).join('');
 }
 
 function addProspectNote(id) {
   const text = qs('#mpr-note-text')?.value?.trim();
   if (!text) return;
-  const note = {id:uid(), date:today(), text};
-  DB.update('pr', id, p=>({...p, notes:[...(p.notes||[]),note], lastContact:today()}));
-  if (qs('#mpr-note-text')) qs('#mpr-note-text').value='';
-  openProspect(id);
+  const next     = qs('#mpr-note-next')?.value?.trim() || '';
+  const nextDate = qs('#mpr-note-next-date')?.value || '';
+  const note = {id:uid(), date:today(), text, nextAction:next, nextDate};
+  DB.update('pr', id, p=>({
+    ...p,
+    notes: [...(p.notes||[]), note],
+    lastContact: today(),
+    ...(next     ? {nextAction: next}     : {}),
+    ...(nextDate ? {nextDate}             : {}),
+  }));
+  if (qs('#mpr-note-text'))      qs('#mpr-note-text').value = '';
+  if (qs('#mpr-note-next'))      qs('#mpr-note-next').value = '';
+  if (qs('#mpr-note-next-date')) qs('#mpr-note-next-date').value = '';
+  const p = DB.a('pr').find(x=>x.id===id);
+  if (p) _renderProspectNotes(p);
   toast('Note saved');
 }
 
@@ -3643,11 +3753,11 @@ function openLogOutreachModal(kind, id) {
   setMloRegarding(defaultRegarding);
   const isAccount  = kind === 'ac';
   const isProspect = kind === 'pr';
-  // contact + outcome: accounts only
+  // contact: accounts only; outcome: accounts + prospects
   const contactRow = qs('#mlo-contact-row');
   const outcomeRow = qs('#mlo-outcome-row');
   if (contactRow) contactRow.style.display = isAccount ? '' : 'none';
-  if (outcomeRow) outcomeRow.style.display = isAccount ? '' : 'none';
+  if (outcomeRow) outcomeRow.style.display = (isAccount || isProspect) ? '' : 'none';
   // regarding row: accounts only (prospects are always purpl)
   const regRow = qs('#mlo-regarding-row');
   if (regRow) regRow.style.display = isAccount ? '' : 'none';
@@ -3722,7 +3832,7 @@ function saveLogOutreach() {
     closeModal('modal-log-outreach');
     toast('Contact logged ✓');
   } else {
-    const entry = {id:uid(), type, date, note};
+    const entry = {id:uid(), type, date, note, outcome, nextSteps:next, nextFollowUp: nextDate||null};
     DB.update('pr', id, p=>({
       ...p,
       outreach:[...(p.outreach||[]),entry],
@@ -3731,6 +3841,9 @@ function saveLogOutreach() {
       ...(nextDate ? {nextDate} : {}),
     }));
     renderProspects();
+    // Refresh outreach tab if prospect modal is still open
+    const pr = DB.a('pr').find(x=>x.id===id);
+    if (pr) renderProspectOutreach(pr);
     closeModal('modal-log-outreach');
     toast('Outreach logged');
   }
