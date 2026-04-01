@@ -282,7 +282,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const contactName = primary.name||account.contact||'there';
   const businessName = account.name||'your store';
   const portalLink = account.orderPortalToken
-    ? `https://purpl-crm.web.app/order?token=${account.orderPortalToken}`
+    ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
     : 'https://purpl-crm.web.app/order';
 
   const templates = {
@@ -2258,7 +2258,7 @@ const CADENCE_STAGES = [
     subject: () => 'Welcome to the purpl wholesale program — your retailer portal is ready',
     body: (a) => {
       const token = a.orderPortalToken || '';
-      const portalLink = token ? `https://purpl-crm.web.app/order?token=${token}` : '[portal link — generate from account settings]';
+      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '[portal link not yet generated — use the Emails page to generate before sending]';
       return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
     }
   },
@@ -2547,16 +2547,27 @@ function _renderEmailsRightCol() {
     }
     const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
     if (tpl) {
+      const isApproved = _emailsSelectedTemplate === 'approved';
+      const hasToken   = !!(account.orderPortalToken);
+      const tokenUi = isApproved
+        ? (hasToken
+            ? `<div style="margin-top:8px;font-size:12px;color:#16a34a">✓ Portal link included — token exists</div>`
+            : `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span>⚠️ No portal link yet — generate one before sending</span>
+                <button class="btn xs" onclick="_emailsApprovedGenerateToken()">Generate Portal Link</button>
+               </div>`)
+        : '';
       previewHtml = `
         <div style="margin-bottom:8px">
           <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Subject</div>
           <div style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">${escHtml(tpl.subject)}</div>
         </div>
         <iframe class="emails-preview-frame" srcdoc="${tpl.body.replace(/"/g,'&quot;')}"></iframe>
+        ${tokenUi}
         <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
           <button class="btn xs" onclick="emailsPageCopyHTML()">📋 Copy HTML</button>
           <button class="btn xs" onclick="emailsPageOpenGmail()">✉️ Open in Gmail</button>
-          <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()">Send Email</button>
+          <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()"${isApproved && !hasToken ? ' disabled' : ''}>Send Email</button>
         </div>`;
     } else {
       previewHtml = `<div class="emails-placeholder"><div>No template available for this combination</div></div>`;
@@ -2645,6 +2656,28 @@ function emailsPageMarkSent() {
   }));
   toast('Email marked as sent');
   renderEmailsPage();
+}
+
+async function _emailsApprovedGenerateToken() {
+  if (!_emailsSelectedAccountId) return;
+  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
+  if (!account) return;
+  const token = btoa(account.id + ':' + Math.random().toString(36).slice(2))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  try {
+    await firebase.firestore().collection('accounts').doc(account.id).set({
+      orderPortalToken: token,
+      orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
+    }, { merge: true });
+    DB.update('ac', account.id, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
+    const link = window.location.origin + '/order?t=' + token;
+    await navigator.clipboard.writeText(link);
+    toast('Portal link generated & copied ✓');
+    _renderEmailsRightCol();
+  } catch(e) {
+    console.error(e);
+    toast('Error generating portal link');
+  }
 }
 
 function getOverdueCadence(accounts) {
@@ -8825,7 +8858,7 @@ function buildCombinedInvoiceHTML(combinedId) {
   const invSettings = DB.obj('invoice_settings') || {};
 
   const portalLink = account.orderPortalToken
-    ? `https://purpl-crm.web.app/order?token=${account.orderPortalToken}`
+    ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
     : null;
 
   const issueDate = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
