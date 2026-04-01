@@ -5,8 +5,7 @@ const resendApiKey = defineSecret('RESEND_API_KEY');
 
 // ── Allowed sender addresses ──────────────────────────────
 const ALLOWED_FROM = [
-  'lavender@pumpkinblossomfarm.com',
-  'graham@pumpkinblossomfarm.com',
+  'lavender@pbfwholesale.com',
 ];
 
 // ── In-memory rate limiter ────────────────────────────────
@@ -81,7 +80,7 @@ exports.sendCombinedInvoice = onCall(
 
     try {
       const result = await resend.emails.send({
-        from: 'lavender@pumpkinblossomfarm.com',
+        from: 'lavender@pbfwholesale.com',
         to: data.to,
         subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
         html: data.html,
@@ -136,7 +135,7 @@ exports.sendOrderConfirmation = onCall(
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    lavender@pumpkinblossomfarm.com
+    lavender@pbfwholesale.com
   </td></tr>
 </table>
 </td></tr>
@@ -148,7 +147,7 @@ exports.sendOrderConfirmation = onCall(
 
     try {
       const result = await resend.emails.send({
-        from: 'lavender@pumpkinblossomfarm.com',
+        from: 'lavender@pbfwholesale.com',
         to: data.to,
         subject: `Order received — ${data.accountName}`,
         html,

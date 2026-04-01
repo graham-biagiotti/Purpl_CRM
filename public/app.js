@@ -162,40 +162,42 @@ const SIGNATURE_HTML = `
       color:#6b7280;line-height:1.6">
       <strong style="color:#1a1a2e">Graham Biagiotti</strong>
       — Director of Sales<br>
-      Direct: 603-748-3038<br>
-      393 Pumpkin Hill Rd. Warner, NH 03278<br>
-      Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages
+      603-748-3038 · Warner, NH<br>
+      Pumpkin Blossom Farm | purpl &amp; Lavender Fields
     </td>
   </tr>
 </table>`;
 
-const PURPL_HEADER_HTML = `
+const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
-  style="background:#2D1B4E;border-radius:8px 8px 0 0">
+  style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);border-radius:8px 8px 0 0">
   <tr>
-    <td style="padding:28px 32px;text-align:center">
-      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-        alt="purpl" width="120"
-        style="display:block;margin:0 auto">
+    <td style="padding:24px 32px">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="text-align:right;vertical-align:middle;padding-right:20px;width:50%">
+            <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+              alt="purpl" width="110" height="44"
+              style="display:inline-block;vertical-align:middle">
+          </td>
+          <td style="width:1px;vertical-align:middle;padding:0 2px">
+            <div style="width:1px;height:48px;background:rgba(255,255,255,0.3)"></div>
+          </td>
+          <td style="text-align:left;vertical-align:middle;padding-left:20px;width:50%">
+            <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+              alt="Lavender Fields" width="50" height="50"
+              style="display:inline-block;vertical-align:middle">
+          </td>
+        </tr>
+      </table>
+      <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;
+        color:rgba(255,255,255,0.55);letter-spacing:0.15em;
+        text-transform:uppercase;margin-top:10px">
+        Pumpkin Blossom Farm · Wholesale
+      </div>
     </td>
   </tr>
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
-</table>`;
-
-const LF_HEADER_HTML = `
-<table width="100%" cellpadding="0" cellspacing="0"
-  style="background:#2d4a38;border-radius:8px 8px 0 0">
-  <tr>
-    <td style="padding:28px 32px;text-align:center">
-      <div style="font-family:Georgia,serif;font-size:26px;
-        color:#9dc4a8;font-weight:400">lavender fields</div>
-      <div style="font-family:Arial,sans-serif;font-size:11px;
-        color:rgba(255,255,255,0.55);letter-spacing:0.1em;
-        text-transform:uppercase;margin-top:4px">
-        at Pumpkin Blossom Farm</div>
-    </td>
-  </tr>
-  <tr><td style="background:#4a7c59;height:4px"></td></tr>
 </table>`;
 
 // ── Firebase Functions client helpers ─────────────────────
@@ -244,13 +246,16 @@ font-family:Inter,Arial,sans-serif">
       <tr><td style="background:#f9fafb;padding:20px 40px;
         border-top:1px solid #e5e7eb;text-align:center;
         font-size:11px;color:#9ca3af;line-height:1.6">
-        Pumpkin Blossom Farm · 393 Pumpkin Hill Rd ·
-        Warner, NH 03278<br>
-        <a href="https://pumpkinblossomfarm.com"
-          style="color:#9ca3af">pumpkinblossomfarm.com</a>
-        &nbsp;·&nbsp;
+        Pumpkin Blossom Farm LLC<br>
+        393 Pumpkin Hill Rd · Warner, NH 03278<br>
+        <a href="mailto:lavender@pbfwholesale.com"
+          style="color:#9ca3af">lavender@pbfwholesale.com</a>
+        &nbsp;·&nbsp;603-748-3038<br>
         <a href="https://drinkpurpl.com"
           style="color:#9ca3af">drinkpurpl.com</a>
+        &nbsp;·&nbsp;
+        <a href="https://pumpkinblossomfarm.com"
+          style="color:#9ca3af">pumpkinblossomfarm.com</a>
       </td></tr>
     </table>
   </td></tr>
@@ -258,9 +263,8 @@ font-family:Inter,Arial,sans-serif">
 }
 
 function getCadenceEmailTemplate(stage, account, extra={}) {
-  const isPbf = account.isPbf;
-  const header = isPbf ? LF_HEADER_HTML : PURPL_HEADER_HTML;
-  const accentColor = isPbf ? '#4a7c59' : '#8B5FBF';
+  const header = PBF_HEADER_HTML;
+  const accentColor = '#8B5FBF';
   const contacts = account.contacts||[];
   const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
   const contactName = primary.name||account.contact||'there';
@@ -272,7 +276,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const templates = {
     'application-received': {
       subject: `Thank you for your wholesale application — Pumpkin Blossom Farm`,
-      from: 'lavender@pumpkinblossomfarm.com',
+      from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>. We've received your application and will be in touch within 1 business day.</p>
@@ -287,7 +291,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
     },
     'approved': {
       subject: `Welcome to the wholesale program — your retailer portal is ready`,
-      from: 'lavender@pumpkinblossomfarm.com',
+      from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>We're thrilled to welcome <strong>${businessName}</strong> as a retail partner. Your wholesale account has been approved.</p>
@@ -298,12 +302,12 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link for easy access</div>
           </td></tr>
         </table>
-        <p>Payment terms: Net 30. Invoices from lavender@pumpkinblossomfarm.com.</p>
+        <p>Payment terms: Net 30. Invoices from lavender@pbfwholesale.com.</p>
         <p>Warmly,</p>`)
     },
     'rejected': {
       subject: `Re: Your wholesale application — Pumpkin Blossom Farm`,
-      from: 'graham@pumpkinblossomfarm.com',
+      from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>.</p>
@@ -313,7 +317,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
     },
     'invoice-sent': {
       subject: `Invoice ${extra.invoiceNumber||''} from Pumpkin Blossom Farm`,
-      from: 'lavender@pumpkinblossomfarm.com',
+      from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>Please find your invoice for <strong>${businessName}</strong> below.</p>
@@ -341,7 +345,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
     },
     'first-order': {
       subject: `Thanks for your order — we're on it`,
-      from: 'lavender@pumpkinblossomfarm.com',
+      from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>Thank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.</p>
@@ -2014,7 +2018,7 @@ function openEmailMailto() {
   if (!to) return;
 
   const account = DB.a('ac').find(a => a.id === _currentEmailPreview.accountId) || {};
-  const from = account.isPbf ? 'lavender@pumpkinblossomfarm.com' : 'graham@pumpkinblossomfarm.com';
+  const from = 'lavender@pbfwholesale.com';
 
   callSendEmail(to, from, subject, t.body)
     .then(() => {
@@ -2167,10 +2171,9 @@ function markCadenceSent(accountId, stageId, method, invoiceId) {
 // ══════════════════════════════════════════════════════════
 const _AI_SYSTEM_PROMPT = `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`;
 
-const _AI_SIGNATURE = `Graham Biagiotti - Director of Sales
-Direct: 603-748-3038
-393 Pumpkin Hill Rd. Warner, NH 03278
-Pumpkin Blossom Farm | Purpl - Lavender Infused Beverages`;
+const _AI_SIGNATURE = `Graham Biagiotti — Director of Sales
+603-748-3038 · Warner, NH
+Pumpkin Blossom Farm | purpl & Lavender Fields`;
 
 const SIGNATURE = _AI_SIGNATURE;
 
@@ -2179,7 +2182,7 @@ const CADENCE_STAGES = [
     id: 'application_received',
     label: 'Application Received',
     desc: 'Thank you for applying',
-    from: 'lavender@pumpkinblossomfarm.com',
+    from: 'lavender@pbfwholesale.com',
     subject: () => 'Thank you for your wholesale application — Pumpkin Blossom Farm',
     body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products at ${a.name}. We've received your application and will be in touch within 1 business day.\n\nIn the meantime, feel free to reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
   },
@@ -2187,19 +2190,19 @@ const CADENCE_STAGES = [
     id: 'approved_welcome',
     label: 'Approved — Welcome + Login',
     desc: 'Welcome + portal access',
-    from: 'lavender@pumpkinblossomfarm.com',
+    from: 'lavender@pbfwholesale.com',
     subject: () => 'Welcome to the purpl wholesale program — your retailer portal is ready',
     body: (a) => {
       const token = a.orderPortalToken || '';
       const portalLink = token ? `https://purpl-crm.web.app/order?token=${token}` : '[portal link — generate from account settings]';
-      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pumpkinblossomfarm.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
+      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
     }
   },
   {
     id: 'rejected_decline',
     label: 'Rejected — Polite Decline',
     desc: 'Polite decline',
-    from: 'graham@pumpkinblossomfarm.com',
+    from: 'lavender@pbfwholesale.com',
     subject: () => 'Re: Your wholesale application — Pumpkin Blossom Farm',
     body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${SIGNATURE}`
   },
@@ -2207,7 +2210,7 @@ const CADENCE_STAGES = [
     id: 'invoice_sent',
     label: 'Invoice Sent Notification',
     desc: 'Invoice notification to retailer',
-    from: 'lavender@pumpkinblossomfarm.com',
+    from: 'lavender@pbfwholesale.com',
     subject: (inv) => `Invoice ${inv?.number||''} from Pumpkin Blossom Farm`,
     body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||''} for ${fmtC(inv?.amount||inv?.total||0)} attached. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
   },
@@ -2215,7 +2218,7 @@ const CADENCE_STAGES = [
     id: 'first_order_followup',
     label: 'First Order Follow-Up',
     desc: 'Thank you for your first order',
-    from: 'lavender@pumpkinblossomfarm.com',
+    from: 'lavender@pbfwholesale.com',
     subject: () => "Thanks for your order — we're on it",
     body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with purpl on your shelves.\n\nWarmly,\n${SIGNATURE}`
   }
@@ -2254,7 +2257,7 @@ async function _callAnthropicApi(userPrompt) {
 }
 
 function _defaultFromForRegarding(r) {
-  return (r === 'purpl') ? 'sales@drinkpurpl.com' : 'graham@pumpkinblossomfarm.com';
+  return 'lavender@pbfwholesale.com';
 }
 
 function setMdoRegarding(val) {
@@ -2363,7 +2366,7 @@ function mdoOpenMailto() {
   const accountId = qs('#mdo-account-id').value;
   const a = DB.a('ac').find(x=>x.id===accountId);
   const email   = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
-  const fromAddr = qs('#mdo-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
+  const fromAddr = qs('#mdo-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'lavender@pbfwholesale.com';
   // Show which account to use before opening
   toast(`Opening — send from: ${fromAddr}`, 3500);
   window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
@@ -2415,11 +2418,11 @@ function _renderEmailsTemplatesCol() {
   const el = document.getElementById('emails-templates-col');
   if (!el) return;
   const TEMPLATES = [
-    {id:'application-received', name:'Application Received',  desc:'Auto-sent on form submit',     from:'lavender@lavenderfieldsco.com'},
-    {id:'approved',             name:'Approved — Welcome',    desc:'Portal link + next steps',      from:'lavender@lavenderfieldsco.com'},
-    {id:'rejected',             name:'Rejected — Decline',    desc:'Polite decline email',          from:'graham@purplcbd.com'},
-    {id:'invoice-sent',         name:'Invoice Sent',          desc:'Sends latest invoice details',  from:'lavender@lavenderfieldsco.com'},
-    {id:'first-order',          name:'First Order Follow-up', desc:'Post-first-order check-in',     from:'lavender@lavenderfieldsco.com'},
+    {id:'application-received', name:'Application Received',  desc:'Auto-sent on form submit',     from:'lavender@pbfwholesale.com'},
+    {id:'approved',             name:'Approved — Welcome',    desc:'Portal link + next steps',      from:'lavender@pbfwholesale.com'},
+    {id:'rejected',             name:'Rejected — Decline',    desc:'Polite decline email',          from:'lavender@pbfwholesale.com'},
+    {id:'invoice-sent',         name:'Invoice Sent',          desc:'Sends latest invoice details',  from:'lavender@pbfwholesale.com'},
+    {id:'first-order',          name:'First Order Follow-up', desc:'Post-first-order check-in',     from:'lavender@pbfwholesale.com'},
   ];
   const cards = TEMPLATES.map(t => `
     <div class="email-template-card${_emailsSelectedTemplate === t.id ? ' active' : ''}"
@@ -2841,7 +2844,7 @@ async function meBroadcastSend() {
   const subject  = qs('#me-subject')?.value || '';
   const body     = qs('#me-body')?.value    || '';
   const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
-  const fromAddr  = qs('#me-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
+  const fromAddr  = qs('#me-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'lavender@pbfwholesale.com';
   const statusEl = qs('#me-broadcast-status');
 
   for (let i = 0; i < accounts.length; i++) {
@@ -2912,9 +2915,8 @@ function _renderBatchWorker() {
     </div>
     <div class="form-row" style="margin-bottom:8px">
       <label>Send from</label>
-      <div class="ac-brand-btns" id="mebw-from-btns">
-        <button type="button" class="ac-brand-btn ${defaultFrom==='sales@drinkpurpl.com'?'active':''}" data-val="sales@drinkpurpl.com" onclick="setMebwFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
-        <button type="button" class="ac-brand-btn ${defaultFrom!=='sales@drinkpurpl.com'?'active':''}" data-val="graham@pumpkinblossomfarm.com" onclick="setMebwFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
+      <div id="mebw-from-btns">
+        <span class="badge purple" style="font-size:12px">lavender@pbfwholesale.com</span>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:8px">
@@ -2985,7 +2987,7 @@ function mebwOpenMailto(accountId) {
   const email    = (a?.contacts||[]).find(c=>c.email)?.email || a?.email || '';
   const subject  = encodeURIComponent(qs('#mebw-subject')?.value||'');
   const body     = encodeURIComponent(qs('#mebw-body')?.value||'');
-  const fromAddr = qs('#mebw-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'sales@drinkpurpl.com';
+  const fromAddr = qs('#mebw-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'lavender@pbfwholesale.com';
   toast(`Opening — send from: ${fromAddr}`, 3500);
   window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`);
 }
@@ -8763,18 +8765,36 @@ function buildCombinedInvoiceHTML(combinedId) {
 <tr><td align="center">
 <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)">
 
-  <tr><td style="background:linear-gradient(135deg,#2D1B4E,#4a2d7a);padding:32px 40px">
+  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:24px 40px">
     <table width="100%"><tr>
-      <td>
-        <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="100" style="display:block;margin-bottom:6px;filter:brightness(0) invert(1)">
-        <div style="font-family:Georgia,serif;font-size:13px;color:rgba(255,255,255,0.5);margin-top:4px">& Lavender Fields</div>
+      <td style="vertical-align:middle">
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="vertical-align:middle;padding-right:16px">
+              <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+                alt="purpl" width="100" height="40" style="display:block">
+            </td>
+            <td style="vertical-align:middle;padding:0 2px">
+              <div style="width:1px;height:44px;background:rgba(255,255,255,0.3)"></div>
+            </td>
+            <td style="vertical-align:middle;padding-left:16px">
+              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+                alt="Lavender Fields" width="44" height="44" style="display:block">
+            </td>
+          </tr>
+        </table>
+        <div style="font-family:Arial,sans-serif;font-size:9px;color:rgba(255,255,255,0.5);
+          letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">
+          Pumpkin Blossom Farm · Wholesale
+        </div>
       </td>
-      <td align="right">
+      <td align="right" style="vertical-align:middle">
         <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">INVOICE</div>
         <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(purplInv.number||'')}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
       </td>
     </tr></table>
   </td></tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
 
   <tr><td style="padding:28px 40px 0">
     <table width="100%"><tr>
@@ -8827,7 +8847,7 @@ function buildCombinedInvoiceHTML(combinedId) {
   <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
     Pumpkin Blossom Farm LLC<br>
     393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    <a href="mailto:lavender@pumpkinblossomfarm.com" style="color:#9ca3af">lavender@pumpkinblossomfarm.com</a> · 603-748-3038<br>
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038<br>
     <a href="https://drinkpurpl.com" style="color:#9ca3af">drinkpurpl.com</a>&nbsp;·&nbsp;<a href="https://pumpkinblossomfarm.com" style="color:#9ca3af">pumpkinblossomfarm.com</a>
   </td></tr>
 
@@ -10647,7 +10667,7 @@ function saveInvoiceSettings() {
     fromName: document.getElementById('inv-from-name')?.value ||
       'Pumpkin Blossom Farm LLC',
     fromEmail: document.getElementById('inv-from-email')?.value ||
-      'lavender@pumpkinblossomfarm.com',
+      'lavender@pbfwholesale.com',
     fromAddress: document.getElementById('inv-from-address')?.value ||
       '393 Pumpkin Hill Rd, Warner, NH 03278',
     terms: parseInt(document.getElementById('inv-terms')?.value)||30,
@@ -10700,7 +10720,7 @@ function generateInvoicePrint(invoiceId) {
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
   const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
-  const fromEmail = s.fromEmail || 'lavender@pumpkinblossomfarm.com';
+  const fromEmail = s.fromEmail || 'lavender@pbfwholesale.com';
   const fromAddr  = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const cans      = iv.cans || ((iv.cases||0) * CANS_PER_CASE);
   const invNum    = iv.number || iv.invoiceNumber || '—';
@@ -10866,7 +10886,7 @@ function generateInvoicePrint(invoiceId) {
 
 <div class="footer">
   Thank you for your business — purpl by Pumpkin Blossom Farm
-  <br>drinkpurpl.com · lavender@pumpkinblossomfarm.com
+  <br>drinkpurpl.com · lavender@pbfwholesale.com
 </div>
 
 </body></html>`);
@@ -10935,7 +10955,7 @@ function saveInv(id, isNew) {
     notes,
     lineItems,
     source:       existing?.source || 'manual',
-    fromEmail:    invSettings.fromEmail || 'lavender@pumpkinblossomfarm.com',
+    fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };
 
   if (_isNew) DB.push('iv', rec);
