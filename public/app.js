@@ -90,17 +90,17 @@ function nav(page) {
     'pre-orders':'Forms & Submissions', invoices:'Invoices', emails:'Emails'
   };
   const tb = document.getElementById('topbar-title');
-  if (tb) tb.textContent = titles[page] || page;
-  const ta = document.getElementById('topbar-actions');
-  if (ta) {
+  if (tb) {
     if (page === 'dashboard') {
       const now = new Date();
-      const dateStr = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-      ta.innerHTML = `<span style="font-size:12px;color:var(--muted);font-weight:400">${dateStr}</span>`;
+      const dateStr = now.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+      tb.innerHTML = 'Dashboard <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:8px">' + dateStr + '</span>';
     } else {
-      ta.innerHTML = '';
+      tb.textContent = titles[page] || page;
     }
   }
+  const ta = document.getElementById('topbar-actions');
+  if (ta) ta.innerHTML = '';
   currentPage = page;
   renders[page]?.();
 }
