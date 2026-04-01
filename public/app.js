@@ -181,22 +181,26 @@ const PBF_HEADER_HTML = `
   style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);border-radius:8px 8px 0 0">
   <tr>
     <td style="padding:36px 40px;text-align:center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 auto">
-        <tr>
-          <td width="110" align="center" valign="middle">
-            <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-              alt="purpl" width="110" height="44"
-              style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
-          </td>
-          <td width="1" align="center" valign="middle" style="padding:0 20px">
-            <div style="width:1px;height:48px;background:rgba(255,255,255,0.4);font-size:0;line-height:0">&nbsp;</div>
-          </td>
-          <td width="52" align="center" valign="middle">
-            <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-              alt="Lavender Fields" width="52" height="52"
-              style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
-          </td>
-        </tr>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr><td align="center">
+          <table cellpadding="0" cellspacing="0" width="auto">
+            <tr>
+              <td width="auto" valign="middle" style="padding-right:16px">
+                <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+                  alt="purpl" width="110" height="44"
+                  style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+              </td>
+              <td width="1px" valign="middle">
+                <div style="width:1px;height:48px;background:rgba(255,255,255,0.4)"></div>
+              </td>
+              <td width="auto" valign="middle" style="padding-left:16px">
+                <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+                  alt="Lavender Fields" width="52" height="52"
+                  style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+              </td>
+            </tr>
+          </table>
+        </td></tr>
       </table>
       <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;
         color:rgba(255,255,255,0.75);letter-spacing:0.15em;
