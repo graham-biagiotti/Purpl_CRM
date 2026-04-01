@@ -2544,7 +2544,7 @@ function _renderEmailsRightCol() {
         <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
           <button class="btn xs" onclick="emailsPageCopyHTML()">📋 Copy HTML</button>
           <button class="btn xs" onclick="emailsPageOpenGmail()">✉️ Open in Gmail</button>
-          <button class="btn xs primary" onclick="emailsPageMarkSent()">✅ Mark as Sent</button>
+          <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()">Send Email</button>
         </div>`;
     } else {
       previewHtml = `<div class="emails-placeholder"><div>No template available for this combination</div></div>`;
@@ -2581,6 +2581,47 @@ function emailsPageOpenGmail() {
   if (!account) return;
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
   if (tpl) window.open(`mailto:${encodeURIComponent(account.email||'')}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+}
+
+function emailsPageSendEmail() {
+  if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
+  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
+  if (!account) return;
+  const extra = {};
+  if (_emailsSelectedTemplate === 'invoice-sent') {
+    const invId = _latestAccountInvoiceId(account.id);
+    const inv = invId ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+    if (inv) {
+      extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
+      extra.invoiceTotal = inv.total || inv.grandTotal || 0;
+    }
+  }
+  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
+  if (!tpl) return;
+  const contacts = account.contacts || [];
+  const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
+  const toEmail = primary.email || account.email || '';
+  if (!toEmail) { toast('No recipient email on file'); return; }
+
+  const btn = document.getElementById('emails-page-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  callSendEmail(toEmail, 'lavender@pbfwholesale.com', tpl.subject, tpl.body)
+    .then(() => {
+      const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+      DB.update('ac', account.id, a => ({
+        ...a,
+        lastContacted: today(),
+        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend'}]
+      }));
+      toast('Email sent ✓');
+      renderEmailsPage();
+    })
+    .catch(() => {
+      toast('Resend unavailable — opening Gmail');
+      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+      if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
+    });
 }
 
 function emailsPageMarkSent() {
