@@ -324,6 +324,7 @@
         </select>
         <div class="spacer"></div>
         <button class="btn no-print" onclick="importWholesaleInquiries()">Import Wholesale Inquiries</button>
+        <button class="btn no-print" onclick="openImportProspects()">Import Prospects</button>
         <button class="btn" id="pr-compact-btn" onclick="togglePrCompact()">Compact</button>
         <button class="btn primary" onclick="editProspect(uid())">+ Add Prospect</button>
       </div>
@@ -870,6 +871,7 @@
             <button class="tab" data-rep="inventory">Inventory</button>
             <button class="tab" data-rep="distributor">Distributor</button>
             <button class="tab" data-rep="profit">Gross Profit</button>
+            <button class="tab" data-rep="win_loss">Win/Loss</button>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="date" id="rep-date-from" class="input" style="width:130px;padding:4px 8px;font-size:13px">
@@ -909,6 +911,7 @@
           </div>
         </div>
       </div>
+      <div id="rep-extra" style="margin-bottom:16px"></div>
       <!-- Saved Reports -->
       <div class="card">
         <div class="section-hdr">
@@ -1767,6 +1770,13 @@
       <div id="mac-drop-row" style="margin-bottom:12px;display:none"><span style="font-size:11px;color:var(--muted)">Drop-off rules</span><div id="mac-drop-rules" style="margin-top:2px;font-size:13px"></div></div>
       <div style="margin-bottom:8px"><span style="font-size:11px;color:var(--muted)">Active SKUs</span><div id="mac-skus" style="margin-top:4px"></div></div>
       <div><span style="font-size:11px;color:var(--muted)">Par Levels</span><div id="mac-par" style="margin-top:4px"></div></div>
+      <div style="margin-top:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--muted)">Samples</span>
+          <button class="btn xs" id="mac-log-sample-btn">+ Log Sample</button>
+        </div>
+        <div id="mac-samples-list" style="font-size:13px;color:var(--muted)">No samples logged.</div>
+      </div>
     </div>
     <!-- Orders tab -->
     <div id="mac-tab-orders" class="tab-pane" style="display:none">
@@ -2530,6 +2540,83 @@
     <div class="modal-footer">
       <button class="modal-close btn">Cancel</button>
       <button class="btn primary" id="mcpo-save-btn">Confirm &amp; Create Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Prospects Modal -->
+<div class="overlay" id="modal-import-prospects">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-hdr"><h2>Import Prospects</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="tab-bar" id="imp-pr-tabs" style="margin-bottom:16px">
+      <button class="tab active" data-tab="paste">Paste CSV</button>
+      <button class="tab" data-tab="file">Upload File</button>
+    </div>
+    <div id="imp-pr-tab-paste">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Columns (order flexible): Business Name, Type, Contact Name, Email, Phone, Address, Stage, Priority, Notes</div>
+      <div class="form-group">
+        <label>Paste CSV data</label>
+        <textarea id="imp-pr-paste" rows="8" placeholder="Business Name,Type,Contact Name,Email,Phone&#10;Acme Store,Grocery,Jane Doe,jane@acme.com,555-1234"></textarea>
+      </div>
+    </div>
+    <div id="imp-pr-tab-file" style="display:none">
+      <div style="text-align:center;padding:24px;border:2px dashed var(--border);border-radius:10px">
+        <div style="font-size:28px;margin-bottom:8px">📄</div>
+        <div style="font-weight:600;margin-bottom:8px">Upload a CSV file</div>
+        <input type="file" id="imp-pr-file-input" accept=".csv" style="display:none" onchange="_onImportProspectsFile(event)">
+        <button class="btn primary" onclick="qs('#imp-pr-file-input').click()">Choose File</button>
+        <div id="imp-pr-file-name" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
+      </div>
+    </div>
+    <div id="imp-pr-preview" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" onclick="_runImportProspects()">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Sample Modal -->
+<div class="overlay" id="modal-log-sample">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-hdr"><h2>Log Sample</h2><button class="modal-close btn sm">✕</button></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Date Sent</label><input type="date" id="lsmp-date"></div>
+      <div class="form-group"><label>Follow-up Date</label><input type="date" id="lsmp-followup"></div>
+    </div>
+    <div class="form-group"><label>Flavors / Products</label><input id="lsmp-flavors" placeholder="Classic, Blueberry..."></div>
+    <div class="form-group"><label>Notes</label><textarea id="lsmp-notes" placeholder="What was included, any feedback..."></textarea></div>
+    <div class="modal-footer">
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" onclick="saveLogSample()">Save Sample</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Prospect Lost Modal -->
+<div class="overlay" id="modal-mark-lost">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hdr"><h2>Mark as Lost</h2><button class="modal-close btn sm">✕</button></div>
+    <div id="mml-prospect-name" style="font-weight:600;font-size:15px;margin-bottom:14px"></div>
+    <div class="form-group">
+      <label>Loss Reason</label>
+      <select id="mml-reason">
+        <option>Price too high</option>
+        <option>Not the right fit</option>
+        <option>No response</option>
+        <option>Went with competitor</option>
+        <option>Timing</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="mml-notes" placeholder="Any additional context..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn red" style="margin-right:auto" onclick="_deleteProspectPermanent()">Delete Permanently</button>
+      <button class="modal-close btn">Cancel</button>
+      <button class="btn primary" onclick="confirmMarkLost()">Mark as Lost</button>
     </div>
   </div>
 </div>
