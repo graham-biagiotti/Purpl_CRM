@@ -5041,7 +5041,7 @@ function renderInventory() {
 
 function _renderInvPane() {
   // Show/hide panes
-  ['summary','locations','receive','repack','pallets','supplies','log'].forEach(t=>{
+  ['summary','locations','receive','repack','pallets','supplies','log','returns'].forEach(t=>{
     const p = qs(`#inv-pane-${t}`);
     if (p) p.style.display = t===_invTab ? '' : 'none';
   });
@@ -5053,6 +5053,7 @@ function _renderInvPane() {
     pallets:   _invPallets,
     supplies:  _invSupplies,
     log:       _invLog,
+    returns:   _invReturns,
   };
   (handlers[_invTab]||_invSummary)();
 }
@@ -5372,18 +5373,108 @@ function deleteSupply(id) {
 // ── Log Tab ───────────────────────────────────────────────
 function _invLog() {
   const inv = DB.a('iv');
-  const log = inv.filter(e => e.type === 'in' || e.type === 'out').sort((a,b)=>b.date>a.date?1:-1).slice(0,40);
+  const log = inv.filter(e=>e.type==='in'||e.type==='out'||e.type==='return').sort((a,b)=>b.date>a.date?1:-1).slice(0,60);
   const tbody = qs('#inv-log-body');
   if (!tbody) return;
-  tbody.innerHTML = log.map(entry=>`
+  tbody.innerHTML = log.map(entry=>{
+    const typeBadge = entry.type==='in'
+      ? '<span class="badge green">+In</span>'
+      : entry.type==='return'
+        ? '<span class="badge" style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa">↩ Return</span>'
+        : '<span class="badge red">−Out</span>';
+    return `
     <tr>
       <td>${fmtD(entry.date)}</td>
       <td>${skuBadge(entry.sku)}</td>
-      <td><span class="badge ${entry.type==='in'?'green':'red'}">${entry.type==='in'?'+In':'−Out'}</span></td>
+      <td>${typeBadge}</td>
       <td>${fmt(entry.qty)}</td>
       <td>${entry.note||'—'}</td>
       <td><button class="btn xs red" onclick="delInvEntry('${entry.id}')">✕</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty">No log entries</td></tr>';
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">No log entries</td></tr>';
+}
+
+// ── Returns Tab ───────────────────────────────────────────
+function _invReturns() {
+  // Populate account dropdown once
+  const acSel = qs('#ret-account');
+  if (acSel) {
+    acSel.innerHTML = '<option value="">— Select Account —</option>' +
+      DB.a('ac').filter(a=>a.status==='active').sort((a,b)=>a.name>b.name?1:-1)
+        .map(a=>`<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+  }
+  // Populate SKU dropdown once
+  const skuSel = qs('#ret-sku');
+  if (skuSel && !skuSel.dataset.wired) {
+    skuSel.dataset.wired = '1';
+    skuSel.innerHTML = '<option value="">— Select SKU —</option>' +
+      SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+  }
+  if (qs('#ret-date') && !qs('#ret-date').value) qs('#ret-date').value = today();
+
+  // Return history table
+  const tbody = qs('#ret-history-body');
+  if (tbody) {
+    const returns = DB.a('returns').slice().sort((a,b)=>b.date>a.date?1:-1);
+    tbody.innerHTML = returns.length
+      ? returns.map(r=>`<tr>
+          <td>${fmtD(r.date)}</td>
+          <td>${escHtml(r.accountName||'—')}</td>
+          <td>${r.skuId ? skuBadge(r.skuId) : '—'}</td>
+          <td>${r.cans||0}</td>
+          <td>${escHtml(r.reason||'—')}</td>
+          <td>${r.creditIssued?`$${parseFloat(r.creditAmount||0).toFixed(2)}`:'—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="empty">No returns logged</td></tr>';
+  }
+}
+
+function saveReturn() {
+  const accountId = qs('#ret-account')?.value;
+  const skuId     = qs('#ret-sku')?.value;
+  const cans      = parseInt(qs('#ret-cans')?.value)||0;
+  if (!accountId) { toast('Select an account'); return; }
+  if (!skuId)     { toast('Select a SKU'); return; }
+  if (cans <= 0)  { toast('Enter number of cans'); return; }
+
+  const account     = DB.a('ac').find(a=>a.id===accountId);
+  const date        = qs('#ret-date')?.value || today();
+  const reason      = qs('#ret-reason')?.value || 'Other';
+  const notes       = qs('#ret-notes')?.value?.trim() || '';
+  const creditIssued= qs('#ret-credit-issued')?.checked || false;
+  const creditAmount= creditIssued ? parseFloat(qs('#ret-credit-amount')?.value)||0 : 0;
+
+  const ret = {
+    id: uid(), date, accountId,
+    accountName: account?.name || '',
+    skuId, cans, reason, notes,
+    creditIssued, creditAmount,
+  };
+  const ivEntry = {
+    id: uid(), date, sku: skuId,
+    type: 'return', qty: cans,
+    note: `Return from ${account?.name||accountId}: ${reason}`,
+  };
+
+  DB.atomicUpdate(cache => {
+    cache['returns'] = [...(cache['returns']||[]), ret];
+    cache['iv']      = [...(cache['iv']||[]), ivEntry];
+  });
+
+  // Reset form
+  if (qs('#ret-cans')) qs('#ret-cans').value = '';
+  if (qs('#ret-notes')) qs('#ret-notes').value = '';
+  if (qs('#ret-credit-issued')) qs('#ret-credit-issued').checked = false;
+  if (qs('#ret-credit-amount')) qs('#ret-credit-amount').value = '';
+  if (qs('#ret-credit-amount-row')) qs('#ret-credit-amount-row').style.display = 'none';
+
+  _invReturns();
+  toast('Return logged and inventory updated');
+}
+
+function toggleReturnCredit() {
+  const row = qs('#ret-credit-amount-row');
+  if (row) row.style.display = qs('#ret-credit-issued')?.checked ? '' : 'none';
 }
 
 function invAdjust(sku, type) {
@@ -5821,6 +5912,74 @@ function renderProduction() {
 
   // Today's schedule (from prod_sched)
   renderTodaySchedule();
+  renderProductionRecommendation();
+}
+
+// ── Production Recommendation ────────────────────────────
+function renderProductionRecommendation() {
+  const el = qs('#prod-recommendation');
+  if (!el) return;
+
+  // Current on-hand stock per SKU (in + return − out)
+  const inv = DB.a('iv');
+  const stockBySku = {};
+  SKUS.forEach(s => {
+    const totalIn  = inv.filter(e => e.sku===s.id && (e.type==='in'||e.type==='return')).reduce((t,e)=>t+(e.qty||0), 0);
+    const totalOut = inv.filter(e => e.sku===s.id &&  e.type==='out').reduce((t,e)=>t+(e.qty||0), 0);
+    stockBySku[s.id] = totalIn - totalOut;
+  });
+  const totalStock = Object.values(stockBySku).reduce((a,b)=>a+b, 0);
+
+  // 30-day projected demand: scale 90-day order history to 30 days
+  const cutoff = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+  const recentOrds = DB.a('orders').filter(o=>o.status!=='cancelled' && o.created>=cutoff);
+  const demandBySku = {};
+  SKUS.forEach(s=>{ demandBySku[s.id]=0; });
+  recentOrds.forEach(o=>{
+    (o.items||[]).forEach(i=>{
+      demandBySku[i.sku] = (demandBySku[i.sku]||0) + (i.qty||0)*CANS_PER_CASE;
+    });
+  });
+  SKUS.forEach(s=>{ demandBySku[s.id] = Math.round(demandBySku[s.id]*(30/90)); });
+  const totalDemand = Object.values(demandBySku).reduce((a,b)=>a+b, 0);
+
+  const buffer  = Math.round(totalDemand*0.20);
+  const needed  = Math.max(0, totalDemand - totalStock + buffer);
+  const neededCases = Math.ceil(needed/CANS_PER_CASE);
+  const stockCases  = Math.floor(totalStock/CANS_PER_CASE);
+
+  if (needed <= 0) {
+    el.innerHTML = `
+      <div style="color:var(--green);font-weight:600;margin-bottom:10px">✓ Stock looks good for 30 days</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:13px">
+        <div>Current stock: <strong>${fmt(totalStock)} cans (${stockCases} cases)</strong></div>
+        <div>30-day projected demand: <strong>${fmt(totalDemand)} cans</strong></div>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;font-size:13px">
+      <div>Current stock: <strong>${fmt(totalStock)} cans (${stockCases} cases)</strong></div>
+      <div>30-day projected demand: <strong>${fmt(totalDemand)} cans</strong></div>
+      <div>Recommended production run: <strong style="color:var(--red)">${fmt(needed)} cans (${neededCases} cases)</strong></div>
+      <div>Safety buffer included: <strong>20%</strong></div>
+    </div>
+    <button class="btn primary sm" onclick="_scheduleRecommendedRun(${neededCases})">Schedule This Run</button>`;
+}
+
+function _scheduleRecommendedRun(totalCasesNeeded) {
+  // Distribute evenly across non-variety SKUs; pre-fill shipment modal
+  const baseSkus = SKUS.filter(s=>s.id!=='variety');
+  const perSku = Math.round(totalCasesNeeded / SKUS.length);
+  SKUS.forEach(s=>{
+    const input = qs('#ship-'+s.id);
+    if (input) input.value = perSku > 0 ? perSku : '';
+  });
+  const dt = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+  if (qs('#ship-date')) qs('#ship-date').value = dt;
+  if (qs('#ship-customer')) qs('#ship-customer').value = 'Production Run';
+  openModal('modal-shipment');
 }
 
 function renderTodaySchedule() {
@@ -6157,7 +6316,7 @@ function toggleStop(i) {
     // Check if all stops are now done — offer batch invoicing
     const updatedRun = DB.obj('today_run', {stops:[]});
     const allDone = updatedRun.stops.length > 0 && updatedRun.stops.every(s=>s.done);
-    if (allDone) setTimeout(()=>offerBatchInvoice(updatedRun.stops), 800);
+    if (allDone) setTimeout(()=>openDeliveryCostModal(updatedRun.stops), 800);
 
   } else {
     // Just toggling undone — simple update, no side-effects
@@ -6300,11 +6459,65 @@ function removeStop(i) {
 
 function clearRoute() {
   if (!confirm2('Clear today\'s route?')) return;
+  // Archive completed run to history before clearing
+  const run = DB.obj('today_run', {stops:[]});
+  if (run.stops && run.stops.length > 0) {
+    const totalCases = run.stops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
+    DB.push('runs', {
+      id: uid(),
+      date: run.date || today(),
+      stops: run.stops,
+      totalCases,
+      milesDriven: run.milesDriven || 0,
+      fuelCost: run.fuelCost || 0,
+      costPerCase: run.costPerCase || 0,
+    });
+  }
   DB.setObj('today_run', {date:today(), stops:[]});
   const acSel = qs('#del-account-sel');
   if (acSel) acSel.dataset.loaded = '';
   renderDelivery();
   toast('Route cleared');
+}
+
+// ── Delivery Cost Modal ───────────────────────────────────
+let _deliveryCostStops = [];
+function openDeliveryCostModal(stops) {
+  _deliveryCostStops = stops;
+  const s = DB.obj('settings', {});
+  if (qs('#dcm-mpg'))   qs('#dcm-mpg').value   = s.mpg      || 25;
+  if (qs('#dcm-gas'))   qs('#dcm-gas').value   = s.gasPrice || 3.50;
+  if (qs('#dcm-miles')) qs('#dcm-miles').value = '';
+  if (qs('#dcm-fuel'))  qs('#dcm-fuel').value  = '';
+  if (qs('#dcm-cost-per-case')) qs('#dcm-cost-per-case').textContent = '';
+  const totalCases = stops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
+  if (qs('#dcm-summary')) qs('#dcm-summary').textContent = `${stops.length} stop${stops.length!==1?'s':''} · ${totalCases} case${totalCases!==1?'s':''} delivered`;
+  openModal('modal-delivery-cost');
+}
+function _calcDeliveryFuel() {
+  const miles = parseFloat(qs('#dcm-miles')?.value) || 0;
+  const mpg   = parseFloat(qs('#dcm-mpg')?.value)   || 25;
+  const gas   = parseFloat(qs('#dcm-gas')?.value)   || 3.50;
+  const fuel  = miles > 0 ? miles / mpg * gas : 0;
+  if (qs('#dcm-fuel')) qs('#dcm-fuel').value = fuel > 0 ? fuel.toFixed(2) : '';
+  const totalCases = _deliveryCostStops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
+  if (qs('#dcm-cost-per-case')) qs('#dcm-cost-per-case').textContent =
+    totalCases > 0 && fuel > 0 ? `Cost per case: $${(fuel/totalCases).toFixed(2)}` : '';
+}
+function saveDeliveryCost() {
+  const miles      = parseFloat(qs('#dcm-miles')?.value) || 0;
+  const fuel       = parseFloat(qs('#dcm-fuel')?.value)  || 0;
+  const totalCases = _deliveryCostStops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
+  const costPerCase = totalCases > 0 && fuel > 0 ? fuel / totalCases : 0;
+  const run = DB.obj('today_run', {});
+  DB.setObj('today_run', {...run, milesDriven: miles, fuelCost: fuel, costPerCase});
+  closeModal('modal-delivery-cost');
+  if (miles > 0) toast(`Delivery cost logged: ${miles} mi · $${fuel.toFixed(2)}`);
+  offerBatchInvoice(_deliveryCostStops);
+}
+function _skipDeliveryCost() {
+  closeModal('modal-delivery-cost');
+  offerBatchInvoice(_deliveryCostStops);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6436,8 +6649,65 @@ function renderReportContent() {
     distributor: repDistributor,
     profit:      repProfit,
     win_loss:    repWinLoss,
+    returns:     repReturns,
+    delivery:    repDelivery,
   };
   (handlers[_reportType]||repRevenue)();
+}
+
+// ── Returns Report ──────────────────────────────────────
+function repReturns() {
+  const from = qs('#rep-date-from')?.value || '';
+  const to   = qs('#rep-date-to')?.value   || '';
+  const all  = DB.a('returns').filter(r=>(!from||r.date>=from)&&(!to||r.date<=to));
+
+  const totalCans   = all.reduce((s,r)=>s+(r.cans||0), 0);
+  const totalCredit = all.reduce((s,r)=>s+(r.creditIssued?r.creditAmount||0:0), 0);
+  _setKPIs(all.length, totalCans+' cans', fmtC(totalCredit), '—');
+
+  const byAc = {};
+  all.forEach(r=>{ byAc[r.accountName||'Unknown']=(byAc[r.accountName||'Unknown']||0)+(r.cans||0); });
+  const acRows = Object.entries(byAc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>[escHtml(n), c+' cans']);
+  _setTable(['Account','Cans Returned'], acRows, 'Returns by Account');
+
+  const byReason = {};
+  all.forEach(r=>{ byReason[r.reason||'Other']=(byReason[r.reason||'Other']||0)+1; });
+  const reasons = Object.entries(byReason).sort((a,b)=>b[1]-a[1]);
+  const extraEl = qs('#rep-extra');
+  if (extraEl) {
+    extraEl.innerHTML = reasons.length ? `<div class="card"><div style="font-weight:600;margin-bottom:10px">By Reason</div>${
+      reasons.map(([r,c])=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
+        <div style="min-width:180px">${escHtml(r)}</div>
+        <div style="flex:1;background:#f3f4f6;border-radius:4px;height:18px">
+          <div style="background:#f97316;height:100%;width:${(c/reasons[0][1]*100).toFixed(0)}%;border-radius:4px"></div>
+        </div>
+        <div style="min-width:24px;text-align:right">${c}</div>
+      </div>`).join('')
+    }</div>` : '';
+  }
+  if (reasons.length) {
+    _drawChart('bar', reasons.map(([r])=>r),
+      [{label:'Count', data:reasons.map(([,c])=>c), backgroundColor:'rgba(249,115,22,0.7)', borderRadius:4}],
+      'Returns by Reason');
+  }
+}
+
+// ── Delivery Cost Report ────────────────────────────────
+function repDelivery() {
+  const runs = DB.a('runs');
+  const totalMiles  = runs.reduce((s,r)=>s+(r.milesDriven||0), 0);
+  const totalFuel   = runs.reduce((s,r)=>s+(r.fuelCost||0), 0);
+  const totalCases  = runs.reduce((s,r)=>s+(r.totalCases||0), 0);
+  const avgCostCase = totalCases>0 ? '$'+(totalFuel/totalCases).toFixed(2) : '—';
+  _setKPIs(fmt(totalMiles)+' mi', fmtC(totalFuel), avgCostCase, runs.length+' runs');
+  const rows = runs.slice().sort((a,b)=>b.date>a.date?1:-1).map(r=>[
+    fmtD(r.date),
+    fmt(r.totalCases||0)+' cs',
+    fmt(r.milesDriven||0)+' mi',
+    r.fuelCost?fmtC(r.fuelCost):'—',
+    r.costPerCase?'$'+parseFloat(r.costPerCase).toFixed(2):'—',
+  ]);
+  _setTable(['Date','Cases','Miles','Fuel Cost','Cost/Case'], rows, 'Delivery Run History');
 }
 
 // ── Win/Loss Report ─────────────────────────────────────────
@@ -7200,6 +7470,8 @@ function renderSettings() {
   if(qs('#set-payment-terms'))     qs('#set-payment-terms').value     = s.payment_terms||30;
   if(qs('#set-lead-time'))         qs('#set-lead-time').value         = s.production_lead_time||14;
   if(qs('#set-low-inv-threshold')) qs('#set-low-inv-threshold').value = s.lowInvThreshold||500;
+  if(qs('#set-mpg'))              qs('#set-mpg').value              = s.mpg||25;
+  if(qs('#set-gas-price'))        qs('#set-gas-price').value        = s.gasPrice||3.50;
 
   // COGS
   SKUS.forEach(sk=>{
@@ -7285,9 +7557,11 @@ function saveSettings() {
     default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
     variety_recipe:        recipeTotal === CANS_PER_CASE ? recipe : (DB.obj('settings',{}).variety_recipe||{}),
     lowInvThreshold:       parseInt(qs('#set-low-inv-threshold')?.value)||500,
+    mpg:                   parseFloat(qs('#set-mpg')?.value)||25,
+    gasPrice:              parseFloat(qs('#set-gas-price')?.value)||3.50,
     // Preserve existing fields (known_users etc.)
     ...Object.fromEntries(
-      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowInvThreshold'].includes(k))
+      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowInvThreshold','mpg','gasPrice'].includes(k))
     ),
   };
   DB.setObj('settings', s);

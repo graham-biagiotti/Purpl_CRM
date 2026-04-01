@@ -43,6 +43,7 @@ const ARRAY_KEYS = [
   'retail_invoices',    // delivery-run invoices (already used — registering here)
   'combined_invoices',  // combined purpl + LF invoices (cross-brand billing)
   'pending_invoices',   // portal order notifications awaiting combined invoice creation
+  'returns',            // return / damage log records
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];

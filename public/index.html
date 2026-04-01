@@ -367,6 +367,7 @@
         <button class="tab" data-inv-tab="pallets">Pallets</button>
         <button class="tab" data-inv-tab="supplies">Supplies</button>
         <button class="tab" data-inv-tab="log">Log</button>
+        <button class="tab" data-inv-tab="returns">Returns</button>
       </div>
 
       <!-- Stock Summary -->
@@ -537,6 +538,49 @@
               <thead><tr><th>Date</th><th>SKU</th><th>Type</th><th>Qty</th><th>Note</th><th></th></tr></thead>
               <tbody id="inv-log-body"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Returns -->
+      <div id="inv-pane-returns" style="display:none">
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="section-hdr"><h2>Log Return / Damage</h2></div>
+            <div class="form-group"><label>Account</label><select id="ret-account"><option value="">— Select Account —</option></select></div>
+            <div class="form-row col2">
+              <div class="form-group"><label>Date</label><input type="date" id="ret-date"></div>
+              <div class="form-group"><label>SKU</label><select id="ret-sku"><option value="">— Select SKU —</option></select></div>
+            </div>
+            <div class="form-group"><label>Number of Cans</label><input type="number" id="ret-cans" min="1" placeholder="e.g. 12"></div>
+            <div class="form-group"><label>Reason</label>
+              <select id="ret-reason">
+                <option>Damaged in transit</option>
+                <option>Expired</option>
+                <option>Customer return</option>
+                <option>Quality issue</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Notes</label><textarea id="ret-notes" placeholder="Optional details…"></textarea></div>
+            <div class="form-group" style="margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="ret-credit-issued" onchange="toggleReturnCredit()"> Credit issued to account
+              </label>
+            </div>
+            <div id="ret-credit-amount-row" style="display:none;margin-bottom:12px">
+              <div class="form-group"><label>Credit Amount ($)</label><input type="number" id="ret-credit-amount" step="0.01" min="0" placeholder="0.00"></div>
+            </div>
+            <button class="btn primary" onclick="saveReturn()">Log Return</button>
+          </div>
+          <div class="card">
+            <div class="section-hdr"><h2>Return History</h2></div>
+            <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+              <table>
+                <thead><tr><th>Date</th><th>Account</th><th>SKU</th><th>Cans</th><th>Reason</th><th>Credit</th></tr></thead>
+                <tbody id="ret-history-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -744,6 +788,11 @@
 
     <!-- ═══════ PRODUCTION ═══════ -->
     <div class="page" id="page-production">
+      <!-- Production Recommendation -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="section-hdr"><h2>Production Recommendation</h2></div>
+        <div id="prod-recommendation"><div style="color:var(--muted);font-size:13px">Loading…</div></div>
+      </div>
       <div class="card-grid grid-2" style="margin-bottom:20px">
 
         <!-- Log a run -->
@@ -872,6 +921,8 @@
             <button class="tab" data-rep="distributor">Distributor</button>
             <button class="tab" data-rep="profit">Gross Profit</button>
             <button class="tab" data-rep="win_loss">Win/Loss</button>
+            <button class="tab" data-rep="returns">Returns</button>
+            <button class="tab" data-rep="delivery">Delivery</button>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="date" id="rep-date-from" class="input" style="width:130px;padding:4px 8px;font-size:13px">
@@ -1124,6 +1175,17 @@
             <label>Low inventory alert threshold (cans)</label>
             <input id="set-low-inv-threshold" type="number" placeholder="500" min="0" step="1">
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Dashboard KPI turns red when total on-hand cans falls below this</div>
+          </div>
+          <div class="form-row col2">
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Vehicle MPG</label>
+              <input id="set-mpg" type="number" step="1" placeholder="25" min="1">
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">For delivery cost estimation</div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Gas Price ($/gallon)</label>
+              <input id="set-gas-price" type="number" step="0.01" placeholder="3.50" min="0">
+            </div>
           </div>
           <button class="btn primary" id="save-settings-btn">Save Settings</button>
         </div>
@@ -2617,6 +2679,27 @@
       <button class="btn red" style="margin-right:auto" onclick="_deleteProspectPermanent()">Delete Permanently</button>
       <button class="modal-close btn">Cancel</button>
       <button class="btn primary" onclick="confirmMarkLost()">Mark as Lost</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delivery Cost Modal -->
+<div class="overlay" id="modal-delivery-cost">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hdr"><h2>Run Complete — Log Delivery Cost</h2><button class="modal-close btn sm">✕</button></div>
+    <div id="dcm-summary" style="font-size:13px;color:var(--muted);margin-bottom:14px"></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Miles Driven</label><input type="number" id="dcm-miles" min="0" step="0.1" placeholder="0" oninput="_calcDeliveryFuel()"></div>
+      <div class="form-group"><label>Fuel Cost (auto)</label><input type="number" id="dcm-fuel" step="0.01" readonly style="background:#f9fafb"></div>
+    </div>
+    <div class="form-row col2" style="margin-bottom:12px">
+      <div class="form-group"><label style="font-size:11px">MPG</label><input type="number" id="dcm-mpg" step="1" min="1" oninput="_calcDeliveryFuel()"></div>
+      <div class="form-group"><label style="font-size:11px">Gas Price ($/gal)</label><input type="number" id="dcm-gas" step="0.01" min="0" oninput="_calcDeliveryFuel()"></div>
+    </div>
+    <div id="dcm-cost-per-case" style="font-size:13px;color:var(--muted);margin-bottom:16px"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="_skipDeliveryCost()">Skip</button>
+      <button class="btn primary" onclick="saveDeliveryCost()">Save &amp; Continue</button>
     </div>
   </div>
 </div>
