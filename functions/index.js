@@ -118,10 +118,31 @@ exports.sendOrderConfirmation = onCall(
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:${accentColor};padding:24px 40px;text-align:center">
-    <div style="font-size:18px;font-weight:600;color:#fff">Order Received</div>
-    <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px">${brandName}</div>
+  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:36px 40px;text-align:center">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td align="center">
+        <table cellpadding="0" cellspacing="0" width="auto">
+          <tr>
+            <td width="auto" valign="middle" style="padding-right:16px">
+              <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+                alt="purpl" width="110" height="44"
+                style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+            </td>
+            <td width="1px" valign="middle">
+              <div style="width:1px;height:48px;background:rgba(255,255,255,0.4)"></div>
+            </td>
+            <td width="auto" valign="middle" style="padding-left:16px">
+              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+                alt="Lavender Fields" width="52" height="52"
+                style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>
+    <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;color:rgba(255,255,255,0.75);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${data.contactName || 'there'},</p>
     <p>We received your order for <strong>${data.accountName}</strong> and we're on it. You'll hear from us with delivery details shortly.</p>

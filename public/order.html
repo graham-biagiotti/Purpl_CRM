@@ -551,6 +551,7 @@ let pricePerCase = null;
 let _brandPurpl = true;
 let _brandLf = false;
 let _lfSkus = [];
+let _lfSkusLoaded = false;
 const LF_SKU_FALLBACK = [
   {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
   {id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null},
@@ -586,6 +587,7 @@ function updateBrandVisibility() {
   if (purplSec) purplSec.style.display = _brandPurpl ? '' : 'none';
   if (lfSec)    lfSec.style.display    = _brandLf    ? '' : 'none';
   if (notice)   notice.style.display   = (_brandPurpl && _brandLf) ? '' : 'none';
+  if (_brandLf && !_lfSkusLoaded) loadLfSkus(null);
   // Selection affordance hints
   var both     = _brandPurpl && _brandLf;
   var hintP = document.getElementById('bc-add-hint-purpl');
@@ -598,6 +600,7 @@ function updateBrandVisibility() {
 
 function renderLfSkus(skus, prevOrder) {
   _lfSkus = skus;
+  _lfSkusLoaded = true;
   var container = document.getElementById('lf-sku-list');
   if (!container) return;
   if (!skus.length) {
@@ -770,7 +773,10 @@ function loadLfSkus(prevOrder) {
       var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
       renderLfSkus(skus.length ? skus : LF_SKU_FALLBACK, prevOrder);
     })
-    .catch(function() { renderLfSkus(LF_SKU_FALLBACK, prevOrder); });
+    .catch(function(err) {
+      console.error('LF SKU load error:', err);
+      renderLfSkus(LF_SKU_FALLBACK, prevOrder);
+    });
 }
 
 function init() {
