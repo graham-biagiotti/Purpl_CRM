@@ -2152,15 +2152,33 @@ function openCadenceEmailPreview(accountId, stageId, invoiceId) {
 
   const gmailBtn = qs('#mce-gmail-btn');
   if (gmailBtn) {
+    gmailBtn.textContent = 'Send Email';
     gmailBtn.onclick = () => {
       const finalBody = qs('#mce-body')?.value || body;
-      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
-      markCadenceSent(accountId, stageId, 'mailto', invoiceId||null);
-      closeModal('modal-cadence-email');
+      const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
+      gmailBtn.disabled = true;
+      gmailBtn.textContent = 'Sending…';
+      callSendEmail(toEmail, fromEmail, subject, htmlBody)
+        .then(() => {
+          toast('Email sent ✓');
+          markCadenceSent(accountId, stageId, 'resend', invoiceId||null);
+          closeModal('modal-cadence-email');
+        })
+        .catch(() => {
+          toast('Resend unavailable — opening Gmail');
+          window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
+          markCadenceSent(accountId, stageId, 'mailto', invoiceId||null);
+          closeModal('modal-cadence-email');
+        })
+        .finally(() => {
+          gmailBtn.disabled = false;
+          gmailBtn.textContent = 'Send Email';
+        });
     };
   }
   const markBtn = qs('#mce-mark-sent-btn');
   if (markBtn) {
+    markBtn.textContent = '✓ Mark as Sent';
     markBtn.onclick = () => {
       markCadenceSent(accountId, stageId, 'manual', invoiceId||null);
       closeModal('modal-cadence-email');
