@@ -1729,6 +1729,7 @@
       <button class="tab" data-tab="outreach">Outreach</button>
       <button class="tab" data-tab="notes">Notes</button>
       <button class="tab" data-tab="portal-orders">Portal Orders</button>
+      <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab" data-tab="emails">✉️ Emails</button>
     </div>
     <!-- Overview -->
@@ -1788,6 +1789,10 @@
       <div id="mac-portal-orders-content">
         <div style="text-align:center;padding:24px;color:var(--muted)">Loading portal orders…</div>
       </div>
+    </div>
+    <!-- Invoices tab -->
+    <div id="mac-tab-invoices" class="tab-pane" style="display:none">
+      <div id="mac-invoices-content"></div>
     </div>
     <!-- Emails tab -->
     <div id="mac-tab-emails" class="tab-pane" style="display:none">
@@ -2647,6 +2652,54 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="btn" onclick="copyEmailHTML()">📋 Copy HTML</button>
       <button class="btn" onclick="openEmailMailto()">✉️ Open in Gmail</button>
       <button class="btn primary" onclick="markCadenceEmailSent()">✓ Mark as Sent</button>
+    </div>
+  </div>
+</div>
+
+<!-- Combined invoice preview modal -->
+<div class="overlay" id="modal-combined-invoice">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-hdr">
+      <div>
+        <h2>Combined Invoice</h2>
+        <div id="civ-invoice-nums" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <button class="btn xs" onclick="closeModal('modal-combined-invoice')">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:55% 45%;gap:16px;min-height:500px">
+      <!-- LEFT: preview -->
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <iframe id="civ-preview-frame" style="width:100%;height:100%;min-height:500px;border:none"></iframe>
+      </div>
+      <!-- RIGHT: details + actions -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="padding:16px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Account</div>
+          <div id="civ-account-name" style="font-weight:600;font-size:15px"></div>
+          <hr class="light">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+            <span style="color:var(--muted)">purpl Subtotal</span>
+            <span id="civ-purpl-sub" style="color:var(--purple);font-weight:500"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+            <span style="color:var(--muted)">LF Subtotal</span>
+            <span id="civ-lf-sub" style="color:#4a7c59;font-weight:500"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;padding-top:10px;border-top:2px solid var(--border)">
+            <span>Grand Total</span>
+            <span id="civ-grand-total" style="color:var(--text)"></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn" id="civ-btn-newtab" style="justify-content:center">Open in New Tab ↗</button>
+          <button class="btn" id="civ-btn-copy" style="justify-content:center">Copy HTML</button>
+          <button class="btn" id="civ-btn-gmail" style="justify-content:center">Open in Gmail</button>
+          <button class="btn primary green" id="civ-btn-paid" style="justify-content:center">✓ Mark Both Paid</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-style:italic;text-align:center;margin-top:4px">
+          Resend integration coming soon — invoice will send automatically
+        </div>
+      </div>
     </div>
   </div>
 </div>
