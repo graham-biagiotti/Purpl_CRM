@@ -7329,7 +7329,7 @@ function markLfInvPaid(id) {
   if (!inv) return;
   const newStatus = inv.status === 'paid' ? 'unpaid' : 'paid';
   DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidAt: newStatus === 'paid' ? today() : null}));
-  renderLfInvoicesPage();
+  renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
 }
 
@@ -9009,8 +9009,55 @@ function editInv(id) {
 }
 
 function renderInvoicesPage() {
+  renderInvKpis();
+  renderInvColPurpl();
+  renderInvColLf();
+  renderInvColCombined();
+}
+
+function renderInvKpis() {
   const todayStr = today();
-  const invs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
+  const purplInvs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
+  const lfInvs    = DB.a('lf_invoices');
+
+  function purplStatus(inv) {
+    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
+    const due = inv.due || inv.dueDate || '';
+    if (due && due < todayStr) return 'overdue';
+    return inv.status || 'unpaid';
+  }
+
+  const totalInvoiced = purplInvs.reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const outstanding   = purplInvs.filter(x => !['paid','draft'].includes(purplStatus(x)))
+                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + lfInvs.filter(x => x.status !== 'paid')
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
+                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + lfInvs.filter(x => x.status !== 'paid' && (x.due||'') < todayStr && x.due)
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const now = new Date();
+  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const collected = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+                      .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                  + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
+                      .reduce((s,x) => s + parseFloat(x.total||0), 0);
+
+  const el = qs('#inv-page-kpis');
+  if (!el) return;
+  el.innerHTML = `
+    <div>${kpiHtml('Total Invoiced', fmtC(totalInvoiced), 'blue')}</div>
+    <div>${kpiHtml('Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray')}</div>
+    <div>${kpiHtml('Overdue', fmtC(overdue), overdue > 0 ? 'red' : 'gray')}</div>
+    <div>${kpiHtml('Collected This Month', fmtC(collected), 'green')}</div>`;
+}
+
+function renderInvColPurpl() {
+  const todayStr = today();
+  // Exclude iv records that are part of a combined invoice
+  const invs = DB.a('iv')
+    .filter(x => (x.accountId || x.number || x.invoiceNumber) && !x.combinedInvoiceId);
 
   function effectiveStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
@@ -9019,50 +9066,49 @@ function renderInvoicesPage() {
     return inv.status || 'unpaid';
   }
 
-  // ── Left column KPIs (purpl / iv) ──────────────────────
-  const outstanding = invs
-    .filter(x => !['paid','draft'].includes(effectiveStatus(x)))
-    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
-  const overdueAmt = invs
-    .filter(x => effectiveStatus(x) === 'overdue')
-    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
-  const now = new Date();
-  const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
-  const paidThisMonth = invs
-    .filter(x => x.status === 'paid' && (x.paidDate||'') >= firstOfMonth)
-    .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const outstanding = invs.filter(x => !['paid','draft'].includes(effectiveStatus(x)))
+                        .reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const overdueAmt  = invs.filter(x => effectiveStatus(x) === 'overdue')
+                        .reduce((s,x) => s + parseFloat(x.amount||0), 0);
 
-  const kpiEl = qs('#inv-purpl-kpis');
-  if (kpiEl) kpiEl.innerHTML = `
-    <div>${kpiHtml('Outstanding', fmtC(outstanding), 'blue')}</div>
-    <div>${kpiHtml('Overdue', fmtC(overdueAmt), overdueAmt > 0 ? 'red' : 'gray')}</div>
-    <div>${kpiHtml('Paid This Month', fmtC(paidThisMonth), 'green')}</div>`;
+  const summEl = qs('#inv-col-purpl-summary');
+  if (summEl) summEl.textContent = `${invs.length} invoices · ${fmtC(outstanding)} outstanding${overdueAmt > 0 ? ` · ${fmtC(overdueAmt)} overdue` : ''}`;
 
-  // ── Left column overdue list ────────────────────────────
-  const overdueInvs = invs.filter(x => effectiveStatus(x) === 'overdue');
-  const overdueCard = qs('#inv-purpl-overdue-card');
-  const overdueEl   = qs('#inv-purpl-overdue-list');
-  if (overdueCard) overdueCard.style.display = overdueInvs.length ? '' : 'none';
-  if (overdueEl) {
-    overdueEl.innerHTML = overdueInvs.map(iv => {
-      const due  = iv.due || iv.dueDate || '';
-      const days = daysAgo(due);
-      const acName = iv.accountName || DB.a('ac').find(a=>a.id===iv.accountId)?.name || '?';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
-        <div>
-          <div style="font-weight:600;font-size:13px">${escHtml(acName)} · ${escHtml(iv.number||iv.invoiceNumber||'—')}</div>
-          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(due)} · ${days}d overdue</div>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center">
-          <span style="font-weight:700;color:var(--red);font-size:13px">${fmtC(iv.amount||iv.total||0)}</span>
-          <button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>
-        </div>
-      </div>`;
-    }).join('');
+  // Compact view — top 5 non-paid sorted by due asc
+  const compactEl = qs('#inv-col-purpl-compact');
+  if (compactEl) {
+    const urgent = invs
+      .filter(x => effectiveStatus(x) !== 'paid' && effectiveStatus(x) !== 'draft')
+      .sort((a,b) => (a.due||a.dueDate||'') < (b.due||b.dueDate||'') ? -1 : 1)
+      .slice(0,5);
+    if (!urgent.length) {
+      compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No open purpl invoices</div>';
+    } else {
+      compactEl.innerHTML = urgent.map(iv => {
+        const st  = effectiveStatus(iv);
+        const due = iv.due || iv.dueDate || '';
+        const acName = iv.accountName || DB.a('ac').find(a=>a.id===iv.accountId)?.name || '?';
+        const statColor = {paid:'green',draft:'gray',sent:'blue',overdue:'red',partial:'amber',unpaid:'blue'};
+        return `<div class="inv-col-compact-row">
+          <div>
+            <div style="font-weight:600">${escHtml(acName)}</div>
+            <div style="font-size:11px;color:var(--muted)">${escHtml(iv.number||iv.invoiceNumber||'—')} · Due ${fmtD(due)}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge ${statColor[st]||'gray'}">${st}</span>
+            <strong style="font-size:13px">${fmtC(iv.amount||iv.total||0)}</strong>
+          </div>
+        </div>`;
+      }).join('');
+    }
   }
 
-  // ── Left column main table (iv, sortable) ───────────────
-  const statColor = {paid:'green', draft:'gray', sent:'blue', overdue:'red', partial:'amber', unpaid:'blue'};
+  // Expanded view — full sortable table
+  const expandedEl = qs('#inv-col-purpl-expanded');
+  if (!expandedEl) return;
+  if (!qs('#inv-col-purpl').classList.contains('expanded')) return;
+
+  const statColor = {paid:'green',draft:'gray',sent:'blue',overdue:'red',partial:'amber',unpaid:'blue'};
   const SORT_KEY_MAP = {number:'number', accountName:'_accountName', due:'_due', amount:'amount'};
   let sorted = invs.map(x => ({
     ...x,
@@ -9077,33 +9123,197 @@ function renderInvoicesPage() {
     return av < bv ? -_invSortDir : av > bv ? _invSortDir : 0;
   });
 
-  const tbody = qs('#inv-purpl-tbody');
-  if (tbody) {
-    tbody.innerHTML = !sorted.length
-      ? '<tr><td colspan="6" class="empty">No purpl invoices yet</td></tr>'
-      : sorted.map(iv => {
-          const st  = iv._status;
-          const due = iv._due;
-          const amt = iv.amount != null ? iv.amount : iv.total;
-          return `<tr>
-          <td><strong>${escHtml(iv.number||iv.invoiceNumber||'—')}</strong></td>
-          <td>${escHtml(iv._accountName)}</td>
-          <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
-          <td><strong>${amt != null ? fmtC(amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
-          <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
-          <td class="no-print"><div style="display:flex;gap:4px;flex-wrap:wrap">
-            ${st!=='paid' ? `<button class="btn xs green" onclick="markPaid('${iv.id}');renderInvoicesPage()">✓ Paid</button>` : ''}
-            ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
-            <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
-            <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
-            <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
-          </div></td>
-        </tr>`;
-        }).join('');
+  expandedEl.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%;font-size:13px">
+      <thead><tr>
+        <th onclick="_invSort('number')" style="cursor:pointer">#</th>
+        <th onclick="_invSort('accountName')" style="cursor:pointer">Account</th>
+        <th onclick="_invSort('due')" style="cursor:pointer">Due</th>
+        <th onclick="_invSort('amount')" style="cursor:pointer">Amount</th>
+        <th>Status</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${!sorted.length
+        ? '<tr><td colspan="6" class="empty">No purpl invoices yet</td></tr>'
+        : sorted.map(iv => {
+            const st  = iv._status;
+            const due = iv._due;
+            const amt = iv.amount != null ? iv.amount : iv.total;
+            return `<tr>
+              <td><strong>${escHtml(iv.number||iv.invoiceNumber||'—')}</strong></td>
+              <td>${escHtml(iv._accountName)}</td>
+              <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
+              <td><strong>${amt != null ? fmtC(amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
+              <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
+              <td><div style="display:flex;gap:4px;flex-wrap:wrap">
+                ${st!=='paid' ? `<button class="btn xs green" onclick="markPaid('${iv.id}')">✓ Paid</button>` : ''}
+                ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
+                <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+                <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
+                <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
+              </div></td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function _invSort(key) {
+  if (_invSortKey === key) _invSortDir *= -1;
+  else { _invSortKey = key; _invSortDir = -1; }
+  renderInvColPurpl();
+}
+
+function renderInvColLf() {
+  const todayStr = today();
+  // Exclude lf_invoices records that are part of a combined invoice
+  const all = DB.a('lf_invoices').filter(x => !x.combinedInvoiceId);
+
+  const outstanding = all.filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const overdueAmt  = all.filter(x => x.status !== 'paid' && (x.due||'') < todayStr && x.due)
+                        .reduce((s,x) => s + parseFloat(x.total||0), 0);
+
+  const summEl = qs('#inv-col-lf-summary');
+  if (summEl) summEl.textContent = `${all.length} invoices · ${fmtC(outstanding)} outstanding${overdueAmt > 0 ? ` · ${fmtC(overdueAmt)} overdue` : ''}`;
+
+  // Compact view
+  const compactEl = qs('#inv-col-lf-compact');
+  if (compactEl) {
+    const urgent = all
+      .filter(x => x.status !== 'paid')
+      .sort((a,b) => (a.due||'') < (b.due||'') ? -1 : 1)
+      .slice(0,5);
+    if (!urgent.length) {
+      compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No open LF invoices</div>';
+    } else {
+      compactEl.innerHTML = urgent.map(inv => {
+        const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
+        return `<div class="inv-col-compact-row">
+          <div>
+            <div style="font-weight:600">${escHtml(inv.accountName||'—')}</div>
+            <div style="font-size:11px;color:var(--muted)">${escHtml(inv.number||'—')} · Due ${fmtD(inv.due)}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge ${sc.cls}">${sc.label}</span>
+            <strong style="font-size:13px">${fmtC(inv.total||0)}</strong>
+          </div>
+        </div>`;
+      }).join('');
+    }
   }
 
-  // ── Right column (LF) ───────────────────────────────────
-  renderLfInvoicesPage();
+  // Expanded view
+  const expandedEl = qs('#inv-col-lf-expanded');
+  if (!expandedEl) return;
+  if (!qs('#inv-col-lf').classList.contains('expanded')) return;
+
+  const sorted = all.slice().sort((a,b) => (b.issued||'') > (a.issued||'') ? 1 : -1);
+  expandedEl.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%;font-size:13px">
+      <thead><tr>
+        <th>#</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th>Wix</th><th></th>
+      </tr></thead>
+      <tbody>${!sorted.length
+        ? '<tr><td colspan="7" class="empty">No LF invoices yet</td></tr>'
+        : sorted.map(inv => {
+            const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
+            const wixHtml = inv.wixPulled
+              ? `<span style="color:var(--green,#16a34a);font-weight:600">✓</span>`
+              : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
+            return `<tr>
+              <td><strong>${escHtml(inv.number||'—')}</strong></td>
+              <td>${escHtml(inv.accountName||'—')}</td>
+              <td>${fmtD(inv.due)}</td>
+              <td><strong>${fmtC(inv.total||0)}</strong></td>
+              <td><span class="badge ${sc.cls}">${sc.label}</span></td>
+              <td>${wixHtml}</td>
+              <td style="white-space:nowrap">
+                <button class="btn xs" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
+                <button class="btn xs ${inv.status==='paid'?'':'primary'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'✓ Paid'}</button>
+              </td>
+            </tr>`;
+          }).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function renderInvColCombined() {
+  const all = DB.a('combined_invoices');
+
+  const outstanding = all.filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
+
+  const summEl = qs('#inv-col-combined-summary');
+  if (summEl) summEl.textContent = all.length
+    ? `${all.length} combined · ${fmtC(outstanding)} outstanding`
+    : 'No combined invoices';
+
+  // Compact view
+  const compactEl = qs('#inv-col-combined-compact');
+  if (compactEl) {
+    if (!all.length) {
+      compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No combined invoices yet. Combined invoices are created automatically when an isPbf account orders both brands, or manually from the account detail modal.</div>';
+    } else {
+      const pending = all.filter(x => x.status !== 'paid').slice(0,5);
+      if (!pending.length) {
+        compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">All combined invoices paid</div>';
+      } else {
+        compactEl.innerHTML = pending.map(ci => `<div class="inv-col-compact-row">
+          <div>
+            <div style="font-weight:600">${escHtml(ci.accountName||'—')}</div>
+            <div style="font-size:11px;color:var(--muted)">purpl ${fmtC(ci.purplSubtotal||0)} + LF ${fmtC(ci.lfSubtotal||0)}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge ${ci.status==='paid'?'green':'amber'}">${ci.status||'draft'}</span>
+            <strong style="font-size:13px">${fmtC(ci.grandTotal||0)}</strong>
+          </div>
+        </div>`).join('');
+      }
+    }
+  }
+
+  // Expanded view
+  const expandedEl = qs('#inv-col-combined-expanded');
+  if (!expandedEl) return;
+  if (!qs('#inv-col-combined').classList.contains('expanded')) return;
+
+  if (!all.length) {
+    expandedEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--muted)">No combined invoices yet. Combined invoices are created automatically when an isPbf account orders both brands, or manually from the account detail modal.</div>';
+    return;
+  }
+
+  const sorted = all.slice().sort((a,b) => (b.createdAt||'') > (a.createdAt||'') ? 1 : -1);
+  expandedEl.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="data-table" style="width:100%;font-size:13px">
+      <thead><tr>
+        <th>Account</th><th>purpl</th><th>LF</th><th>Total</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>${sorted.map(ci => `<tr>
+        <td><strong>${escHtml(ci.accountName||'—')}</strong></td>
+        <td>${fmtC(ci.purplSubtotal||0)}</td>
+        <td>${fmtC(ci.lfSubtotal||0)}</td>
+        <td><strong>${fmtC(ci.grandTotal||0)}</strong></td>
+        <td><span class="badge ${ci.status==='paid'?'green':ci.status==='sent'?'blue':'amber'}">${ci.status||'draft'}</span></td>
+        <td style="white-space:nowrap">
+          ${ci.status!=='paid' ? `<button class="btn xs green" onclick="markCombinedPaid('${ci.id}')">✓ Paid</button>` : ''}
+        </td>
+      </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function toggleInvCol(col) {
+  const el = qs(`#inv-col-${col}`);
+  if (!el) return;
+  el.classList.toggle('expanded');
+  // Render expanded content on open
+  if (el.classList.contains('expanded')) {
+    if (col === 'purpl')    renderInvColPurpl();
+    else if (col === 'lf')  renderInvColLf();
+    else if (col === 'combined') renderInvColCombined();
+  }
 }
 
 function markInvoiceSent(id) {
