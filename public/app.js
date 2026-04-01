@@ -1840,7 +1840,7 @@ function renderAccountNotes(a) {
   nl.innerHTML = (a.notes||[]).slice().reverse().map((n,i)=>`
     <div class="note-item">
       <div class="note-date">${fmtD(n.date)} — ${n.author||'you'}</div>
-      <div>${n.text}</div>
+      <div>${escHtml(n.text||'')}</div>
       ${n.nextAction?`<div class="note-next">📅 Next: ${n.nextAction}${n.nextDate?' on '+fmtD(n.nextDate):''}</div>`:''}
     </div>`).join('') || '<div class="empty" style="padding:16px">No notes yet</div>';
 
@@ -3403,7 +3403,7 @@ function openProspect(id) {
   if (nl) nl.innerHTML = (p.notes||[]).slice().reverse().map(n=>`
     <div class="note-item">
       <div class="note-date">${fmtD(n.date)}</div>
-      <div>${n.text}</div>
+      <div>${escHtml(n.text||'')}</div>
     </div>`).join('') || '<div class="empty" style="padding:12px">No notes yet</div>';
 
   qs('#mpr-edit-btn').onclick = () => { closeModal('modal-prospect'); editProspect(id); };
