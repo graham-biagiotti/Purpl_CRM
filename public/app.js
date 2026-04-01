@@ -178,28 +178,28 @@ const SIGNATURE_HTML = `
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
-  style="background:linear-gradient(135deg,#3d2466 0%,#6B3FA0 100%);border-radius:8px 8px 0 0">
+  style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);border-radius:8px 8px 0 0">
   <tr>
-    <td style="padding:24px 32px">
+    <td style="padding:36px 40px">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td style="text-align:right;vertical-align:middle;padding-right:20px;width:50%">
             <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
               alt="purpl" width="110" height="44"
-              style="display:inline-block;vertical-align:middle">
+              style="display:inline-block;vertical-align:middle;filter:brightness(0) invert(1);opacity:1">
           </td>
           <td style="width:1px;vertical-align:middle;padding:0 2px">
-            <div style="width:1px;height:48px;background:rgba(255,255,255,0.3)"></div>
+            <div style="width:1px;height:48px;background:rgba(255,255,255,0.4)"></div>
           </td>
           <td style="text-align:left;vertical-align:middle;padding-left:20px;width:50%">
             <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-              alt="Lavender Fields" width="50" height="50"
-              style="display:inline-block;vertical-align:middle">
+              alt="Lavender Fields" width="52" height="52"
+              style="display:inline-block;vertical-align:middle;filter:brightness(0) invert(1);opacity:1">
           </td>
         </tr>
       </table>
       <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;
-        color:rgba(255,255,255,0.55);letter-spacing:0.15em;
+        color:rgba(255,255,255,0.75);letter-spacing:0.15em;
         text-transform:uppercase;margin-top:10px">
         Pumpkin Blossom Farm · Wholesale
       </div>
@@ -1972,6 +1972,8 @@ function openEmailPreview(stage, accountId, extra={}) {
   document.getElementById('email-preview-frame').srcdoc = template.body;
   document.getElementById('email-preview-body-textarea').value = template.body;
   document.getElementById('email-preview-body-edit').style.display = 'none';
+  const _epSendBtn = document.querySelector('#modal-email-preview .btn.primary');
+  if (_epSendBtn) { _epSendBtn.textContent = 'Send Email'; _epSendBtn.onclick = sendEmailViaResend; }
   openModal('modal-email-preview');
 }
 
@@ -2024,17 +2026,30 @@ function openEmailMailto() {
   const to = _currentEmailPreview.toEmail || '';
   const subject = document.getElementById('email-preview-subject').value || t.subject;
   if (!to) return;
+  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+}
 
-  const account = DB.a('ac').find(a => a.id === _currentEmailPreview.accountId) || {};
+function sendEmailViaResend() {
+  if (!_currentEmailPreview) return;
+  const t   = _currentEmailPreview.template;
+  const to  = _currentEmailPreview.toEmail || '';
+  const subject = document.getElementById('email-preview-subject').value || t.subject;
+  const html    = document.getElementById('email-preview-body-textarea').value || t.body;
+  if (!to) { toast('No recipient email on file'); return; }
   const from = 'lavender@pbfwholesale.com';
-
-  callSendEmail(to, from, subject, t.body)
+  const btn = document.querySelector('#modal-email-preview .btn.primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  callSendEmail(to, from, subject, html)
     .then(() => {
-      toast('Email sent via Resend ✓');
+      toast('Email sent ✓');
+      markCadenceEmailSent();
     })
     .catch(() => {
-      // Domain not yet verified or function error — fall back to mailto
+      toast('Resend unavailable — opening Gmail');
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+    })
+    .finally(() => {
+      if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
     });
 }
 
