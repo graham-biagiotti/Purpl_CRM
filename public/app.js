@@ -164,13 +164,21 @@ const SIGNATURE_HTML = `
       — Director of Sales<br>
       603-748-3038 · Warner, NH<br>
       Pumpkin Blossom Farm | purpl &amp; Lavender Fields
+      <div style="margin-top:8px;font-size:13px;
+        color:#6b7280">
+        Reply to this email or contact Graham directly:<br>
+        <a href="mailto:graham@pumpkinblossomfarm.com"
+          style="color:#8B5FBF;text-decoration:none">
+          graham@pumpkinblossomfarm.com
+        </a> · 603-748-3038
+      </div>
     </td>
   </tr>
 </table>`;
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
-  style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);border-radius:8px 8px 0 0">
+  style="background:linear-gradient(135deg,#3d2466 0%,#6B3FA0 100%);border-radius:8px 8px 0 0">
   <tr>
     <td style="padding:24px 32px">
       <table width="100%" cellpadding="0" cellspacing="0">
