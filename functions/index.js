@@ -1,4 +1,4 @@
-const functions = require('firebase-functions');
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {defineSecret} = require('firebase-functions/params');
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
@@ -28,17 +28,18 @@ function checkRateLimit(ip, limit = 5, windowMs = 60000) {
 // ── 1. Send Email ─────────────────────────────────────────
 // Generic transactional email via Resend.
 // data: { to, from, subject, html, accountId? }
-exports.sendEmail = functions
-  .runWith({secrets: ['RESEND_API_KEY']})
-  .https.onCall(async (data, context) => {
+exports.sendEmail = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
+    const data = request.data;
     if (!data.to || !data.subject || !data.html) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'Missing required fields: to, subject, html'
       );
     }
     if (!ALLOWED_FROM.includes(data.from)) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'Invalid from address'
       );
@@ -56,18 +57,20 @@ exports.sendEmail = functions
       });
       return {success: true, id: result.data?.id || result.id};
     } catch (err) {
-      throw new functions.https.HttpsError('internal', err.message);
+      throw new HttpsError('internal', err.message);
     }
-  });
+  }
+);
 
 // ── 2. Send Combined Invoice ──────────────────────────────
 // Sends a full combined invoice HTML email from the farm address.
 // data: { to, accountName, subject, html }
-exports.sendCombinedInvoice = functions
-  .runWith({secrets: ['RESEND_API_KEY']})
-  .https.onCall(async (data, context) => {
+exports.sendCombinedInvoice = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
+    const data = request.data;
     if (!data.to || !data.html) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'Missing required fields: to, html'
       );
@@ -85,18 +88,20 @@ exports.sendCombinedInvoice = functions
       });
       return {success: true, id: result.data?.id || result.id};
     } catch (err) {
-      throw new functions.https.HttpsError('internal', err.message);
+      throw new HttpsError('internal', err.message);
     }
-  });
+  }
+);
 
 // ── 3. Send Order Confirmation ────────────────────────────
 // Sends a branded order confirmation to the customer.
 // data: { to, accountName, contactName, orderSummary, portalLink, isPbf }
-exports.sendOrderConfirmation = functions
-  .runWith({secrets: ['RESEND_API_KEY']})
-  .https.onCall(async (data, context) => {
+exports.sendOrderConfirmation = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
+    const data = request.data;
     if (!data.to || !data.accountName) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'Missing required fields: to, accountName'
       );
@@ -150,22 +155,24 @@ exports.sendOrderConfirmation = functions
       });
       return {success: true, id: result.data?.id || result.id};
     } catch (err) {
-      throw new functions.https.HttpsError('internal', err.message);
+      throw new HttpsError('internal', err.message);
     }
-  });
+  }
+);
 
 // ── 4. Rate-limited wholesale form wrapper ────────────────
 // Wholesale form still writes directly to Firestore from the browser.
 // This callable is a rate-limited wrapper for future use.
-exports.submitWholesaleForm = functions
-  .runWith({secrets: ['RESEND_API_KEY']})
-  .https.onCall(async (data, context) => {
-    const ip = context.rawRequest?.ip || 'unknown';
+exports.submitWholesaleForm = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
+    const ip = request.rawRequest?.ip || 'unknown';
     if (!checkRateLimit(ip)) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'resource-exhausted',
         'Too many requests. Please try again later.'
       );
     }
     return {success: true};
-  });
+  }
+);
