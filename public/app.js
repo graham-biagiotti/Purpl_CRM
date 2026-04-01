@@ -198,6 +198,29 @@ const LF_HEADER_HTML = `
   <tr><td style="background:#4a7c59;height:4px"></td></tr>
 </table>`;
 
+// ── Firebase Functions client helpers ─────────────────────
+async function callSendEmail(to, from, subject, html) {
+  try {
+    const fn = firebase.functions().httpsCallable('sendEmail');
+    const result = await fn({to, from, subject, html});
+    return result.data;
+  } catch (err) {
+    console.error('Send email error:', err);
+    throw err;
+  }
+}
+
+async function callSendCombinedInvoice(to, accountName, subject, html) {
+  try {
+    const fn = firebase.functions().httpsCallable('sendCombinedInvoice');
+    const result = await fn({to, accountName, subject, html});
+    return result.data;
+  } catch (err) {
+    console.error('Send combined invoice error:', err);
+    throw err;
+  }
+}
+
 function buildEmailHTML(headerHTML, accentColor, bodyHTML) {
   return `<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
@@ -1950,7 +1973,19 @@ function openEmailMailto() {
   const t = _currentEmailPreview.template;
   const to = _currentEmailPreview.toEmail || '';
   const subject = document.getElementById('email-preview-subject').value || t.subject;
-  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+  if (!to) return;
+
+  const account = DB.a('ac').find(a => a.id === _currentEmailPreview.accountId) || {};
+  const from = account.isPbf ? 'lavender@pumpkinblossomfarm.com' : 'graham@pumpkinblossomfarm.com';
+
+  callSendEmail(to, from, subject, t.body)
+    .then(() => {
+      toast('Email sent via Resend ✓');
+    })
+    .catch(() => {
+      // Domain not yet verified or function error — fall back to mailto
+      window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+    });
 }
 
 function markCadenceEmailSent() {
@@ -8167,9 +8202,17 @@ function openCombinedInvoicePreview(combinedId) {
       .catch(() => toast('Copy failed'));
   };
   qs('#civ-btn-gmail').onclick = () => {
-    const subj = encodeURIComponent('Invoice from Pumpkin Blossom Farm — ' + rec.accountName);
-    const to   = encodeURIComponent(account.email || '');
-    window.open(`mailto:${to}?subject=${subj}`, '_blank');
+    const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
+    const to = account.email || '';
+    if (!to) { toast('No email address on file for this account'); return; }
+    callSendCombinedInvoice(to, rec.accountName, subject, html)
+      .then(() => {
+        toast('Invoice sent via Resend ✓');
+      })
+      .catch(() => {
+        // Fall back to mailto
+        window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+      });
   };
   qs('#civ-btn-paid').onclick = () => {
     markCombinedPaid(combinedId);

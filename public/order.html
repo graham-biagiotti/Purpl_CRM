@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1177,6 +1178,18 @@ function submitOrder() {
             console.log('Prefs save error:', e);
           });
       }
+      // Send order confirmation email (silent fail — never blocks order submission)
+      firebase.functions().httpsCallable('sendOrderConfirmation')({
+        to: billingEmail,
+        accountName: finalAccountName,
+        contactName: contactName || null,
+        isPbf: _brandLf,
+        portalLink: window.location.href,
+        orderSummary: '',
+      }).catch(function(err) {
+        console.error('Confirmation email failed:', err);
+      });
+
       showThankYou({
         accountName: finalAccountName,
         cases: _brandPurpl ? cases : 0,

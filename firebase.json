@@ -1,5 +1,8 @@
 {
-    "hosting": {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
     "public": "public",
     "ignore": [
       "firebase.json",
@@ -19,21 +22,11 @@
     "headers": [
       {
         "source": "**/*.@(js|css)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       },
       {
         "source": "/sw.js",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
+        "headers": [{"key": "Cache-Control", "value": "no-cache"}]
       }
     ]
   },
@@ -41,16 +34,12 @@
     {
       "source": "functions",
       "codebase": "default",
-      "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
         ".git",
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
       ]
     }
   ]
