@@ -15,7 +15,7 @@
   --blue: #3b82f6;
   --bg: #faf8ff;
   --card: #fff;
-  --border: #e9d5ff;
+  --border: #e5e7eb;
   --text: #1a1a2e;
   --muted: #6b7280;
   --lavblue: #4a90b8;
@@ -654,3 +654,60 @@ th{padding:11px 14px}
 .inv-col.expanded .inv-col-expanded{display:block}
 @media(max-width:1100px){.inv-three-col{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.inv-three-col{grid-template-columns:1fr}}
+
+/* ══════════════════════════════════════════════════════════
+   FINAL POLISH — Clean SaaS baseline (Linear/Notion/Stripe)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Typography ─────────────────────────────────────────── */
+body { font-size: 14px; line-height: 1.5; font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; }
+
+/* ── Topbar ──────────────────────────────────────────────── */
+.topbar { height: 48px; border-bottom-color: #e5e7eb; }
+.topbar h1 { font-size: 14px; font-weight: 600; font-family: inherit; color: var(--text); }
+
+/* ── Page ────────────────────────────────────────────────── */
+.page { padding: 20px; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card { border-radius: 8px; padding: 16px; box-shadow: none; border-color: #e5e7eb; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn { padding: 6px 12px; font-size: 13px; border-radius: 6px; font-weight: 500; border-color: #e5e7eb; }
+.btn.primary { background: #6B3FA0; border-color: #6B3FA0; }
+.btn.primary:hover { background: #5a3490; }
+.btn.sm { padding: 4px 10px; font-size: 12px; min-height: unset; }
+.btn.xs { padding: 2px 8px; font-size: 11px; min-height: unset; }
+
+/* ── Tables ──────────────────────────────────────────────── */
+th { padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; background: #fafafa; }
+td { padding: 9px 12px; font-size: 13px; }
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge { padding: 2px 7px; font-size: 11px; border-radius: 4px; }
+
+/* ── Modals ──────────────────────────────────────────────── */
+.modal { border-radius: 10px; }
+.modal-hdr { padding-bottom: 14px; border-bottom: 1px solid #e5e7eb; margin-bottom: 16px; }
+.modal-footer { padding-top: 14px; border-top-color: #e5e7eb; margin-top: 16px; }
+.modal-hdr h2 { font-family: inherit; color: var(--text); font-size: 15px; font-weight: 600; }
+
+/* ── KPI cards — white, flat, colored number only ───────── */
+.kpi { padding: 16px; box-shadow: none; border-color: #e5e7eb; background: #fff; }
+.kpi .num { font-size: 26px; font-family: inherit; line-height: 1.1; }
+.kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 6px; color: var(--muted); }
+.kpi.purple, .kpi.green, .kpi.red, .kpi.amber, .kpi.blue, .kpi.gray { background: #fff; border-color: #e5e7eb; }
+
+/* ── Dashboard gaps ──────────────────────────────────────── */
+.card-grid { gap: 14px; }
+
+/* ── Section headers ─────────────────────────────────────── */
+.section-hdr { margin-bottom: 12px; }
+.section-hdr h2 { font-size: 14px; font-weight: 600; font-family: inherit; color: var(--text); }
+
+/* ── Sidebar wordmark + More nav section ─────────────────── */
+.sb-wordmark { font-size: 14px; letter-spacing: -0.01em; line-height: 1.3; }
+.sb-divider { border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 12px; }
+.sb-more { opacity: 0.65; font-size: 12px !important; }
+.sb-more:hover, .sb-more.active { opacity: 1 !important; }
+.sb-logo { padding: 14px 16px; }
