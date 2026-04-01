@@ -495,6 +495,24 @@ function renderDash() {
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
   renderAttention();
+
+  // Pending combined invoice notifications (portal orders awaiting invoicing)
+  const pendingInvs = DB.a('pending_invoices').filter(x => x.status === 'pending');
+  if (pendingInvs.length) {
+    const el = qs('#dash-attention');
+    if (el) {
+      el.innerHTML = pendingInvs.map(n => `
+        <div class="attn-item" style="border-left:3px solid #4a7c59">
+          <div class="attn-icon">📄</div>
+          <div class="attn-info" style="flex:1">
+            <div class="attn-name">${escHtml(n.accountName||'')} — ready to invoice</div>
+            <div class="attn-reason">New combined order · purpl + LF</div>
+          </div>
+          <button class="btn xs primary" onclick="nav('invoices')">Review &amp; Invoice</button>
+        </div>`).join('') + el.innerHTML;
+    }
+  }
+
   renderFollowUps();
   renderPendingOrders();
   renderInvoiceStatus();
@@ -5976,6 +5994,24 @@ function setRepBrand(brand) {
 }
 
 function renderReports() {
+  // Combined total KPI — all brands, all time (injected above existing KPI row)
+  const kpiRow = qs('#rep-kpi-row');
+  if (kpiRow) {
+    let combinedEl = qs('#rep-combined-kpi');
+    if (!combinedEl) {
+      combinedEl = document.createElement('div');
+      combinedEl.id = 'rep-combined-kpi';
+      combinedEl.style.marginBottom = '12px';
+      kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
+    }
+    const purplInvoiced = DB.a('iv').reduce((s,x) => s + parseFloat(x.amount||0), 0);
+    const lfInvoiced    = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
+    combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
+      `<div class="num">${fmtC(purplInvoiced + lfInvoiced)}</div>` +
+      `<div class="label">Total Invoiced (All Brands)</div>` +
+      `<div style="font-size:10px;color:var(--muted);margin-top:2px">purpl + LF combined</div></div>`;
+  }
+
   // Set default date range if blank (last 90 days)
   const fromEl = qs('#rep-date-from');
   const toEl   = qs('#rep-date-to');
@@ -7604,6 +7640,48 @@ function deleteLfInvoice(id) {
   if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
   toast('Invoice deleted');
+}
+
+// ── Combined invoices (purpl + LF cross-brand) ────────────
+
+function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=null) {
+  const purplInv = DB.a('iv').find(x => x.id === purplInvId);
+  const lfInv    = DB.a('lf_invoices').find(x => x.id === lfInvId);
+  if (!purplInv || !lfInv) {
+    toast('Could not find invoices to combine');
+    return null;
+  }
+  const id = uid();
+  const rec = {
+    id,
+    purplInvoiceId: purplInvId,
+    lfInvoiceId:    lfInvId,
+    accountId,
+    accountName:    purplInv.accountName || '',
+    status:         'draft',
+    createdAt:      new Date().toISOString(),
+    sentAt:         null,
+    paidAt:         null,
+    portalOrderId:  portalOrderId || null,
+    purplSubtotal:  parseFloat(purplInv.amount||0),
+    lfSubtotal:     parseFloat(lfInv.total||0),
+    grandTotal:     parseFloat(purplInv.amount||0) + parseFloat(lfInv.total||0),
+  };
+  DB.push('combined_invoices', rec);
+  DB.update('iv',          purplInvId, x => ({...x, combinedInvoiceId: id}));
+  DB.update('lf_invoices', lfInvId,    x => ({...x, combinedInvoiceId: id}));
+  return id;
+}
+
+function markCombinedPaid(combinedId) {
+  const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
+  if (!rec) return;
+  const now = new Date().toISOString();
+  DB.update('combined_invoices', combinedId, x => ({...x, status: 'paid', paidAt: now}));
+  DB.update('iv',          rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
+  DB.update('lf_invoices', rec.lfInvoiceId,    x => ({...x, status: 'paid', paidAt: now}));
+  renderInvoicesPage();
+  toast('✓ Combined invoice marked as paid');
 }
 
 // ── Wix pull modal ────────────────────────────────────────

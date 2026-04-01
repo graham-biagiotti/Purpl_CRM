@@ -41,6 +41,8 @@ const ARRAY_KEYS = [
   'lf_invoices',        // LF wholesale invoices (line-item format)
   'lf_wix_deductions',  // Wix inventory pull requests tied to LF invoices
   'retail_invoices',    // delivery-run invoices (already used — registering here)
+  'combined_invoices',  // combined purpl + LF invoices (cross-brand billing)
+  'pending_invoices',   // portal order notifications awaiting combined invoice creation
 ];
 // Collections stored as plain objects (settings, costs, today_run)
 const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];

@@ -1124,7 +1124,28 @@ function submitOrder() {
     : Promise.resolve(null);
 
   Promise.all([purplPromise, lfPromise])
-    .then(function() {
+    .then(function(results) {
+      var purplRef = results[0];
+      var lfRef    = results[1];
+
+      // Notify CRM of combined invoice needed when isPbf account orders both brands
+      if (isPbf && isMatched && accountId && purplRef && lfRef) {
+        var notif = {
+          id: (Date.now().toString(36) + Math.random().toString(36).slice(2)),
+          type: 'combined_needed',
+          accountId: accountId,
+          accountName: finalAccountName,
+          portalOrderId: purplRef.id,
+          lfPortalOrderId: lfRef.id,
+          submittedAt: new Date().toISOString(),
+          status: 'pending',
+          brands: ['purpl', 'lf']
+        };
+        firebase.firestore().doc('workspace/main/data/store').update({
+          pending_invoices: firebase.firestore.FieldValue.arrayUnion(notif)
+        }).catch(function(e) { console.error('pending_invoices write error:', e); });
+      }
+
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
         var lfLastOrder = {};
