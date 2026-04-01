@@ -87,7 +87,7 @@ function nav(page) {
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
-    'pre-orders':'Pre-Orders', invoices:'Invoices', emails:'Emails'
+    'pre-orders':'Forms & Submissions', invoices:'Invoices', emails:'Emails'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) tb.textContent = titles[page] || page;
