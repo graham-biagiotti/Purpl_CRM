@@ -1972,8 +1972,6 @@ function openEmailPreview(stage, accountId, extra={}) {
   document.getElementById('email-preview-frame').srcdoc = template.body;
   document.getElementById('email-preview-body-textarea').value = template.body;
   document.getElementById('email-preview-body-edit').style.display = 'none';
-  const _epSendBtn = document.querySelector('#modal-email-preview .btn.primary');
-  if (_epSendBtn) { _epSendBtn.textContent = 'Send Email'; _epSendBtn.onclick = sendEmailViaResend; }
   openModal('modal-email-preview');
 }
 
