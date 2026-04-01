@@ -1934,12 +1934,12 @@ function renderAccountOutreach(a) {
     <div class="note-item">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
         <span style="font-size:12px;color:var(--muted)">${fmtD(e.date)}</span>
-        <span class="badge ${TYPE_CLS[e.type]||'gray'}" style="font-size:10px">${TYPE_LABELS[e.type]||e.type||'Other'}</span>
-        ${e.regarding?`<span class="badge ${REG_CLS[e.regarding]||'gray'}" style="font-size:10px">${REG_LABEL[e.regarding]||e.regarding}</span>`:''}
-        ${e.outcome?`<span class="badge ${OUT_CLS[e.outcome]||'gray'}" style="font-size:10px">${e.outcome}</span>`:''}
+        <span class="badge ${TYPE_CLS[e.type]||'gray'}" style="font-size:10px">${escHtml(TYPE_LABELS[e.type]||e.type||'Other')}</span>
+        ${e.regarding?`<span class="badge ${REG_CLS[e.regarding]||'gray'}" style="font-size:10px">${escHtml(REG_LABEL[e.regarding]||e.regarding)}</span>`:''}
+        ${e.outcome?`<span class="badge ${OUT_CLS[e.outcome]||'gray'}" style="font-size:10px">${escHtml(e.outcome)}</span>`:''}
       </div>
-      ${e.contact?`<div style="font-size:13px;color:var(--muted);margin-bottom:2px">Spoke with: <strong>${e.contact}</strong></div>`:''}
-      ${(e.notes||e.note)?`<div style="font-size:13px">${e.notes||e.note}</div>`:''}
+      ${e.contact?`<div style="font-size:13px;color:var(--muted);margin-bottom:2px">Spoke with: <strong>${escHtml(e.contact)}</strong></div>`:''}
+      ${(e.notes||e.note)?`<div style="font-size:13px">${escHtml(e.notes||e.note)}</div>`:''}
       ${e.nextFollowUp?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px">📅 Next follow-up: <strong>${fmtD(e.nextFollowUp)}</strong></div>`:''}
     </div>`).join('');
 }
@@ -1959,7 +1959,6 @@ const _TEMPLATE_STAGE_IDS = Object.fromEntries(
 
 // ── Email preview modal state + functions ────────────────
 let _currentEmailPreview = null;
-let _mceCtx = null;  // state for modal-cadence-email
 
 function openEmailPreview(stage, accountId, extra={}) {
   const account = DB.a('ac').find(x=>x.id===accountId);
@@ -2131,95 +2130,6 @@ function _latestAccountInvoiceId(accountId) {
   return (purpl.created||'') >= (lf.created||'') ? purpl.id : lf.id;
 }
 
-function openCadenceEmailPreview(accountId, stageId, invoiceId) {
-  const a = DB.a('ac').find(x=>x.id===accountId);
-  if (!a) return;
-  const stage = CADENCE_STAGES.find(s=>s.id===stageId);
-  if (!stage) return;
-
-  let inv = null;
-  if (stageId === 'invoice_sent' && invoiceId) {
-    inv = DB.a('iv').find(x=>x.id===invoiceId) || DB.a('lf_invoices').find(x=>x.id===invoiceId);
-  }
-
-  const toEmail   = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
-  const fromEmail = stage.from;
-  const subject   = stage.subject(inv);
-  const body      = stage.body(a, inv);
-
-  // Store context for mceSendEmail()
-  _mceCtx = { accountId, stageId, invoiceId: invoiceId||null, toEmail, fromEmail, subject, body };
-
-  const el = qs('#mce-content');
-  if (!el) return;
-
-  el.innerHTML = `
-    <div style="margin-bottom:14px;display:grid;gap:6px;font-size:13px;background:var(--bg);border-radius:8px;padding:12px">
-      <div><span style="font-size:11px;color:var(--muted);display:block">From</span><strong>${escHtml(fromEmail)}</strong></div>
-      <div><span style="font-size:11px;color:var(--muted);display:block">To</span>${toEmail ? escHtml(toEmail) : '<em style="color:var(--muted)">(no email on file)</em>'}</div>
-      <div><span style="font-size:11px;color:var(--muted);display:block">Subject</span><strong>${escHtml(subject)}</strong></div>
-    </div>
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px">Body
-        <button class="btn xs" style="font-weight:400" onclick="qs('#mce-body').readOnly=false;this.textContent='Editing';this.disabled=true">Edit</button>
-      </label>
-      <textarea id="mce-body" rows="12" style="font-size:13px;font-family:inherit;white-space:pre-wrap" readonly>${escHtml(body)}</textarea>
-    </div>`;
-
-  const gmailBtn = qs('#mce-gmail-btn');
-  if (gmailBtn) {
-    gmailBtn.onclick = () => {
-      const finalBody = qs('#mce-body')?.value || body;
-      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
-    };
-  }
-
-  const copyBtn = qs('#mce-copy-btn');
-  if (copyBtn) {
-    copyBtn.onclick = () => {
-      const finalBody = qs('#mce-body')?.value || body;
-      const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
-      navigator.clipboard.writeText(htmlBody).then(() => toast('HTML copied'));
-    };
-  }
-
-  openModal('modal-cadence-email');
-}
-
-function mceSendEmail() {
-  if (!_mceCtx) return;
-  const { accountId, stageId, invoiceId, toEmail, fromEmail, subject } = _mceCtx;
-  const finalBody = qs('#mce-body')?.value || _mceCtx.body;
-  const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
-
-  const btn = qs('#mce-send-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-
-  callSendEmail(toEmail, fromEmail, subject, htmlBody)
-    .then(() => {
-      mceSaveAsSent(accountId, stageId, invoiceId, 'resend');
-      DB.update('ac', accountId, a => ({...a, lastContacted: today()}));
-      toast('Email sent ✓');
-      closeModal('modal-cadence-email');
-      renderMacEmailsTab(accountId);
-      renderEmailsTabHistory(DB.a('ac'));
-    })
-    .catch(() => {
-      toast('Resend unavailable — opening Gmail');
-      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
-      // Do NOT mark as sent on failure
-    })
-    .finally(() => {
-      if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
-    });
-}
-
-function mceSaveAsSent(accountId, stageId, invoiceId, method) {
-  const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: method||'resend' };
-  if (invoiceId) entry.invoiceId = invoiceId;
-  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
-  renderCadenceOverdue();
-}
 
 function markCadenceSent(accountId, stageId, method, invoiceId) {
   const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: 'graham', method: method||'manual' };
@@ -8682,9 +8592,13 @@ function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=nul
     lfSubtotal:     parseFloat(lfInv.total||0),
     grandTotal:     parseFloat(purplInv.amount||0) + parseFloat(lfInv.total||0),
   };
-  DB.push('combined_invoices', rec);
-  DB.update('iv',          purplInvId, x => ({...x, combinedInvoiceId: id}));
-  DB.update('lf_invoices', lfInvId,    x => ({...x, combinedInvoiceId: id}));
+  DB.atomicUpdate(cache => {
+    cache.combined_invoices = [...(cache.combined_invoices||[]), rec];
+    const pi = (cache.iv||[]).findIndex(x => x.id === purplInvId);
+    if (pi >= 0) cache.iv[pi] = {...cache.iv[pi], combinedInvoiceId: id};
+    const li = (cache.lf_invoices||[]).findIndex(x => x.id === lfInvId);
+    if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], combinedInvoiceId: id};
+  });
   return id;
 }
 
