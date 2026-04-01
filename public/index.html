@@ -1351,6 +1351,9 @@
     <!-- ═══════ INVOICES ═══════ -->
     <div class="page" id="page-invoices">
 
+      <!-- Actions bar -->
+      <div id="inv-page-actions" style="display:flex;justify-content:flex-end;margin-bottom:12px"></div>
+
       <!-- KPI row -->
       <div id="inv-page-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
 
@@ -2645,6 +2648,65 @@ document.addEventListener('DOMContentLoaded', () => {
       <button class="btn" onclick="copyEmailHTML()">📋 Copy HTML</button>
       <button class="btn" onclick="openEmailMailto()">✉️ Open in Gmail</button>
       <button class="btn primary" onclick="markCadenceEmailSent()">✓ Mark as Sent</button>
+    </div>
+  </div>
+</div>
+
+<!-- New combined invoice (from scratch) modal -->
+<div class="overlay" id="modal-new-combined">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-hdr">
+      <h2>New Combined Invoice</h2>
+      <button class="btn xs" onclick="closeModal('modal-new-combined')">✕</button>
+    </div>
+
+    <div class="form-row col2">
+      <div class="form-group">
+        <label>Account *</label>
+        <select id="nciv-account"><option value="">Select account...</option></select>
+      </div>
+      <div class="form-group">
+        <label>Due Date</label>
+        <input type="date" id="nciv-due">
+      </div>
+    </div>
+
+    <div class="form-row col2" style="margin-bottom:4px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#8B5FBF;padding:8px 0 4px;border-bottom:2px solid #8B5FBF">💜 purpl Line Items</div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#4a7c59;padding:8px 0 4px;border-bottom:2px solid #4a7c59">🌿 LF Line Items</div>
+    </div>
+
+    <div class="form-row col2">
+      <div>
+        <div id="nciv-purpl-lines"></div>
+        <button class="btn xs" onclick="ncivAddLine('purpl')" style="margin-top:6px">+ Add Item</button>
+        <div style="text-align:right;font-size:13px;font-weight:600;color:#8B5FBF;margin-top:8px">
+          Subtotal: <span id="nciv-purpl-sub">$0.00</span>
+        </div>
+      </div>
+      <div>
+        <div id="nciv-lf-lines"></div>
+        <button class="btn xs" onclick="ncivAddLine('lf')" style="margin-top:6px">+ Add Item</button>
+        <div style="text-align:right;font-size:13px;font-weight:600;color:#4a7c59;margin-top:8px">
+          Subtotal: <span id="nciv-lf-sub">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:right;font-size:16px;font-weight:700;padding:12px 0;border-top:2px solid var(--border);margin-top:8px">
+      Grand Total: <span id="nciv-grand-total">$0.00</span>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="nciv-notes" placeholder="Optional notes...">
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-new-combined')">Cancel</button>
+      <button class="btn primary" onclick="saveNewCombinedInvoice()">Create Combined Invoice</button>
     </div>
   </div>
 </div>

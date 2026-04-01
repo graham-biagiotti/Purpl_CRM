@@ -7685,6 +7685,153 @@ function markCombinedPaid(combinedId) {
   toast('✓ Combined invoice marked as paid');
 }
 
+// ── Invoice numbering ─────────────────────────────────────
+
+function getNextInvoiceNumber(type) {
+  const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
+  const collection = { purpl: 'iv', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
+  const nums = DB.a(collection).map(x => {
+    const n = parseInt((x.number||'').replace(/[^0-9]/g,''));
+    return isNaN(n) ? 0 : n;
+  });
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return `${prefix}-${String(next).padStart(3,'0')}`;
+}
+
+// ── New combined invoice modal ────────────────────────────
+
+let _ncivPurplLines = [];
+let _ncivLfLines    = [];
+
+function openNewCombinedModal() {
+  _ncivPurplLines = [];
+  _ncivLfLines    = [];
+
+  const accts = DB.a('ac').filter(a => a.isPbf);
+  const sel = document.getElementById('nciv-account');
+  sel.innerHTML = '<option value="">Select account...</option>' +
+    accts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+
+  const d30 = new Date(Date.now() + 30*86400000);
+  document.getElementById('nciv-due').value   = d30.toISOString().slice(0,10);
+  document.getElementById('nciv-notes').value = '';
+
+  ncivAddLine('purpl');
+  ncivAddLine('lf');
+  ncivRender();
+  openModal('modal-new-combined');
+}
+
+function ncivAddLine(brand) {
+  const line = { id: uid(), description: '', qty: 0, unitPrice: 0, total: 0 };
+  if (brand === 'purpl') _ncivPurplLines.push(line);
+  else                   _ncivLfLines.push(line);
+  ncivRender();
+}
+
+function ncivRemoveLine(brand, id) {
+  if (brand === 'purpl') _ncivPurplLines = _ncivPurplLines.filter(l => l.id !== id);
+  else                   _ncivLfLines    = _ncivLfLines.filter(l => l.id !== id);
+  ncivRender();
+}
+
+function ncivUpdateLine(brand, id, field, val) {
+  const lines = brand === 'purpl' ? _ncivPurplLines : _ncivLfLines;
+  const line = lines.find(l => l.id === id);
+  if (!line) return;
+  line[field] = val;
+  line.total = (parseFloat(line.qty)||0) * (parseFloat(line.unitPrice)||0);
+  ncivCalcTotals();
+}
+
+function ncivCalcTotals() {
+  const purplSub = _ncivPurplLines.reduce((s,l) => s + (l.total||0), 0);
+  const lfSub    = _ncivLfLines.reduce((s,l) => s + (l.total||0), 0);
+  document.getElementById('nciv-purpl-sub').textContent   = '$' + purplSub.toFixed(2);
+  document.getElementById('nciv-lf-sub').textContent      = '$' + lfSub.toFixed(2);
+  document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
+}
+
+function ncivRender() {
+  const renderLines = (lines, brand, containerId) => {
+    document.getElementById(containerId).innerHTML = lines.map(l => `
+      <div style="display:grid;grid-template-columns:1fr 60px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
+        <input placeholder="Description..." value="${escHtml(l.description)}"
+          style="font-size:12px;padding:5px 8px"
+          oninput="ncivUpdateLine('${brand}','${l.id}','description',this.value)">
+        <input type="number" placeholder="Qty" value="${l.qty||''}"
+          style="font-size:12px;padding:5px 8px"
+          oninput="ncivUpdateLine('${brand}','${l.id}','qty',this.value)">
+        <input type="number" placeholder="Price" value="${l.unitPrice||''}" step="0.01"
+          style="font-size:12px;padding:5px 8px"
+          oninput="ncivUpdateLine('${brand}','${l.id}','unitPrice',this.value)">
+        <button class="btn xs red" onclick="ncivRemoveLine('${brand}','${l.id}')">✕</button>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--muted);margin-bottom:4px">
+        $${(l.total||0).toFixed(2)}
+      </div>`).join('');
+  };
+  renderLines(_ncivPurplLines, 'purpl', 'nciv-purpl-lines');
+  renderLines(_ncivLfLines,    'lf',    'nciv-lf-lines');
+  ncivCalcTotals();
+}
+
+function saveNewCombinedInvoice() {
+  const accountId = document.getElementById('nciv-account').value;
+  if (!accountId) { toast('Select an account'); return; }
+
+  const purplLines = _ncivPurplLines.filter(l => l.description || l.total > 0);
+  const lfLines    = _ncivLfLines.filter(l => l.description || l.total > 0);
+  if (!purplLines.length && !lfLines.length) { toast('Add at least one line item'); return; }
+
+  const account  = DB.a('ac').find(x => x.id === accountId) || {};
+  const due      = document.getElementById('nciv-due').value;
+  const notes    = document.getElementById('nciv-notes').value;
+  const issued   = new Date().toISOString().slice(0,10);
+  const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
+  const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
+
+  // Read next numbers before any write so they're accurate
+  const purplNum = getNextInvoiceNumber('purpl');
+  const lfNum    = getNextInvoiceNumber('lf');
+  const combNum  = getNextInvoiceNumber('combined');
+  const purplId  = uid();
+  const lfId     = uid();
+  const combId   = uid();
+
+  const purplInv = {
+    id: purplId, number: purplNum, accountId, accountName: account.name||'',
+    issued, due, amount: purplSub, status: 'unpaid', lineItems: purplLines,
+    notes, combinedInvoiceId: combId, source: 'manual',
+  };
+  const lfInv = {
+    id: lfId, number: lfNum, accountId, accountName: account.name||'',
+    issued, due, total: lfSub, status: 'unpaid',
+    lineItems: lfLines.map(l => ({
+      ...l, skuName: l.description, units: l.qty, lineTotal: l.total, hasVariants: false,
+    })),
+    notes, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+  };
+  const combInv = {
+    id: combId, number: combNum, purplInvoiceId: purplId, lfInvoiceId: lfId,
+    accountId, accountName: account.name||'', status: 'unpaid',
+    createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
+    purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
+    notes, source: 'manual',
+  };
+
+  DB.atomicUpdate(cache => {
+    cache.iv               = [...(cache.iv||[]),               purplInv];
+    cache.lf_invoices      = [...(cache.lf_invoices||[]),      lfInv];
+    cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
+  });
+
+  closeModal('modal-new-combined');
+  renderInvoicesPage();
+  toast('Combined invoice created — ' + combNum);
+  setTimeout(() => openCombinedInvoicePreview(combId), 300);
+}
+
 // ── Combined invoice HTML builder ─────────────────────────
 
 function buildCombinedInvoiceHTML(combinedId) {
@@ -9287,6 +9434,12 @@ function editInv(id) {
 }
 
 function renderInvoicesPage() {
+  const actionsEl = qs('#inv-page-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = DB.a('ac').some(a => a.isPbf)
+      ? `<button class="btn primary" onclick="openNewCombinedModal()">+ New Combined Invoice</button>`
+      : '';
+  }
   renderInvKpis();
   renderInvColPurpl();
   renderInvColLf();
