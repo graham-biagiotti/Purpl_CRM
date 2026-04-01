@@ -78,7 +78,7 @@ body{font-family:var(--font-body);background:var(--bg);color:var(--text);display
 .brand-text .wordmark sup{font-size:9px;font-weight:400;vertical-align:super;opacity:.7;font-family:var(--font-body)}
 .brand-text .tagline{font-size:10px;color:#6b5f8a;margin-top:2px;letter-spacing:.02em}
 
-.sb-nav{flex:1;padding:8px 0;overflow-y:auto}
+.sb-nav{flex:1;padding:8px 0;overflow-y:auto;overflow-x:hidden}
 .sb-nav a{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#9080b0;text-decoration:none;font-size:13px;transition:.15s;cursor:pointer;border:none;background:none;width:100%}
 .sb-nav a:hover,.sb-nav a.active{background:rgba(123,79,160,0.3);color:#fff}
 .sb-nav a.active{border-left:3px solid #9B6DC0;padding-left:13px}
@@ -389,8 +389,7 @@ body{font-size:15px;line-height:1.5}
 .dash-welcome-right .dw-summary strong{color:#e2ccff;font-weight:600}
 
 /* ── Sidebar nav enhanced ───────────────────────────────── */
-.sb-nav a{border-radius:0 8px 8px 0;margin-right:8px}
-.sb-nav a:hover{transform:translateX(2px)}
+.sb-nav a{border-radius:6px;margin:0 8px}
 .sb-nav .section{font-weight:700;border-top:1px solid #1a1030;padding-top:14px;margin-top:4px}
 /* First section has no top border */
 .sb-nav > .section:first-child{border-top:none;padding-top:10px}
