@@ -680,6 +680,27 @@ function renderAttention() {
     items.push({icon:'📅', name:`${d.name} — Follow-Up Overdue`, reason:`Scheduled ${fmtD(d.nextFollowup)}`, action:`openDistributor('${d.id}')`, borderColor:'#d97706'});
   });
 
+  // Sample follow-ups — prospects/accounts where a sample was sent 14+ days ago and follow-up is not done
+  const _smpSources = [
+    ...DB.a('pr').filter(p=>!['won','lost'].includes(p.status)),
+    ...DB.a('ac').filter(a=>a.status==='active'),
+  ];
+  _smpSources.forEach(r=>{
+    (r.samples||[]).forEach(s=>{
+      if (s.followUpDone) return;
+      const age = daysAgo(s.date);
+      if (age < 14) return;
+      const isPr = !!DB.a('pr').find(x=>x.id===r.id);
+      items.push({
+        icon:'🧪',
+        name: r.name,
+        reason:`Sample sent ${age} days ago — follow-up pending`,
+        action: isPr ? `openProspect('${r.id}')` : `openAccount('${r.id}')`,
+        borderColor:'#d97706',
+      });
+    });
+  });
+
   // Update badge
   const badge = qs('#dash-attention-badge');
   if (badge) {
@@ -1701,6 +1722,22 @@ function openAccount(id) {
 
   // Notes
   renderAccountNotes(a);
+
+  // Samples
+  const smpList = qs('#mac-samples-list');
+  if (smpList) {
+    const samples = (a.samples||[]).slice().reverse();
+    smpList.innerHTML = samples.length
+      ? samples.map(s=>`<div class="note-item" style="margin-bottom:8px">
+          <div class="note-date">${fmtD(s.date)}${s.flavors?` — ${escHtml(s.flavors)}`:''}</div>
+          ${s.notes?`<div style="font-size:12px">${escHtml(s.notes)}</div>`:''}
+          ${s.followUpDate?`<div style="font-size:12px;color:${s.followUpDone?'var(--muted)':s.followUpDate<today()?'var(--red)':'var(--blue)'}">Follow-up: ${fmtD(s.followUpDate)}${s.followUpDone?' ✓':''}</div>`:''}
+          ${!s.followUpDone&&s.followUpDate?`<button class="btn xs" style="margin-top:4px" onclick="markSampleFollowUpDone('ac','${id}','${s.id}')">Mark Done</button>`:''}
+        </div>`).join('')
+      : '<div style="color:var(--muted);font-size:13px">No samples logged.</div>';
+  }
+  const smpBtn = qs('#mac-log-sample-btn');
+  if (smpBtn) smpBtn.onclick = () => openLogSampleModal('ac', id);
 
   // Outreach tab
   renderAccountOutreach(a);
@@ -3230,6 +3267,16 @@ function renderProspects() {
   el.innerHTML = list.map(p=>{
     const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
     const lastNote      = p.notes?.length ? p.notes[p.notes.length-1] : null;
+    const latestSample  = (p.samples||[]).slice().sort((a,b)=>b.date>a.date?1:-1)[0];
+    const smpFuDate     = latestSample?.followUpDate;
+    const in7d          = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    const smpFollowBadge = latestSample && !latestSample.followUpDone && smpFuDate
+      ? (smpFuDate < today()
+          ? `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`
+          : smpFuDate <= in7d
+            ? `<span class="badge amber" style="font-size:10px">🧪 Follow-up ${fmtD(smpFuDate)}</span>`
+            : '')
+      : '';
     const lastOutreach  = p.outreach?.length ? p.outreach[p.outreach.length-1] : null;
     const lastContactStr= p.lastContact
       ? `${fmtD(p.lastContact)} (${daysAgo(p.lastContact)}d)`
@@ -3240,7 +3287,8 @@ function renderProspects() {
           ? `<span style="color:var(--blue);font-style:italic">${p.nextFollowUpLabel}</span>`
           : '<span style="color:var(--muted)">—</span>');
 
-    return `<div class="pr-card stage-${p.status||'lead'}">
+    return `<div class="pr-card stage-${p.status||'lead'}" ${p.status==='lost'?'style="opacity:0.75;background:#f9fafb;border-color:#d1d5db"':''}>
+
       <div class="pr-card-hdr">
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
@@ -3254,6 +3302,8 @@ function renderProspects() {
         <div class="ac-card-badges">
           ${statusBadge(PR_STATUS,p.status)}
           <span class="badge ${priCfg.cls}">${priCfg.label}</span>
+          ${latestSample?`<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(latestSample.date)}</span>`:''}
+          ${smpFollowBadge}
         </div>
       </div>
       <div class="ac-card-metrics cols3">
@@ -3263,6 +3313,7 @@ function renderProspects() {
       </div>
       ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
       ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}</div></div>`:''}
+      ${p.status==='lost'&&p.lostReason?`<div class="ac-card-section"><div class="ac-card-section-label" style="color:var(--red)">Lost — ${escHtml(p.lostReason)}</div>${p.lostNotes?`<div style="font-size:13px">${escHtml(p.lostNotes)}</div>`:''}</div>`:''}
       <div class="pr-card-nextsteps pr-card-nextsteps-tap" onclick="openLogOutreachModal('pr','${p.id}')">
         <div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps <span style="font-size:10px;color:#93c5fd">(tap to log)</span></div>
         <div class="pr-card-nextsteps-text">${p.nextAction||'<span style="color:#93c5fd">No next steps set — tap to add</span>'}${p.nextDate?' &nbsp;·&nbsp; <strong>'+fmtD(p.nextDate)+'</strong>':''}</div>
@@ -3272,7 +3323,10 @@ function renderProspects() {
         <button class="btn sm" onclick="editProspect('${p.id}')">Edit</button>
         <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert</button>
         <button class="btn xs" onclick="generateOrderLink('${p.id}','${escHtml(p.name)}','${escHtml(p.email||'')}','prospects')">🔗 Order Link</button>
-        <button class="btn sm red" onclick="deleteProspect('${p.id}')">✕</button>
+        <button class="btn xs" onclick="openLogSampleModal('pr','${p.id}')">🧪 Sample</button>
+        ${p.status==='lost'
+          ?`<button class="btn sm green" onclick="reactivateProspect('${p.id}')">↩ Reactivate</button>`
+          :`<button class="btn sm red" onclick="markProspectLost('${p.id}')">✕</button>`}
       </div>
     </div>`;
   }).join('')||'<div class="empty">No prospects yet. Click "+ Add Prospect" to get started.</div>';
@@ -3391,7 +3445,7 @@ function editProspect(id) {
   const delBtn = qs('#epr-delete-btn');
   if (delBtn) {
     delBtn.style.display = isNew ? 'none' : '';
-    delBtn.onclick = () => { if(confirm2('Delete prospect?')){ DB.remove('pr',id); closeModal('modal-edit-prospect'); renderProspects(); toast('Deleted'); }};
+    delBtn.onclick = () => { closeModal('modal-edit-prospect'); markProspectLost(id); };
   }
 
   openModal('modal-edit-prospect');
@@ -3581,10 +3635,185 @@ function saveLogOutreach() {
 }
 
 function deleteProspect(id) {
-  if (!confirm2('Delete this prospect?')) return;
-  DB.remove('pr', id);
+  markProspectLost(id);
+}
+
+// ── Prospect Import from CSV ────────────────────────────────
+let _importProspectsCsvText = '';
+
+function openImportProspects() {
+  _importProspectsCsvText = '';
+  if (qs('#imp-pr-paste')) qs('#imp-pr-paste').value = '';
+  if (qs('#imp-pr-file-name')) qs('#imp-pr-file-name').textContent = '';
+  if (qs('#imp-pr-preview')) qs('#imp-pr-preview').textContent = '';
+  if (qs('#imp-pr-file-input')) qs('#imp-pr-file-input').value = '';
+  const tabs = qs('#imp-pr-tabs');
+  if (tabs && !tabs.dataset.wired) {
+    tabs.dataset.wired = '1';
+    tabs.querySelectorAll('.tab').forEach(t => {
+      t.onclick = () => {
+        tabs.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        if (qs('#imp-pr-tab-paste')) qs('#imp-pr-tab-paste').style.display = t.dataset.tab === 'paste' ? '' : 'none';
+        if (qs('#imp-pr-tab-file')) qs('#imp-pr-tab-file').style.display = t.dataset.tab === 'file' ? '' : 'none';
+      };
+    });
+  }
+  openModal('modal-import-prospects');
+}
+
+function _parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return [];
+  function parseRow(line) {
+    const cols = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z ]/g, '').trim());
+  return lines.slice(1).map(line => {
+    const vals = parseRow(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  });
+}
+
+function _csvMapProspect(row) {
+  const get = (...keys) => { for (const k of keys) { if (row[k] !== undefined && row[k] !== '') return row[k]; } return ''; };
+  const name = get('business name', 'name', 'company', 'business');
+  if (!name) return null;
+  const stageRaw = get('stage', 'status').toLowerCase();
+  const stageMap = { cold:'lead', lead:'lead', new:'lead', contacted:'contacted', sampling:'sampling', negotiating:'negotiating', won:'won', lost:'lost' };
+  const status = stageMap[stageRaw] || 'lead';
+  const priRaw = get('priority').toLowerCase();
+  const priority = ({ high:'high', medium:'medium', med:'medium', low:'low' })[priRaw] || 'medium';
+  const noteText = get('notes', 'note');
+  return {
+    id: uid(), name,
+    contact: get('contact name', 'contact', 'owner', 'contact person'),
+    email:   get('email', 'email address'),
+    phone:   get('phone', 'phone number', 'tel'),
+    address: get('address', 'location', 'city'),
+    type:    get('type', 'business type') || 'Grocery',
+    status, priority,
+    notes:    noteText ? [{ id: uid(), date: today(), text: noteText }] : [],
+    outreach: [], lastContact: '', isPbf: false, samples: [],
+  };
+}
+
+function _onImportProspectsFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (qs('#imp-pr-file-name')) qs('#imp-pr-file-name').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    _importProspectsCsvText = ev.target.result;
+    const rows  = _parseCSV(_importProspectsCsvText);
+    const valid = rows.map(_csvMapProspect).filter(Boolean).length;
+    if (qs('#imp-pr-preview')) qs('#imp-pr-preview').textContent = `${rows.length} rows detected — ${valid} valid prospects found.`;
+  };
+  reader.readAsText(file);
+}
+
+function _runImportProspects() {
+  const text = _importProspectsCsvText || qs('#imp-pr-paste')?.value?.trim() || '';
+  if (!text) { toast('No CSV data to import'); return; }
+  const rows = _parseCSV(text);
+  const prospects = rows.map(_csvMapProspect).filter(Boolean);
+  const skipped   = rows.length - prospects.length;
+  if (!prospects.length) { toast('No valid rows — ensure a "Business Name" column is present'); return; }
+  DB.atomicUpdate(cache => { cache['pr'] = [...(cache['pr'] || []), ...prospects]; });
+  closeModal('modal-import-prospects');
+  renderProspects();
+  toast(`${prospects.length} prospect${prospects.length !== 1 ? 's' : ''} imported, ${skipped} skipped`);
+}
+
+// ── Sample Tracking ─────────────────────────────────────────
+let _logSampleCtx = null;
+
+function openLogSampleModal(type, id) {
+  _logSampleCtx = { type, id };
+  if (qs('#lsmp-date'))    qs('#lsmp-date').value    = today();
+  if (qs('#lsmp-followup')) qs('#lsmp-followup').value = '';
+  if (qs('#lsmp-flavors')) qs('#lsmp-flavors').value  = '';
+  if (qs('#lsmp-notes'))   qs('#lsmp-notes').value    = '';
+  openModal('modal-log-sample');
+}
+
+function saveLogSample() {
+  if (!_logSampleCtx) return;
+  const { type, id } = _logSampleCtx;
+  const sample = {
+    id: uid(),
+    date:          qs('#lsmp-date')?.value     || today(),
+    flavors:       qs('#lsmp-flavors')?.value?.trim() || '',
+    notes:         qs('#lsmp-notes')?.value?.trim()   || '',
+    followUpDate:  qs('#lsmp-followup')?.value || '',
+    followUpDone:  false,
+  };
+  const col = type === 'pr' ? 'pr' : 'ac';
+  DB.update(col, id, r => ({ ...r, samples: [...(r.samples || []), sample] }));
+  closeModal('modal-log-sample');
+  if (type === 'pr') renderProspects();
+  else openAccount(id);
+  toast('Sample logged');
+}
+
+function markSampleFollowUpDone(type, id, sampleId) {
+  const col = type === 'pr' ? 'pr' : 'ac';
+  DB.update(col, id, r => ({
+    ...r,
+    samples: (r.samples || []).map(s => s.id === sampleId ? { ...s, followUpDone: true } : s),
+  }));
+  if (type === 'pr') renderProspects();
+  else openAccount(id);
+  toast('Follow-up marked done');
+}
+
+// ── Win/Loss Tracking ────────────────────────────────────────
+let _markLostId = null;
+
+function markProspectLost(id) {
+  _markLostId = id;
+  const p = DB.a('pr').find(x => x.id === id);
+  if (!p) return;
+  if (qs('#mml-prospect-name')) qs('#mml-prospect-name').textContent = p.name;
+  if (qs('#mml-reason')) qs('#mml-reason').value = 'No response';
+  if (qs('#mml-notes'))  qs('#mml-notes').value  = '';
+  openModal('modal-mark-lost');
+}
+
+function confirmMarkLost() {
+  if (!_markLostId) return;
+  const reason = qs('#mml-reason')?.value || 'Other';
+  const notes  = qs('#mml-notes')?.value?.trim() || '';
+  DB.update('pr', _markLostId, p => ({ ...p, status: 'lost', lostAt: today(), lostReason: reason, lostNotes: notes }));
+  closeModal('modal-mark-lost');
+  renderProspects();
+  toast('Marked as lost');
+}
+
+function _deleteProspectPermanent() {
+  if (!_markLostId) return;
+  if (!confirm2('Permanently delete this prospect? This cannot be undone.')) return;
+  DB.remove('pr', _markLostId);
+  closeModal('modal-mark-lost');
   renderProspects();
   toast('Prospect deleted');
+}
+
+function reactivateProspect(id) {
+  if (!confirm2('Reactivate this prospect?')) return;
+  DB.update('pr', id, p => ({ ...p, status: 'lead', lostAt: '', lostReason: '', lostNotes: '' }));
+  renderProspects();
+  toast('Prospect reactivated');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -6087,14 +6316,59 @@ function _drawChart(type, labels, datasets, title) {
 }
 
 function renderReportContent() {
+  if (qs('#rep-extra')) qs('#rep-extra').innerHTML = '';
   const handlers = {
     revenue:     repRevenue,
     accounts:    repAccounts,
     inventory:   repInventory,
     distributor: repDistributor,
     profit:      repProfit,
+    win_loss:    repWinLoss,
   };
   (handlers[_reportType]||repRevenue)();
+}
+
+// ── Win/Loss Report ─────────────────────────────────────────
+function repWinLoss() {
+  const allPr = DB.a('pr');
+  const won   = allPr.filter(p=>p.status==='won');
+  const lost  = allPr.filter(p=>p.status==='lost');
+  const total = won.length + lost.length;
+  const winRatePct = total > 0 ? ((won.length/total)*100).toFixed(1) : '—';
+
+  _setKPIs(
+    won.length,
+    lost.length,
+    winRatePct + (winRatePct !== '—' ? '%' : ''),
+    total + ' evaluated'
+  );
+
+  const reasons = {};
+  lost.forEach(p=>{ const r = p.lostReason||'Unknown'; reasons[r]=(reasons[r]||0)+1; });
+  const sorted = Object.entries(reasons).sort((a,b)=>b[1]-a[1]);
+
+  const thead = qs('#rep-table-head');
+  const tbody = qs('#rep-table-body');
+  const tt = qs('#rep-table-title'); if (tt) tt.textContent = 'Loss Reasons';
+  if (thead) thead.innerHTML = '<tr><th>Reason</th><th>Count</th></tr>';
+  if (tbody) tbody.innerHTML = sorted.length
+    ? sorted.map(([r,c])=>`<tr><td>${escHtml(r)}</td><td>${c}</td></tr>`).join('')
+    : '<tr><td colspan="2" class="empty">No lost prospects yet</td></tr>';
+
+  const extraEl = qs('#rep-extra');
+  if (extraEl && won.length) {
+    extraEl.innerHTML = `<div class="card"><div style="font-weight:600;margin-bottom:8px">Converted Prospects (${won.length})</div><div style="font-size:13px;color:var(--muted)">${won.map(p=>escHtml(p.name)).join(', ')}</div></div>`;
+  }
+
+  if (sorted.length) {
+    _drawChart('bar',
+      sorted.map(([r])=>r),
+      [{label:'Count', data:sorted.map(([,c])=>c), backgroundColor:'rgba(220,38,38,0.7)', borderRadius:4}],
+      'Loss Reasons'
+    );
+  } else {
+    const ct = qs('#rep-chart-title'); if (ct) ct.textContent = 'Win/Loss';
+  }
 }
 
 // ── Revenue & Sales ────────────────────────────────────────
