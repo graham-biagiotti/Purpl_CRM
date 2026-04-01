@@ -466,6 +466,19 @@ function renderDash() {
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
   if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('Wix Pulls', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
+  // Low inventory KPI
+  const totalCans = SKUS.reduce((sum, sk) => {
+    const oh = inv.filter(i => i.sku === sk.id && i.type === 'in').reduce((t, i) => t + i.qty, 0)
+             - inv.filter(i => i.sku === sk.id && i.type === 'out').reduce((t, i) => t + i.qty, 0);
+    return sum + Math.max(0, oh);
+  }, 0);
+  const lowInvThreshold = DB.obj('settings', {}).lowInvThreshold || 500;
+  const kpiInvEl = qs('#dash-kpi-inv-cans');
+  if (kpiInvEl) {
+    kpiInvEl.innerHTML = kpiHtml('Total Inventory', totalCans + ' cans', totalCans < lowInvThreshold ? 'red' : 'gray');
+    kpiInvEl.style.border = totalCans < lowInvThreshold ? '1.5px solid var(--red)' : '';
+  }
+
   const allPr      = DB.a('pr');
   const prPurplCount = allPr.filter(p => !p.isPbf).length;
   const prLfCount    = allPr.filter(p => !!p.isPbf).length;
@@ -495,6 +508,7 @@ function renderDash() {
   qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
 
   renderAttention();
+  renderReorderPredictions();
 
   // Pending combined invoice notifications (portal orders awaiting invoicing)
   const pendingInvs = DB.a('pending_invoices').filter(x => x.status === 'pending');
@@ -775,6 +789,59 @@ function dashMarkFollowUpDone(id, type) {
   }
   renderFollowUps();
   toast('Follow-up marked done');
+}
+
+// ── Reorder Predictions ───────────────────────────────────
+function renderReorderPredictions() {
+  const el = qs('#dash-reorder');
+  if (!el) return;
+  const accounts = DB.a('ac').filter(a => a.status === 'active');
+  const orders = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const predictions = [];
+
+  accounts.forEach(a => {
+    const acOrds = orders.filter(o => o.accountId === a.id)
+      .sort((x, y) => x.created > y.created ? 1 : -1);
+    if (acOrds.length < 2) return;
+
+    const intervals = [];
+    for (let i = 1; i < acOrds.length; i++) {
+      const d1 = new Date(acOrds[i-1].created);
+      const d2 = new Date(acOrds[i].created);
+      const diff = Math.round((d2 - d1) / 86400000);
+      if (diff > 0) intervals.push(diff);
+    }
+    if (!intervals.length) return;
+
+    const avgInterval = Math.round(intervals.reduce((s, v) => s + v, 0) / intervals.length);
+    const lastOrdDate = acOrds[acOrds.length - 1].created;
+    const daysUntilDue = avgInterval - daysAgo(lastOrdDate);
+
+    if (daysUntilDue <= 14) {
+      predictions.push({ a, avgInterval, daysUntilDue, lastOrdDate });
+    }
+  });
+
+  predictions.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+
+  if (!predictions.length) {
+    el.innerHTML = '<div class="empty" style="padding:16px">No reorders predicted in the next 14 days.</div>';
+    return;
+  }
+
+  el.innerHTML = predictions.slice(0, 6).map(({ a, avgInterval, daysUntilDue, lastOrdDate }) => {
+    const overdue = daysUntilDue < 0;
+    const color = overdue ? 'var(--red)' : daysUntilDue <= 7 ? '#d97706' : 'var(--green)';
+    const label = overdue ? `${Math.abs(daysUntilDue)}d overdue` : daysUntilDue === 0 ? 'due today' : `in ${daysUntilDue}d`;
+    return `<div class="attn-item" style="cursor:pointer" onclick="openAccount('${a.id}')">
+      <div class="attn-icon">🔄</div>
+      <div class="attn-info" style="flex:1">
+        <div class="attn-name">${escHtml(a.name)}</div>
+        <div class="attn-reason">Every ~${avgInterval}d · last ${fmtD(lastOrdDate)}</div>
+      </div>
+      <span style="font-size:12px;font-weight:600;color:${color}">${label}</span>
+    </div>`;
+  }).join('');
 }
 
 // ── Cadence Overdue ───────────────────────────────────────
@@ -6711,9 +6778,10 @@ function renderSettings() {
   const c = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
 
   // Company
-  if(qs('#set-company'))       qs('#set-company').value       = s.company||'';
-  if(qs('#set-payment-terms')) qs('#set-payment-terms').value = s.payment_terms||30;
-  if(qs('#set-lead-time'))     qs('#set-lead-time').value     = s.production_lead_time||14;
+  if(qs('#set-company'))            qs('#set-company').value            = s.company||'';
+  if(qs('#set-payment-terms'))     qs('#set-payment-terms').value     = s.payment_terms||30;
+  if(qs('#set-lead-time'))         qs('#set-lead-time').value         = s.production_lead_time||14;
+  if(qs('#set-low-inv-threshold')) qs('#set-low-inv-threshold').value = s.lowInvThreshold||500;
 
   // COGS
   SKUS.forEach(sk=>{
@@ -6798,9 +6866,10 @@ function saveSettings() {
     default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
     default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
     variety_recipe:        recipeTotal === CANS_PER_CASE ? recipe : (DB.obj('settings',{}).variety_recipe||{}),
+    lowInvThreshold:       parseInt(qs('#set-low-inv-threshold')?.value)||500,
     // Preserve existing fields (known_users etc.)
     ...Object.fromEntries(
-      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe'].includes(k))
+      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowInvThreshold'].includes(k))
     ),
   };
   DB.setObj('settings', s);
