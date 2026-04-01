@@ -1947,6 +1947,7 @@ const _TEMPLATE_STAGE_IDS = Object.fromEntries(
 
 // ── Email preview modal state + functions ────────────────
 let _currentEmailPreview = null;
+let _mceCtx = null;  // state for modal-cadence-email
 
 function openEmailPreview(stage, accountId, extra={}) {
   const account = DB.a('ac').find(x=>x.id===accountId);
@@ -2129,19 +2130,22 @@ function openCadenceEmailPreview(accountId, stageId, invoiceId) {
     inv = DB.a('iv').find(x=>x.id===invoiceId) || DB.a('lf_invoices').find(x=>x.id===invoiceId);
   }
 
-  const toEmail = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
+  const toEmail   = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
   const fromEmail = stage.from;
   const subject   = stage.subject(inv);
   const body      = stage.body(a, inv);
+
+  // Store context for mceSendEmail()
+  _mceCtx = { accountId, stageId, invoiceId: invoiceId||null, toEmail, fromEmail, subject, body };
 
   const el = qs('#mce-content');
   if (!el) return;
 
   el.innerHTML = `
     <div style="margin-bottom:14px;display:grid;gap:6px;font-size:13px;background:var(--bg);border-radius:8px;padding:12px">
-      <div><span style="font-size:11px;color:var(--muted);display:block">From</span><strong>${fromEmail}</strong></div>
-      <div><span style="font-size:11px;color:var(--muted);display:block">To</span>${toEmail||'<em style="color:var(--muted)">(no email on file)</em>'}</div>
-      <div><span style="font-size:11px;color:var(--muted);display:block">Subject</span><strong>${subject}</strong></div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">From</span><strong>${escHtml(fromEmail)}</strong></div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">To</span>${toEmail ? escHtml(toEmail) : '<em style="color:var(--muted)">(no email on file)</em>'}</div>
+      <div><span style="font-size:11px;color:var(--muted);display:block">Subject</span><strong>${escHtml(subject)}</strong></div>
     </div>
     <div class="form-group">
       <label style="display:flex;align-items:center;gap:8px">Body
@@ -2152,40 +2156,57 @@ function openCadenceEmailPreview(accountId, stageId, invoiceId) {
 
   const gmailBtn = qs('#mce-gmail-btn');
   if (gmailBtn) {
-    gmailBtn.textContent = 'Send Email';
     gmailBtn.onclick = () => {
       const finalBody = qs('#mce-body')?.value || body;
-      const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
-      gmailBtn.disabled = true;
-      gmailBtn.textContent = 'Sending…';
-      callSendEmail(toEmail, fromEmail, subject, htmlBody)
-        .then(() => {
-          toast('Email sent ✓');
-          markCadenceSent(accountId, stageId, 'resend', invoiceId||null);
-          closeModal('modal-cadence-email');
-        })
-        .catch(() => {
-          toast('Resend unavailable — opening Gmail');
-          window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
-          markCadenceSent(accountId, stageId, 'mailto', invoiceId||null);
-          closeModal('modal-cadence-email');
-        })
-        .finally(() => {
-          gmailBtn.disabled = false;
-          gmailBtn.textContent = 'Send Email';
-        });
+      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
     };
   }
-  const markBtn = qs('#mce-mark-sent-btn');
-  if (markBtn) {
-    markBtn.textContent = '✓ Mark as Sent';
-    markBtn.onclick = () => {
-      markCadenceSent(accountId, stageId, 'manual', invoiceId||null);
-      closeModal('modal-cadence-email');
+
+  const copyBtn = qs('#mce-copy-btn');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      const finalBody = qs('#mce-body')?.value || body;
+      const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
+      navigator.clipboard.writeText(htmlBody).then(() => toast('HTML copied'));
     };
   }
 
   openModal('modal-cadence-email');
+}
+
+function mceSendEmail() {
+  if (!_mceCtx) return;
+  const { accountId, stageId, invoiceId, toEmail, fromEmail, subject } = _mceCtx;
+  const finalBody = qs('#mce-body')?.value || _mceCtx.body;
+  const htmlBody = `<pre style="font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;white-space:pre-wrap">${finalBody}</pre>`;
+
+  const btn = qs('#mce-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  callSendEmail(toEmail, fromEmail, subject, htmlBody)
+    .then(() => {
+      mceSaveAsSent(accountId, stageId, invoiceId, 'resend');
+      DB.update('ac', accountId, a => ({...a, lastContacted: today()}));
+      toast('Email sent ✓');
+      closeModal('modal-cadence-email');
+      renderMacEmailsTab(accountId);
+      renderEmailsTabHistory(DB.a('ac'));
+    })
+    .catch(() => {
+      toast('Resend unavailable — opening Gmail');
+      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(finalBody)}`, '_blank');
+      // Do NOT mark as sent on failure
+    })
+    .finally(() => {
+      if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
+    });
+}
+
+function mceSaveAsSent(accountId, stageId, invoiceId, method) {
+  const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: method||'resend' };
+  if (invoiceId) entry.invoiceId = invoiceId;
+  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
+  renderCadenceOverdue();
 }
 
 function markCadenceSent(accountId, stageId, method, invoiceId) {
