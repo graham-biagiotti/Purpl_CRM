@@ -6086,6 +6086,15 @@ function renderReports() {
   if (fromEl && !fromEl.value) fromEl.value = new Date(Date.now()-90*864e5).toISOString().slice(0,10);
   if (toEl   && !toEl.value)   toEl.value   = today();
 
+  // Populate year-end filter dropdown (once)
+  const yrSel = qs('#rep-year-filter');
+  if (yrSel && !yrSel.dataset.built) {
+    yrSel.dataset.built = '1';
+    const curYear = new Date().getFullYear();
+    yrSel.innerHTML = [curYear, curYear-1].map(y => `<option value="${y}">${y}</option>`).join('') +
+      `<option value="all">All time</option>`;
+  }
+
   // Wire tabs (once — guard with dataset flag)
   const tabs = qs('#rep-type-tabs');
   if (tabs && !tabs.dataset.wired) {
@@ -6157,6 +6166,7 @@ function renderReportContent() {
   const handlers = {
     revenue:     repRevenue,
     accounts:    repAccounts,
+    sku_perf:    repSkuPerf,
     inventory:   repInventory,
     distributor: repDistributor,
     profit:      repProfit,
@@ -6239,6 +6249,61 @@ function repAccounts() {
   const rows = sorted.map(a=>[a.name, fmt(a.orderCount), fmt(a.qty), fmtC(a.rev), totalRev>0?fmt((a.rev/totalRev)*100,1)+'%':'—']);
   _setTable(['Account','Orders','Units','Revenue','% of Total'], rows, 'Account Performance');
   _reportData = {headers:['Account','Orders','Units','Revenue','% of Total'], rows};
+}
+
+// ── SKU Performance ────────────────────────────────────────
+function repSkuPerf() {
+  const orders = _repFilterOrders(DB.a('orders'));
+  const acLookup = Object.fromEntries(DB.a('ac').map(a => [a.id, a.name]));
+  const acMap = {}; // { accountId: { name, [sku]: cases, total } }
+
+  orders.forEach(o => {
+    if (!acMap[o.accountId]) {
+      acMap[o.accountId] = { name: acLookup[o.accountId] || 'Unknown' };
+      SKUS.forEach(sk => { acMap[o.accountId][sk.id] = 0; });
+      acMap[o.accountId].total = 0;
+    }
+    (o.items||[]).forEach(i => {
+      if (acMap[o.accountId][i.sku] !== undefined) {
+        acMap[o.accountId][i.sku] += i.qty;
+        acMap[o.accountId].total += i.qty;
+      }
+    });
+  });
+
+  const rows = Object.values(acMap).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+  const skuTotals = {};
+  SKUS.forEach(sk => { skuTotals[sk.id] = rows.reduce((s, r) => s + (r[sk.id]||0), 0); });
+  const totalAllCases = rows.reduce((s, r) => s + r.total, 0);
+
+  const bestSku = SKUS.reduce((best, sk) => (skuTotals[sk.id]||0) > (skuTotals[best.id]||0) ? sk : best, SKUS[0]);
+  const topAc = rows[0];
+
+  _setKPIs(
+    fmt(totalAllCases) + ' cases',
+    bestSku.label + ' (' + fmt(skuTotals[bestSku.id]||0) + ' cs)',
+    topAc ? topAc.name : '—',
+    rows.length + ' accounts'
+  );
+
+  _drawChart('bar',
+    SKUS.map(s => s.label),
+    [{ label: 'Cases', data: SKUS.map(s => skuTotals[s.id]||0), backgroundColor: 'rgba(75,32,130,0.75)', borderRadius: 4 }],
+    'Cases by SKU'
+  );
+
+  const headers = ['Account', ...SKUS.map(s => s.label), 'Total Cases'];
+  const tableRows = rows.map(r => [r.name, ...SKUS.map(sk => r[sk.id]||0), r.total]);
+  _setTable(headers, tableRows, 'SKU Performance by Account');
+
+  // Footer totals row
+  const tb = qs('#rep-table-body');
+  if (tb) {
+    tb.innerHTML += `<tr style="font-weight:600;border-top:2px solid var(--border);background:#fafafa">
+      <td>TOTAL</td>${SKUS.map(sk => `<td>${skuTotals[sk.id]||0}</td>`).join('')}<td>${totalAllCases}</td>
+    </tr>`;
+  }
+  _reportData = { headers, rows: tableRows };
 }
 
 // ── Inventory ──────────────────────────────────────────────
@@ -6374,6 +6439,50 @@ function exportReportCSV() {
   a.href = url; a.download = `purpl-report-${_reportType}-${from}-${to}.csv`;
   a.click(); URL.revokeObjectURL(url);
   toast('CSV downloaded');
+}
+
+// ── Year-End / Tax Export ──────────────────────────────────
+function exportYearEnd() {
+  const yr = qs('#rep-year-filter')?.value || String(new Date().getFullYear());
+  const inYear = d => yr === 'all' ? true : (d||'').slice(0,4) === yr;
+  const acLookup = Object.fromEntries(DB.a('ac').map(a => [a.id, a.name]));
+  const rows = [];
+
+  // purpl invoices (exclude those that are part of a combined invoice to avoid double-counting)
+  DB.a('iv').filter(x => x.number && x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
+    const pd = x.paidDate || '';
+    if (!inYear(pd)) return;
+    const acName = x.accountName || acLookup[x.accountId] || x.accountId || '—';
+    rows.push([pd, x.number, 'purpl', acName, parseFloat(x.amount||0).toFixed(2), 'Invoice']);
+  });
+
+  // LF invoices (exclude those that are part of a combined invoice)
+  DB.a('lf_invoices').filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
+    const pd = (x.paidAt||'').slice(0,10);
+    if (!inYear(pd)) return;
+    const acName = x.accountName || acLookup[x.accountId] || '—';
+    rows.push([pd, x.number||'—', 'LF', acName, parseFloat(x.total||0).toFixed(2), 'Invoice']);
+  });
+
+  // Combined invoices → two rows each (purpl subtotal + LF subtotal)
+  DB.a('combined_invoices').filter(x => x.status === 'paid').forEach(x => {
+    const pd = (x.paidAt||'').slice(0,10);
+    if (!inYear(pd)) return;
+    const acName = x.accountName || acLookup[x.accountId] || '—';
+    rows.push([pd, x.number, 'purpl', acName, parseFloat(x.purplSubtotal||0).toFixed(2), 'Combined - purpl']);
+    rows.push([pd, x.number, 'LF',    acName, parseFloat(x.lfSubtotal||0).toFixed(2),    'Combined - LF']);
+  });
+
+  rows.sort((a, b) => a[0] > b[0] ? 1 : -1);
+
+  const headers = ['Date Paid', 'Invoice #', 'Brand', 'Account', 'Amount', 'Type'];
+  const lines = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `purpl-year-end-${yr}-${today()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast(`Year-end export downloaded — ${rows.length} records`);
 }
 
 // ── Save Report ────────────────────────────────────────────

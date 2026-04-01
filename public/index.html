@@ -866,6 +866,7 @@
           <div class="tab-bar" id="rep-type-tabs" style="flex-wrap:wrap">
             <button class="tab active" data-rep="revenue">Revenue &amp; Sales</button>
             <button class="tab" data-rep="accounts">Account Performance</button>
+            <button class="tab" data-rep="sku_perf">SKU Performance</button>
             <button class="tab" data-rep="inventory">Inventory</button>
             <button class="tab" data-rep="distributor">Distributor</button>
             <button class="tab" data-rep="profit">Gross Profit</button>
@@ -877,6 +878,8 @@
             <button class="btn secondary" onclick="exportReportCSV()" style="padding:4px 10px;font-size:12px">⬇ CSV</button>
             <button class="btn secondary" onclick="window.print()" style="padding:4px 10px;font-size:12px">🖨 Print</button>
             <button class="btn secondary" onclick="saveReport()" style="padding:4px 10px;font-size:12px">💾 Save</button>
+            <select id="rep-year-filter" class="input" style="padding:4px 8px;font-size:13px;width:auto"></select>
+            <button class="btn secondary" onclick="exportYearEnd()" style="padding:4px 10px;font-size:12px">📊 Year-End Export</button>
           </div>
         </div>
       </div>
