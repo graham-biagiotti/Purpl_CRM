@@ -2042,9 +2042,9 @@ function sendEmailViaResend() {
   const btn = document.querySelector('#modal-email-preview .btn.primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
   callSendEmail(to, from, subject, html)
-    .then(() => {
+    .then((result) => {
       toast('Email sent ✓');
-      markCadenceEmailSent();
+      markCadenceEmailSent(result?.id);
     })
     .catch(() => {
       toast('Resend unavailable — opening Gmail');
@@ -2055,20 +2055,19 @@ function sendEmailViaResend() {
     });
 }
 
-function markCadenceEmailSent() {
+function markCadenceEmailSent(sentMessageId) {
   if (!_currentEmailPreview) return;
   const {stage, accountId} = _currentEmailPreview;
   // Map template hyphen-ID back to underscore stage ID for cadence log consistency
   const stageId = _TEMPLATE_STAGE_IDS[stage] || stage;
-  DB.update('ac', accountId, a => ({
-    ...a,
-    cadence: [...(a.cadence||[]), {
-      id: uid(), stage: stageId,
-      sentAt: new Date().toISOString(),
-      sentBy: 'graham',
-      method: 'manual',
-    }]
-  }));
+  const entry = {
+    id: uid(), stage: stageId,
+    sentAt: new Date().toISOString(),
+    sentBy: 'graham',
+    method: 'manual',
+  };
+  if (sentMessageId) entry.sentMessageId = sentMessageId;
+  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
   closeModal('modal-email-preview');
   openAccountToEmailsTab(accountId);
   renderCadenceOverdue();
@@ -2103,7 +2102,7 @@ function renderMacEmailsTab(id) {
         <div class="cadence-info">
           <div class="cadence-label">${stage.label}</div>
           <div class="cadence-desc">${stage.desc}</div>
-          ${isSent?`<div class="cadence-date">Sent ${fmtD(last.sentAt)} · ${last.method||'manual'}</div>`:''}
+          ${isSent?`<div class="cadence-date">Sent ${fmtD(last.sentAt)} · ${last.method||'manual'}${last.opened?` · 👁 Opened ${fmtD(last.openedAt)}`:''}${last.clicked?` · 🔗 Clicked ${fmtD(last.clickedAt)}`:''}</div>`:''}
         </div>
         <button class="${btnCls}" onclick="${_btnCall}">${btnLabel}</button>
       </div>`;
@@ -2112,10 +2111,11 @@ function renderMacEmailsTab(id) {
   if (cadence.length) {
     const rows = cadence.slice().sort((a,b)=>b.sentAt>a.sentAt?1:-1).map(c=>{
       const s = CADENCE_STAGES.find(x=>x.id===c.stage);
-      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'graham'}</td></tr>`;
+      const status = ['Sent ✓', c.opened ? `👁 Opened ${fmtD(c.openedAt)}` : '', c.clicked ? `🔗 Clicked ${fmtD(c.clickedAt)}` : ''].filter(Boolean).join(' · ');
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'graham'}</td><td>${status}</td></tr>`;
     }).join('');
     logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
-      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   } else {
     logEl.innerHTML = '<div class="empty" style="padding:12px 0">No cadence emails sent yet</div>';
   }
@@ -2540,12 +2540,14 @@ function emailsPageSendEmail() {
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
   callSendEmail(toEmail, 'lavender@pbfwholesale.com', tpl.subject, tpl.body)
-    .then(() => {
+    .then((result) => {
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+      const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend'};
+      if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
-        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend'}]
+        cadence: [...(a.cadence||[]), entry]
       }));
       toast('Email sent ✓');
       renderEmailsPage();
@@ -8939,18 +8941,20 @@ function openCombinedInvoicePreview(combinedId) {
     const to = account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
     callSendCombinedInvoice(to, rec.accountName, subject, html)
-      .then(() => {
+      .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = [purplInv.number, lfInv.number].filter(Boolean).join(' · ');
+        const entry = {
+          id: uid(), stage: 'invoice_sent',
+          sentAt: new Date().toISOString(),
+          sentBy: 'graham', method: 'resend',
+          invoiceId: rec.id, invoiceRef,
+        };
+        if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', rec.accountId, a => ({
           ...a,
           lastContacted: today(),
-          cadence: [...(a.cadence||[]), {
-            id: uid(), stage: 'invoice_sent',
-            sentAt: new Date().toISOString(),
-            sentBy: 'graham', method: 'resend',
-            invoiceId: rec.id, invoiceRef,
-          }],
+          cadence: [...(a.cadence||[]), entry],
         }));
         renderAccounts();
         const updatedAc = DB.a('ac').find(x => x.id === rec.accountId);

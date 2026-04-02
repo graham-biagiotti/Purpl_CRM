@@ -1,5 +1,8 @@
-const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {defineSecret} = require('firebase-functions/params');
+const admin = require('firebase-admin');
+
+if (!admin.apps.length) admin.initializeApp();
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 
@@ -197,3 +200,56 @@ exports.submitWholesaleForm = onCall(
     return {success: true};
   }
 );
+
+// ── 5. Resend Webhook ─────────────────────────────────────
+// Receives email.opened / email.clicked events from Resend.
+// Finds the matching cadence entry by sentMessageId and writes
+// opened/clicked status + timestamp back to Firestore.
+exports.resendWebhook = onRequest(async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+
+  const event = req.body;
+  const type    = event?.type;
+  const emailId = event?.data?.email_id;
+
+  if (!emailId || !['email.opened', 'email.clicked'].includes(type)) {
+    res.status(200).send('ignored');
+    return;
+  }
+
+  try {
+    const db  = admin.firestore();
+    const ref = db.doc('workspace/main/data/store');
+    const snap = await ref.get();
+    if (!snap.exists) { res.status(200).send('no data'); return; }
+
+    const data     = snap.data();
+    const accounts = data.ac || [];
+    const ts       = event.data.created_at || new Date().toISOString();
+    let updated    = false;
+
+    const updatedAccounts = accounts.map(account => {
+      const cadence = (account.cadence || []).map(entry => {
+        if (entry.sentMessageId !== emailId) return entry;
+        if (type === 'email.opened' && !entry.opened) {
+          updated = true;
+          return {...entry, opened: true, openedAt: ts};
+        }
+        if (type === 'email.clicked' && !entry.clicked) {
+          updated = true;
+          return {...entry, clicked: true, clickedAt: ts};
+        }
+        return entry;
+      });
+      return {...account, cadence};
+    });
+
+    if (updated) {
+      await ref.update({ac: updatedAccounts});
+    }
+    res.status(200).send('ok');
+  } catch (err) {
+    console.error('resendWebhook error:', err);
+    res.status(500).send('error');
+  }
+});
