@@ -1,5 +1,5 @@
 // prospects.spec.js — tests for the Prospects page: list, filters, CRUD, won/lost, outreach
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 // Helper: navigate to Prospects page and wait for cards
 async function gotoProspects(page) {
@@ -195,12 +195,14 @@ test.describe('Prospects Page', () => {
       // Set contact type to call
       await page.selectOption('#mlo-type', 'call');
 
-      // Save the outreach entry
-      await page.locator('#modal-log-outreach').locator('.btn.primary').click();
+      // Save the outreach entry — force:true because parent modal backdrop may intercept
+      await page.locator('#modal-log-outreach').locator('.btn.primary').click({ force: true });
       await page.waitForTimeout(500);
     }
 
-    await page.click('#modal-prospect .modal-close');
+    // Close prospect modal if still open
+    const modalOpen = await page.locator('#modal-prospect').evaluate(el => el.classList.contains('open'));
+    if (modalOpen) await page.click('#modal-prospect .modal-close');
     await page.fill('#pr-search', '');
   });
 

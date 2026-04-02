@@ -11,7 +11,7 @@ module.exports = defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
 
   use: {
-    baseURL: 'http://localhost:5000',
+    baseURL: 'http://127.0.0.1:5000',
     headless: true,
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
@@ -19,7 +19,7 @@ module.exports = defineConfig({
       executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH
         ? `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium-1194/chrome-linux/chrome`
         : undefined,
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--proxy-server=direct://'],
     },
   },
 

@@ -1,5 +1,5 @@
 // dashboard.spec.js — verifies the dashboard page renders KPIs, attention lists, and quick notes
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {

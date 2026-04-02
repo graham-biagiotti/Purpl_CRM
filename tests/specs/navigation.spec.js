@@ -1,5 +1,5 @@
 // navigation.spec.js — verifies every primary page can be navigated to without crashing
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 test.describe('Navigation', () => {
   // Wait for the app shell to be ready before all tests in this suite

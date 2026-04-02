@@ -1,5 +1,5 @@
 // accounts.spec.js — comprehensive account list, detail, CRUD and cadence tests
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 // Helper: navigate to accounts page and wait for cards
 async function gotoAccounts(page) {

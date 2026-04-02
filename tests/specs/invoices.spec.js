@@ -1,5 +1,5 @@
 // invoices.spec.js — tests for the Invoices page: columns, CRUD, combined invoices, and mark-paid
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 // Helper: navigate to Invoices page and wait for columns to render
 async function gotoInvoices(page) {
@@ -176,7 +176,11 @@ test.describe('Invoices Page', () => {
     await page.evaluate(() => window.openNewCombinedModal());
     await expect(page.locator('#modal-new-combined')).toHaveClass(/open/, { timeout: 10000 });
 
-    // Try to save without adding any line items
+    // Select the first account (account is required before line-item validation runs)
+    await page.locator('#nciv-account').selectOption({ index: 1 });
+
+    // Try to save without filling in any line item descriptions/amounts
+    // The default empty rows have description='' and total=0, so they won't count
     await page.click('button[onclick="saveNewCombinedInvoice()"]');
 
     // Toast should show validation error

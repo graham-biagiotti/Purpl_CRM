@@ -20,6 +20,7 @@
   "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "firebase": "^10.12.2",
     "firebase-admin": "^13.7.0"
   }
 }

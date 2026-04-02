@@ -3,19 +3,21 @@
 //  global-setup.js  —  Playwright global setup
 //  1. Seeds Firebase emulator with test data
 //  2. Creates test auth user
-//  3. Logs in via browser, saves storageState for all tests
+//  3. Creates empty .auth/user.json (auth is injected per-test
+//     via IndexedDB in fixtures.js — storageState is not used
+//     for Firebase auth since it stores in IndexedDB)
 // =============================================================
 
 const path = require('path');
+const fs   = require('fs');
 
 module.exports = async function globalSetup() {
   // ── Point Firebase Admin SDK at local emulators ───────────
-  process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+  process.env.FIRESTORE_EMULATOR_HOST     = 'localhost:8080';
   process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
 
   const admin = require('firebase-admin');
 
-  // Avoid re-initializing if already done (e.g. watch mode)
   if (!admin.apps.length) {
     admin.initializeApp({ projectId: 'purpl-crm' });
   }
@@ -26,7 +28,7 @@ module.exports = async function globalSetup() {
   // ── Load seed data ────────────────────────────────────────
   const { SEED, PORTAL_ORDERS, PORTAL_NOTIFY } = require('./seed-data.js');
 
-  // ── Write main data store (overwrites any previous test data) ─
+  // ── Write main data store ─────────────────────────────────
   console.log('[setup] Writing seed data to Firestore emulator...');
   await db
     .collection('workspace').doc('main')
@@ -37,8 +39,7 @@ module.exports = async function globalSetup() {
   // ── Write portal orders ───────────────────────────────────
   const ordBatch = db.batch();
   for (const order of PORTAL_ORDERS) {
-    const ref = db.collection('portal_orders').doc(order.id);
-    ordBatch.set(ref, order);
+    ordBatch.set(db.collection('portal_orders').doc(order.id), order);
   }
   await ordBatch.commit();
   console.log('[setup] Portal orders written:', PORTAL_ORDERS.length);
@@ -46,8 +47,7 @@ module.exports = async function globalSetup() {
   // ── Write portal notify ───────────────────────────────────
   const notBatch = db.batch();
   for (const n of PORTAL_NOTIFY) {
-    const ref = db.collection('portal_notify').doc(n.id);
-    notBatch.set(ref, n);
+    notBatch.set(db.collection('portal_notify').doc(n.id), n);
   }
   await notBatch.commit();
   console.log('[setup] Portal notify written:', PORTAL_NOTIFY.length);
@@ -69,39 +69,15 @@ module.exports = async function globalSetup() {
     }
   }
 
-  // ── Launch browser and log in to save storageState ────────
-  console.log('[setup] Launching browser for auth setup...');
-  const { chromium } = require('@playwright/test');
-  const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1194/chrome-linux/chrome',
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
-
-  const context = await browser.newContext();
-  const page    = await context.newPage();
-
-  try {
-    await page.goto('http://localhost:5000', { waitUntil: 'networkidle', timeout: 20000 });
-    await page.waitForSelector('#auth-email', { timeout: 15000 });
-
-    await page.fill('#auth-email',    'test@purpl.local');
-    await page.fill('#auth-password', 'testpass123');
-    await page.click('#sign-in-btn');
-
-    await page.waitForSelector('#app-shell', { state: 'visible', timeout: 25000 });
-    console.log('[setup] Login successful.');
-
-    // Save auth state (localStorage / sessionStorage)
-    const authDir = path.join(__dirname, '.auth');
-    const fs = require('fs');
-    if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-
-    await context.storageState({ path: path.join(authDir, 'user.json') });
-    console.log('[setup] Auth state saved to tests/.auth/user.json');
-
-  } finally {
-    await browser.close();
-  }
+  // ── Create .auth/user.json placeholder ───────────────────
+  // Real auth injection happens per-test via addInitScript in fixtures.js.
+  // The 'crm' project still references this file as storageState;
+  // an empty-but-valid file satisfies Playwright's check.
+  const authDir = path.join(__dirname, '.auth');
+  if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+  const placeholder = { cookies: [], origins: [] };
+  fs.writeFileSync(path.join(authDir, 'user.json'), JSON.stringify(placeholder));
+  console.log('[setup] Auth placeholder created.');
 
   await admin.app().delete();
   console.log('[setup] Global setup complete.');

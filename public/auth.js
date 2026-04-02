@@ -12,7 +12,7 @@ async function bootApp() {
   const db = getFirestore(app);
 
   // Connect to local emulators when running tests (localhost only)
-  if (location.hostname === 'localhost') {
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     db.useEmulator('localhost', 8080);
     auth.useEmulator('http://localhost:9099');
   }

@@ -1,5 +1,5 @@
 // emails.spec.js — tests for the Emails compose page: templates, token gate, send flow
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 // Helper: navigate to Emails page
 async function gotoEmails(page) {
@@ -54,8 +54,13 @@ test.describe('Emails Page', () => {
     const accountSelect = page.locator('#emails-preview-col select').first();
     await expect(accountSelect).toBeVisible({ timeout: 10000 });
 
-    // Select ac001 — account with a token
-    await accountSelect.selectOption({ label: /Harvest Moon/i });
+    // Select ac001 — account with a token (find option by partial text via evaluate)
+    await accountSelect.evaluate((sel) => {
+      for (const opt of sel.options) {
+        if (opt.text.toLowerCase().includes('harvest moon')) { sel.value = opt.value; break; }
+      }
+    });
+    await accountSelect.dispatchEvent('change');
     await page.waitForTimeout(1000);
 
     // Send button should be enabled (ac001 has token)
@@ -77,7 +82,12 @@ test.describe('Emails Page', () => {
     await expect(accountSelect).toBeVisible({ timeout: 10000 });
 
     // Select ac003 — The Lavender Shop, no portal token
-    await accountSelect.selectOption({ label: /Lavender Shop/i });
+    await accountSelect.evaluate((sel) => {
+      for (const opt of sel.options) {
+        if (opt.text.toLowerCase().includes('lavender shop')) { sel.value = opt.value; break; }
+      }
+    });
+    await accountSelect.dispatchEvent('change');
     await page.waitForTimeout(1000);
 
     // Send button should be disabled
@@ -106,7 +116,12 @@ test.describe('Emails Page', () => {
 
     const accountSelect = page.locator('#emails-preview-col select').first();
     await expect(accountSelect).toBeVisible({ timeout: 10000 });
-    await accountSelect.selectOption({ label: /Lavender Shop/i });
+    await accountSelect.evaluate((sel) => {
+      for (const opt of sel.options) {
+        if (opt.text.toLowerCase().includes('lavender shop')) { sel.value = opt.value; break; }
+      }
+    });
+    await accountSelect.dispatchEvent('change');
     await page.waitForTimeout(1000);
 
     // Click Generate Portal Link
@@ -205,8 +220,8 @@ test.describe('Emails Page', () => {
   });
 
   test('Email History tab — renders without crash', async ({ page }) => {
-    // Click the History tab
-    await page.getByText('History').click();
+    // Click the History tab button specifically (not any element containing 'history')
+    await page.locator('button.tab[onclick*="history"]').click();
     await page.waitForTimeout(500);
 
     // History tab container should be visible
@@ -216,8 +231,8 @@ test.describe('Emails Page', () => {
   });
 
   test('Email Overview tab — renders without crash', async ({ page }) => {
-    // Click the Overview tab
-    await page.getByText('Overview').click();
+    // Click the Overview tab button specifically
+    await page.locator('button.tab[onclick*="overview"]').click();
     await page.waitForTimeout(500);
 
     await expect(page.locator('#emails-tab-overview')).toBeVisible({ timeout: 5000 });

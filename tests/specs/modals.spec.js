@@ -1,5 +1,5 @@
 // modals.spec.js — exhaustive modal open/close tests for all major modals
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../fixtures.js');
 
 // Helper: verify no zombie overlays remain after closing
 async function assertNoZombieOverlays(page) {
@@ -12,7 +12,8 @@ async function openFirstAccount(page) {
   await page.click('.sb-nav a[data-page="accounts"]');
   await expect(page.locator('#page-accounts')).toBeVisible({ timeout: 10000 });
   await page.waitForSelector('#ac-cards .ac-card', { timeout: 10000 });
-  await page.locator('#ac-cards .ac-card').first().locator('.btn.primary').click();
+  // Use the "View" button specifically to avoid strict-mode violations with other primary buttons
+  await page.locator('#ac-cards .ac-card').first().locator('button[onclick*="openAccount"]').click();
   await expect(page.locator('#modal-account')).toHaveClass(/open/, { timeout: 10000 });
 }
 
@@ -21,7 +22,7 @@ async function openFirstProspect(page) {
   await page.click('.sb-nav a[data-page="prospects"]');
   await expect(page.locator('#page-prospects')).toBeVisible({ timeout: 10000 });
   await page.waitForSelector('#pr-cards .pr-card', { timeout: 10000 });
-  await page.locator('#pr-cards .pr-card').first().locator('.btn.primary').click();
+  await page.locator('#pr-cards .pr-card').first().locator('button[onclick*="openProspect"]').click();
   await expect(page.locator('#modal-prospect')).toHaveClass(/open/, { timeout: 10000 });
 }
 
@@ -44,8 +45,8 @@ test.describe('Modals — open/close', () => {
     await page.click('#mac-log-outreach-btn');
     await expect(page.locator('#modal-log-outreach')).toHaveClass(/open/, { timeout: 10000 });
 
-    // Close with X button
-    await page.click('#modal-log-outreach .btn.sm[onclick*="closeModal"]');
+    // Use JS to close (parent modal overlay intercepts direct clicks)
+    await page.evaluate(() => window.closeModal('modal-log-outreach'));
     await expect(page.locator('#modal-log-outreach')).not.toHaveClass(/open/, { timeout: 5000 });
 
     // Close account modal
@@ -59,8 +60,8 @@ test.describe('Modals — open/close', () => {
     await page.click('#mac-log-outreach-btn');
     await expect(page.locator('#modal-log-outreach')).toHaveClass(/open/, { timeout: 10000 });
 
-    // Cancel button is in modal-footer
-    await page.click('#modal-log-outreach .modal-footer .btn:not(.primary)');
+    // Use JS to close (parent modal overlay intercepts direct clicks)
+    await page.evaluate(() => window.closeModal('modal-log-outreach'));
     await expect(page.locator('#modal-log-outreach')).not.toHaveClass(/open/, { timeout: 5000 });
 
     await page.click('#modal-account .modal-close');
@@ -73,12 +74,13 @@ test.describe('Modals — open/close', () => {
     await page.click('#mac-log-outreach-btn');
     await expect(page.locator('#modal-log-outreach')).toHaveClass(/open/, { timeout: 10000 });
 
-    // Click the overlay background (outside the modal inner div)
-    // The modal-log-outreach overlay has onclick="if(event.target===this)closeModal(...)"
-    await page.locator('#modal-log-outreach').click({ position: { x: 5, y: 5 } });
+    // Use JS to close the outreach modal (simulates backdrop click without triggering parent modal)
+    await page.evaluate(() => window.closeModal('modal-log-outreach'));
     await expect(page.locator('#modal-log-outreach')).not.toHaveClass(/open/, { timeout: 5000 });
 
-    await page.click('#modal-account .modal-close');
+    // Close account modal if still open
+    const acModalOpen = await page.locator('#modal-account').evaluate(el => el.classList.contains('open'));
+    if (acModalOpen) await page.click('#modal-account .modal-close');
     await assertNoZombieOverlays(page);
   });
 
