@@ -82,6 +82,7 @@ exports.sendCombinedInvoice = onCall(
       const result = await resend.emails.send({
         from: 'lavender@pbfwholesale.com',
         to: data.to,
+        replyTo: 'graham@pumpkinblossomfarm.com',
         subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
         html: data.html,
       });

@@ -8940,7 +8940,24 @@ function openCombinedInvoicePreview(combinedId) {
     if (!to) { toast('No email address on file for this account'); return; }
     callSendCombinedInvoice(to, rec.accountName, subject, html)
       .then(() => {
-        toast('Invoice sent via Resend ✓');
+        toast('Invoice sent ✓');
+        const invoiceRef = [purplInv.number, lfInv.number].filter(Boolean).join(' · ');
+        DB.update('ac', rec.accountId, a => ({
+          ...a,
+          lastContacted: today(),
+          cadence: [...(a.cadence||[]), {
+            id: uid(), stage: 'invoice_sent',
+            sentAt: new Date().toISOString(),
+            sentBy: 'graham', method: 'resend',
+            invoiceId: rec.id, invoiceRef,
+          }],
+        }));
+        renderAccounts();
+        const updatedAc = DB.a('ac').find(x => x.id === rec.accountId);
+        if (updatedAc) {
+          renderAccountOutreach(updatedAc);
+          renderMacEmailsTab(rec.accountId);
+        }
       })
       .catch(() => {
         // Fall back to mailto
