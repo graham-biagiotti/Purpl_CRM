@@ -11,6 +11,12 @@ async function bootApp() {
   const auth = getAuth(app);
   const db = getFirestore(app);
 
+  // Connect to local emulators when running tests (localhost only)
+  if (location.hostname === 'localhost') {
+    db.useEmulator('localhost', 8080);
+    auth.useEmulator('http://localhost:9099');
+  }
+
   try {
     await enableIndexedDbPersistence(db);
   } catch(e) {

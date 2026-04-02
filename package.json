@@ -1,0 +1,25 @@
+{
+  "name": "purpl_crm",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'npx playwright test'",
+    "test:headed": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'npx playwright test --headed'",
+    "test:ui": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'npx playwright test --ui'",
+    "test:debug": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'PWDEBUG=1 npx playwright test'",
+    "test:report": "npx playwright show-report",
+    "emulators": "firebase emulators:start --only auth,firestore,hosting --project purpl-crm"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:42955/git/graham-biagiotti/Purpl_CRM"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "firebase-admin": "^13.7.0"
+  }
+}
