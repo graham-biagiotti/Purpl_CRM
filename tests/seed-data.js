@@ -874,5 +874,115 @@ const combined_invoices = [
     portalOrderId:null, purplSubtotal:216.00, lfSubtotal:89.88, grandTotal:305.88, notes:'OVERDUE 60 days.' },
 ];
 
-// ─── PART 3 PLACEHOLDER ───────────────────────────────────────
-module.exports = { accounts, prospects, iv, lf_invoices, combined_invoices, D, ISO, sid };
+// =============================================================
+//  DISTRIBUTORS
+// =============================================================
+const dist_profiles = [
+  { id:'dist001', name:'New England Natural Foods', status:'active',
+    territory:'New England', email:'orders@nenf.com', phone:'603-555-9001',
+    notes:'Primary regional distributor. Net-30 terms.', since: D(300) },
+  { id:'dist002', name:'Northeast Beverage Co', status:'active',
+    territory:'Northeast', email:'wholesale@nebev.com', phone:'617-555-9002',
+    notes:'Secondary distributor — Maine and Mass.', since: D(200) },
+];
+
+const dist_reps = [
+  { id:'rep001', distributorId:'dist001', name:'Mark Bouchard', email:'mark@nenf.com', phone:'603-555-9011', territory:'NH/VT' },
+  { id:'rep002', distributorId:'dist002', name:'Donna Pierce',  email:'donna@nebev.com', phone:'617-555-9021', territory:'MA/ME' },
+];
+
+// =============================================================
+//  LF SKUs (10)
+// =============================================================
+const lf_skus = [
+  { id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99, archived:false },
+  { id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null,  archived:false },
+  { id:'lf-scrunchie',       name:'Aromatherapy Scrunchie',        wholesalePrice:7.49,  caseSize:6,  msrp:14.99, archived:false },
+  { id:'lf-sachet',          name:'Seatbelt Sachet',               wholesalePrice:4.99,  caseSize:12, msrp:9.99,  archived:false },
+  { id:'lf-candle',          name:'Soy Candle',                    wholesalePrice:14.99, caseSize:12, msrp:24.99, archived:false },
+  { id:'lf-refresh-powder',  name:'Lavender Refresh Powder',       wholesalePrice:4.99,  caseSize:12, msrp:9.99,  archived:false },
+  { id:'lf-roll-on',         name:'Aromatherapy Roll-On',          wholesalePrice:9.99,  caseSize:24, msrp:19.99, archived:false },
+  { id:'lf-dryer-sachet',    name:'Dryer Sachet 2-Pack',           wholesalePrice:5.49,  caseSize:12, msrp:9.99,  archived:false },
+  { id:'lf-linen-spray',     name:'Lavender Linen Spray 8oz',      wholesalePrice:9.49,  caseSize:12, msrp:18.99, archived:false },
+  { id:'lf-bath-salts',      name:'Lavender Bath Salts 8oz',       wholesalePrice:6.99,  caseSize:12, msrp:13.99, archived:false },
+];
+
+// =============================================================
+//  SETTINGS
+// =============================================================
+const settings = {
+  defaultFromEmail: 'lavender@pbfwholesale.com',
+  farmName: 'Pumpkin Blossom Farm',
+  farmPhone: '603-748-3038',
+  farmAddress: '393 Pumpkin Hill Rd, Warner, NH 03278',
+};
+
+const invoice_settings = {
+  nextPurplNumber:    19,
+  nextLfNumber:       9,
+  nextCombinedNumber: 6,
+  prefix:             'PBF',
+  lfPrefix:           'LF',
+  combinedPrefix:     'COMB',
+  defaultDueDays:     30,
+  defaultNotes:       'Payment due within 30 days. Thank you for your business!',
+};
+
+const api_settings = {
+  resendApiKey: '',
+};
+
+// =============================================================
+//  PORTAL ORDERS (separate Firestore collections)
+// =============================================================
+const PORTAL_ORDERS = [
+  { id:'portal-order-001', accountId:'ac005', accountName:'Sunrise Wellness',
+    status:'submitted', notes:'Summer restock',
+    items:[
+      { skuId:'lf-candle',    skuName:'Soy Candle',    cases:2, caseSize:12, unitPrice:14.99 },
+      { skuId:'lf-roll-on',   skuName:'Aromatherapy Roll-On', cases:1, caseSize:24, unitPrice:9.99 },
+    ],
+    submittedAt: new Date(BASE.getTime() - 3 * 864e5),   // 3 days ago
+    total: 359.76 },
+  { id:'portal-order-002', accountId:'ac013', accountName:'Heritage Farm Store',
+    status:'processed', notes:'',
+    items:[
+      { skuId:'lf-sachet', skuName:'Seatbelt Sachet', cases:2, caseSize:12, unitPrice:4.99 },
+    ],
+    submittedAt: new Date(BASE.getTime() - 20 * 864e5),  // 20 days ago
+    total: 119.76 },
+];
+
+const PORTAL_NOTIFY = [
+  { id:'notify-001', accountId:'ac005', accountName:'Sunrise Wellness',
+    orderId:'portal-order-001', status:'pending',
+    submittedAt: new Date(BASE.getTime() - 3 * 864e5),
+    message:'New portal order from Sunrise Wellness' },
+];
+
+// =============================================================
+//  FULL SEED OBJECT
+// =============================================================
+const SEED = {
+  ac:                accounts,
+  pr:                prospects,
+  iv,
+  lf_invoices,
+  combined_invoices,
+  dist_profiles,
+  dist_reps,
+  lf_skus,
+  settings,
+  invoice_settings,
+  api_settings,
+  // unused keys — empty arrays to avoid DB layer warnings
+  orders:[], prod_hist:[], prod_sched:[], shipments:[],
+  dist:[], rem:[], pack_types:[], runs:[],
+  dist_pricing:[], dist_pos:[], dist_invoices:[], dist_chains:[], dist_imports:[],
+  saved_reports:[], loose_cans:[], repack_jobs:[], pallets:[], pack_supply:[],
+  quick_notes:[], stock_locations:[], stock_transfers:[],
+  lf_wix_deductions:[], retail_invoices:[], pending_invoices:[], returns:[],
+  costs: null, today_run: null,
+};
+
+module.exports = { SEED, PORTAL_ORDERS, PORTAL_NOTIFY };
