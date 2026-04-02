@@ -510,5 +510,369 @@ const accounts = [
   },
 ];
 
-// ─── PART 2 PLACEHOLDER — prospects, invoices, etc appended below ───────────
-module.exports = { accounts, D, ISO, sid };
+// =============================================================
+//  PROSPECTS (12)
+// =============================================================
+const prospects = [
+  {
+    id: 'pr001', name: 'Sunrise Boutique', contact: 'Amy Rand', email: 'amy@sunriseboutique.com',
+    phone: '603-555-1001', address: 'Portsmouth, NH', type: 'Specialty / Gift',
+    status: 'lead', priority: 'medium', isPbf: false,
+    notes: [], outreach: [], samples: [], lastContact: '', since: D(30),
+  },
+  {
+    id: 'pr002', name: 'Valley View Grocery', contact: 'Leo Garneau', email: 'leo@valleyview.com',
+    phone: '802-555-1002', address: 'Montpelier, VT', type: 'Grocery',
+    status: 'contacted', priority: 'high', isPbf: false,
+    notes: [ne(25, 'Good fit — local grocery looking to add NH brands.')],
+    outreach: [
+      oe(27, 'email', 'Interested',     'Leo Garneau', 'Sent intro email with pricing sheet.', 'purpl'),
+      oe(20, 'call',  'Needs Follow-Up','Leo Garneau', 'Called — needs to run by owner first.', 'purpl'),
+    ],
+    samples: [], lastContact: D(20), since: D(40),
+  },
+  {
+    id: 'pr003', name: 'Mountain Spring Market', contact: 'Jen Fortin', email: 'jen@mtspring.com',
+    phone: '603-555-1003', address: 'North Conway, NH', type: 'Grocery',
+    status: 'sampling', priority: 'high', isPbf: true,
+    notes: [ne(15, 'Tourist-heavy area — great seasonal volume potential.')],
+    outreach: [oe(18, 'call', 'Interested', 'Jen Fortin', 'Very interested in both lines. Sending samples.', 'both')],
+    samples: [{
+      id: sid(), date: D(14), flavors: 'Classic, Blueberry', notes: 'Sent 2 of each flavor',
+      followUpDate: D(-3), followUpDone: false,
+    }],
+    lastContact: D(14), since: D(60),
+  },
+  {
+    id: 'pr004', name: 'Harbor View Cafe', contact: 'Dean Cote', email: 'dean@harborviewcafe.com',
+    phone: '207-555-1004', address: 'Camden, ME', type: 'Cafe / Coffee Shop',
+    status: 'negotiating', priority: 'high', isPbf: true,
+    notes: [ne(10, 'Close to a deal — working out minimum order qty.')],
+    outreach: [
+      oe(35, 'email',  'Interested',     'Dean Cote', 'Sent wholesale packet.', 'lf'),
+      oe(25, 'call',   'Interested',     'Dean Cote', 'Follow-up call — wants LF spa products.', 'lf'),
+      oe(10, 'email',  'Needs Follow-Up','Dean Cote', 'Sent revised pricing. Waiting on decision.', 'lf'),
+    ],
+    samples: [], lastContact: D(10), since: D(50),
+  },
+  {
+    id: 'pr005', name: 'Lighthouse Farm Stand', contact: 'Carol Trent', email: 'carol@lighthousefarm.com',
+    phone: '207-555-1005', address: 'Kennebunkport, ME', type: 'Farm / Country Store',
+    status: 'won', priority: 'high', isPbf: true,
+    notes: [ne(5, 'Won! Converting to active account.')],
+    outreach: [oe(20, 'in-person', 'Ordered', 'Carol Trent', 'Farm visit — signed up on the spot.', 'both')],
+    samples: [], lastContact: D(5), since: D(45),
+  },
+  {
+    id: 'pr006', name: 'Rocky Mountain Spa', contact: 'Greg Plante', email: 'greg@rockymtnspa.com',
+    phone: '603-555-1006', address: 'Lincoln, NH', type: 'Spa / Wellness',
+    status: 'lost', priority: 'low', isPbf: false,
+    lostReason: 'No response', lostAt: D(30),
+    notes: [],
+    outreach: [
+      oe(60, 'email', 'No Response', 'Greg Plante', 'Sent intro — no reply.', 'purpl'),
+      oe(45, 'call',  'No Response', 'Greg Plante', 'Left voicemail — no callback.', 'purpl'),
+    ],
+    samples: [], lastContact: D(45), since: D(75),
+  },
+  {
+    id: 'pr007', name: 'Desert Bloom Wellness', contact: 'Kate Rioux', email: 'kate@desertbloom.com',
+    phone: '603-555-1007', address: 'Concord, NH', type: 'Spa / Wellness',
+    status: 'lost', priority: 'medium', isPbf: true,
+    lostReason: 'Price too high', lostAt: D(20),
+    notes: [ne(20, 'Price point too high for their budget.')],
+    outreach: [
+      oe(50, 'call',  'Interested',    'Kate Rioux', 'Great call — interested in LF products.', 'lf'),
+      oe(22, 'email', 'Not Interested', 'Kate Rioux', 'Replied — cost per unit too high vs. current vendor.', 'lf'),
+    ],
+    samples: [], lastContact: D(20), since: D(65),
+  },
+  {
+    id: 'pr008', name: 'Forest Edge Co-op', contact: 'Ben Lavoie', email: 'ben@forestedge.org',
+    phone: '603-555-1008', address: 'Amherst, NH', type: 'Grocery',
+    status: 'lead', priority: 'medium', isPbf: true,
+    notes: [],
+    outreach: [],
+    samples: [{
+      id: sid(), date: D(21), flavors: 'Classic, Peach, LF Scrunchie',
+      notes: 'Multi-product sample pack sent',
+      followUpDate: D(7), followUpDone: false,   // follow-up was 7 days ago — overdue
+    }],
+    lastContact: D(21), since: D(35),
+  },
+  {
+    id: 'pr009', name: 'Riverbend Market', contact: 'Sue Nadeau', email: 'sue@riverbendmkt.com',
+    phone: '603-555-1009', address: 'Rochester, NH', type: 'Grocery',
+    status: 'contacted', priority: 'high', isPbf: false,
+    notes: [],
+    outreach: [oe(12, 'call', 'Interested', 'Sue Nadeau', 'Warm call — they stock several local NH beverages.', 'purpl')],
+    samples: [], lastContact: D(12), since: D(20),
+  },
+  {
+    id: 'pr010', name: 'Blue Sky Deli', contact: 'Vince Auger', email: 'vince@blueskydeli.com',
+    phone: '603-555-1010', address: 'Jaffrey, NH', type: 'Cafe / Coffee Shop',
+    status: 'sampling', priority: 'medium', isPbf: true,
+    notes: [],
+    outreach: [oe(18, 'email', 'Interested', 'Vince Auger', 'Interested in LF products for gift section.', 'lf')],
+    samples: [{
+      id: sid(), date: D(10), flavors: 'LF Candle, LF Syrup',
+      notes: 'Two LF items sent for evaluation', followUpDate: D(-5), followUpDone: false,
+    }],
+    lastContact: D(10), since: D(30),
+  },
+  {
+    id: 'pr011', name: 'Golden Valley Farm', contact: 'Hal Petit', email: 'hal@goldenvalley.farm',
+    phone: '802-555-1011', address: 'Woodstock, VT', type: 'Farm / Country Store',
+    status: 'lead', priority: 'low', isPbf: true,
+    notes: [
+      ne(40, 'Beautiful farm store — met at local farm bureau meeting.'),
+      ne(20, 'Sent email follow-up, no reply yet.'),
+    ],
+    outreach: [], samples: [], lastContact: D(20), since: D(50),
+  },
+  {
+    id: 'pr012', name: 'Cliffside Gallery', contact: 'Mira Chase', email: 'mira@cliffsidegallery.com',
+    phone: '207-555-1012', address: 'Ogunquit, ME', type: 'Specialty / Gift',
+    status: 'contacted', priority: 'medium', isPbf: true,
+    notes: [
+      ne(30, 'Art gallery with gift shop — loves the aesthetic of our packaging.'),
+      ne(22, 'Sent wholesale catalog.'),
+      ne(15, 'Followed up by phone — will present to owner next week.'),
+    ],
+    outreach: [oe(16, 'call', 'Needs Follow-Up', 'Mira Chase', 'Spoke with Mira — owner makes final call.', 'both')],
+    samples: [], lastContact: D(16), since: D(40),
+  },
+];
+
+// =============================================================
+//  PURPL INVOICES (18)
+// =============================================================
+const iv = [
+  // ac001 — 2 invoices (iv001 used in ci001)
+  { id:'iv001', number:'PBF-001', accountId:'ac001', accountName:'Harvest Moon Co-op',
+    issued:D(100), due:D(70), amount:432.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',   qty:144,cases:12,unitPrice:2.50,total:360.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry', qty:72, cases:6, unitPrice:2.50,total:180.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'First order — paid via check.', combinedInvoiceId:'ci001' },
+
+  { id:'iv002', number:'PBF-002', accountId:'ac001', accountName:'Harvest Moon Co-op',
+    issued:D(45), due:D(15), amount:216.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  // ac002 — 1 invoice (iv003 used in ci002)
+  { id:'iv003', number:'PBF-003', accountId:'ac002', accountName:'Green Valley Market',
+    issued:D(80), due:D(50), amount:288.00, status:'unpaid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:'ci002' },
+
+  // ac008 — 3 invoices
+  { id:'iv004', number:'PBF-004', accountId:'ac008', accountName:'Pinebrook Deli',
+    issued:D(160), due:D(130), amount:180.00, status:'paid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv005', number:'PBF-005', accountId:'ac008', accountName:'Pinebrook Deli',
+    issued:D(90), due:D(60), amount:270.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'raspberry',qty:36,cases:3,unitPrice:2.50,total:90.00, description:'Raspberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv006', number:'PBF-006', accountId:'ac008', accountName:'Pinebrook Deli',
+    issued:D(20), due:D(10), amount:360.00, status:'unpaid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:null },
+
+  // ac011 — 1 invoice (iv007 used in ci003)
+  { id:'iv007', number:'PBF-007', accountId:'ac011', accountName:'Birchwood Co-op',
+    issued:D(110), due:D(80), amount:360.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:'ci003' },
+
+  // ac013 — 2 invoices (iv008 used in ci004)
+  { id:'iv008', number:'PBF-008', accountId:'ac013', accountName:'Heritage Farm Store',
+    issued:D(140), due:D(110), amount:540.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:144,cases:12,unitPrice:2.50,total:360.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'peach',    qty:72, cases:6, unitPrice:2.50,total:180.00,description:'Peach 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:'ci004' },
+
+  { id:'iv009', number:'PBF-009', accountId:'ac013', accountName:'Heritage Farm Store',
+    issued:D(30), due:D(0), amount:360.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:144,cases:12,unitPrice:2.50,total:360.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  // ac016 — 1 invoice (iv010 used in ci005 — overdue 60 days)
+  { id:'iv010', number:'PBF-010', accountId:'ac016', accountName:'Rolling Hills Farm Stand',
+    issued:D(90), due:D(60), amount:216.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'60 days overdue.', combinedInvoiceId:'ci005' },
+
+  // ac019 — 1 invoice
+  { id:'iv011', number:'PBF-011', accountId:'ac019', accountName:'Clover Valley Farms',
+    issued:D(95), due:D(65), amount:270.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96, cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'raspberry',qty:36, cases:3,unitPrice:2.50,total:90.00, description:'Raspberry 12-pk'},
+    ],
+    notes:'Via NENF distributor.', combinedInvoiceId:null },
+
+  // Additional invoices — ac023, ac024, ac025, ac028, ac029, ac012, ac014
+  { id:'iv012', number:'PBF-012', accountId:'ac023', accountName:'Pinecrest Market',
+    issued:D(70), due:D(40), amount:180.00, status:'paid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv013', number:'PBF-013', accountId:'ac024', accountName:'Cliffside Provisions',
+    issued:D(55), due:D(25), amount:180.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'peach',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Peach 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv014', number:'PBF-014', accountId:'ac025', accountName:'Brookside Natural Foods',
+    issued:D(85), due:D(55), amount:360.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry'},
+    ],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv015', number:'PBF-015', accountId:'ac028', accountName:'Harbor Light Market',
+    issued:D(65), due:D(35), amount:216.00, status:'paid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv016', number:'PBF-016', accountId:'ac012', accountName:'Autumn Ridge Bakery',
+    issued:D(50), due:D(20), amount:144.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'peach',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Peach 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv017', number:'PBF-017', accountId:'ac029', accountName:'Fern Valley Co-op',
+    issued:D(40), due:D(10), amount:180.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv018', number:'PBF-018', accountId:'ac026', accountName:'Riverbank Cafe',
+    issued:D(35), due:D(5), amount:144.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'variety',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Variety 12-pk'}],
+    notes:'', combinedInvoiceId:null },
+];
+
+// =============================================================
+//  LF INVOICES (8)
+// =============================================================
+const lf_invoices = [
+  // ac001 (lf001 used in ci001)
+  { id:'lf001', number:'LF-001', accountId:'ac001', accountName:'Harvest Moon Co-op',
+    issued:D(100), due:D(70), total:215.88, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-simple-syrup-sm',skuName:'Lavender Simple Syrup 12.7oz',units:12,caseSize:12,wholesalePrice:8.99,lineTotal:107.88,hasVariants:false},
+      {id:sid(),skuId:'lf-candle',         skuName:'Soy Candle',                   units:12,caseSize:12,wholesalePrice:14.99,lineTotal:179.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci001', source:'manual', notes:'' },
+
+  // ac005 (lf002 used in ci002)
+  { id:'lf002', number:'LF-002', accountId:'ac005', accountName:'Sunrise Wellness',
+    issued:D(80), due:D(50), total:107.88, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-roll-on',skuName:'Aromatherapy Roll-On',units:24,caseSize:24,wholesalePrice:9.99,lineTotal:239.76,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci002', source:'manual', notes:'' },
+
+  // ac011 (lf003 used in ci003)
+  { id:'lf003', number:'LF-003', accountId:'ac011', accountName:'Birchwood Co-op',
+    issued:D(110), due:D(80), total:143.76, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-sachet',skuName:'Seatbelt Sachet',units:12,caseSize:12,wholesalePrice:4.99,lineTotal:59.88,hasVariants:false},
+      {id:sid(),skuId:'lf-scrunchie',skuName:'Aromatherapy Scrunchie',units:12,caseSize:6,wholesalePrice:7.49,lineTotal:89.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci003', source:'manual', notes:'' },
+
+  // ac013 (lf004 used in ci004)
+  { id:'lf004', number:'LF-004', accountId:'ac013', accountName:'Heritage Farm Store',
+    issued:D(140), due:D(110), total:323.64, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-simple-syrup-sm',skuName:'Lavender Simple Syrup 12.7oz',units:12,caseSize:12,wholesalePrice:8.99,lineTotal:107.88,hasVariants:false},
+      {id:sid(),skuId:'lf-candle',         skuName:'Soy Candle',                   units:12,caseSize:12,wholesalePrice:14.99,lineTotal:179.88,hasVariants:false},
+      {id:sid(),skuId:'lf-sachet',         skuName:'Seatbelt Sachet',               units:12,caseSize:12,wholesalePrice:4.99, lineTotal:59.88, hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci004', source:'manual', notes:'' },
+
+  // ac016 (lf005 used in ci005)
+  { id:'lf005', number:'LF-005', accountId:'ac016', accountName:'Rolling Hills Farm Stand',
+    issued:D(90), due:D(60), total:89.88, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-scrunchie',skuName:'Aromatherapy Scrunchie',units:12,caseSize:6,wholesalePrice:7.49,lineTotal:89.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci005', source:'manual', notes:'Overdue 60 days.' },
+
+  // ac014 (standalone LF invoices)
+  { id:'lf006', number:'LF-006', accountId:'ac014', accountName:'Meadowbrook Spa',
+    issued:D(95), due:D(65), total:239.76, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-roll-on',skuName:'Aromatherapy Roll-On',units:24,caseSize:24,wholesalePrice:9.99,lineTotal:239.76,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'' },
+
+  { id:'lf007', number:'LF-007', accountId:'ac014', accountName:'Meadowbrook Spa',
+    issued:D(35), due:D(5), total:179.88, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-candle',skuName:'Soy Candle',units:12,caseSize:12,wholesalePrice:14.99,lineTotal:179.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'' },
+
+  // ac030
+  { id:'lf008', number:'LF-008', accountId:'ac030', accountName:'Thornwood Apothecary',
+    issued:D(50), due:D(20), total:179.76, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-refresh-powder',skuName:'Lavender Refresh Powder',units:24,caseSize:12,wholesalePrice:4.99,lineTotal:119.76,hasVariants:false},
+      {id:sid(),skuId:'lf-dryer-sachet',  skuName:'Dryer Sachet 2-Pack',   units:12,caseSize:12,wholesalePrice:5.49,lineTotal:65.88, hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'' },
+];
+
+// =============================================================
+//  COMBINED INVOICES (5)
+// =============================================================
+const combined_invoices = [
+  { id:'ci001', number:'COMB-001', purplInvoiceId:'iv001', lfInvoiceId:'lf001',
+    accountId:'ac001', accountName:'Harvest Moon Co-op',
+    status:'paid', createdAt:ISO(100), sentAt:ISO(99), paidAt:ISO(90),
+    portalOrderId:null, purplSubtotal:432.00, lfSubtotal:215.88, grandTotal:647.88, notes:'' },
+
+  { id:'ci002', number:'COMB-002', purplInvoiceId:'iv003', lfInvoiceId:'lf002',
+    accountId:'ac005', accountName:'Sunrise Wellness',
+    status:'unpaid', createdAt:ISO(80), sentAt:ISO(79), paidAt:null,
+    portalOrderId:null, purplSubtotal:288.00, lfSubtotal:239.76, grandTotal:527.76, notes:'' },
+
+  { id:'ci003', number:'COMB-003', purplInvoiceId:'iv007', lfInvoiceId:'lf003',
+    accountId:'ac011', accountName:'Birchwood Co-op',
+    status:'paid', createdAt:ISO(110), sentAt:ISO(109), paidAt:ISO(100),
+    portalOrderId:null, purplSubtotal:360.00, lfSubtotal:143.76, grandTotal:503.76, notes:'' },
+
+  { id:'ci004', number:'COMB-004', purplInvoiceId:'iv008', lfInvoiceId:'lf004',
+    accountId:'ac013', accountName:'Heritage Farm Store',
+    status:'paid', createdAt:ISO(140), sentAt:ISO(139), paidAt:ISO(130),
+    portalOrderId:null, purplSubtotal:540.00, lfSubtotal:323.64, grandTotal:863.64, notes:'' },
+
+  { id:'ci005', number:'COMB-005', purplInvoiceId:'iv010', lfInvoiceId:'lf005',
+    accountId:'ac016', accountName:'Rolling Hills Farm Stand',
+    status:'unpaid', createdAt:ISO(90), sentAt:ISO(89), paidAt:null,
+    portalOrderId:null, purplSubtotal:216.00, lfSubtotal:89.88, grandTotal:305.88, notes:'OVERDUE 60 days.' },
+];
+
+// ─── PART 3 PLACEHOLDER ───────────────────────────────────────
+module.exports = { accounts, prospects, iv, lf_invoices, combined_invoices, D, ISO, sid };
