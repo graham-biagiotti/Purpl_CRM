@@ -143,7 +143,7 @@ test.describe('Inventory — Section B: Production run', () => {
   test('Running total in production history reflects seeded entries', async ({ page }) => {
     // The prod_hist seed data has 20 entries — history table should show entries
     // Navigate to production history tab if separate from schedule tab
-    const histTab = page.locator('[data-tab="history"], .tab').filter({ hasText: /hist/i }).first();
+    const histTab = page.locator('#page-production [data-tab="history"], #page-production .tab').filter({ hasText: /hist/i }).first();
     if (await histTab.count() > 0) {
       await histTab.click();
       await page.waitForTimeout(500);
@@ -244,8 +244,10 @@ test.describe('Inventory — Section C: Log table', () => {
         const rowCountBefore = rows.length;
 
         // Click the delete button (✕) on the first row
+        // delInvEntry() calls confirm2() = window.confirm() — accept it
         const deleteBtn = logBody.locator('tr').first().locator('button.btn.red, button:text("✕"), button:has-text("✕")').first();
         if (await deleteBtn.count() > 0) {
+          page.once('dialog', dialog => dialog.accept());
           await deleteBtn.click();
           await page.waitForTimeout(500);
 

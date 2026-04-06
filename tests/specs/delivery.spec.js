@@ -111,7 +111,7 @@ test.describe('Delivery — Section B: New order', () => {
 
   test('New Order modal opens when topbar button is clicked', async ({ page }) => {
     // The "+ Order" button in the topbar
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#new-order-btn');
     await expect(addBtn).toBeVisible({ timeout: 5000 });
     await addBtn.click();
 
@@ -123,7 +123,7 @@ test.describe('Delivery — Section B: New order', () => {
   });
 
   test('Save new order — order appears in list and is written to Firestore', async ({ page, verifyFirestoreWrite }) => {
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#new-order-btn');
     await addBtn.click();
     await expect(page.locator('#modal-new-order')).toHaveClass(/open/, { timeout: 10000 });
 
@@ -192,7 +192,7 @@ test.describe('Delivery — Section B: New order', () => {
   });
 
   test('Empty new order form (no account) — save is blocked', async ({ page }) => {
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#new-order-btn');
     await addBtn.click();
     await expect(page.locator('#modal-new-order')).toHaveClass(/open/, { timeout: 10000 });
 

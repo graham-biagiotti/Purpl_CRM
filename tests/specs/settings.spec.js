@@ -39,7 +39,7 @@ test.describe('Settings — Section A: Page load', () => {
   test('Invoice settings section renders', async ({ page }) => {
     // Invoice settings fields (from-name, terms, etc.)
     // Navigate to invoice settings tab/section if it's separate
-    const invTab = page.locator('[data-tab="invoices"], [data-settings-tab="invoices"]').first();
+    const invTab = page.locator('#page-settings [data-tab="invoices"], #page-settings [data-settings-tab="invoices"]').first();
     if (await invTab.count() > 0) {
       await invTab.click();
       await page.waitForTimeout(300);
@@ -152,7 +152,7 @@ test.describe('Settings — Section C: Invoice settings', () => {
 
   test('Invoice settings save — updates invoice_settings in Firestore', async ({ page }) => {
     // Navigate to invoice settings section if it's on a separate tab
-    const invTab = page.locator('[data-tab="invoices"], [data-settings-tab="invoices"]').first();
+    const invTab = page.locator('#page-settings [data-tab="invoices"], #page-settings [data-settings-tab="invoices"]').first();
     if (await invTab.count() > 0) {
       await invTab.click();
       await page.waitForTimeout(300);

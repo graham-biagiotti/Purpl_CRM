@@ -18,7 +18,7 @@ async function gotoDistributors(page) {
 
 async function openDist001(page) {
   // Click on the New England Natural Foods card
-  const card = page.locator('#dist-cards .dist-card, #dist-cards .card')
+  const card = page.locator('#dist-cards .ac-card')
     .filter({ hasText: 'New England Natural Foods' }).first();
   await expect(card).toBeVisible({ timeout: 10000 });
   const viewBtn = card.locator('button, .btn').filter({ hasText: /view|open|detail/i }).first();
@@ -60,7 +60,7 @@ test.describe('Distributors — Section A: List and KPIs', () => {
     ).catch(() => {}); // graceful — KPI might render as numbers only
 
     // At least 2 dist cards should be visible
-    const cards = await page.locator('#dist-cards .dist-card, #dist-cards .card').count();
+    const cards = await page.locator('#dist-cards .ac-card').count();
     expect(cards).toBeGreaterThanOrEqual(2);
   });
 
@@ -89,7 +89,7 @@ test.describe('Distributors — Section B: Add distributor', () => {
 
   test('Add Distributor modal opens', async ({ page }) => {
     // The "+ Distributor" button in the topbar
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#page-distributors .page-filter-bar .btn.primary').first();
     await expect(addBtn).toBeVisible({ timeout: 5000 });
     await addBtn.click();
 
@@ -101,7 +101,7 @@ test.describe('Distributors — Section B: Add distributor', () => {
   });
 
   test('Save with empty name — blocked by validation', async ({ page }) => {
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#page-distributors .page-filter-bar .btn.primary').first();
     await addBtn.click();
     await expect(page.locator('#modal-edit-distributor')).toHaveClass(/open/, { timeout: 10000 });
 
@@ -122,7 +122,7 @@ test.describe('Distributors — Section B: Add distributor', () => {
   });
 
   test('Fill distributor form and save — new distributor appears in list', async ({ page, verifyFirestoreWrite }) => {
-    const addBtn = page.locator('.topbar-right .btn.primary, .topbar-right button.primary').first();
+    const addBtn = page.locator('#page-distributors .page-filter-bar .btn.primary').first();
     await addBtn.click();
     await expect(page.locator('#modal-edit-distributor')).toHaveClass(/open/, { timeout: 10000 });
 
