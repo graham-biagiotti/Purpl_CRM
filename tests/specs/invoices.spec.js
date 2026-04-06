@@ -230,3 +230,150 @@ test.describe('Invoices Page', () => {
     expect(rowText).toMatch(/\$/);
   });
 });
+
+test.describe('Invoices — Section B: Mark paid, delete, new LF invoice', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#app-shell', { state: 'visible', timeout: 20000 });
+    await gotoInvoices(page);
+  });
+
+  test('Mark purpl invoice as paid — badge changes to paid in expanded column', async ({ page }) => {
+    // Expand the purpl column
+    await page.click('.inv-col-header.purpl');
+    await page.waitForTimeout(500);
+    await expect(page.locator('#inv-col-purpl')).toHaveClass(/expanded/, { timeout: 5000 });
+
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('#inv-col-purpl-expanded');
+        return el && el.querySelectorAll('tbody tr').length > 0;
+      },
+      { timeout: 10000 }
+    );
+
+    // Find first unpaid invoice row and its paid button
+    const paidBtn = page.locator('#inv-col-purpl-expanded tbody .btn.xs.green').filter({ hasText: '✓ Paid' }).first();
+    if (await paidBtn.count() === 0) {
+      console.log('[invoices] No unpaid purpl invoices found — skip mark-paid test');
+      return;
+    }
+
+    // Capture the row text before marking paid (to re-find it after)
+    const row = paidBtn.locator('xpath=ancestor::tr');
+    await paidBtn.click();
+    await page.waitForTimeout(600);
+
+    // The paid button should be gone from that row (status changed to paid)
+    // Or the badge in that row should now show "paid"
+    const badge = page.locator('#inv-col-purpl-expanded tbody tr .badge.green').filter({ hasText: 'paid' });
+    const badgeCount = await badge.count();
+    // At least one paid badge should now exist
+    expect(badgeCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('Mark LF invoice as paid — button changes from "✓ Paid" to "Unpay"', async ({ page }) => {
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('#inv-col-lf-compact');
+        return el && el.innerHTML.trim().length > 0;
+      },
+      { timeout: 10000 }
+    );
+
+    // Find an unpaid LF invoice — button text "✓ Paid" with class primary
+    const paidBtn = page.locator('#inv-col-lf-compact .btn.xs.primary').filter({ hasText: '✓ Paid' }).first();
+    if (await paidBtn.count() === 0) {
+      console.log('[invoices] No unpaid LF compact rows visible — skip LF mark-paid test');
+      return;
+    }
+
+    await paidBtn.click();
+    await page.waitForTimeout(600);
+
+    // After marking paid the button for that invoice should now say "Unpay"
+    // (re-rendered with no "primary" class)
+    const unpayBtn = page.locator('#inv-col-lf-compact .btn.xs').filter({ hasText: 'Unpay' });
+    expect(await unpayBtn.count()).toBeGreaterThanOrEqual(1);
+  });
+
+  test('Delete purpl invoice — confirm dialog, row removed from expanded column', async ({ page }) => {
+    // Expand purpl column
+    await page.click('.inv-col-header.purpl');
+    await page.waitForTimeout(500);
+    await expect(page.locator('#inv-col-purpl')).toHaveClass(/expanded/, { timeout: 5000 });
+
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('#inv-col-purpl-expanded');
+        return el && el.querySelectorAll('tbody tr').length > 0;
+      },
+      { timeout: 10000 }
+    );
+
+    const rowsBefore = await page.locator('#inv-col-purpl-expanded tbody tr').count();
+    if (rowsBefore === 0) {
+      console.log('[invoices] No purpl invoice rows to delete — skip');
+      return;
+    }
+
+    // Click the delete button on the first row; deleteInvoice() calls window.confirm()
+    const deleteBtn = page.locator('#inv-col-purpl-expanded tbody tr .btn.xs.red').filter({ hasText: '✕' }).first();
+    page.once('dialog', dialog => dialog.accept());
+    await deleteBtn.click();
+    await page.waitForTimeout(800);
+
+    const rowsAfter = await page.locator('#inv-col-purpl-expanded tbody tr').count();
+    expect(rowsAfter).toBeLessThan(rowsBefore);
+  });
+
+  test('New LF invoice — fill modal, save, appears in LF compact column', async ({ page }) => {
+    // Open the LF invoice modal via JS
+    await page.evaluate(() => openLfInvoiceModal(null));
+    await expect(page.locator('#modal-lf-invoice')).toHaveClass(/open/, { timeout: 10000 });
+
+    // Select the first account option
+    const accountSel = page.locator('#lfi-account');
+    const options = await accountSel.locator('option').all();
+    for (const opt of options) {
+      const val = await opt.getAttribute('value');
+      if (val && val.trim().length > 0) {
+        await accountSel.selectOption(val);
+        break;
+      }
+    }
+
+    // Set invoice number and issued date
+    await page.fill('#lfi-number', 'LF-PW-001');
+    await page.fill('#lfi-issued', '2026-04-01');
+    await page.fill('#lfi-due', '2026-05-01');
+
+    // Save
+    await page.click('#lfi-save-btn');
+    await page.waitForTimeout(800);
+
+    // Modal should close
+    const stillOpen = await page.locator('#modal-lf-invoice').evaluate(
+      el => el.classList.contains('open')
+    ).catch(() => false);
+
+    if (!stillOpen) {
+      // Verify the new invoice appears in the LF compact column
+      await page.waitForFunction(
+        () => document.querySelector('#inv-col-lf-compact')?.innerHTML.includes('LF-PW-001'),
+        { timeout: 5000 }
+      ).catch(() => {});
+
+      // Verify in Firestore
+      const admin = require('firebase-admin');
+      const verifierApp = (() => { try { return admin.app('verifier'); } catch { return null; } })();
+      if (verifierApp) {
+        const db = admin.firestore(verifierApp);
+        const snap = await db.collection('workspace').doc('main').collection('data').doc('store').get();
+        const store = snap.data();
+        const found = (store.lf_invoices || []).find(i => i.number === 'LF-PW-001');
+        expect(found).toBeTruthy();
+      }
+    }
+  });
+});

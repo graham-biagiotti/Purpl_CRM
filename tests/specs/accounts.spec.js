@@ -382,3 +382,162 @@ test.describe('Accounts — Section D: Overdue / Never contacted', () => {
     await page.fill('#ac-search', '');
   });
 });
+
+test.describe('Accounts — Section E: Delete, Search, Notes, Locations', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#app-shell', { state: 'visible', timeout: 20000 });
+    await gotoAccounts(page);
+  });
+
+  test('Delete account — confirm dialog, removed from list, gone from Firestore', async ({ page }) => {
+    // Create a disposable account to delete
+    await page.click('.topbar-right .btn.primary');
+    await expect(page.locator('#modal-edit-account')).toHaveClass(/open/, { timeout: 10000 });
+    await page.fill('#eac-name', 'Delete Me Account');
+    await page.selectOption('#eac-type', 'Grocery');
+    await page.click('#eac-save-btn');
+    await expect(page.locator('#modal-edit-account')).not.toHaveClass(/open/, { timeout: 10000 });
+
+    // Find and open the new account
+    await page.fill('#ac-search', 'Delete Me Account');
+    await page.waitForTimeout(500);
+    const card = page.locator('#ac-cards .ac-card').filter({ hasText: 'Delete Me Account' }).first();
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('.btn.primary').filter({ hasText: 'View' }).click();
+    await expect(page.locator('#modal-account')).toHaveClass(/open/, { timeout: 10000 });
+
+    // Open edit modal and delete
+    await page.click('#mac-edit-btn');
+    await expect(page.locator('#modal-edit-account')).toHaveClass(/open/, { timeout: 10000 });
+
+    // deleteAccount() calls window.confirm() — accept it
+    page.once('dialog', dialog => dialog.accept());
+    await page.click('#eac-delete-btn');
+    await page.waitForTimeout(800);
+
+    // Account must be gone from list
+    const remaining = await page.locator('#ac-cards .ac-card').filter({ hasText: 'Delete Me Account' }).count();
+    expect(remaining).toBe(0);
+
+    // Verify deletion reached Firestore
+    const admin = require('firebase-admin');
+    const verifierApp = (() => { try { return admin.app('verifier'); } catch { return null; } })();
+    if (verifierApp) {
+      const db = admin.firestore(verifierApp);
+      const snap = await db.collection('workspace').doc('main').collection('data').doc('store').get();
+      const store = snap.data();
+      const found = (store.ac || []).find(a => a.name === 'Delete Me Account');
+      expect(found).toBeFalsy();
+    }
+
+    await page.fill('#ac-search', '');
+  });
+
+  test('Search filter — type partial name, only matching cards visible', async ({ page }) => {
+    const allCount = await page.locator('#ac-cards .ac-card').count();
+    expect(allCount).toBeGreaterThan(1);
+
+    // Filter to accounts containing 'Harvest'
+    await page.fill('#ac-search', 'Harvest');
+    await page.waitForTimeout(500);
+
+    const filteredCount = await page.locator('#ac-cards .ac-card').count();
+    expect(filteredCount).toBeGreaterThan(0);
+    expect(filteredCount).toBeLessThan(allCount);
+
+    // Every visible card must match the query
+    const texts = await page.locator('#ac-cards .ac-card').allTextContents();
+    for (const t of texts) {
+      expect(t.toLowerCase()).toContain('harvest');
+    }
+
+    // Non-existent term → zero results
+    await page.fill('#ac-search', 'zzz-no-match-xyz');
+    await page.waitForTimeout(400);
+    expect(await page.locator('#ac-cards .ac-card').count()).toBe(0);
+
+    // Clear → all accounts restored
+    await page.fill('#ac-search', '');
+    await page.waitForTimeout(400);
+    expect(await page.locator('#ac-cards .ac-card').count()).toBeGreaterThanOrEqual(allCount);
+  });
+
+  test('Log note on account — fill note field, save, verify appears in Notes tab and Firestore', async ({ page }) => {
+    await page.fill('#ac-search', 'Harvest Moon');
+    await page.waitForTimeout(500);
+    const card = page.locator('#ac-cards .ac-card').filter({ hasText: 'Harvest Moon' }).first();
+    await card.locator('.btn.primary').filter({ hasText: 'View' }).click();
+    await expect(page.locator('#modal-account')).toHaveClass(/open/, { timeout: 10000 });
+
+    // Open Notes tab
+    await page.click('#modal-account .tab[data-tab="notes"]');
+    await expect(page.locator('#mac-tab-notes')).toBeVisible({ timeout: 5000 });
+
+    const noteText = `Playwright note ${Date.now()}`;
+    await page.fill('#mac-note-text', noteText);
+    await page.click('#mac-add-note-btn');
+    await page.waitForTimeout(500);
+
+    // Note must appear in the list
+    await expect(page.locator('#mac-notes-list')).toContainText(noteText, { timeout: 5000 });
+
+    // Verify in Firestore
+    const admin = require('firebase-admin');
+    const verifierApp = (() => { try { return admin.app('verifier'); } catch { return null; } })();
+    if (verifierApp) {
+      const db = admin.firestore(verifierApp);
+      const snap = await db.collection('workspace').doc('main').collection('data').doc('store').get();
+      const store = snap.data();
+      const ac001 = (store.ac || []).find(a => a.id === 'ac001');
+      expect(ac001).toBeTruthy();
+      const found = (ac001.notes || []).some(n => n.text === noteText);
+      expect(found).toBe(true);
+    }
+
+    await page.click('#modal-account .modal-close');
+    await page.fill('#ac-search', '');
+  });
+
+  test('Add location to account — fill location form in edit modal, save, verify in Firestore', async ({ page }) => {
+    await page.fill('#ac-search', 'Green Valley Market');
+    await page.waitForTimeout(500);
+    const card = page.locator('#ac-cards .ac-card').filter({ hasText: 'Green Valley Market' }).first();
+    if (await card.count() === 0) {
+      console.log('[accounts] Green Valley Market not found — skipping location test');
+      await page.fill('#ac-search', '');
+      return;
+    }
+    await card.locator('.btn.primary').filter({ hasText: 'View' }).click();
+    await expect(page.locator('#modal-account')).toHaveClass(/open/, { timeout: 10000 });
+
+    await page.click('#mac-edit-btn');
+    await expect(page.locator('#modal-edit-account')).toHaveClass(/open/, { timeout: 10000 });
+
+    // Add a new location row
+    await page.click('button[onclick="eacAddLoc()"]');
+    await page.waitForTimeout(300);
+
+    const lastRow = page.locator('#eac-locs-list .eac-loc-row').last();
+    await lastRow.locator('.eac-loc-label').fill('Playwright Location');
+    await lastRow.locator('.eac-loc-address').fill('123 Test St, TestCity, NH');
+
+    await page.click('#eac-save-btn');
+    await expect(page.locator('#modal-edit-account')).not.toHaveClass(/open/, { timeout: 10000 });
+
+    // Verify in Firestore
+    const admin = require('firebase-admin');
+    const verifierApp = (() => { try { return admin.app('verifier'); } catch { return null; } })();
+    if (verifierApp) {
+      const db = admin.firestore(verifierApp);
+      const snap = await db.collection('workspace').doc('main').collection('data').doc('store').get();
+      const store = snap.data();
+      const ac002 = (store.ac || []).find(a => a.id === 'ac002');
+      expect(ac002).toBeTruthy();
+      const found = (ac002.locations || []).some(l => l.label === 'Playwright Location');
+      expect(found).toBe(true);
+    }
+
+    await page.fill('#ac-search', '');
+  });
+});
