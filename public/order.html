@@ -502,7 +502,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     <h2 id="ty-heading">Thank you!</h2>
     <p>Your order has been received.</p>
     <div class="summary-card" id="ty-summary"></div>
-    <button onclick="window.print()" style="margin-top:16px;
+    <button onclick="printCurrentOrder()" style="margin-top:16px;
 padding:10px 24px;background:#7B4FA0;color:#fff;border:none;
 border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
       🖨️ Print Order Confirmation
@@ -555,9 +555,20 @@ let _lfSkusLoaded = false;
 const LF_SKU_FALLBACK = [
   {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
   {id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null},
-  {id:'lf-scrunchie',       name:'Aromatherapy Scrunchie',        wholesalePrice:7.49,  caseSize:6,  msrp:14.99},
-  {id:'lf-sachet',          name:'Seatbelt Sachet',               wholesalePrice:4.99,  caseSize:12, msrp:9.99},
-  {id:'lf-candle',          name:'Soy Candle',                    wholesalePrice:14.99, caseSize:12, msrp:24.99},
+  {id:'lf-scrunchie', name:'Aromatherapy Scrunchie', wholesalePrice:7.49, caseSize:6, msrp:14.99, variants:[
+    {id:'classic-lavender',  name:'Classic Lavender'},
+    {id:'lavender-mint',     name:'Lavender Mint'},
+    {id:'lavender-rose',     name:'Lavender Rose'},
+  ]},
+  {id:'lf-sachet', name:'Seatbelt Sachet', wholesalePrice:4.99, caseSize:12, msrp:9.99, variants:[
+    {id:'classic-lavender',  name:'Classic Lavender'},
+    {id:'lavender-mint',     name:'Lavender Mint'},
+  ]},
+  {id:'lf-candle', name:'Soy Candle', wholesalePrice:14.99, caseSize:12, msrp:24.99, variants:[
+    {id:'classic-lavender',  name:'Classic Lavender'},
+    {id:'lavender-vanilla',  name:'Lavender Vanilla'},
+    {id:'lemon-lavender',    name:'Lemon Lavender'},
+  ]},
   {id:'lf-refresh-powder',  name:'Lavender Refresh Powder',       wholesalePrice:4.99,  caseSize:12, msrp:9.99},
   {id:'lf-roll-on',         name:'Aromatherapy Roll-On',          wholesalePrice:9.99,  caseSize:24, msrp:19.99},
   {id:'lf-dryer-sachet',    name:'Dryer Sachet 2-Pack',           wholesalePrice:5.49,  caseSize:12, msrp:9.99},
@@ -991,7 +1002,15 @@ function showThankYou(data) {
   if (data.lfItems && data.lfItems.length) {
     summaryHtml += '<div style="font-size:12px;font-weight:700;color:#166534;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🌿 Lavender Fields</div>';
     data.lfItems.forEach(function(it) {
-      summaryHtml += '<div class="summary-row"><span>' + it.skuName + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
+      if (it.hasVariants && it.variantLines && it.variantLines.length) {
+        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + it.skuName + '</span>';
+        it.variantLines.forEach(function(vl) {
+          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + vl.variantName + ': ' + vl.units + ' units</span>';
+        });
+        summaryHtml += '<span style="align-self:flex-end;font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
+      } else {
+        summaryHtml += '<div class="summary-row"><span>' + it.skuName + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
+      }
     });
     summaryHtml += '<div class="summary-row"><span>LF Total</span><span>$' + (data.lfTotal||0).toFixed(2) + '</span></div>';
   }
@@ -1010,25 +1029,34 @@ function showThankYou(data) {
   }
 
   document.getElementById('ty-summary').innerHTML = summaryHtml;
+  _lastOrderData = data;
 
   // Trigger mailto: confirmation to buyer
   var emailTo = data.billingEmail || '';
   if (emailTo) {
-    var subject = 'Your wholesale order has been received — Pumpkin Blossom Farm';
-    var body = 'Hi ' + data.accountName + ',\n\nThank you for your order! Here is a summary:\n\n';
+    var subject = 'Order received — Pumpkin Blossom Farm';
+    var body = 'Hi ' + data.accountName + ',\n\nYour order has been received. Here\'s your summary:\n\n';
     if (data.cases > 0) {
-      body += '--- purpl Lemonade ---\n';
-      body += 'Classic Lavender Lemonade: ' + data.cases + ' cases (' + (data.cases * CANS_PER_CASE) + ' cans)\n\n';
+      body += 'purpl Lemonade\n  · Classic Lavender Lemonade: ' + data.cases + ' case' + (data.cases !== 1 ? 's' : '') + ' (' + (data.cases * CANS_PER_CASE) + ' cans)\n\n';
     }
     if (data.lfItems && data.lfItems.length) {
-      body += '--- Lavender Fields ---\n';
-      data.lfItems.forEach(function(it){ body += it.skuName + ': ' + it.cases + ' case' + (it.cases!==1?'s':'') + ' ($' + it.lineTotal.toFixed(2) + ')\n'; });
-      body += 'LF Total: $' + (data.lfTotal||0).toFixed(2) + '\n\n';
+      body += 'Lavender Fields\n';
+      data.lfItems.forEach(function(it) {
+        if (it.hasVariants && it.variantLines) {
+          it.variantLines.forEach(function(vl) {
+            body += '  · ' + it.skuName + ' (' + vl.variantName + '): ' + vl.units + ' units\n';
+          });
+        } else {
+          body += '  · ' + it.skuName + ': ' + it.cases + ' case' + (it.cases !== 1 ? 's' : '') + '\n';
+        }
+      });
+      body += '  Total: $' + (data.lfTotal || 0).toFixed(2) + '\n\n';
     }
+    if (data.poNumber) body += 'PO Number: ' + data.poNumber + '\n';
     body += 'Payment Terms: Net 30 from delivery\n';
-    if (data.bothBrands) body += 'Note: You will receive separate invoices for purpl and Lavender Fields.\n';
-    body += '\nWe\'ll be in touch shortly to confirm delivery details.\n\n';
-    body += 'Graham Biagiotti\nDirector of Sales · Pumpkin Blossom Farm\n603-748-3038 · graham@pumpkinblossomfarm.com\n393 Pumpkin Hill Rd, Warner, NH 03278';
+    if (data.bothBrands) body += '\nNote: You\'ll receive separate invoices for purpl and Lavender Fields.\n';
+    body += '\nNext steps: We\'ll be in touch to confirm your delivery window within 1–2 business days.\n\n';
+    body += 'Graham Biagiotti\nPumpkin Blossom Farm\n603-748-3038 · lavender@pbfwholesale.com';
     // Open mailto — non-blocking, best-effort
     setTimeout(function() {
       var link = 'mailto:' + encodeURIComponent(emailTo) +
@@ -1184,6 +1212,28 @@ function submitOrder() {
             console.log('Prefs save error:', e);
           });
       }
+      // Build orderSummary HTML for confirmation email
+      var _oSummary = '';
+      if (_brandPurpl && cases > 0) {
+        _oSummary += '<p style="margin:0 0 6px"><strong>💜 purpl Lemonade</strong></p>' +
+          '<p style="margin:0 0 12px;color:#374151">Classic Lavender Lemonade &mdash; ' + cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)</p>';
+      }
+      if (lfItems.length) {
+        _oSummary += '<p style="margin:0 0 6px"><strong>🌿 Lavender Fields</strong></p>';
+        lfItems.forEach(function(it) {
+          if (it.hasVariants && it.variantLines) {
+            _oSummary += '<p style="margin:0 0 3px;color:#374151"><em>' + it.skuName + '</em></p>';
+            it.variantLines.forEach(function(vl) {
+              _oSummary += '<p style="margin:0 0 3px;color:#374151;padding-left:12px">&ndash; ' + vl.variantName + ': ' + vl.units + ' units</p>';
+            });
+          } else {
+            _oSummary += '<p style="margin:0 0 3px;color:#374151">' + it.skuName + ' &mdash; ' + it.cases + ' case' + (it.cases!==1?'s':'') + '</p>';
+          }
+        });
+        _oSummary += '<p style="margin:8px 0 0;font-weight:600;color:#166534">LF Total: $' + lfTotal.toFixed(2) + '</p>';
+      }
+      if (poNumber) _oSummary += '<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ' + poNumber + '</p>';
+
       // Send order confirmation email (silent fail — never blocks order submission)
       firebase.functions().httpsCallable('sendOrderConfirmation')({
         to: billingEmail,
@@ -1191,7 +1241,7 @@ function submitOrder() {
         contactName: contactName || null,
         isPbf: _brandLf,
         portalLink: window.location.href,
-        orderSummary: '',
+        orderSummary: _oSummary,
       }).catch(function(err) {
         console.error('Confirmation email failed:', err);
       });
@@ -1295,97 +1345,102 @@ function printPortalOrder(orderId) {
         alert('Order not found'); return;
       }
       var o = doc.data();
-      var cases = (o.items||[])[0] ?
-        (o.items[0].cases||0) : 0;
-      var cans = cases * CANS_PER_CASE;
       var dt = o.submittedAt && o.submittedAt.toDate ?
-        o.submittedAt.toDate().toLocaleDateString(
-          'en-US',{weekday:'long',month:'long',
-          day:'numeric',year:'numeric'}) : 'Unknown date';
-      var dists = Array.isArray(o.distributors) ?
-        o.distributors.join(', ') :
-        (o.distributorName||'');
+        o.submittedAt.toDate().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : 'Unknown date';
+
+      // Build item rows — handles purpl items array and LF lineItems
+      var itemRows = '';
+      var purplCases = 0;
+      (o.items||[]).forEach(function(it) {
+        if ((it.cases||it.qty) > 0) {
+          purplCases += it.cases||it.qty||0;
+          var cans = (it.cases||it.qty||0) * CANS_PER_CASE;
+          itemRows += '<tr>' +
+            '<td>' + _e(it.label||'Classic Lavender Lemonade') + '</td>' +
+            '<td style="color:#6b7280">💜 purpl</td>' +
+            '<td style="text-align:right">' + (it.cases||it.qty) + ' case' + ((it.cases||it.qty)!==1?'s':'') + ' (' + cans + ' cans)</td>' +
+          '</tr>';
+        }
+      });
+      var lfSubtotal = 0;
+      (o.lineItems||[]).forEach(function(it) {
+        if (it.hasVariants && it.variantLines) {
+          it.variantLines.forEach(function(vl) {
+            var amt = vl.units * (it.unitPrice||0);
+            lfSubtotal += amt;
+            itemRows += '<tr>' +
+              '<td>' + _e(it.skuName||'') + ' &mdash; ' + _e(vl.variantName||'') + '</td>' +
+              '<td style="color:#6b7280">🌿 LF</td>' +
+              '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + amt.toFixed(2) + '</td>' +
+            '</tr>';
+          });
+        } else if ((it.cases||0) > 0 || (it.units||0) > 0) {
+          lfSubtotal += it.lineTotal||0;
+          itemRows += '<tr>' +
+            '<td>' + _e(it.skuName||'') + '</td>' +
+            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="text-align:right">' + (it.cases||0) + ' case' + ((it.cases||0)!==1?'s':'') + ' &nbsp; $' + (it.lineTotal||0).toFixed(2) + '</td>' +
+          '</tr>';
+        }
+      });
+      var subtotalRow = lfSubtotal > 0
+        ? '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + lfSubtotal.toFixed(2) + '</td></tr>'
+        : '';
+      if (!itemRows) {
+        itemRows = '<tr><td colspan="3" style="color:#9ca3af;font-style:italic">No items recorded</td></tr>';
+      }
+
       var w = window.open('','_blank');
-      w.document.write('<!DOCTYPE html><html><head>'+
-        '<title>Order — '+(o.accountName||'')+'</title>'+
-        '<style>'+
-        'body{font-family:-apple-system,sans-serif;'+
-          'max-width:640px;margin:40px auto;'+
-          'padding:0 20px;color:#1a1a2e;font-size:13px}'+
-        '.header{text-align:center;padding-bottom:20px;'+
-          'border-bottom:2px solid #7B4FA0;'+
-          'margin-bottom:24px}'+
-        '.logo{height:50px}'+
-        'h1{font-size:20px;font-weight:700;'+
-          'color:#7B4FA0;margin:8px 0 4px}'+
-        '.lbl{font-size:10px;font-weight:700;'+
-          'text-transform:uppercase;letter-spacing:.08em;'+
-          'color:#9ca3af;margin:14px 0 4px}'+
-        '.val{font-size:14px;font-weight:500}'+
-        '.row{display:flex;justify-content:space-between;'+
-          'padding:10px 0;border-bottom:1px solid #f5f0ff}'+
-        '.total{display:flex;justify-content:space-between;'+
-          'padding:12px 0;font-weight:700;font-size:15px;'+
-          'color:#7B4FA0;border-top:2px solid #7B4FA0}'+
-        '.badge{display:inline-block;padding:4px 12px;'+
-          'border-radius:20px;font-size:12px;'+
-          'font-weight:600;background:#fef3c7;color:#92400e}'+
-        '.footer{text-align:center;margin-top:32px;'+
-          'padding-top:16px;border-top:1px solid #e9d5ff;'+
-          'color:#9ca3af;font-size:11px}'+
-        '@media print{button{display:none!important}}'+
-        '</style></head><body>'+
-        '<div class="header">'+
-        '<img src="https://static.wixstatic.com/media/'+
-          '81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png'+
-          '/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,'+
-          'enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig'+
-          '%20in%20front%20-%20transparent.png" class="logo">'+
-        '<h1>Order Confirmation</h1>'+
-        '<div style="font-size:12px;color:#6b7280">'+dt+'</div>'+
-        '</div>'+
-        '<div class="lbl">Ordered By</div>'+
-        '<div class="val">'+(o.accountName||'—')+'</div>'+
-        '<div class="lbl">Billing Email</div>'+
-        '<div class="val">'+(o.billingEmail||'—')+'</div>'+
-        (o.poNumber?
-          '<div class="lbl">PO Number</div>'+
-          '<div class="val">'+o.poNumber+'</div>':'')+
-        '<div class="lbl">Status</div>'+
-        '<div><span class="badge">'+
-          (o.status||'new').toUpperCase()+'</span></div>'+
-        '<div class="lbl" style="margin-top:20px">'+
-          'Order Details</div>'+
-        '<div class="row">'+
-          '<span>Classic Lavender Lemonade</span>'+
-          '<span>'+cases+' cases · '+cans+' cans</span>'+
-        '</div>'+
-        '<div class="total">'+
-          '<span>Total Cases</span>'+
-          '<span>'+cases+'</span>'+
-        '</div>'+
-        (dists?
-          '<div class="lbl">Distributor(s)</div>'+
-          '<div class="val">'+dists+'</div>':'')+
-        (o.deliveryWindow?
-          '<div class="lbl">Delivery Window</div>'+
-          '<div class="val">'+o.deliveryWindow+'</div>':'')+
-        (o.leadTimeNeeded?
-          '<div class="lbl">Lead Time</div>'+
-          '<div class="val">'+o.leadTimeNeeded+'</div>':'')+
-        (o.notes?
-          '<div class="lbl">Notes</div>'+
-          '<div class="val">'+o.notes+'</div>':'')+
-        '<div style="text-align:center;margin:24px 0">'+
-        '<button onclick="window.print()" '+
-          'style="background:#7B4FA0;color:#fff;border:none;'+
-          'padding:10px 24px;border-radius:8px;'+
-          'font-size:14px;font-weight:600;cursor:pointer">'+
-          'Print / Save as PDF</button></div>'+
-        '<div class="footer">'+
-          'purpl by Pumpkin Blossom Farm · '+
-          'sales@drinkpurpl.com · 603-748-3038 · '+
-          'drinkpurpl.com</div>'+
+      w.document.write('<!DOCTYPE html><html><head>' +
+        '<meta charset="UTF-8">' +
+        '<title>Order &mdash; ' + _e(o.accountName||'') + '</title>' +
+        '<style>' +
+        'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
+        '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #2D1B4E;margin-bottom:28px}' +
+        '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
+        '.hdr h1{font-size:22px;font-weight:700;color:#2D1B4E;margin:0 0 4px}' +
+        '.hdr .sub{font-size:13px;color:#6b7280}' +
+        '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
+        '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:3px}' +
+        '.val{font-size:14px;font-weight:600}' +
+        '.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
+        'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+        'th:last-child,td:last-child{text-align:right}' +
+        'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
+        '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+        '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#9ca3af;font-size:11px;line-height:1.8}' +
+        '@media print{button{display:none!important}}' +
+        '</style></head><body>' +
+        '<div class="hdr">' +
+        '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png">' +
+        '<h1>Order Confirmation</h1>' +
+        '<div class="sub">' + _e(dt) + '</div>' +
+        '</div>' +
+        '<div class="meta">' +
+          '<div><div class="lbl">Account</div><div class="val">' + _e(o.accountName||'—') + '</div></div>' +
+          (o.poNumber ? '<div><div class="lbl">PO Number</div><div class="val">' + _e(o.poNumber) + '</div></div>' : '<div></div>') +
+          '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(o.billingEmail||'—') + '</div></div>' +
+          '<div><div class="lbl">Status</div><div class="val"><span class="badge">' + _e((o.status||'new').toUpperCase()) + '</span></div></div>' +
+          (o.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(o.deliveryWindow) + '</div></div>' : '') +
+          '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from delivery</div></div>' +
+        '</div>' +
+        '<table>' +
+        '<thead><tr><th>Item</th><th>Brand</th><th>Qty / Amount</th></tr></thead>' +
+        '<tbody>' + itemRows + '</tbody>' +
+        subtotalRow +
+        '</table>' +
+        '<div class="confirm">' +
+        '<strong>Order received — thank you!</strong><br>' +
+        'We\'ll be in touch to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
+        '</div>' +
+        '<div style="text-align:center;margin:20px 0">' +
+        '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+        '</div>' +
+        '<div class="footer">' +
+        'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +
+        'lavender@pbfwholesale.com &nbsp;&middot;&nbsp; 603-748-3038 &nbsp;&middot;&nbsp; drinkpurpl.com' +
+        '</div>' +
         '</body></html>');
       w.document.close();
     })
@@ -1393,6 +1448,104 @@ function printPortalOrder(orderId) {
       console.error('Print error:', e);
       alert('Could not load order');
     });
+}
+
+let _lastOrderData = null;
+
+function _e(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function printCurrentOrder() {
+  if (!_lastOrderData) { window.print(); return; }
+  var data = _lastOrderData;
+  var dt = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  var itemRows = '';
+  if (data.cases > 0) {
+    itemRows += '<tr>' +
+      '<td>Classic Lavender Lemonade</td>' +
+      '<td style="color:#6b7280">💜 purpl</td>' +
+      '<td style="text-align:right">' + data.cases + ' case' + (data.cases!==1?'s':'') + ' (' + (data.cases*CANS_PER_CASE) + ' cans)</td>' +
+    '</tr>';
+  }
+  if (data.lfItems && data.lfItems.length) {
+    data.lfItems.forEach(function(it) {
+      if (it.hasVariants && it.variantLines) {
+        it.variantLines.forEach(function(vl) {
+          itemRows += '<tr>' +
+            '<td>' + _e(it.skuName) + ' &mdash; ' + _e(vl.variantName) + '</td>' +
+            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + (vl.units*it.unitPrice).toFixed(2) + '</td>' +
+          '</tr>';
+        });
+      } else {
+        itemRows += '<tr>' +
+          '<td>' + _e(it.skuName) + '</td>' +
+          '<td style="color:#6b7280">🌿 LF</td>' +
+          '<td style="text-align:right">' + it.cases + ' case' + (it.cases!==1?'s':'') + ' &nbsp; $' + it.lineTotal.toFixed(2) + '</td>' +
+        '</tr>';
+      }
+    });
+  }
+
+  var totalsHtml = '';
+  if (data.lfTotal > 0) {
+    totalsHtml += '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + data.lfTotal.toFixed(2) + '</td></tr>';
+  }
+
+  var w = window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head>' +
+    '<meta charset="UTF-8">' +
+    '<title>Order Confirmation &mdash; ' + _e(data.accountName) + '</title>' +
+    '<style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
+    '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #2D1B4E;margin-bottom:28px}' +
+    '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
+    '.hdr h1{font-size:22px;font-weight:700;color:#2D1B4E;margin:0 0 4px}' +
+    '.hdr .sub{font-size:13px;color:#6b7280}' +
+    '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
+    '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:3px}' +
+    '.val{font-size:14px;font-weight:600}' +
+    'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
+    'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+    'th:last-child,td:last-child{text-align:right}' +
+    'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
+    '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+    '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#9ca3af;font-size:11px;line-height:1.8}' +
+    '@media print{button{display:none!important}}' +
+    '</style></head><body>' +
+    '<div class="hdr">' +
+    '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png">' +
+    '<h1>Order Confirmation</h1>' +
+    '<div class="sub">' + _e(dt) + '</div>' +
+    '</div>' +
+    '<div class="meta">' +
+      '<div><div class="lbl">Account</div><div class="val">' + _e(data.accountName) + '</div></div>' +
+      (data.poNumber ? '<div><div class="lbl">PO Number</div><div class="val">' + _e(data.poNumber) + '</div></div>' : '<div></div>') +
+      '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(data.billingEmail) + '</div></div>' +
+      '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from delivery</div></div>' +
+      (data.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(data.deliveryWindow) + '</div></div>' : '') +
+    '</div>' +
+    '<table>' +
+    '<thead><tr><th>Item</th><th>Brand</th><th>Qty / Amount</th></tr></thead>' +
+    '<tbody>' + itemRows + '</tbody>' +
+    totalsHtml +
+    '</table>' +
+    '<div class="confirm">' +
+    '<strong>Order received &mdash; thank you!</strong><br>' +
+    'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
+    (data.bothBrands ? '<br><br>You will receive <strong>separate invoices</strong> for purpl and Lavender Fields.' : '') +
+    '</div>' +
+    '<div style="text-align:center;margin:20px 0">' +
+    '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+    '</div>' +
+    '<div class="footer">' +
+    'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +
+    'lavender@pbfwholesale.com &nbsp;&middot;&nbsp; 603-748-3038 &nbsp;&middot;&nbsp; drinkpurpl.com' +
+    '</div>' +
+    '</body></html>');
+  w.document.close();
 }
 
 function addDistributor() {
