@@ -1135,6 +1135,42 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   _ivRenderLineRows(inv?.lineItems || []);
 
   qs('#iv-save-btn').onclick = () => saveInv(id, isNew);
+
+  const ivSendBtn = qs('#iv-send-btn');
+  if (ivSendBtn) {
+    ivSendBtn.style.display = isNew ? 'none' : '';
+    ivSendBtn.onclick = () => {
+      const inv = DB.a('iv').find(x => x.id === id);
+      if (!inv) { toast('Save the invoice before sending'); return; }
+      const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+      const to = ac.email || '';
+      if (!to) { toast('No email address on file for this account'); return; }
+      const html    = buildPurplInvoiceEmailHTML(inv);
+      const subject = `Invoice ${inv.number||''} from Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
+      ivSendBtn.disabled = true; ivSendBtn.textContent = 'Sending…';
+      callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
+        .then((result) => {
+          toast('Invoice sent ✓');
+          const entry = {
+            id: uid(), stage: 'invoice_sent',
+            sentAt: new Date().toISOString(),
+            sentBy: 'graham', method: 'resend',
+            invoiceId: inv.id, invoiceRef: inv.number,
+          };
+          if (result?.id) entry.sentMessageId = result.id;
+          DB.update('ac', ac.id, a => ({
+            ...a, lastContacted: today(),
+            cadence: [...(a.cadence||[]), entry],
+          }));
+          renderAccounts();
+          const updatedAc = DB.a('ac').find(x => x.id === ac.id);
+          if (updatedAc) { renderAccountOutreach(updatedAc); renderMacEmailsTab(ac.id); }
+        })
+        .catch(() => { toast('Failed to send — check connection'); })
+        .finally(() => { ivSendBtn.disabled = false; ivSendBtn.textContent = 'Send Email'; });
+    };
+  }
+
   openModal('modal-add-inv');
 }
 
@@ -8316,6 +8352,42 @@ function openLfInvoiceModal(id) {
   }
 
   qs('#lfi-save-btn').onclick = () => saveLfInvoice(id, isNew);
+
+  const lfiSendBtn = qs('#lfi-send-btn');
+  if (lfiSendBtn) {
+    lfiSendBtn.style.display = isNew ? 'none' : '';
+    lfiSendBtn.onclick = () => {
+      const inv = DB.a('lf_invoices').find(x => x.id === id);
+      if (!inv) { toast('Save the invoice before sending'); return; }
+      const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+      const to = ac.email || '';
+      if (!to) { toast('No email address on file for this account'); return; }
+      const html    = buildLfInvoiceEmailHTML(inv);
+      const subject = `Invoice ${inv.number||''} from Lavender Fields at Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
+      lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Sending…';
+      callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
+        .then((result) => {
+          toast('Invoice sent ✓');
+          const entry = {
+            id: uid(), stage: 'invoice_sent',
+            sentAt: new Date().toISOString(),
+            sentBy: 'graham', method: 'resend',
+            invoiceId: inv.id, invoiceRef: inv.number,
+          };
+          if (result?.id) entry.sentMessageId = result.id;
+          DB.update('ac', ac.id, a => ({
+            ...a, lastContacted: today(),
+            cadence: [...(a.cadence||[]), entry],
+          }));
+          renderAccounts();
+          const updatedAc = DB.a('ac').find(x => x.id === ac.id);
+          if (updatedAc) { renderAccountOutreach(updatedAc); renderMacEmailsTab(ac.id); }
+        })
+        .catch(() => { toast('Failed to send — check connection'); })
+        .finally(() => { lfiSendBtn.disabled = false; lfiSendBtn.textContent = 'Send Email'; });
+    };
+  }
+
   openModal('modal-lf-invoice');
 }
 
@@ -8905,6 +8977,152 @@ function buildCombinedInvoiceHTML(combinedId) {
     <a href="https://drinkpurpl.com" style="color:#9ca3af">drinkpurpl.com</a>&nbsp;·&nbsp;<a href="https://pumpkinblossomfarm.com" style="color:#9ca3af">pumpkinblossomfarm.com</a>
   </td></tr>
 
+</table></td></tr></table></body></html>`;
+}
+
+function buildPurplInvoiceEmailHTML(inv) {
+  const ac          = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const invSettings = DB.obj('invoice_settings') || {};
+  const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
+  const itemRows = (inv.lineItems||[]).map(li => `<tr>
+    <td style="${itemCellStyle}">${escHtml(li.skuName||li.sku||'Item')}</td>
+    <td style="${itemCellStyle};text-align:right">${li.cases||li.qty||0} cs</td>
+    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.pricePerCase||li.unitPrice||0).toFixed(2)}/cs</td>
+    <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.lineTotal||0).toFixed(2)}</td>
+  </tr>`).join('');
+  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
+  const portalLink = ac.orderPortalToken ? `https://purpl-crm.web.app/order?t=${ac.orderPortalToken}` : null;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:24px 40px">
+    <table width="100%"><tr>
+      <td><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="100" height="40" style="display:block"></td>
+      <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="padding:24px 40px 0">
+    <table width="100%"><tr>
+      <td style="vertical-align:top;width:50%">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Billed To</div>
+        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(ac.name||inv.accountName||'')}</div>
+        ${ac.email ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${escHtml(ac.email)}</div>` : ''}
+      </td>
+      <td style="vertical-align:top;text-align:right">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
+        ${inv.date ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
+        <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
+      </td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:20px 40px 0">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <thead><tr>
+        <th style="text-align:left;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Item</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Qty</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Price</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Total</th>
+      </tr></thead>
+      <tbody>${itemRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">purpl lemonade order</td></tr>`}</tbody>
+    </table>
+  </td></tr>
+  <tr><td style="padding:16px 40px">
+    <div style="background:#f9fafb;border-radius:8px;padding:16px 24px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
+        <div style="font-size:24px;font-weight:700;color:#2D1B4E">$${parseFloat(inv.amount||0).toFixed(2)}</div>
+      </div>
+      ${invSettings.stripeLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#2D1B4E;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
+    </div>
+  </td></tr>
+  ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
+  ${portalLink ? `<tr><td style="padding:0 40px 16px;text-align:center"><a href="${portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
+  <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
+    <a href="https://drinkpurpl.com" style="color:#9ca3af">drinkpurpl.com</a>
+  </td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+function buildLfInvoiceEmailHTML(inv) {
+  const ac          = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const invSettings = DB.obj('invoice_settings') || {};
+  const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
+  const itemRows = (inv.lineItems||[]).map(li => {
+    if (li.hasVariants && li.variantLines) {
+      return li.variantLines.map(vl => `<tr>
+        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}</td>
+        <td style="${itemCellStyle};text-align:right">${vl.units||0}</td>
+        <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
+        <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(vl.lineTotal||0).toFixed(2)}</td>
+      </tr>`).join('');
+    }
+    return `<tr>
+      <td style="${itemCellStyle}">${escHtml(li.skuName||'Item')}</td>
+      <td style="${itemCellStyle};text-align:right">${li.units||0}</td>
+      <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
+      <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.lineTotal||0).toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:linear-gradient(135deg,#2a5c3f 0%,#4a7c59 100%);padding:24px 40px">
+    <table width="100%"><tr>
+      <td><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="44" height="44" style="display:block;filter:brightness(0) invert(1)">
+        <div style="font-size:13px;color:rgba(255,255,255,0.9);margin-top:8px;font-weight:600">Lavender Fields at Pumpkin Blossom Farm</div>
+      </td>
+      <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:#4a7c59;height:4px"></td></tr>
+  <tr><td style="padding:24px 40px 0">
+    <table width="100%"><tr>
+      <td style="vertical-align:top;width:50%">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Billed To</div>
+        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(ac.name||inv.accountName||'')}</div>
+        ${ac.email ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${escHtml(ac.email)}</div>` : ''}
+      </td>
+      <td style="vertical-align:top;text-align:right">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
+        ${inv.issued ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.issued+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
+        <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
+      </td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:20px 40px 0">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <thead><tr>
+        <th style="text-align:left;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Item</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Qty</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Price</th>
+        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Total</th>
+      </tr></thead>
+      <tbody>${itemRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">Lavender Fields order</td></tr>`}</tbody>
+    </table>
+  </td></tr>
+  <tr><td style="padding:16px 40px">
+    <div style="background:#f9fafb;border-radius:8px;padding:16px 24px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
+        <div style="font-size:24px;font-weight:700;color:#2a5c3f">$${parseFloat(inv.total||0).toFixed(2)}</div>
+      </div>
+      ${invSettings.stripeLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#2a5c3f;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
+    </div>
+  </td></tr>
+  ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
+  <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
+    <a href="https://pumpkinblossomfarm.com" style="color:#9ca3af">pumpkinblossomfarm.com</a>
+  </td></tr>
 </table></td></tr></table></body></html>`;
 }
 
