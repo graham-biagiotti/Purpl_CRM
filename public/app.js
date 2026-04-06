@@ -2927,31 +2927,53 @@ async function meBroadcastGenerate() {
 async function meBroadcastSend() {
   const accounts = DB.a('ac').filter(a=>_meSelectedIds.has(a.id));
   if (!accounts.length) { toast('No accounts selected'); return; }
-  const subject  = qs('#me-subject')?.value || '';
-  const body     = qs('#me-body')?.value    || '';
+  const subject   = qs('#me-subject')?.value?.trim() || '';
+  const body      = qs('#me-body')?.value?.trim()    || '';
   const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
-  const fromAddr  = qs('#me-from-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'lavender@pbfwholesale.com';
-  const statusEl = qs('#me-broadcast-status');
+  const statusEl  = qs('#me-broadcast-status');
+  const sendBtn   = qs('#me-send-btn');
+
+  if (!subject || !body) { toast('Enter a subject and body before sending'); return; }
+
+  // Build email HTML once — body is plain text with possible newlines
+  const bodyHtml  = body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  const html      = buildEmailHTML(PBF_HEADER_HTML, '#8B5FBF', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`);
+
+  if (sendBtn) sendBtn.disabled = true;
+  let sent = 0, failed = 0;
 
   for (let i = 0; i < accounts.length; i++) {
-    const a = accounts[i];
-    if (statusEl) statusEl.textContent = `Opening email ${i+1} of ${accounts.length}… (send from ${fromAddr})`;
+    const a     = accounts[i];
     const email = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
-    const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(mailto);
-    // Log outreach
-    DB.update('ac', a.id, ac=>({
-      ...ac,
-      lastContacted: today(),
-      outreach: [...(ac.outreach||[]), {
-        id: uid(), date: today(), type: 'email', regarding,
-        notes: `Broadcast email: ${subject}`, outcome: '',
-      }],
-    }));
-    if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 500));
+    if (statusEl) statusEl.textContent = `Sending ${i+1} of ${accounts.length}…`;
+
+    if (!email) { failed++; }
+    else {
+      try {
+        const result = await callSendEmail(email, 'lavender@pbfwholesale.com', subject, html);
+        const entry = {
+          id: uid(), stage: 'broadcast',
+          sentAt: new Date().toISOString(),
+          sentBy: 'graham', method: 'resend',
+          invoiceRef: subject,
+        };
+        if (result?.id) entry.sentMessageId = result.id;
+        DB.update('ac', a.id, ac => ({
+          ...ac,
+          lastContacted: today(),
+          cadence: [...(ac.cadence||[]), entry],
+        }));
+        sent++;
+      } catch(_) { failed++; }
+    }
+
+    if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 300));
   }
-  if (statusEl) statusEl.textContent = `✓ Done — ${accounts.length} emails opened · Send from: ${fromAddr}`;
-  toast(`${accounts.length} mailto: links opened ✓`);
+
+  const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}`;
+  if (statusEl) statusEl.textContent = `✓ ${summary}`;
+  if (sendBtn) sendBtn.disabled = false;
+  toast(summary, 5000);
 }
 
 // ── Batch Session ─────────────────────────────────────────
