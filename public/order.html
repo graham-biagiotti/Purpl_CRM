@@ -130,6 +130,25 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .op-footer a{color:rgba(255,255,255,0.7);text-decoration:none;transition:color 0.15s}
 .op-footer a:hover{color:rgba(255,255,255,0.9)}
 
+/* ── SECONDARY CARD HEADINGS ── */
+.card.sm h2{font-family:'Inter',sans-serif;font-size:15px;font-weight:600;letter-spacing:-0.01em;margin-bottom:16px;color:var(--text)}
+
+/* ── INFO NOTE BLOCKS ── */
+.info-note{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--purpl-dark);line-height:1.6;margin-bottom:16px}
+.info-note a{color:var(--purpl);font-weight:500;text-decoration:none}
+.info-note a:hover{text-decoration:underline}
+
+/* ── UTILITY BUTTONS ── */
+.add-btn{background:var(--purpl-soft);border:1px solid var(--purpl-border);color:var(--purpl-mid);border-radius:8px;padding:8px 14px;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s;display:inline-block}
+.add-btn:hover{background:#e0d4f5}
+.remove-btn{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:6px;padding:0 12px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;height:40px;display:flex;align-items:center}
+
+/* ── OPTIONAL LABEL SUFFIX ── */
+.opt{font-weight:400;color:#9ca3af;font-size:11px;text-transform:none;letter-spacing:0;margin-left:4px}
+
+/* ── SUBMIT AREA ── */
+.submit-area{margin-top:4px}
+
 /* ── MOBILE ── */
 @media(max-width:768px){
   .op-header{padding:32px 16px 40px}
@@ -152,7 +171,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       alt="Lavender Fields" style="max-width:52px;filter:brightness(0) invert(1);opacity:0.9" onerror="this.style.display='none'">
   </div>
   <h1>Wholesale Order Portal</h1>
-  <p class="op-header-sub">Place your order below. Net 30 payment terms apply.</p>
+  <p class="op-header-sub">Net 30 payment terms &nbsp;·&nbsp; Invoiced from Pumpkin Blossom Farm</p>
 </div>
 
 <div class="container">
@@ -162,7 +181,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
   <!-- Pre-order banner -->
   <div class="banner" id="preorder-banner">
-    🚀 Accepting Pre-Orders — Product launching soon. Reserve your first order today.
+    ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
   </div>
 
   <!-- Main form -->
@@ -170,7 +189,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- Brand selector -->
     <div id="brand-selector" style="margin-bottom:20px">
-      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:12px;font-weight:500">Select one or both — you can carry both lines</p>
+      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:12px;font-weight:500">What would you like to carry?</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="brand-card sel-purpl" id="brand-card-purpl" onclick="toggleBrand('purpl')">
           <div class="brand-checkmark bck-purpl">✓</div>
@@ -193,7 +212,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     </div>
 
     <div id="returning-banner" style="display:none">
-      Welcome back — your details have been pre-filled from your last order. Just update your quantity and anything that has changed.
+      Welcome back — your details are pre-filled from your last order. Update quantities as needed.
     </div>
 
     <!-- Section 1: Account Info -->
@@ -209,7 +228,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         <div class="form-group">
           <label>Billing / Invoice Email</label>
           <input type="email" id="billing-email" placeholder="Email for your invoice">
-          <p class="hint">Invoice will be sent to lavender@pumpkinblossomfarm.com</p>
+          <p class="hint">Invoices come from lavender@pbfwholesale.com</p>
         </div>
       </div>
 
@@ -226,7 +245,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         <div class="form-group">
           <label>Billing / Invoice Email *</label>
           <input type="email" id="billing-email-unmatched" placeholder="Email for your invoice">
-          <p class="hint">Invoice will be sent to lavender@pumpkinblossomfarm.com</p>
+          <p class="hint">Invoices come from lavender@pbfwholesale.com</p>
         </div>
       </div>
     </div>
@@ -290,232 +309,144 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- Dual-brand notice -->
     <div class="dual-brand-notice" id="dual-brand-notice">
-      ℹ️ Orders containing multiple brands are invoiced separately. You will receive one invoice for purpl (<strong>sales@drinkpurpl.com</strong>) and one invoice for Lavender Fields (<strong>graham@pumpkinblossomfarm.com</strong>).
+      Orders with both brands are invoiced separately — one invoice per line.
     </div>
 
     <!-- LF Order Section -->
     <div class="card" id="lf-order-section" style="display:none">
-      <h2>🌿 Lavender Fields at Pumpkin Blossom Farm</h2>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:16px;line-height:1.6">Wholesale farm products. MOQ noted per item. Payment Net 30 from delivery.</p>
+      <h2>🌿 Lavender Fields</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Handcrafted farm goods &nbsp;·&nbsp; Minimum order per item noted below &nbsp;·&nbsp; Net 30</p>
       <div id="lf-sku-list">
         <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Loading products…</div>
       </div>
       <div class="lf-subtotal-row">
-        <span>LF Subtotal</span>
+        <span>Subtotal</span>
         <span id="lf-subtotal-display">$0.00</span>
       </div>
     </div>
 
     <!-- Section 3: Distributor -->
-    <div class="card" style="margin-bottom:16px">
-  <h2 style="font-size:15px;font-weight:600;
-    margin-bottom:4px">Distribution</h2>
-  <p style="font-size:12px;color:#6b7280;
-    margin-bottom:14px;line-height:1.6">
-    Knowing who distributes your beverages helps us
-    get purpl to you the right way. The more accounts
-    we see using the same distributor, the stronger
-    our case to bring purpl into their portfolio.
-  </p>
+    <div class="card sm" style="margin-bottom:16px">
+      <h2>Distribution</h2>
 
-  <div class="form-group" style="margin-bottom:8px">
-    <label>Who distributes your beverages?
-      <span style="font-weight:400;color:#9ca3af">
-        (optional — list as many as you use)</span>
-    </label>
-    <div id="distributor-list">
-      <div class="distributor-entry"
-        style="display:flex;gap:8px;margin-bottom:8px">
-        <input type="text" class="distributor-input"
-          placeholder="e.g. UNFI, KeHE, local distributor..."
-          style="flex:1">
-        <button type="button"
-          onclick="removeDistributor(this)"
-          style="background:#fee2e2;
-          border:1px solid #fca5a5;color:#991b1b;
-          border-radius:8px;padding:0 14px;
-          cursor:pointer;font-size:20px;
-          line-height:1;flex-shrink:0">×</button>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Distributor(s) <span class="opt">(optional)</span></label>
+        <div id="distributor-list">
+          <div class="distributor-entry" style="display:flex;gap:8px;margin-bottom:8px">
+            <input type="text" class="distributor-input" placeholder="e.g. UNFI, KeHE, local distributor…" style="flex:1">
+            <button type="button" onclick="removeDistributor(this)" class="remove-btn">×</button>
+          </div>
+        </div>
+        <button type="button" onclick="addDistributor()" class="add-btn">+ Add distributor</button>
       </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Open to ordering direct?</label>
+        <select id="distributor-direct-open">
+          <option value="">Select…</option>
+          <option value="yes">Yes — happy to order direct</option>
+          <option value="maybe">Maybe — let's discuss</option>
+          <option value="distributor_only">No — distributor only</option>
+          <option value="no_distributor">We don't use a distributor</option>
+        </select>
+      </div>
+
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">
+        <input type="checkbox" id="distributor-contact-ok" style="width:auto;margin-top:2px;flex-shrink:0;accent-color:var(--purpl)">
+        I'll mention purpl to my distributor rep
+      </label>
     </div>
-    <button type="button" onclick="addDistributor()"
-      style="background:#f5f0ff;border:1px solid #c4b5fd;
-      color:#7B4FA0;border-radius:8px;padding:8px 14px;
-      font-size:13px;font-weight:500;cursor:pointer;
-      margin-bottom:8px">
-      + Add another distributor
-    </button>
-    <div style="font-size:11px;color:#9ca3af">
-      Include anyone you order beverages or specialty
-      food through — even regional or local distributors.
-    </div>
-  </div>
-
-  <div style="background:#f5f0ff;border-radius:8px;
-    padding:10px 14px;margin-bottom:12px;
-    font-size:13px;color:#5b21b6;line-height:1.5">
-    We'll reach out personally to confirm how we'll
-    get purpl to you.
-  </div>
-
-  <div class="form-group" style="margin-bottom:12px">
-    <label>Are you open to ordering direct from us
-      while we work on getting into your
-      distributor's portfolio?</label>
-    <select id="distributor-direct-open">
-      <option value="">-- Select --</option>
-      <option value="yes">
-        Yes — happy to order direct in the meantime</option>
-      <option value="maybe">
-        Maybe — let's talk about it</option>
-      <option value="distributor_only">
-        No — we need to go through our distributor</option>
-      <option value="no_distributor">
-        We don't use a distributor</option>
-    </select>
-  </div>
-
-  <div class="form-group">
-    <label style="display:flex;align-items:flex-start;
-      gap:8px;cursor:pointer;font-weight:400">
-      <input type="checkbox" id="distributor-contact-ok"
-        style="width:auto;margin-top:2px;flex-shrink:0">
-      <span style="font-size:13px">I'm open to mentioning
-        purpl to my distributor rep — every conversation
-        helps us get listed faster</span>
-    </label>
-  </div>
-</div>
 
     <!-- Section 4: Delivery & Notes -->
-    <div class="card" style="margin-bottom:16px">
-  <h2 style="font-size:15px;font-weight:600;
-    margin-bottom:4px">Delivery &amp; Timing</h2>
+    <div class="card sm" style="margin-bottom:16px">
+      <h2>Delivery &amp; Timing</h2>
 
-  <div style="background:#f5f0ff;border-radius:8px;
-    padding:12px 14px;margin-bottom:14px;
-    font-size:13px;color:#5b21b6;line-height:1.7">
-    <strong>Delivery guidelines:</strong><br>
-    Minimum order: 1 case (12 cans).<br>
-    Typical lead time: 1–2 weeks from order confirmation.<br>
-    We deliver directly to your location in our service
-    area (New England and surrounding states).<br>
-    Delivery is confirmed personally —
-    <a href="mailto:graham@pumpkinblossomfarm.com"
-      style="color:#7B4FA0;font-weight:600">
-      reach out to us</a> to finalize your window.
-  </div>
+      <div class="info-note">
+        Min. 1 case &nbsp;·&nbsp; Lead time 1–2 weeks &nbsp;·&nbsp; Direct delivery in New England and surrounding states.
+        Questions? <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
+      </div>
 
-  <div class="form-group" style="margin-bottom:12px">
-    <label>Preferred delivery window
-      <span style="font-weight:400;color:#9ca3af">
-        (optional)</span></label>
-    <input type="text" id="delivery-window"
-      placeholder="e.g. First week of May, ASAP, flexible">
-  </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Preferred delivery window <span class="opt">(optional)</span></label>
+        <input type="text" id="delivery-window" placeholder="e.g. First week of May, ASAP, flexible">
+      </div>
 
-  <div class="form-group" style="margin-bottom:12px">
-    <label>How quickly do you typically need product
-      after placing an order?</label>
-    <select id="lead-time-needed">
-      <option value="">-- Select --</option>
-      <option value="asap">ASAP — as fast as possible</option>
-      <option value="1week">Within 1 week</option>
-      <option value="2weeks">1–2 weeks is fine</option>
-      <option value="month">Within a month</option>
-      <option value="flexible">Flexible — no rush</option>
-    </select>
-  </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Typical lead time needed</label>
+        <select id="lead-time-needed">
+          <option value="">Select…</option>
+          <option value="asap">ASAP</option>
+          <option value="1week">Within 1 week</option>
+          <option value="2weeks">1–2 weeks</option>
+          <option value="month">Within a month</option>
+          <option value="flexible">Flexible</option>
+        </select>
+      </div>
 
-  <div class="form-group">
-    <label>PO Number
-      <span style="font-weight:400;color:#9ca3af">
-        (optional)</span></label>
-    <input type="text" id="po-number"
-      placeholder="Your PO # if applicable">
-  </div>
-</div>
+      <div class="form-group">
+        <label>PO Number <span class="opt">(optional)</span></label>
+        <input type="text" id="po-number" placeholder="Your PO # if applicable">
+      </div>
+    </div>
 
     <!-- Notes -->
-    <div class="card" style="margin-bottom:16px">
-  <h2 style="font-size:15px;font-weight:600;
-    margin-bottom:14px">Additional Info</h2>
+    <div class="card sm" style="margin-bottom:16px">
+      <h2>Notes &amp; Info</h2>
 
-  <div class="form-group" style="margin-bottom:12px">
-    <label>Social media handle
-      <span style="font-weight:400;color:#9ca3af">
-        (optional — for cross-promotion)</span></label>
-    <input type="text" id="social-handle"
-      placeholder="@yourstorename">
-  </div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Social handle <span class="opt">(optional)</span></label>
+        <input type="text" id="social-handle" placeholder="@yourstorename">
+      </div>
 
-  <div class="form-group">
-    <label>Notes (optional)</label>
-    <textarea id="order-notes" rows="3"
-      placeholder="Delivery instructions, loading dock info, contact on site, or anything else we should know"></textarea>
-  </div>
-</div>
+      <div class="form-group">
+        <label>Notes <span class="opt">(optional)</span></label>
+        <textarea id="order-notes" rows="3" placeholder="Delivery instructions, on-site contact, or anything we should know"></textarea>
+      </div>
+    </div>
 
     <!-- Section 5: Terms & Contact -->
     <div class="terms-block">
-      <strong>Invoice Terms</strong>
-      Net 30 from delivery date. Invoices issued by Pumpkin Blossom Farm.<br>
-      <span style="color:#7B4FA0">lavender@pumpkinblossomfarm.com</span>
+      <strong>Payment Terms</strong>
+      Net 30 from delivery. Invoices from <span style="color:var(--purpl)">lavender@pbfwholesale.com</span>.
       <hr class="divider">
-      <strong>Questions? Contact us:</strong>
       <div class="contact-line">
-        Graham · <a href="tel:6037483038">603-748-3038</a><br>
-        <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a><br>
-        <a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a><br>
-        393 Pumpkin Hill Rd, Warner, NH
+        Questions — Graham &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a> &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
       </div>
     </div>
 
-    <div class="payment-terms-note">
-      <strong style="font-size:12px;color:#374151">Payment Terms: Net 30 from delivery date.</strong><br>
-      Invoices issued from <strong>sales@drinkpurpl.com</strong> (purpl) and <strong>graham@pumpkinblossomfarm.com</strong> (Lavender Fields).
-    </div>
     <div class="error-msg" id="error-msg"></div>
     <button class="submit-btn" id="submit-btn" disabled onclick="submitOrder()">
       Place Order
     </button>
 
-    <div id="past-orders-section" style="display:none;
-  margin-top:24px">
-  <div class="card">
-    <h2 style="font-size:15px;font-weight:600;
-      margin-bottom:4px">Your Order History</h2>
-    <p style="font-size:12px;color:#6b7280;
-      margin-bottom:14px">Your recent orders with purpl.
-      Click View PDF on any order to download a copy
-      for your records.</p>
-    <div id="past-orders-list"></div>
-  </div>
-</div>
+    <div id="past-orders-section" style="display:none;margin-top:24px">
+      <div class="card sm">
+        <h2>Order History</h2>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Previous orders on file. Click View PDF on any order to download a copy.</p>
+        <div id="past-orders-list"></div>
+      </div>
+    </div>
 
   </div><!-- /#order-form -->
 
   <!-- Thank You state -->
   <div class="thankyou" id="thankyou">
     <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      alt="purpl" style="height:48px;margin-bottom:20px">
-    <h2 id="ty-heading">Thank you!</h2>
-    <p>Your order has been received.</p>
+      alt="purpl" style="height:44px;margin-bottom:20px">
+    <h2 id="ty-heading">Order received!</h2>
+    <p style="margin-bottom:20px">We'll be in touch shortly to confirm your delivery window.</p>
     <div class="summary-card" id="ty-summary"></div>
-    <button onclick="printCurrentOrder()" style="margin-top:16px;
-padding:10px 24px;background:#7B4FA0;color:#fff;border:none;
-border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
-      🖨️ Print Order Confirmation
+    <button onclick="printCurrentOrder()" style="margin-top:8px;padding:10px 24px;background:var(--purpl-dark);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif">
+      🖨️ Print Confirmation
     </button>
-    <p class="ty-note">
-      You'll receive an invoice from Pumpkin Blossom Farm at<br>
-      <strong style="color:#7B4FA0">lavender@pumpkinblossomfarm.com</strong>
+    <p class="ty-note" style="margin-top:20px">
+      Your invoice will come from <strong style="color:var(--purpl)">lavender@pbfwholesale.com</strong> once delivery is confirmed (Net 30).
     </p>
     <p class="ty-note">
-      Questions? <a href="mailto:graham@pumpkinblossomfarm.com" style="color:#7B4FA0">graham@pumpkinblossomfarm.com</a>
-      · <a href="tel:6037483038" style="color:#7B4FA0">603-748-3038</a>
+      Questions? <a href="mailto:graham@pumpkinblossomfarm.com" style="color:var(--purpl)">graham@pumpkinblossomfarm.com</a>
+      &nbsp;·&nbsp; <a href="tel:6037483038" style="color:var(--purpl)">603-748-3038</a>
     </p>
-    <p class="ty-small">Want to update your order? Use your original link to resubmit.</p>
+    <p class="ty-small">Need to make changes? Resubmit via your portal link.</p>
   </div>
 
 </div><!-- /.container -->
