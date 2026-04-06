@@ -4803,13 +4803,160 @@ function _deleteDistContact(distId, idx) {
 }
 
 function renderDistVelocityHTML(d) {
-  return `<div class="empty" style="padding:48px 0;flex-direction:column;gap:10px">
-    <div style="font-size:36px">📊</div>
-    <div style="font-weight:600;color:var(--text)">Velocity Analytics</div>
-    <div style="color:var(--muted);font-size:13px;max-width:320px;text-align:center">
-      Door-level sell-through, velocity trends, and reorder forecasting coming in the next update.
+  const reports = (d.velocityReports||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+
+  // Summary: cases and doors this month vs last month
+  const now = new Date();
+  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const lom = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const fomLast = `${lom.getFullYear()}-${String(lom.getMonth()+1).padStart(2,'0')}-01`;
+  const fomNext = fom; // current month start is previous month's cutoff
+
+  const thisMonthReps = reports.filter(r=>r.date>=fom);
+  const lastMonthReps = reports.filter(r=>r.date>=fomLast&&r.date<fomNext);
+  const casesTM = thisMonthReps.reduce((s,r)=>s+(r.cases||0),0);
+  const casesLM = lastMonthReps.reduce((s,r)=>s+(r.cases||0),0);
+  const doorsTM = thisMonthReps.reduce((s,r)=>s+Math.max(s, r.doors||0),0);
+  const totalCases = reports.reduce((s,r)=>s+(r.cases||0),0);
+
+  const skuOpts = SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
+
+  const trend = casesLM>0 ? ((casesTM-casesLM)/casesLM*100).toFixed(0) : null;
+  const trendHtml = trend!==null
+    ? `<span class="badge ${+trend>=0?'green':'red'}" style="font-size:11px">${+trend>=0?'▲':'▼'} ${Math.abs(+trend)}% vs last mo</span>`
+    : '';
+
+  const histRows = reports.length ? reports.map(r=>`
+    <tr>
+      <td>${fmtD(r.date)}</td>
+      <td>${r.sku ? (SKUS.find(s=>s.id===r.sku)?.label||r.sku) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="text-align:right">${r.doors||0}</td>
+      <td style="text-align:right">${r.cases||0}</td>
+      <td style="text-align:right">${r.units||0}</td>
+      <td style="color:var(--muted);font-size:12px">${escHtml(r.notes||'')}</td>
+      <td><button class="btn xs red" onclick="deleteDistVelocityEntry('${d.id}','${r.id}')">✕</button></td>
+    </tr>`).join('') :
+    `<tr><td colspan="7" class="empty" style="padding:16px">No velocity data yet — add an entry below</td></tr>`;
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi purple"><div class="num">${fmt(casesTM)}</div><div class="label">Cases This Month ${trendHtml}</div></div>
+      <div class="kpi green"><div class="num">${fmt(totalCases)}</div><div class="label">Total Cases Logged</div></div>
+      <div class="kpi"><div class="num">${reports.length}</div><div class="label">Velocity Reports</div></div>
     </div>
-  </div>`;
+
+    <div style="overflow-x:auto;margin-bottom:20px">
+      <table class="data-table" style="width:100%;font-size:13px">
+        <thead><tr>
+          <th>Date</th><th>SKU</th>
+          <th style="text-align:right">Doors</th>
+          <th style="text-align:right">Cases</th>
+          <th style="text-align:right">Units</th>
+          <th>Notes</th><th></th>
+        </tr></thead>
+        <tbody id="vel-hist-${d.id}">${histRows}</tbody>
+      </table>
+    </div>
+
+    <details style="margin-bottom:12px">
+      <summary style="font-weight:600;font-size:14px;cursor:pointer;padding:8px 0">+ Add Velocity Entry</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:10px;align-items:end" id="vel-form-${d.id}">
+        <div>
+          <label style="font-size:12px;color:var(--muted)">Date</label>
+          <input type="date" id="vel-date-${d.id}" class="form-inp" value="${today()}" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted)">SKU (optional)</label>
+          <select id="vel-sku-${d.id}" class="form-inp" style="width:100%"><option value="">All SKUs</option>${skuOpts}</select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted)">Active Doors</label>
+          <input type="number" id="vel-doors-${d.id}" class="form-inp" min="0" placeholder="0" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--muted)">Cases Sold</label>
+          <input type="number" id="vel-cases-${d.id}" class="form-inp" min="0" placeholder="0" style="width:100%">
+        </div>
+        <div style="grid-column:1/3">
+          <label style="font-size:12px;color:var(--muted)">Units Sold (cans)</label>
+          <input type="number" id="vel-units-${d.id}" class="form-inp" min="0" placeholder="0" style="width:100%">
+        </div>
+        <div style="grid-column:3/5">
+          <label style="font-size:12px;color:var(--muted)">Notes</label>
+          <input type="text" id="vel-notes-${d.id}" class="form-inp" placeholder="Optional notes" style="width:100%">
+        </div>
+        <div style="grid-column:1/5;display:flex;gap:8px;margin-top:4px">
+          <button class="btn sm primary" onclick="saveDistVelocityEntry('${d.id}')">Save Entry</button>
+          <label class="btn sm" style="cursor:pointer">
+            📥 Import CSV
+            <input type="file" accept=".csv" style="display:none" onchange="_parseDistVelocityCSV('${d.id}',this)">
+          </label>
+          <span style="font-size:11px;color:var(--muted);align-self:center">CSV: date,sku,doors,cases,units,notes</span>
+        </div>
+      </div>
+    </details>`;
+}
+
+function saveDistVelocityEntry(distId) {
+  const date  = qs(`#vel-date-${distId}`)?.value;
+  const sku   = qs(`#vel-sku-${distId}`)?.value||'';
+  const doors = parseInt(qs(`#vel-doors-${distId}`)?.value)||0;
+  const cases = parseInt(qs(`#vel-cases-${distId}`)?.value)||0;
+  const units = parseInt(qs(`#vel-units-${distId}`)?.value)||0;
+  const notes = qs(`#vel-notes-${distId}`)?.value?.trim()||'';
+  if (!date) { toast('Date is required'); return; }
+  if (!cases && !units) { toast('Enter cases or units'); return; }
+  const entry = { id: uid(), date, sku, doors, cases, units, notes };
+  DB.update('dist_profiles', distId, d=>({ ...d, velocityReports: [...(d.velocityReports||[]), entry] }));
+  // Reset form fields
+  if (qs(`#vel-doors-${distId}`)) qs(`#vel-doors-${distId}`).value='';
+  if (qs(`#vel-cases-${distId}`)) qs(`#vel-cases-${distId}`).value='';
+  if (qs(`#vel-units-${distId}`)) qs(`#vel-units-${distId}`).value='';
+  if (qs(`#vel-notes-${distId}`)) qs(`#vel-notes-${distId}`).value='';
+  if (_currentDistId===distId) renderDistTab('velocity', distId);
+  toast('Velocity entry saved');
+}
+
+function deleteDistVelocityEntry(distId, entryId) {
+  if (!confirm2('Remove this velocity entry?')) return;
+  DB.update('dist_profiles', distId, d=>({
+    ...d, velocityReports: (d.velocityReports||[]).filter(r=>r.id!==entryId)
+  }));
+  if (_currentDistId===distId) renderDistTab('velocity', distId);
+}
+
+function _parseDistVelocityCSV(distId, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split(/\r?\n/).filter(l=>l.trim());
+    // Skip header row if first cell is not a date
+    const start = /^\d{4}-\d{2}/.test(lines[0]) ? 0 : 1;
+    const entries = [];
+    for (let i=start; i<lines.length; i++) {
+      const cols = lines[i].split(',');
+      const date = (cols[0]||'').trim();
+      if (!date || !/^\d{4}-\d{2}/.test(date)) continue;
+      entries.push({
+        id: uid(),
+        date,
+        sku:   (cols[1]||'').trim(),
+        doors: parseInt(cols[2])||0,
+        cases: parseInt(cols[3])||0,
+        units: parseInt(cols[4])||0,
+        notes: (cols[5]||'').trim(),
+      });
+    }
+    if (!entries.length) { toast('No valid rows found in CSV'); return; }
+    DB.update('dist_profiles', distId, d=>({
+      ...d, velocityReports: [...(d.velocityReports||[]), ...entries]
+    }));
+    inputEl.value = '';
+    if (_currentDistId===distId) renderDistTab('velocity', distId);
+    toast(`${entries.length} velocity entries imported`);
+  };
+  reader.readAsText(file);
 }
 
 function renderDistRepsHTML(d) {
@@ -5183,6 +5330,7 @@ function editDistributor(id) {
   qs('#edist-platform').value      = d.platformType||'Local Line';
   qs('#edist-territory').value     = d.territory||'';
   qs('#edist-dc-address').value    = d.dcAddress||'';
+  if (qs('#edist-territory-radius')) qs('#edist-territory-radius').value = d.territoryRadiusMiles||'';
   qs('#edist-doors').value         = d.doorCount||'';
   qs('#edist-target-doors').value  = d.targetDoorCount||'';
   qs('#edist-contract').value      = d.contractStart||'';
@@ -5205,9 +5353,11 @@ function editDistributor(id) {
   if (delBtn) { delBtn.style.display = isNew?'none':''; delBtn.onclick=()=>deleteDistributor(d.id); }
   qs('#edist-save-btn').onclick = ()=>saveDistributor(d.id, isNew);
   openModal('modal-edit-distributor');
+  // Attach Places autocomplete to DC address field
+  if (window.PlacesAC) PlacesAC.load().then(ok=>{ if (ok) PlacesAC.attach(qs('#edist-dc-address')); });
 }
 
-function saveDistributor(id, isNew) {
+async function saveDistributor(id, isNew) {
   const name = qs('#edist-name')?.value?.trim();
   if (!name) { toast('Distributor name required'); return; }
   const terms = qs('#edist-terms')?.value||'Net 30';
@@ -5218,11 +5368,21 @@ function saveDistributor(id, isNew) {
   const brandsLf    = qs('#edist-brands-lf')?.checked;
   const brandsCarried = brandsPurpl&&brandsLf ? ['both'] : brandsPurpl ? ['purpl'] : brandsLf ? ['lf'] : [];
 
+  // Geocode DC address if changed
+  const dcAddress = qs('#edist-dc-address')?.value?.trim()||'';
+  let dcLat = existing?.dcLat||null, dcLng = existing?.dcLng||null;
+  if (dcAddress && dcAddress !== (existing?.dcAddress||'') && window.PlacesAC) {
+    const coords = await PlacesAC.getCoords(qs('#edist-dc-address')).catch(()=>null);
+    if (coords) { dcLat = coords.lat; dcLng = coords.lng; }
+  } else if (!dcAddress) { dcLat = null; dcLng = null; }
+
   const rec = {
     id, name,
     platformType:      qs('#edist-platform')?.value||'other',
     territory:         qs('#edist-territory')?.value?.trim()||'',
-    dcAddress:         qs('#edist-dc-address')?.value?.trim()||'',
+    dcAddress,
+    dcLat, dcLng,
+    territoryRadiusMiles: (v=>isNaN(v)||v<=0?0:v)(parseInt(qs('#edist-territory-radius')?.value)),
     doorCount:         (v=>isNaN(v)?0:v)(parseInt(qs('#edist-doors')?.value)),
     targetDoorCount:   (v=>isNaN(v)?0:v)(parseInt(qs('#edist-target-doors')?.value)),
     contractStart:     qs('#edist-contract')?.value||'',
@@ -5244,6 +5404,7 @@ function saveDistributor(id, isNew) {
     brokerFees:        existing?.brokerFees || [],
     billbacks:         existing?.billbacks || [],
     chargebacks:       existing?.chargebacks || [],
+    velocityReports:   existing?.velocityReports || [],
   };
   if (isNew) DB.push('dist_profiles', rec);
   else DB.update('dist_profiles', id, ()=>rec);
@@ -7600,6 +7761,63 @@ function repDistributor() {
 
   _setTable(['Distributor','Status','POs','PO Total','Invoiced','Paid','Outstanding'], rows, 'Distributor Performance');
   _reportData = {headers:['Distributor','Status','POs','PO Total','Invoiced','Paid','Outstanding'], rows};
+
+  // ── Velocity sub-section ──────────────────────────────────
+  const repExtra = qs('#rep-extra');
+  if (!repExtra) return;
+  const now2 = new Date();
+  const fom2 = `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,'0')}-01`;
+  const lom2 = new Date(now2.getFullYear(), now2.getMonth()-1, 1);
+  const fomLast2 = `${lom2.getFullYear()}-${String(lom2.getMonth()+1).padStart(2,'0')}-01`;
+
+  const velRows = dists.map(d=>{
+    const reports = (d.velocityReports||[]);
+    const inRange = reports.filter(r=>r.date>=from&&r.date<=to);
+    const thisMo  = reports.filter(r=>r.date>=fom2);
+    const lastMo  = reports.filter(r=>r.date>=fomLast2&&r.date<fom2);
+    const casesTM = thisMo.reduce((s,r)=>s+(r.cases||0),0);
+    const casesLM = lastMo.reduce((s,r)=>s+(r.cases||0),0);
+    const casesRange = inRange.reduce((s,r)=>s+(r.cases||0),0);
+    const maxDoors = inRange.length ? Math.max(...inRange.map(r=>r.doors||0)) : 0;
+    const trend = casesLM>0 ? ((casesTM-casesLM)/casesLM*100).toFixed(0)+'%' : '—';
+    return [
+      escHtml(d.name),
+      maxDoors||'—',
+      fmt(casesRange)+' cs',
+      fmt(casesTM)+' cs',
+      fmt(casesLM)+' cs',
+      trend,
+    ];
+  });
+
+  const totalCasesRange = dists.reduce((s,d)=>{
+    const inRange = (d.velocityReports||[]).filter(r=>r.date>=from&&r.date<=to);
+    return s + inRange.reduce((ss,r)=>ss+(r.cases||0),0);
+  },0);
+
+  repExtra.innerHTML = `
+    <div class="card" style="margin-top:20px">
+      <div style="font-weight:600;font-size:15px;margin-bottom:12px">Distributor Velocity</div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <div class="kpi purple" style="flex:1;min-width:120px"><div class="num">${fmt(totalCasesRange)}</div><div class="label">Cases Moved (range)</div></div>
+        <div class="kpi" style="flex:1;min-width:120px"><div class="num">${dists.filter(d=>(d.velocityReports||[]).length>0).length}</div><div class="label">Dists with Velocity Data</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table" style="width:100%">
+          <thead><tr>
+            <th>Distributor</th>
+            <th>Max Doors</th>
+            <th>Cases (range)</th>
+            <th>Cases This Mo</th>
+            <th>Cases Last Mo</th>
+            <th>MoM Trend</th>
+          </tr></thead>
+          <tbody>${velRows.length ? velRows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('') :
+            '<tr><td colspan="6" class="empty">No velocity data — log reports in each distributor\'s Velocity tab</td></tr>'
+          }</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ── Gross Profit ───────────────────────────────────────────
@@ -10033,6 +10251,8 @@ let _mapInstance    = null;
 let _mapMarkers     = [];
 let _mapRunMode     = false;
 let _mapClusterer   = null;
+let _mapDistLayers  = {};       // distId -> boolean (visible)
+let _mapCoverageOverlays = [];  // google.maps.Circle or Polygon instances
 
 function renderMap() {
   if (!window.GOOGLE_PLACES_KEY) {
@@ -10053,6 +10273,7 @@ function renderMap() {
       fullscreenControl: true,
     });
     _renderMapPins();
+    _renderDistMapLegend();
   });
 }
 
@@ -10159,8 +10380,102 @@ function _renderMapPins() {
     });
   }
 
+  // Distributor DC pins + coverage overlays
+  _clearCoverageOverlays();
+  // Assign a distinct color per distributor (cycle through palette)
+  const DIST_PIN_PALETTE = ['#e11d48','#0891b2','#16a34a','#9333ea','#ea580c','#0d9488'];
+  DB.a('dist_profiles').filter(d=>['active','submitted','under_review'].includes(d.status)).forEach((d,idx)=>{
+    const visible = _mapDistLayers[d.id] !== false; // default visible
+    if (!visible) return;
+    const color = DIST_PIN_PALETTE[idx % DIST_PIN_PALETTE.length];
+    // DC pin — larger, distinct icon
+    if (d.dcLat && d.dcLng) {
+      const lat = parseFloat(d.dcLat), lng = parseFloat(d.dcLng);
+      if (!isNaN(lat)&&!isNaN(lng)) {
+        const marker = new google.maps.Marker({
+          position: {lat, lng},
+          map: _mapInstance,
+          title: `${d.name} DC`,
+          icon: {
+            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+            scale: 7,
+            fillColor: color,
+            fillOpacity: 1,
+            strokeColor: '#fff',
+            strokeWeight: 2,
+          },
+          zIndex: 999,
+        });
+        const iw = new google.maps.InfoWindow({ content: `
+          <div style="font-family:sans-serif;min-width:160px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">🏭 ${escHtml(d.name)}</div>
+            <div style="font-size:12px;color:#666">${escHtml(d.dcAddress||'Distribution Center')}</div>
+            <div style="font-size:11px;color:#999;margin-top:3px">${d.doorCount||0} doors · ${d.territory||''}</div>
+            <div style="margin-top:8px"><a href="#" onclick="openDistributor('${d.id}');return false" style="color:${color};font-weight:600;font-size:12px">View Distributor</a></div>
+          </div>` });
+        marker.addListener('click', ()=>iw.open(_mapInstance, marker));
+        _mapMarkers.push(marker);
+        bounds.extend({lat, lng});
+        hasPoints = true;
+        // Coverage circle for radius-type territory
+        if (d.territoryRadiusMiles && d.territoryRadiusMiles > 0) {
+          const circle = new google.maps.Circle({
+            map: _mapInstance,
+            center: {lat, lng},
+            radius: d.territoryRadiusMiles * 1609.34,
+            fillColor: color,
+            fillOpacity: 0.07,
+            strokeColor: color,
+            strokeOpacity: 0.4,
+            strokeWeight: 1.5,
+          });
+          _mapCoverageOverlays.push(circle);
+        }
+      }
+    }
+  });
+
   if (hasPoints) _mapInstance.fitBounds(bounds);
   _updateRunModeBar();
+  _renderDistMapLegend();
+}
+
+function _clearCoverageOverlays() {
+  _mapCoverageOverlays.forEach(o=>o.setMap(null));
+  _mapCoverageOverlays = [];
+}
+
+function _renderDistMapLegend() {
+  const legend = qs('#map-dist-legend');
+  if (!legend) return;
+  const DIST_PIN_PALETTE = ['#e11d48','#0891b2','#16a34a','#9333ea','#ea580c','#0d9488'];
+  const dists = DB.a('dist_profiles').filter(d=>['active','submitted','under_review'].includes(d.status));
+  if (!dists.length) { legend.innerHTML=''; return; }
+  legend.innerHTML = `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--muted)">Distributors</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${dists.map((d,idx)=>{
+          const color = DIST_PIN_PALETTE[idx%DIST_PIN_PALETTE.length];
+          const visible = _mapDistLayers[d.id] !== false;
+          return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="checkbox" ${visible?'checked':''} onchange="toggleDistMapLayer('${d.id}',this.checked)" style="accent-color:${color}">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
+            ${escHtml(d.name)}
+          </label>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:8px;display:flex;gap:12px;font-size:11px;color:var(--muted)">
+        <span>▲ DC location</span>
+        <span>● Account (direct)</span>
+        <span style="color:#d97706">● Account (via dist)</span>
+      </div>
+    </div>`;
+}
+
+function toggleDistMapLayer(distId, visible) {
+  _mapDistLayers[distId] = visible;
+  if (_mapInstance) _renderMapPins();
 }
 
 function toggleMapRunMode() {
