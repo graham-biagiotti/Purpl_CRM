@@ -428,6 +428,7 @@ const accounts = [
   },
 
   // ── ac021–ac030: supporting cast accounts ────────────────
+  // NOTE: ac019 (dist001) and ac026 (dist001) are already distributor-served.
   {
     id: 'ac021', name: 'Stonecroft Grocery', status: 'inactive', isPbf: false,
     email: 'info@stonecroft.com', phone: '603-555-0121', address: '5 Stone St, Milford, NH 03055',
@@ -507,6 +508,199 @@ const accounts = [
     orderPortalToken: 'token-ac030', orderPortalTokenCreatedAt: D(65), fulfilledBy: 'direct',
     contacts: [{ id: sid(), name: 'Vera Swan', email: 'buy@thornwoodapo.com', phone: '603-555-0130', isPrimary: true }],
     cadence: cad3(80), outreach: [], notes: [], samples: [], par: {},
+  },
+
+  // ── ac031–ac035: isPbf:true LF Wholesale direct accounts ─
+  {
+    id: 'ac031', name: 'Green Leaf Spa', status: 'active', isPbf: true,
+    email: 'orders@greenleafspa.com', phone: '603-555-0131',
+    address: '15 Spa Way, Exeter, NH 03833', type: 'Spa / Wellness',
+    since: D(185), lastContacted: D(22),
+    orderPortalToken: 'token-ac031', orderPortalTokenCreatedAt: D(130), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Pam Leary', email: 'orders@greenleafspa.com', phone: '603-555-0131', isPrimary: true }],
+    cadence: cad3(165), outreach: [oe(163, 'email', 'Interested', 'Pam Leary', 'LF wholesale — spa retail section.', 'lf')],
+    notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac032', name: 'Lavender Lane Gift Shop', status: 'active', isPbf: true,
+    email: 'hello@lavenderlane.com', phone: '603-555-0132',
+    address: '8 Lane St, Wolfeboro, NH 03894', type: 'Specialty / Gift',
+    since: D(170), lastContacted: D(18),
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Ruth Elkins', email: 'hello@lavenderlane.com', phone: '603-555-0132', isPrimary: true }],
+    cadence: cad2(150), outreach: [oe(148, 'in-person', 'Interested', 'Ruth Elkins', 'Gift shop exclusively focused on lavender products.', 'lf')],
+    notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac033', name: 'Wellspring Wellness Center', status: 'active', isPbf: true,
+    email: 'buy@wellspringctr.com', phone: '603-555-0133',
+    address: '30 Spring Rd, Laconia, NH 03246', type: 'Spa / Wellness',
+    since: D(140), lastContacted: D(35),
+    orderPortalToken: 'token-ac033', orderPortalTokenCreatedAt: D(100), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Donna Hebert', email: 'buy@wellspringctr.com', phone: '603-555-0133', isPrimary: true }],
+    cadence: cad4(125), outreach: [oe(123, 'call', 'Ordered', 'Donna Hebert', 'Wellness center — stocks LF roll-on and candles.', 'lf')],
+    notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac034', name: 'Blossom & Bloom Boutique', status: 'active', isPbf: true,
+    email: 'info@blossombloomboutique.com', phone: '603-555-0134',
+    address: '4 Garden St, Meredith, NH 03253', type: 'Specialty / Gift',
+    since: D(200), lastContacted: '',   // overdue follow-up
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Lily Forrest', email: 'info@blossombloomboutique.com', phone: '603-555-0134', isPrimary: true }],
+    cadence: cad1(185),
+    outreach: [oe(183, 'email', 'Interested', 'Lily Forrest', 'Interested in full LF line for boutique.', 'lf')],
+    notes: [ne(183, 'Strong LF fit — needs follow-up after initial interest.')], samples: [], par: {},
+  },
+  {
+    id: 'ac035', name: 'The Herbal Haven', status: 'active', isPbf: true,
+    email: 'orders@theherbalhaven.com', phone: '802-555-0135',
+    address: '22 Herb Row, Burlington, VT 05401', type: 'Specialty / Gift',
+    since: D(160), lastContacted: D(28),
+    orderPortalToken: 'token-ac035', orderPortalTokenCreatedAt: D(110), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Sage Ellison', email: 'orders@theherbalhaven.com', phone: '802-555-0135', isPrimary: true }],
+    cadence: cad3(145), outreach: [oe(143, 'call', 'Ordered', 'Sage Ellison', 'Herbal / apothecary shop — loves the LF brand story.', 'lf')],
+    notes: [], samples: [], par: {},
+  },
+
+  // ── ac036–ac042: additional direct accounts ──────────────
+  {
+    id: 'ac036', name: 'Summit Sports & Cafe', status: 'active', isPbf: false,
+    email: 'cafe@summitsports.com', phone: '603-555-0136',
+    address: '11 Summit Dr, North Conway, NH 03860', type: 'Cafe / Coffee Shop',
+    since: D(120), lastContacted: D(55),
+    orderPortalToken: 'token-ac036', orderPortalTokenCreatedAt: D(80), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Jake Moreau', email: 'cafe@summitsports.com', phone: '603-555-0136', isPrimary: true }],
+    cadence: cad3(105), outreach: [], notes: [], samples: [], par: { classic: 12, raspberry: 12 },
+  },
+  {
+    id: 'ac037', name: 'Millbrook Market', status: 'active', isPbf: false,
+    email: 'info@millbrookmkt.com', phone: '603-555-0137',
+    address: '5 Mill Rd, Hillsborough, NH 03244', type: 'Grocery',
+    since: D(95), lastContacted: '',   // overdue follow-up
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Rosa Diaz', email: 'info@millbrookmkt.com', phone: '603-555-0137', isPrimary: true }],
+    cadence: [], outreach: [], notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac038', name: 'Granite State Co-op', status: 'active', isPbf: true,
+    email: 'wholesale@granitecoop.org', phone: '603-555-0138',
+    address: '66 Main St, Concord, NH 03301', type: 'Grocery',
+    since: D(175), lastContacted: D(12),
+    orderPortalToken: 'token-ac038', orderPortalTokenCreatedAt: D(120), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Owen Burke', email: 'wholesale@granitecoop.org', phone: '603-555-0138', isPrimary: true }],
+    cadence: cad4(155), outreach: [], notes: [], samples: [], par: { classic: 24, blueberry: 12 },
+  },
+  {
+    id: 'ac039', name: 'Seacoast Natural Foods', status: 'active', isPbf: true,
+    email: 'buy@seacoastnaturals.com', phone: '603-555-0139',
+    address: '14 Ocean Ave, Portsmouth, NH 03801', type: 'Grocery',
+    since: D(145), lastContacted: D(40),
+    orderPortalToken: 'token-ac039', orderPortalTokenCreatedAt: D(95), fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Clara Vance', email: 'buy@seacoastnaturals.com', phone: '603-555-0139', isPrimary: true }],
+    cadence: cad3(130), outreach: [], notes: [], samples: [], par: { classic: 12 },
+  },
+  {
+    id: 'ac040', name: 'The Corner Store', status: 'active', isPbf: false,
+    email: 'store@thecornernh.com', phone: '603-555-0140',
+    address: '3 Corner Rd, Bradford, NH 03221', type: 'Specialty / Gift',
+    since: D(55), lastContacted: '',   // overdue follow-up — new account, never contacted
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Pete Labrie', email: 'store@thecornernh.com', phone: '603-555-0140', isPrimary: true }],
+    cadence: [], outreach: [], notes: [ne(55, 'Small general store, good foot traffic. Follow up.')], samples: [], par: {},
+  },
+  {
+    id: 'ac041', name: 'Hilltop Country Store', status: 'active', isPbf: false,
+    email: 'orders@hilltopcountry.com', phone: '603-555-0141',
+    address: '99 Hilltop Rd, Deering, NH 03244', type: 'Farm / Country Store',
+    since: D(80), lastContacted: D(50),  // overdue
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Earl Doucette', email: 'orders@hilltopcountry.com', phone: '603-555-0141', isPrimary: true }],
+    cadence: cad1(70), outreach: [oe(68, 'call', 'Interested', 'Earl Doucette', 'Country store with strong beverage section.', 'purpl')],
+    notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac042', name: 'Valley Fresh Market', status: 'active', isPbf: false,
+    email: 'fresh@valleyfreshnh.com', phone: '603-555-0142',
+    address: '7 Valley Blvd, Henniker, NH 03242', type: 'Grocery',
+    since: D(65), lastContacted: D(45),  // overdue
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'direct',
+    contacts: [{ id: sid(), name: 'Nick Cormier', email: 'fresh@valleyfreshnh.com', phone: '603-555-0142', isPrimary: true }],
+    cadence: cad1(60), outreach: [], notes: [], samples: [], par: {},
+  },
+
+  // ── ac043–ac050: distributor-served accounts ─────────────
+  {
+    id: 'ac043', name: 'White Mountain Grocery', status: 'active', isPbf: false,
+    email: 'orders@whitemtngrocery.com', phone: '603-555-0143',
+    address: '20 Mountain Rd, Plymouth, NH 03264', type: 'Grocery',
+    since: D(130), lastContacted: D(30),
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'dist001',
+    contacts: [{ id: sid(), name: 'Ann Brodeur', email: 'orders@whitemtngrocery.com', phone: '603-555-0143', isPrimary: true }],
+    cadence: cad2(115), outreach: [], notes: [], samples: [], par: { classic: 24 },
+  },
+  {
+    id: 'ac044', name: 'Lakes Region Market', status: 'active', isPbf: false,
+    email: 'buy@lakesregionmkt.com', phone: '603-555-0144',
+    address: '88 Lakeshore Dr, Laconia, NH 03246', type: 'Grocery',
+    since: D(110), lastContacted: D(25),
+    orderPortalToken: 'token-ac044', orderPortalTokenCreatedAt: D(75), fulfilledBy: 'dist001',
+    contacts: [{ id: sid(), name: 'Greg Fontaine', email: 'buy@lakesregionmkt.com', phone: '603-555-0144', isPrimary: true }],
+    cadence: cad3(95), outreach: [], notes: [], samples: [], par: { classic: 12, blueberry: 12 },
+  },
+  {
+    id: 'ac045', name: 'Monadnock Co-op', status: 'active', isPbf: true,
+    email: 'wholesale@monadnockcoop.org', phone: '603-555-0145',
+    address: '34 Co-op Way, Keene, NH 03431', type: 'Grocery',
+    since: D(155), lastContacted: D(20),
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'dist001',
+    contacts: [{ id: sid(), name: 'Iris Pelerin', email: 'wholesale@monadnockcoop.org', phone: '603-555-0145', isPrimary: true }],
+    cadence: cad3(140), outreach: [], notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac046', name: 'Pioneer Valley Foods', status: 'active', isPbf: false,
+    email: 'orders@pioneervalleyfoods.com', phone: '413-555-0146',
+    address: '100 Pioneer Rd, Northampton, MA 01060', type: 'Grocery',
+    since: D(120), lastContacted: D(35),
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'dist002',
+    contacts: [{ id: sid(), name: 'Steve Marchand', email: 'orders@pioneervalleyfoods.com', phone: '413-555-0146', isPrimary: true }],
+    cadence: cad2(105), outreach: [], notes: [], samples: [], par: { classic: 24, raspberry: 12 },
+  },
+  {
+    id: 'ac047', name: 'Bay State Grocery', status: 'active', isPbf: false,
+    email: 'buy@baystate.market', phone: '617-555-0147',
+    address: '55 Bay Rd, Newton, MA 02459', type: 'Grocery',
+    since: D(135), lastContacted: D(28),
+    orderPortalToken: 'token-ac047', orderPortalTokenCreatedAt: D(90), fulfilledBy: 'dist002',
+    contacts: [{ id: sid(), name: 'Tina Rhodes', email: 'buy@baystate.market', phone: '617-555-0147', isPrimary: true }],
+    cadence: cad3(120), outreach: [], notes: [], samples: [], par: { classic: 12 },
+  },
+  {
+    id: 'ac048', name: 'Cape Ann Natural Foods', status: 'active', isPbf: true,
+    email: 'orders@capeannnaturals.com', phone: '978-555-0148',
+    address: '12 Harbor St, Gloucester, MA 01930', type: 'Grocery',
+    since: D(100), lastContacted: D(42),  // borderline overdue
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'dist002',
+    contacts: [{ id: sid(), name: 'Joel Landry', email: 'orders@capeannnaturals.com', phone: '978-555-0148', isPrimary: true }],
+    cadence: cad2(88), outreach: [], notes: [], samples: [], par: {},
+  },
+  {
+    id: 'ac049', name: 'Upper Valley Co-op', status: 'active', isPbf: true,
+    email: 'wholesale@uppervalleycoop.org', phone: '802-555-0149',
+    address: '77 River Rd, White River Junction, VT 05001', type: 'Grocery',
+    since: D(160), lastContacted: D(15),
+    orderPortalToken: 'token-ac049', orderPortalTokenCreatedAt: D(110), fulfilledBy: 'dist001',
+    contacts: [{ id: sid(), name: 'Molly Tremblay', email: 'wholesale@uppervalleycoop.org', phone: '802-555-0149', isPrimary: true }],
+    cadence: cad4(140), outreach: [], notes: [], samples: [], par: { classic: 12, blueberry: 12 },
+  },
+  {
+    id: 'ac050', name: 'North Shore Provisions', status: 'active', isPbf: false,
+    email: 'orders@northshoreprov.com', phone: '978-555-0150',
+    address: '9 Shore Rd, Newburyport, MA 01950', type: 'Specialty / Gift',
+    since: D(90), lastContacted: D(45),  // overdue
+    orderPortalToken: null, orderPortalTokenCreatedAt: null, fulfilledBy: 'dist002',
+    contacts: [{ id: sid(), name: 'Chris Audet', email: 'orders@northshoreprov.com', phone: '978-555-0150', isPrimary: true }],
+    cadence: cad2(78), outreach: [], notes: [], samples: [], par: {},
   },
 ];
 
@@ -642,6 +836,102 @@ const prospects = [
     outreach: [oe(16, 'call', 'Needs Follow-Up', 'Mira Chase', 'Spoke with Mira — owner makes final call.', 'both')],
     samples: [], lastContact: D(16), since: D(40),
   },
+
+  // ── pr013–pr020: additional prospects ───────────────────────
+  {
+    id: 'pr013', name: 'Serenity Spa & Boutique', contact: 'Rachel Morin', email: 'rachel@serenityspa.vt',
+    phone: '802-555-1013', address: 'Burlington, VT', type: 'Spa / Wellness',
+    status: 'lead', priority: 'low', isPbf: true,
+    notes: [ne(10, 'Found them at VT Farmers Market. Asked us to follow up in spring.')],
+    outreach: [], samples: [], lastContact: D(10), since: D(20),
+  },
+  {
+    id: 'pr014', name: 'Millstone Natural Market', contact: 'Pete Gagnon', email: 'pete@millstonenatural.com',
+    phone: '603-555-1014', address: 'Lebanon, NH', type: 'Grocery',
+    status: 'contacted', priority: 'high', isPbf: false,
+    notes: [ne(22, 'Strong local-brand buyer. Stocks other NH beverages.')],
+    outreach: [
+      oe(25, 'email', 'Interested',      'Pete Gagnon', 'Cold email — responded within hours. Wants pricing sheet.', 'purpl'),
+      oe(18, 'call',  'Needs Follow-Up', 'Pete Gagnon', 'Good call — waiting for owner approval on new vendors.', 'purpl'),
+      oe(8,  'email', 'No Response',     'Pete Gagnon', 'Sent follow-up email with case pricing. No reply yet.', 'purpl'),
+    ],
+    samples: [], lastContact: D(8), since: D(35),
+  },
+  {
+    id: 'pr015', name: 'Kettle Pond Farm Store', contact: 'Lynn Arsenault', email: 'lynn@kettlepondfarm.com',
+    phone: '802-555-1015', address: 'Groton, VT', type: 'Farm / Country Store',
+    status: 'sampling', priority: 'high', isPbf: true,
+    notes: [ne(30, 'Beautiful roadside farm store — heavy tourist traffic May–Oct.')],
+    outreach: [
+      oe(32, 'in-person', 'Interested',  'Lynn Arsenault', 'Farm visit — loved the branding. Wants to try both lines.', 'both'),
+      oe(20, 'email',     'Interested',  'Lynn Arsenault', 'Confirmed sample shipment incoming.', 'both'),
+    ],
+    samples: [{
+      id: sid(), date: D(18), flavors: 'Classic, Blueberry, LF Scrunchie, LF Candle',
+      notes: 'Full sample assortment', followUpDate: D(-2), followUpDone: false,
+    }],
+    lastContact: D(18), since: D(45),
+  },
+  {
+    id: 'pr016', name: 'Trailhead Brew & Cafe', contact: 'Sam Bouley', email: 'sam@trailheadcafe.com',
+    phone: '603-555-1016', address: 'Lincoln, NH', type: 'Cafe / Coffee Shop',
+    status: 'negotiating', priority: 'medium', isPbf: false,
+    notes: [ne(12, 'Trail-side cafe — big volume in ski season. MOQ is the sticking point.')],
+    outreach: [
+      oe(45, 'call',  'Interested',     'Sam Bouley', 'Inbound call — saw us at trail expo.', 'purpl'),
+      oe(30, 'email', 'Interested',     'Sam Bouley', 'Sent wholesale pack and pricing.', 'purpl'),
+      oe(12, 'call',  'Needs Follow-Up','Sam Bouley', 'Price OK but wants 6-case MOQ instead of 12.', 'purpl'),
+    ],
+    samples: [], lastContact: D(12), since: D(55),
+  },
+  {
+    id: 'pr017', name: 'Granite Peak Co-op', contact: 'Dana Moreau', email: 'dana@granitepeakcoop.org',
+    phone: '603-555-1017', address: 'Plymouth, NH', type: 'Grocery',
+    status: 'won', priority: 'high', isPbf: true,
+    notes: [ne(3, 'Won! Converting to active account this week.')],
+    outreach: [
+      oe(55, 'email',     'Interested',  'Dana Moreau', 'Reached out after seeing us at trade show.', 'both'),
+      oe(40, 'call',      'Interested',  'Dana Moreau', 'Long call — very excited about both lines.', 'both'),
+      oe(20, 'in-person', 'Ordered',     'Dana Moreau', 'Site visit — placed opening order on the spot.', 'both'),
+      oe(3,  'email',     'Ordered',     'Dana Moreau', 'Confirmed terms — net-30, 12-case MOQ.', 'both'),
+    ],
+    samples: [], lastContact: D(3), since: D(60),
+  },
+  {
+    id: 'pr018', name: 'Blue Harbor Gift Co.', contact: 'Fran Tardif', email: 'fran@blueharborg.com',
+    phone: '207-555-1018', address: 'Bar Harbor, ME', type: 'Specialty / Gift',
+    status: 'lost', priority: 'medium', isPbf: true,
+    lostReason: 'Went with competitor', lostAt: D(25),
+    notes: [ne(25, 'Chose a competing local brand — already locked in for the season.')],
+    outreach: [
+      oe(60, 'email', 'Interested',    'Fran Tardif', 'Cold email — expressed interest in summer placement.', 'both'),
+      oe(45, 'call',  'Interested',    'Fran Tardif', 'Good call — likes the LF line especially.', 'lf'),
+      oe(25, 'email', 'Not Interested','Fran Tardif', 'Replied — committed to another vendor this season.', 'both'),
+    ],
+    samples: [], lastContact: D(25), since: D(70),
+  },
+  {
+    id: 'pr019', name: 'Iron Mountain Yoga', contact: 'Bev Cayer', email: 'bev@ironmtnyoga.com',
+    phone: '603-555-1019', address: 'Nashua, NH', type: 'Spa / Wellness',
+    status: 'contacted', priority: 'high', isPbf: true,
+    notes: [ne(9, 'Yoga studio with retail shelf — very interested in LF self-care line.')],
+    outreach: [
+      oe(14, 'email', 'Interested',      'Bev Cayer', 'Replied to our intro email — wants wholesale catalog.', 'lf'),
+      oe(9,  'call',  'Needs Follow-Up', 'Bev Cayer', 'Spoke with Bev — needs to see sell-through on samples first.', 'lf'),
+    ],
+    samples: [{
+      id: sid(), date: D(8), flavors: 'LF Roll-On, LF Linen Spray, LF Bath Salts',
+      notes: 'LF wellness sample set', followUpDate: D(-7), followUpDone: false,
+    }],
+    lastContact: D(8), since: D(25),
+  },
+  {
+    id: 'pr020', name: 'Riverside Natural Goods', contact: 'Cal Charest', email: 'cal@riversidenaturalgoods.com',
+    phone: '802-555-1020', address: 'Brattleboro, VT', type: 'Grocery',
+    status: 'lead', priority: 'medium', isPbf: false,
+    notes: [ne(5, 'Met at Brattleboro Farmers Market. Has 3 stores — big opportunity if we land it.')],
+    outreach: [], samples: [], lastContact: D(5), since: D(10),
+  },
 ];
 
 // =============================================================
@@ -769,6 +1059,85 @@ const iv = [
     issued:D(35), due:D(5), amount:144.00, status:'unpaid',
     lineItems:[{id:sid(),sku:'variety',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Variety 12-pk'}],
     notes:'', combinedInvoiceId:null },
+
+  // ── iv019–iv030: stress-test expansion ──────────────────────
+  // 5 paid this month (iv019–iv023), others mix paid/unpaid/overdue
+
+  // Paid this month — ac003, ac004, ac006, ac009, ac010
+  { id:'iv019', number:'PBF-019', accountId:'ac003', accountName:'The Lavender Shop',
+    issued:D(28), due:D(-2), amount:180.00, status:'paid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'Paid by check same day.', combinedInvoiceId:null },
+
+  { id:'iv020', number:'PBF-020', accountId:'ac004', accountName:'Blue Ridge Grocery',
+    issued:D(22), due:D(8), amount:270.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:72, cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'raspberry',qty:36, cases:3,unitPrice:2.50,total:90.00, description:'Raspberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv021', number:'PBF-021', accountId:'ac006', accountName:'Cedar Creek Farm',
+    issued:D(18), due:D(-12), amount:216.00, status:'paid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'Spring restock — paid early.', combinedInvoiceId:null },
+
+  { id:'iv022', number:'PBF-022', accountId:'ac009', accountName:"O'Brien & Sons Market",
+    issued:D(12), due:D(-18), amount:360.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:null },
+
+  { id:'iv023', number:'PBF-023', accountId:'ac010', accountName:'Maple Leaf Market',
+    issued:D(5), due:D(-25), amount:180.00, status:'paid',
+    lineItems:[{id:sid(),sku:'variety',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Variety 12-pk'}],
+    notes:'Paid via Venmo.', combinedInvoiceId:null },
+
+  // Overdue / unpaid
+  { id:'iv024', number:'PBF-024', accountId:'ac015', accountName:'Lakeshore Market',
+    issued:D(75), due:D(45), amount:216.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'45 days overdue — send reminder.', combinedInvoiceId:null },
+
+  { id:'iv025', number:'PBF-025', accountId:'ac017', accountName:'Stonewall Farm Market',
+    issued:D(65), due:D(35), amount:270.00, status:'unpaid',
+    lineItems:[
+      {id:sid(),sku:'classic',   qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'peach',     qty:36,cases:3,unitPrice:2.50,total:90.00, description:'Peach 12-pk'},
+    ],
+    notes:'35 days overdue.', combinedInvoiceId:null },
+
+  { id:'iv026', number:'PBF-026', accountId:'ac020', accountName:'Pine Street Co-op',
+    issued:D(55), due:D(25), amount:180.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'blueberry',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Blueberry 12-pk'}],
+    notes:'25 days overdue.', combinedInvoiceId:null },
+
+  { id:'iv027', number:'PBF-027', accountId:'ac031', accountName:'Green Leaf Spa',
+    issued:D(50), due:D(20), amount:144.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Classic 12-pk'}],
+    notes:'20 days overdue.', combinedInvoiceId:null },
+
+  { id:'iv028', number:'PBF-028', accountId:'ac032', accountName:'Lavender Lane Gift Shop',
+    issued:D(40), due:D(10), amount:180.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'10 days overdue.', combinedInvoiceId:null },
+
+  // ci006 anchor: iv029 + lf009
+  { id:'iv029', number:'PBF-029', accountId:'ac033', accountName:'Wellspring Wellness Center',
+    issued:D(95), due:D(65), amount:360.00, status:'paid',
+    lineItems:[
+      {id:sid(),sku:'classic',  qty:96,cases:8,unitPrice:2.50,total:240.00,description:'Classic 12-pk'},
+      {id:sid(),sku:'blueberry',qty:48,cases:4,unitPrice:2.50,total:120.00,description:'Blueberry 12-pk'},
+    ],
+    notes:'', combinedInvoiceId:'ci006' },
+
+  // ci007 anchor: iv030 + lf010
+  { id:'iv030', number:'PBF-030', accountId:'ac034', accountName:'Blossom & Bloom Boutique',
+    issued:D(60), due:D(30), amount:216.00, status:'unpaid',
+    lineItems:[{id:sid(),sku:'classic',qty:72,cases:6,unitPrice:2.50,total:180.00,description:'Classic 12-pk'}],
+    notes:'30 days overdue.', combinedInvoiceId:'ci007' },
 ];
 
 // =============================================================
@@ -842,6 +1211,67 @@ const lf_invoices = [
       {id:sid(),skuId:'lf-dryer-sachet',  skuName:'Dryer Sachet 2-Pack',   units:12,caseSize:12,wholesalePrice:5.49,lineTotal:65.88, hasVariants:false},
     ],
     wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'' },
+
+  // ── lf009–lf015: stress-test expansion ──────────────────────
+  // ac031 Green Leaf Spa (combined ci006 with iv029)
+  { id:'lf009', number:'LF-009', accountId:'ac033', accountName:'Wellspring Wellness Center',
+    issued:D(95), due:D(65), total:263.76, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-roll-on',    skuName:'Aromatherapy Roll-On', units:24,caseSize:24,wholesalePrice:9.99,lineTotal:239.76,hasVariants:false},
+      {id:sid(),skuId:'lf-linen-spray',skuName:'Lavender Linen Spray 8oz',units:24,caseSize:12,wholesalePrice:9.49,lineTotal:227.76,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci006', source:'manual', notes:'' },
+
+  // ac034 Blossom & Bloom (combined ci007 with iv030)
+  { id:'lf010', number:'LF-010', accountId:'ac034', accountName:'Blossom & Bloom Boutique',
+    issued:D(60), due:D(30), total:143.76, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-sachet',   skuName:'Seatbelt Sachet',        units:12,caseSize:12,wholesalePrice:4.99,lineTotal:59.88, hasVariants:false},
+      {id:sid(),skuId:'lf-scrunchie',skuName:'Aromatherapy Scrunchie', units:12,caseSize:6, wholesalePrice:7.49,lineTotal:89.88, hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci007', source:'manual', notes:'30 days overdue.' },
+
+  // ac035 The Herbal Haven — standalone overdue
+  { id:'lf011', number:'LF-011', accountId:'ac035', accountName:'The Herbal Haven',
+    issued:D(85), due:D(55), total:359.64, status:'unpaid',
+    lineItems:[
+      {id:sid(),skuId:'lf-candle',         skuName:'Soy Candle',            units:12,caseSize:12,wholesalePrice:14.99,lineTotal:179.88,hasVariants:false},
+      {id:sid(),skuId:'lf-simple-syrup-sm',skuName:'Lavender Simple Syrup 12.7oz',units:12,caseSize:12,wholesalePrice:8.99,lineTotal:107.88,hasVariants:false},
+      {id:sid(),skuId:'lf-roll-on',        skuName:'Aromatherapy Roll-On',  units:12,caseSize:24,wholesalePrice:9.99,lineTotal:119.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'55 days overdue.' },
+
+  // ac031 Green Leaf Spa — paid this month
+  { id:'lf012', number:'LF-012', accountId:'ac031', accountName:'Green Leaf Spa',
+    issued:D(20), due:D(-10), total:239.76, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-roll-on',skuName:'Aromatherapy Roll-On',units:24,caseSize:24,wholesalePrice:9.99,lineTotal:239.76,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'Paid promptly.' },
+
+  // ac032 Lavender Lane Gift Shop — paid
+  { id:'lf013', number:'LF-013', accountId:'ac032', accountName:'Lavender Lane Gift Shop',
+    issued:D(110), due:D(80), total:179.88, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-candle',skuName:'Soy Candle',units:12,caseSize:12,wholesalePrice:14.99,lineTotal:179.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'' },
+
+  // ac003 The Lavender Shop — combined ci008 anchor
+  { id:'lf014', number:'LF-014', accountId:'ac003', accountName:'The Lavender Shop',
+    issued:D(28), due:D(-2), total:107.88, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-simple-syrup-sm',skuName:'Lavender Simple Syrup 12.7oz',units:12,caseSize:12,wholesalePrice:8.99,lineTotal:107.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:'ci008', source:'manual', notes:'' },
+
+  // ac005 Sunrise Wellness — standalone paid
+  { id:'lf015', number:'LF-015', accountId:'ac005', accountName:'Sunrise Wellness',
+    issued:D(15), due:D(-15), total:59.88, status:'paid',
+    lineItems:[
+      {id:sid(),skuId:'lf-sachet',skuName:'Seatbelt Sachet',units:12,caseSize:12,wholesalePrice:4.99,lineTotal:59.88,hasVariants:false},
+    ],
+    wixPulled:false, combinedInvoiceId:null, source:'manual', notes:'Paid same day.' },
 ];
 
 // =============================================================
@@ -872,6 +1302,22 @@ const combined_invoices = [
     accountId:'ac016', accountName:'Rolling Hills Farm Stand',
     status:'unpaid', createdAt:ISO(90), sentAt:ISO(89), paidAt:null,
     portalOrderId:null, purplSubtotal:216.00, lfSubtotal:89.88, grandTotal:305.88, notes:'OVERDUE 60 days.' },
+
+  // ── ci006–ci008: stress-test expansion ──────────────────────
+  { id:'ci006', number:'COMB-006', purplInvoiceId:'iv029', lfInvoiceId:'lf009',
+    accountId:'ac033', accountName:'Wellspring Wellness Center',
+    status:'paid', createdAt:ISO(95), sentAt:ISO(94), paidAt:ISO(85),
+    portalOrderId:null, purplSubtotal:360.00, lfSubtotal:263.76, grandTotal:623.76, notes:'' },
+
+  { id:'ci007', number:'COMB-007', purplInvoiceId:'iv030', lfInvoiceId:'lf010',
+    accountId:'ac034', accountName:'Blossom & Bloom Boutique',
+    status:'unpaid', createdAt:ISO(60), sentAt:ISO(59), paidAt:null,
+    portalOrderId:null, purplSubtotal:216.00, lfSubtotal:143.76, grandTotal:359.76, notes:'30 days overdue.' },
+
+  { id:'ci008', number:'COMB-008', purplInvoiceId:'iv019', lfInvoiceId:'lf014',
+    accountId:'ac003', accountName:'The Lavender Shop',
+    status:'paid', createdAt:ISO(28), sentAt:ISO(27), paidAt:ISO(20),
+    portalOrderId:null, purplSubtotal:180.00, lfSubtotal:107.88, grandTotal:287.88, notes:'New account opening order.' },
 ];
 
 // =============================================================
@@ -880,15 +1326,117 @@ const combined_invoices = [
 const dist_profiles = [
   { id:'dist001', name:'New England Natural Foods', status:'active',
     territory:'New England', email:'orders@nenf.com', phone:'603-555-9001',
-    notes:'Primary regional distributor. Net-30 terms.', since: D(300) },
+    notes:'Primary regional distributor. Net-30 terms.', since: D(300),
+    dcAddress:'45 Industrial Dr, Concord, NH 03301',
+    territoryRadiusMiles: 80,
+    velocityReports: [
+      { id:'vr001', date:D(90), sku:'classic',   doors:18, cases:72,  units:864,  notes:'Q1 restock across NH accounts' },
+      { id:'vr002', date:D(60), sku:'blueberry', doors:12, cases:36,  units:432,  notes:'Spring intro push' },
+      { id:'vr003', date:D(30), sku:'classic',   doors:20, cases:90,  units:1080, notes:'April reorder — strong sell-through' },
+    ],
+  },
   { id:'dist002', name:'Northeast Beverage Co', status:'active',
     territory:'Northeast', email:'wholesale@nebev.com', phone:'617-555-9002',
-    notes:'Secondary distributor — Maine and Mass.', since: D(200) },
+    notes:'Secondary distributor — Maine and Mass.', since: D(200),
+    dcAddress:'200 Commerce Way, Newton, MA 02459',
+    territoryRadiusMiles: 60,
+    velocityReports: [
+      { id:'vr004', date:D(85), sku:'classic',   doors:10, cases:48,  units:576,  notes:'Initial MA placement' },
+      { id:'vr005', date:D(55), sku:'raspberry', doors:8,  cases:24,  units:288,  notes:'Raspberry trial — good response in Boston suburbs' },
+      { id:'vr006', date:D(20), sku:'classic',   doors:12, cases:60,  units:720,  notes:'Q2 restock — added 2 new doors' },
+    ],
+  },
 ];
 
 const dist_reps = [
   { id:'rep001', distributorId:'dist001', name:'Mark Bouchard', email:'mark@nenf.com', phone:'603-555-9011', territory:'NH/VT' },
   { id:'rep002', distributorId:'dist002', name:'Donna Pierce',  email:'donna@nebev.com', phone:'617-555-9021', territory:'MA/ME' },
+];
+
+// =============================================================
+//  DISTRIBUTOR INVOICES (10)
+// =============================================================
+const dist_invoices_data = [
+  // dist001 — 5 invoices
+  { id:'dinv001', distId:'dist001', invoiceNumber:'NENF-2501', dateIssued:D(120), dueDate:D(90),
+    poRef:'PO-2501', externalRef:'', status:'paid',
+    items:[
+      { sku:'classic',   cases:60, pricePerCase:26.00 },
+      { sku:'blueberry', cases:24, pricePerCase:26.00 },
+    ],
+    total: 2184.00, notes:'Q1 opening order.' },
+
+  { id:'dinv002', distId:'dist001', invoiceNumber:'NENF-2502', dateIssued:D(90), dueDate:D(60),
+    poRef:'PO-2502', externalRef:'', status:'paid',
+    items:[
+      { sku:'classic',   cases:48, pricePerCase:26.00 },
+      { sku:'raspberry', cases:24, pricePerCase:26.00 },
+    ],
+    total: 1872.00, notes:'' },
+
+  { id:'dinv003', distId:'dist001', invoiceNumber:'NENF-2503', dateIssued:D(60), dueDate:D(30),
+    poRef:'PO-2503', externalRef:'', status:'unpaid',
+    items:[
+      { sku:'classic',   cases:72, pricePerCase:26.00 },
+      { sku:'blueberry', cases:36, pricePerCase:26.00 },
+    ],
+    total: 2808.00, notes:'30 days overdue.' },
+
+  { id:'dinv004', distId:'dist001', invoiceNumber:'NENF-2504', dateIssued:D(35), dueDate:D(5),
+    poRef:'PO-2504', externalRef:'', status:'unpaid',
+    items:[
+      { sku:'classic', cases:48, pricePerCase:26.00 },
+      { sku:'variety', cases:12, pricePerCase:26.00 },
+    ],
+    total: 1560.00, notes:'5 days overdue.' },
+
+  { id:'dinv005', distId:'dist001', invoiceNumber:'NENF-2505', dateIssued:D(10), dueDate:D(-20),
+    poRef:'PO-2505', externalRef:'', status:'unpaid',
+    items:[
+      { sku:'classic',   cases:36, pricePerCase:26.00 },
+      { sku:'blueberry', cases:24, pricePerCase:26.00 },
+    ],
+    total: 1560.00, notes:'Due in 20 days.' },
+
+  // dist002 — 5 invoices
+  { id:'dinv006', distId:'dist002', invoiceNumber:'NEBEV-2501', dateIssued:D(110), dueDate:D(80),
+    poRef:'', externalRef:'NEB-1001', status:'paid',
+    items:[
+      { sku:'classic',   cases:48, pricePerCase:27.00 },
+      { sku:'raspberry', cases:12, pricePerCase:27.00 },
+    ],
+    total: 1620.00, notes:'Initial MA order.' },
+
+  { id:'dinv007', distId:'dist002', invoiceNumber:'NEBEV-2502', dateIssued:D(80), dueDate:D(50),
+    poRef:'', externalRef:'NEB-1002', status:'paid',
+    items:[
+      { sku:'classic',   cases:36, pricePerCase:27.00 },
+      { sku:'blueberry', cases:24, pricePerCase:27.00 },
+    ],
+    total: 1620.00, notes:'' },
+
+  { id:'dinv008', distId:'dist002', invoiceNumber:'NEBEV-2503', dateIssued:D(55), dueDate:D(25),
+    poRef:'', externalRef:'NEB-1003', status:'unpaid',
+    items:[
+      { sku:'classic', cases:48, pricePerCase:27.00 },
+      { sku:'peach',   cases:12, pricePerCase:27.00 },
+    ],
+    total: 1620.00, notes:'25 days overdue.' },
+
+  { id:'dinv009', distId:'dist002', invoiceNumber:'NEBEV-2504', dateIssued:D(30), dueDate:D(0),
+    poRef:'', externalRef:'NEB-1004', status:'unpaid',
+    items:[
+      { sku:'classic',   cases:24, pricePerCase:27.00 },
+      { sku:'raspberry', cases:24, pricePerCase:27.00 },
+    ],
+    total: 1296.00, notes:'Due today.' },
+
+  { id:'dinv010', distId:'dist002', invoiceNumber:'NEBEV-2505', dateIssued:D(8), dueDate:D(-22),
+    poRef:'', externalRef:'NEB-1005', status:'unpaid',
+    items:[
+      { sku:'classic', cases:36, pricePerCase:27.00 },
+    ],
+    total: 972.00, notes:'Due in 22 days.' },
 ];
 
 // =============================================================
@@ -908,6 +1456,200 @@ const lf_skus = [
 ];
 
 // =============================================================
+//  ORDERS (40) — spread across 20 accounts, last 6 months
+// =============================================================
+// Structure: {id, accountId, created, dueDate, status, items:[{sku,qty}], canCount, source, externalId, importedAt}
+// qty = cases; canCount = sum(qty * 12)
+const orders_data = [
+  // ac001 — 2 orders
+  { id:'ord001', accountId:'ac001', created:D(170), dueDate:D(170), status:'delivered',
+    items:[{sku:'classic',qty:12},{sku:'blueberry',qty:6}], canCount:216,
+    source:'manual', externalId:'', importedAt:D(170) },
+  { id:'ord002', accountId:'ac001', created:D(60), dueDate:D(60), status:'delivered',
+    items:[{sku:'classic',qty:12},{sku:'blueberry',qty:6},{sku:'raspberry',qty:3}], canCount:252,
+    source:'manual', externalId:'', importedAt:D(60) },
+
+  // ac002 — 2 orders
+  { id:'ord003', accountId:'ac002', created:D(155), dueDate:D(155), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:8}], canCount:192,
+    source:'manual', externalId:'', importedAt:D(155) },
+  { id:'ord004', accountId:'ac002', created:D(45), dueDate:D(45), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:4}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(45) },
+
+  // ac003 — 2 orders
+  { id:'ord005', accountId:'ac003', created:D(25), dueDate:D(25), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(25) },
+  { id:'ord006', accountId:'ac003', created:D(5), dueDate:D(5), status:'pending',
+    items:[{sku:'classic',qty:4},{sku:'blueberry',qty:2}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(5) },
+
+  // ac004 — 2 orders
+  { id:'ord007', accountId:'ac004', created:D(140), dueDate:D(140), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(140) },
+  { id:'ord008', accountId:'ac004', created:D(20), dueDate:D(20), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'raspberry',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(20) },
+
+  // ac005 — 2 orders
+  { id:'ord009', accountId:'ac005', created:D(160), dueDate:D(160), status:'delivered',
+    items:[{sku:'classic',qty:4}], canCount:48,
+    source:'manual', externalId:'', importedAt:D(160) },
+  { id:'ord010', accountId:'ac005', created:D(55), dueDate:D(55), status:'delivered',
+    items:[{sku:'classic',qty:4},{sku:'blueberry',qty:4}], canCount:96,
+    source:'manual', externalId:'', importedAt:D(55) },
+
+  // ac006 — 2 orders
+  { id:'ord011', accountId:'ac006', created:D(175), dueDate:D(175), status:'delivered',
+    items:[{sku:'classic',qty:8}], canCount:96,
+    source:'manual', externalId:'', importedAt:D(175) },
+  { id:'ord012', accountId:'ac006', created:D(95), dueDate:D(95), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'blueberry',qty:4}], canCount:120,
+    source:'manual', externalId:'', importedAt:D(95) },
+
+  // ac008 — 2 orders
+  { id:'ord013', accountId:'ac008', created:D(150), dueDate:D(150), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'raspberry',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(150) },
+  { id:'ord014', accountId:'ac008', created:D(15), dueDate:D(15), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:4},{sku:'variety',qty:4}], canCount:192,
+    source:'manual', externalId:'', importedAt:D(15) },
+
+  // ac009 — 2 orders
+  { id:'ord015', accountId:'ac009', created:D(130), dueDate:D(130), status:'delivered',
+    items:[{sku:'classic',qty:12}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(130) },
+  { id:'ord016', accountId:'ac009', created:D(12), dueDate:D(12), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:8}], canCount:192,
+    source:'manual', externalId:'', importedAt:D(12) },
+
+  // ac010 — 2 orders
+  { id:'ord017', accountId:'ac010', created:D(120), dueDate:D(120), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'variety',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(120) },
+  { id:'ord018', accountId:'ac010', created:D(5), dueDate:D(5), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'variety',qty:6}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(5) },
+
+  // ac011 — 2 orders
+  { id:'ord019', accountId:'ac011', created:D(110), dueDate:D(110), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:4}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(110) },
+  { id:'ord020', accountId:'ac011', created:D(40), dueDate:D(40), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'blueberry',qty:6}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(40) },
+
+  // ac012 — 2 orders
+  { id:'ord021', accountId:'ac012', created:D(100), dueDate:D(100), status:'delivered',
+    items:[{sku:'peach',qty:4}], canCount:48,
+    source:'manual', externalId:'', importedAt:D(100) },
+  { id:'ord022', accountId:'ac012', created:D(50), dueDate:D(50), status:'delivered',
+    items:[{sku:'peach',qty:4},{sku:'classic',qty:2}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(50) },
+
+  // ac013 — 2 orders
+  { id:'ord023', accountId:'ac013', created:D(135), dueDate:D(135), status:'delivered',
+    items:[{sku:'classic',qty:12},{sku:'peach',qty:6}], canCount:216,
+    source:'manual', externalId:'', importedAt:D(135) },
+  { id:'ord024', accountId:'ac013', created:D(30), dueDate:D(30), status:'pending',
+    items:[{sku:'classic',qty:12}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(30) },
+
+  // ac015 — 2 orders
+  { id:'ord025', accountId:'ac015', created:D(105), dueDate:D(105), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(105) },
+  { id:'ord026', accountId:'ac015', created:D(75), dueDate:D(75), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'blueberry',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(75) },
+
+  // ac016 — 2 orders
+  { id:'ord027', accountId:'ac016', created:D(90), dueDate:D(90), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(90) },
+  { id:'ord028', accountId:'ac016', created:D(30), dueDate:D(30), status:'pending',
+    items:[{sku:'classic',qty:4}], canCount:48,
+    source:'manual', externalId:'', importedAt:D(30) },
+
+  // ac017 — 2 orders
+  { id:'ord029', accountId:'ac017', created:D(85), dueDate:D(85), status:'delivered',
+    items:[{sku:'classic',qty:4},{sku:'peach',qty:4}], canCount:96,
+    source:'manual', externalId:'', importedAt:D(85) },
+  { id:'ord030', accountId:'ac017', created:D(55), dueDate:D(55), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'peach',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(55) },
+
+  // ac018 — 2 orders
+  { id:'ord031', accountId:'ac018', created:D(80), dueDate:D(80), status:'delivered',
+    items:[{sku:'classic',qty:12}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(80) },
+  { id:'ord032', accountId:'ac018', created:D(25), dueDate:D(25), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'blueberry',qty:4}], canCount:144,
+    source:'manual', externalId:'', importedAt:D(25) },
+
+  // ac019 — 2 orders
+  { id:'ord033', accountId:'ac019', created:D(95), dueDate:D(95), status:'delivered',
+    items:[{sku:'classic',qty:8},{sku:'raspberry',qty:3}], canCount:132,
+    source:'manual', externalId:'', importedAt:D(95) },
+  { id:'ord034', accountId:'ac019', created:D(38), dueDate:D(38), status:'delivered',
+    items:[{sku:'classic',qty:6},{sku:'raspberry',qty:3}], canCount:108,
+    source:'manual', externalId:'', importedAt:D(38) },
+
+  // ac020 — 2 orders
+  { id:'ord035', accountId:'ac020', created:D(70), dueDate:D(70), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(70) },
+  { id:'ord036', accountId:'ac020', created:D(55), dueDate:D(55), status:'delivered',
+    items:[{sku:'classic',qty:4},{sku:'blueberry',qty:4}], canCount:96,
+    source:'manual', externalId:'', importedAt:D(55) },
+
+  // ac021–ac022 — 1 each to fill to 40
+  { id:'ord037', accountId:'ac021', created:D(65), dueDate:D(65), status:'delivered',
+    items:[{sku:'classic',qty:4}], canCount:48,
+    source:'manual', externalId:'', importedAt:D(65) },
+  { id:'ord038', accountId:'ac022', created:D(50), dueDate:D(50), status:'delivered',
+    items:[{sku:'classic',qty:4},{sku:'blueberry',qty:2}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(50) },
+
+  // ac023–ac024 — 1 each
+  { id:'ord039', accountId:'ac023', created:D(68), dueDate:D(68), status:'delivered',
+    items:[{sku:'classic',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(68) },
+  { id:'ord040', accountId:'ac024', created:D(52), dueDate:D(52), status:'pending',
+    items:[{sku:'peach',qty:6}], canCount:72,
+    source:'manual', externalId:'', importedAt:D(52) },
+];
+
+// =============================================================
+//  PRODUCTION HISTORY (20)
+// =============================================================
+// Structure: {id, date, notes, ...skus:qty} — qty = cases
+const prod_hist_data = [
+  { id:'ph001', date:D(175), notes:'Large spring production run', classic:36, blueberry:24, raspberry:12 },
+  { id:'ph002', date:D(160), notes:'Blueberry and variety restock',  blueberry:36, variety:18 },
+  { id:'ph003', date:D(148), notes:'Classic top-off for May demand', classic:48 },
+  { id:'ph004', date:D(135), notes:'Peach season launch',           peach:24, classic:24 },
+  { id:'ph005', date:D(120), notes:'Mixed summer run',              classic:36, blueberry:18, peach:12, raspberry:12 },
+  { id:'ph006', date:D(108), notes:'Classic only — distributor PO', classic:72 },
+  { id:'ph007', date:D(95),  notes:'Raspberry push for summer accounts', raspberry:36, classic:24 },
+  { id:'ph008', date:D(82),  notes:'Replenish all flavors',         classic:48, blueberry:24, peach:12, variety:12 },
+  { id:'ph009', date:D(70),  notes:'Variety and classic',           classic:36, variety:24 },
+  { id:'ph010', date:D(58),  notes:'Blueberry restock',             blueberry:48, classic:24 },
+  { id:'ph011', date:D(48),  notes:'Pre-harvest run — classic focus', classic:60 },
+  { id:'ph012', date:D(40),  notes:'Distributor top-off — NENF',    classic:48, raspberry:24 },
+  { id:'ph013', date:D(33),  notes:'Peach and variety mix',         peach:36, variety:24, classic:12 },
+  { id:'ph014', date:D(26),  notes:'Blueberry + classic for NH accounts', classic:36, blueberry:36 },
+  { id:'ph015', date:D(20),  notes:'Raspberry season end batch',    raspberry:48, classic:24 },
+  { id:'ph016', date:D(15),  notes:'April restock run',             classic:60, blueberry:36 },
+  { id:'ph017', date:D(10),  notes:'Small variety fill run',        variety:24, peach:12 },
+  { id:'ph018', date:D(7),   notes:'NEBEV distributor order prep',  classic:48, raspberry:24, blueberry:24 },
+  { id:'ph019', date:D(4),   notes:'Classic emergency restock',     classic:36 },
+  { id:'ph020', date:D(1),   notes:'Fresh spring batch — all flavors', classic:48, blueberry:24, peach:12, raspberry:12, variety:12 },
+];
+
+// =============================================================
 //  SETTINGS
 // =============================================================
 const settings = {
@@ -918,9 +1660,9 @@ const settings = {
 };
 
 const invoice_settings = {
-  nextPurplNumber:    19,
-  nextLfNumber:       9,
-  nextCombinedNumber: 6,
+  nextPurplNumber:    31,
+  nextLfNumber:       16,
+  nextCombinedNumber: 9,
   prefix:             'PBF',
   lfPrefix:           'LF',
   combinedPrefix:     'COMB',
@@ -971,14 +1713,17 @@ const SEED = {
   combined_invoices,
   dist_profiles,
   dist_reps,
+  dist_invoices:     dist_invoices_data,
   lf_skus,
   settings,
   invoice_settings,
   api_settings,
+  orders:            orders_data,
+  prod_hist:         prod_hist_data,
   // unused keys — empty arrays to avoid DB layer warnings
-  orders:[], prod_hist:[], prod_sched:[], shipments:[],
+  prod_sched:[], shipments:[],
   dist:[], rem:[], pack_types:[], runs:[],
-  dist_pricing:[], dist_pos:[], dist_invoices:[], dist_chains:[], dist_imports:[],
+  dist_pricing:[], dist_pos:[], dist_chains:[], dist_imports:[],
   saved_reports:[], loose_cans:[], repack_jobs:[], pallets:[], pack_supply:[],
   quick_notes:[], stock_locations:[], stock_transfers:[],
   lf_wix_deductions:[], retail_invoices:[], pending_invoices:[], returns:[],

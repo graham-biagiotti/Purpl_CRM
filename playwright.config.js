@@ -16,10 +16,19 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
     launchOptions: {
-      executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH
-        ? `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium-1194/chrome-linux/chrome`
-        : undefined,
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--proxy-server=direct://'],
+      executablePath: (() => {
+        if (!process.env.PLAYWRIGHT_BROWSERS_PATH) return undefined;
+        if (process.platform === 'win32') {
+          return `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium-1194/chrome-win/chrome.exe`;
+        }
+        return `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium-1194/chrome-linux/chrome`;
+      })(),
+      args: [
+        // --no-sandbox is required on Linux/CI but breaks Chrome on Windows
+        ...(process.platform === 'win32' ? [] : ['--no-sandbox']),
+        '--disable-dev-shm-usage',
+        '--proxy-server=direct://',
+      ],
     },
   },
 

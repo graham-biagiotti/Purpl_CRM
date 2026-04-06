@@ -11,10 +11,18 @@
 const path = require('path');
 const fs   = require('fs');
 
+// Start emulators before running tests:
+//   firebase emulators:start --only firestore,auth,functions
+//
+// The functions emulator requires functions/index.js to be present.
+// RESEND_API_KEY is stubbed to 'test-key' via functions/.env.local so
+// no real emails are sent during test runs.
+
 module.exports = async function globalSetup() {
   // ── Point Firebase Admin SDK at local emulators ───────────
-  process.env.FIRESTORE_EMULATOR_HOST     = 'localhost:8080';
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+  process.env.FIRESTORE_EMULATOR_HOST      = 'localhost:8080';
+  process.env.FIREBASE_AUTH_EMULATOR_HOST  = 'localhost:9099';
+  process.env.FIREBASE_FUNCTIONS_EMULATOR_HOST = 'localhost:5001';
 
   const admin = require('firebase-admin');
 
@@ -52,7 +60,7 @@ module.exports = async function globalSetup() {
   await notBatch.commit();
   console.log('[setup] Portal notify written:', PORTAL_NOTIFY.length);
 
-  // ── Create test auth user ─────────────────────────────────
+  // ── Create test auth user (CRM admin) ────────────────────
   try {
     await auth.createUser({
       uid:         'test-uid-001',
@@ -64,6 +72,25 @@ module.exports = async function globalSetup() {
   } catch (e) {
     if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
       console.log('[setup] Test auth user already exists — OK.');
+    } else {
+      throw e;
+    }
+  }
+
+  // ── Create retailer auth user (no CRM access) ─────────────
+  // Used to verify that authenticated non-CRM users cannot reach the
+  // CRM dashboard (index.html) — security boundary test.
+  try {
+    await auth.createUser({
+      uid:         'test-retailer-001',
+      email:       'retailer@test.local',
+      password:    'retailer123',
+      displayName: 'Test Retailer',
+    });
+    console.log('[setup] Retailer auth user created.');
+  } catch (e) {
+    if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
+      console.log('[setup] Retailer auth user already exists — OK.');
     } else {
       throw e;
     }

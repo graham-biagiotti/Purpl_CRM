@@ -72,6 +72,33 @@ async function setupAppRoutes(context) {
     }
   });
 
+  // ── Firebase Functions emulator (localhost:5001) ──────────
+  // Handles cases where the SDK is configured to use the emulator directly.
+  await context.route('http://localhost:5001/**', async (route) => {
+    const target = route.request().url().replace('http://localhost:5001', 'http://127.0.0.1:5001');
+    try {
+      const resp = await route.fetch({ url: target });
+      await route.fulfill({ response: resp });
+    } catch (e) {
+      await route.abort('failed');
+    }
+  });
+
+  // ── Firebase Functions production URL → emulator ──────────
+  // firebase.functions().httpsCallable() calls the production URL when the
+  // SDK is not configured with useEmulator(). Intercept and forward to local
+  // emulator so tests never hit production Functions or Resend.
+  await context.route('https://us-central1-purpl-crm.cloudfunctions.net/**', async (route) => {
+    const target = route.request().url()
+      .replace('https://us-central1-purpl-crm.cloudfunctions.net', 'http://127.0.0.1:5001/purpl-crm/us-central1');
+    try {
+      const resp = await route.fetch({ url: target });
+      await route.fulfill({ response: resp });
+    } catch (e) {
+      await route.abort('failed');
+    }
+  });
+
   // ── Firebase SDK from node_modules (instead of CDN) ──────
   await context.route('https://www.gstatic.com/firebasejs/**', async (route) => {
     const filename = route.request().url().split('/').pop();

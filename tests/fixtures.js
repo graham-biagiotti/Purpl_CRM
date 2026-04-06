@@ -21,15 +21,15 @@ const IDB_KEY           = `firebase:authUser:${FIREBASE_API_KEY}:[DEFAULT]`;
  * Sign in via Auth emulator REST API. Returns idToken + refreshToken.
  * The emulator tokens are stable enough for test use.
  */
-async function signInViaEmulator() {
+async function signInViaEmulator(email = 'test@purpl.local', password = 'testpass123') {
   const resp = await fetch(
     `${AUTH_EMULATOR_URL}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`,
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        email:             'test@purpl.local',
-        password:          'testpass123',
+        email,
+        password,
         returnSecureToken: true,
       }),
     }
@@ -68,6 +68,26 @@ function buildAuthState(token) {
   };
 }
 
+/**
+ * Inject a Firebase auth state into IndexedDB for the given context.
+ */
+async function injectAuthState(context, authState) {
+  await context.addInitScript(([dbName, storeName, idbKey, value]) => {
+    function writeAuthState() {
+      const openReq = indexedDB.open(dbName, 1);
+      openReq.onupgradeneeded = (e) => {
+        e.target.result.createObjectStore(storeName, { keyPath: 'fbase_key' });
+      };
+      openReq.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).put({ fbase_key: idbKey, value });
+      };
+    }
+    writeAuthState();
+  }, [IDB_DB_NAME, IDB_STORE_NAME, IDB_KEY, authState]);
+}
+
 const test = base.extend({
   /**
    * Override context to:
@@ -84,25 +104,99 @@ const test = base.extend({
     const authState = buildAuthState(token);
 
     // 3. Inject auth state into IndexedDB before any page loads.
-    //    Firebase SDK reads IndexedDB asynchronously on init; our write
-    //    should complete before Firebase reads it.
-    await context.addInitScript(([dbName, storeName, idbKey, value]) => {
-      function writeAuthState() {
-        const openReq = indexedDB.open(dbName, 1);
-        openReq.onupgradeneeded = (e) => {
-          e.target.result.createObjectStore(storeName, { keyPath: 'fbase_key' });
-        };
-        openReq.onsuccess = (e) => {
-          const db = e.target.result;
-          const tx = db.transaction(storeName, 'readwrite');
-          tx.objectStore(storeName).put({ fbase_key: idbKey, value });
-        };
-      }
-      writeAuthState();
-    }, [IDB_DB_NAME, IDB_STORE_NAME, IDB_KEY, authState]);
+    await injectAuthState(context, authState);
 
     await use(context);
   },
+
+  /**
+   * unauthContext — a browser context with NO auth state injected.
+   * Useful for testing portal_orders write access and verifying that
+   * unauthenticated users see the auth screen rather than the CRM.
+   */
+  unauthContext: async ({ browser }, use) => {
+    const ctx = await browser.newContext();
+    await setupAppRoutes(ctx);
+    // No auth injection — browser starts with empty IndexedDB
+    await use(ctx);
+    await ctx.close();
+  },
+
+  /**
+   * retailerContext — a context authenticated as a retail account user
+   * who should NOT have access to the CRM dashboard.
+   * Tests that Firebase-authenticated non-CRM users cannot reach index.html.
+   */
+  retailerContext: async ({ browser }, use) => {
+    const ctx = await browser.newContext();
+    await setupAppRoutes(ctx);
+    const token     = await signInViaEmulator('retailer@test.local', 'retailer123');
+    const authState = buildAuthState(token);
+    await injectAuthState(ctx, authState);
+    await use(ctx);
+    await ctx.close();
+  },
+
+  /**
+   * verifyFirestoreWrite(collection, id, fields)
+   *
+   * Reads directly from the Firestore emulator using the Admin SDK and
+   * asserts that the item with the given id has the expected field values.
+   * Use this in CRUD tests to independently verify writes reach Firestore —
+   * not just that the UI reflects the change.
+   *
+   * For top-level CRM collections (ac, pr, iv, lf_invoices, etc.):
+   *   collection = key in workspace/main/data/store document (e.g. 'ac')
+   *
+   * For portal collections (portal_orders, portal_notify):
+   *   collection = Firestore collection name, id = document id
+   */
+  verifyFirestoreWrite: [async ({}, use) => {
+    // Ensure emulator env is set in this worker process
+    process.env.FIRESTORE_EMULATOR_HOST =
+      process.env.FIRESTORE_EMULATOR_HOST || 'localhost:8080';
+
+    const admin = require('firebase-admin');
+    let app;
+    try {
+      app = admin.app('verifier');
+    } catch {
+      app = admin.initializeApp({ projectId: 'purpl-crm' }, 'verifier');
+    }
+    const db = admin.firestore(app);
+
+    const helper = async (collection, id, fields) => {
+      const PORTAL_COLLECTIONS = ['portal_orders', 'portal_notify'];
+
+      if (PORTAL_COLLECTIONS.includes(collection)) {
+        // Direct Firestore collection
+        const snap = await db.collection(collection).doc(id).get();
+        expect(snap.exists, `Document ${collection}/${id} not found in Firestore`).toBe(true);
+        const data = snap.data();
+        for (const [key, val] of Object.entries(fields)) {
+          expect(data[key], `${collection}/${id}.${key}`).toEqual(val);
+        }
+      } else {
+        // CRM data stored as arrays in workspace/main/data/store
+        const snap = await db
+          .collection('workspace').doc('main')
+          .collection('data').doc('store')
+          .get();
+        expect(snap.exists, 'Main CRM store document not found').toBe(true);
+        const store = snap.data();
+        const arr   = store[collection];
+        expect(Array.isArray(arr), `Collection '${collection}' not found in store`).toBe(true);
+        const item  = arr.find(x => x.id === id);
+        expect(item, `Item id='${id}' not found in '${collection}'`).toBeTruthy();
+        for (const [key, val] of Object.entries(fields)) {
+          expect(item[key], `${collection}[id=${id}].${key}`).toEqual(val);
+        }
+      }
+    };
+
+    await use(helper);
+    // Leave admin app alive for the worker lifetime (scope: 'worker')
+  }, { scope: 'worker' }],
 });
 
 module.exports = { test, expect };
