@@ -12,6 +12,22 @@
         "destination": "/order.html"
       },
       {
+        "source": "/wholesale.html",
+        "destination": "/wholesale.html"
+      },
+      {
+        "source": "/privacy.html",
+        "destination": "/privacy.html"
+      },
+      {
+        "source": "/terms.html",
+        "destination": "/terms.html"
+      },
+      {
+        "source": "/order.html",
+        "destination": "/order.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
