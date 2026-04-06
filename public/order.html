@@ -121,6 +121,15 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .lf-variant-input{width:64px;text-align:center}
 .lf-variant-total{min-width:72px;text-align:right;font-size:12px;font-weight:600;color:var(--lf-green)}
 
+/* ── LF VARIANT FLOW (cases-first) ── */
+.lf-sku-has-variants{flex-wrap:wrap;align-items:flex-start}
+.lf-sku-has-variants .lf-sku-qty{padding-top:4px}
+.lf-vpicker{width:100%;margin-top:10px;padding:12px 14px;background:#f6fdf8;border-radius:8px;border:1px solid var(--lf-border)}
+.lf-vheader{font-size:12px;font-weight:600;color:#166534;margin-bottom:10px}
+.lf-vtally{font-size:12px;font-weight:600;color:var(--lf-green);margin-top:10px;padding-top:8px;border-top:1px solid var(--lf-border)}
+.lf-vtally.mismatch{color:#dc2626}
+.lf-verr{font-size:12px;color:#dc2626;margin-top:4px;display:none}
+
 /* ── PAYMENT TERMS NOTE ── */
 .payment-terms-note{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--purpl-dark);line-height:1.6}
 
@@ -568,39 +577,46 @@ function renderLfSkus(skus, prevOrder) {
       var prevVariants = prevOrder ? (prevOrder['variants_'+s.id] || {}) : {};
       var totalPrevUnits = activeVariants.reduce(function(sum,v){return sum+(prevVariants[v.id]||0)*s.caseSize;},0);
       var totalPrevCases = totalPrevUnits / s.caseSize;
+      var initRequiredUnits = totalPrevCases * s.caseSize;
+
       var variantHtml = activeVariants.map(function(v) {
         var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
-        var prevNote = prevUnits > 0 ? ' <span style="font-size:11px;color:#9ca3af">Last: '+prevUnits+'u</span>' : '';
         return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
-          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+prevNote+'</span>' +
+          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+'</span>' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
-          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" '+
-            'placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
+          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
-          '<span style="font-size:11px;color:#9ca3af;min-width:30px;text-align:right">units</span>' +
         '</div>';
       }).join('');
-      var prevNoteHtml = totalPrevCases > 0 ? '<div class="lf-prev-note">Last order: '+totalPrevCases+' cases total</div>' : '';
-      var initParts = activeVariants.filter(function(v){return (prevVariants[v.id]||0)>0;}).map(function(v){
-        return v.name+' \xd7'+(prevVariants[v.id]*s.caseSize);
-      });
-      var initSummary = totalPrevCases > 0
-        ? totalPrevCases+' case'+(totalPrevCases!==1?'s':'')+' total'+(initParts.length?' ('+initParts.join(', ')+')':'')
-        : '';
+
+      var initTallyText = totalPrevCases > 0
+        ? totalPrevUnits+' of '+initRequiredUnits+' units assigned'
+        : '0 of 0 units assigned';
+      var initTallyCls = (totalPrevCases > 0 && totalPrevUnits === initRequiredUnits)
+        ? 'lf-vtally' : 'lf-vtally mismatch';
+      var initLineTotal = totalPrevCases > 0
+        ? '$'+(totalPrevCases*s.caseSize*parseFloat(s.wholesalePrice)).toFixed(2) : '';
+      var pickerDisplay = totalPrevCases > 0 ? 'block' : 'none';
+      var prevNoteHtml = totalPrevCases > 0
+        ? '<div class="lf-prev-note">Last order: '+totalPrevCases+' case'+(totalPrevCases!==1?'s':'')+'</div>' : '';
+
       return '<div class="lf-sku-row lf-sku-has-variants" id="lf-row-'+s.id+'">' +
         '<div class="lf-sku-info">' +
           '<div class="lf-sku-name">'+s.name+'</div>' +
-          '<div class="lf-sku-meta">Case of '+s.caseSize+msrpText+'</div>' +
+          '<div class="lf-sku-meta">Case of '+s.caseSize+' · '+activeVariants.length+' variants'+msrpText+'</div>' +
           '<div class="lf-sku-price">$'+parseFloat(s.wholesalePrice).toFixed(2)+'/unit · $'+(parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2)+'/case</div>' +
           prevNoteHtml +
         '</div>' +
-        '<div style="flex:1">' +
-          '<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">1 case = '+s.caseSize+' units total across all variants</div>' +
+        '<div class="lf-sku-qty">' +
+          '<input type="number" id="lf-qty-'+s.id+'" min="0" step="1" value="'+(totalPrevCases||0)+'" placeholder="0" oninput="updateLfVariantCases(\''+s.id+'\')">' +
+          '<span>cases</span>' +
+        '</div>' +
+        '<div class="lf-line-total" id="lf-total-'+s.id+'">'+initLineTotal+'</div>' +
+        '<div id="lf-vpicker-'+s.id+'" class="lf-vpicker" style="display:'+pickerDisplay+'">' +
+          '<div class="lf-vheader" id="lf-vheader-'+s.id+'">Assign '+initRequiredUnits+' units across variants:</div>' +
           variantHtml +
-          '<div id="lf-vsum-'+s.id+'" style="font-size:12px;color:#6b7280;margin-top:6px">'+initSummary+'</div>' +
-          '<div class="lf-line-total" id="lf-total-'+s.id+'" style="text-align:right;font-size:14px;font-weight:600;margin-top:4px">'+
-            (totalPrevCases > 0 ? '$'+(totalPrevUnits*parseFloat(s.wholesalePrice)).toFixed(2) : '')+
-          '</div>' +
+          '<div class="'+initTallyCls+'" id="lf-vtally-'+s.id+'">'+initTallyText+'</div>' +
+          '<div class="lf-verr" id="lf-verr-'+s.id+'">Please assign all '+initRequiredUnits+' units before submitting.</div>' +
         '</div>' +
       '</div>';
     }
@@ -645,10 +661,53 @@ function toggleLfVariantPicker(skuId) {
   picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
 }
 
+// Called when cases input changes on a variant SKU
+function updateLfVariantCases(skuId) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!sku) return;
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var picker  = document.getElementById('lf-vpicker-'+skuId);
+  var header  = document.getElementById('lf-vheader-'+skuId);
+  var ltEl    = document.getElementById('lf-total-'+skuId);
+  var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
+
+  if (cases <= 0) {
+    if (picker) picker.style.display = 'none';
+    activeVariants.forEach(function(v) {
+      var el = document.getElementById('lf-vqty-'+skuId+'-'+v.id);
+      if (el) el.value = 0;
+    });
+    if (ltEl) ltEl.textContent = '';
+    updateLfSubtotal();
+    checkSubmitEnabled();
+    return;
+  }
+
+  var requiredUnits = cases * sku.caseSize;
+  if (picker) picker.style.display = 'block';
+  if (header) header.textContent = 'Assign '+requiredUnits+' units across variants:';
+  if (ltEl) ltEl.textContent = '$'+(cases*sku.caseSize*parseFloat(sku.wholesalePrice)).toFixed(2);
+  updateLfVariantCalc(skuId);
+}
+
 function stepLfUnit(skuId, varId, delta) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
   var el = document.getElementById('lf-vqty-'+skuId+'-'+varId);
   if (!el) return;
-  el.value = Math.max(0, (parseInt(el.value)||0) + delta);
+  var current = parseInt(el.value)||0;
+  if (delta > 0 && sku) {
+    // Cap at remaining unassigned units so you can't over-assign via +
+    var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
+    var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+    var requiredUnits = cases * sku.caseSize;
+    var assignedOthers = activeVariants.reduce(function(sum,v){
+      if (v.id === varId) return sum;
+      return sum + (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0);
+    },0);
+    el.value = Math.min(current + delta, Math.max(0, requiredUnits - assignedOthers));
+  } else {
+    el.value = Math.max(0, current + delta);
+  }
   updateLfVariantCalc(skuId);
 }
 
@@ -656,22 +715,25 @@ function updateLfVariantCalc(skuId) {
   var sku = _lfSkus.find(function(s){return s.id===skuId;});
   if (!sku) return;
   var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
-  var totalUnits = activeVariants.reduce(function(sum,v){
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var requiredUnits = cases * sku.caseSize;
+  var assignedUnits = activeVariants.reduce(function(sum,v){
     return sum + (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0);
   },0);
-  var totalCases = totalUnits / sku.caseSize;
-  var ltEl = document.getElementById('lf-total-'+skuId);
-  if (ltEl) ltEl.textContent = totalUnits > 0 ? '$'+(totalUnits*parseFloat(sku.wholesalePrice)).toFixed(2) : '';
-  var varParts = activeVariants.filter(function(v){
-    return (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0) > 0;
-  }).map(function(v){
-    var units = parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0;
-    return v.name+' \xd7'+units;
-  });
-  var sumEl = document.getElementById('lf-vsum-'+skuId);
-  if (sumEl) sumEl.textContent = totalCases > 0
-    ? totalCases+' case'+(totalCases!==1?'s':'')+' total'+(varParts.length?' ('+varParts.join(', ')+')':'')
-    : '';
+
+  var tallyEl = document.getElementById('lf-vtally-'+skuId);
+  var errEl   = document.getElementById('lf-verr-'+skuId);
+  var matched = requiredUnits > 0 && assignedUnits === requiredUnits;
+
+  if (tallyEl) {
+    tallyEl.textContent = assignedUnits+' of '+requiredUnits+' units assigned';
+    tallyEl.className = matched ? 'lf-vtally' : 'lf-vtally mismatch';
+  }
+  if (errEl) {
+    errEl.style.display = (requiredUnits > 0 && !matched) ? 'block' : 'none';
+    errEl.textContent = 'Please assign all '+requiredUnits+' units before submitting.';
+  }
+
   updateLfSubtotal();
   checkSubmitEnabled();
 }
@@ -708,14 +770,8 @@ function getLfItems() {
 
 function getLfTotal() {
   return _lfSkus.reduce(function(sum,s){
-    var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
-    if (activeVariants.length > 0) {
-      var totalUnits = activeVariants.reduce(function(vs,v){
-        return vs + (parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0);
-      },0);
-      return sum + totalUnits * parseFloat(s.wholesalePrice);
-    }
     var cases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
+    if (cases <= 0) return sum;
     return sum + cases * s.caseSize * parseFloat(s.wholesalePrice);
   },0);
 }
@@ -913,7 +969,18 @@ function checkSubmitEnabled() {
   const lfTotal = _brandLf ? getLfTotal() : 0;
   const hasPurpl = _brandPurpl && (cases > 0 || notifyChecked);
   const hasLf    = _brandLf && lfTotal > 0;
-  document.getElementById('submit-btn').disabled = !hasPurpl && !hasLf;
+  var variantsMismatched = _brandLf && _lfSkus.some(function(s) {
+    var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
+    if (!activeVariants.length) return false;
+    var skuCases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
+    if (skuCases <= 0) return false;
+    var requiredUnits = skuCases * s.caseSize;
+    var assignedUnits = activeVariants.reduce(function(sum,v){
+      return sum + (parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0);
+    },0);
+    return assignedUnits !== requiredUnits;
+  });
+  document.getElementById('submit-btn').disabled = (!hasPurpl && !hasLf) || variantsMismatched;
 }
 
 function toggleDistributorOther() {
