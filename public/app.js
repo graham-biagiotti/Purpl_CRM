@@ -235,6 +235,17 @@ async function callSendCombinedInvoice(to, accountName, subject, html) {
   }
 }
 
+async function callSendOrderConfirmation(to, accountName, contactName, orderSummary, portalLink, isPbf) {
+  try {
+    const fn = firebase.functions().httpsCallable('sendOrderConfirmation');
+    const result = await fn({to, accountName, contactName, orderSummary, portalLink, isPbf});
+    return result.data;
+  } catch (err) {
+    console.error('Send order confirmation error:', err);
+    throw err;
+  }
+}
+
 function buildEmailHTML(headerHTML, accentColor, bodyHTML) {
   return `<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
@@ -10502,6 +10513,36 @@ async function confirmPortalOrder() {
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+
+    // Send order confirmation email and log to cadence
+    const emailTo = d.billingEmail || acct.email;
+    if (emailTo && d.accountId && !d.isProspect) {
+      const contacts = acct.contacts || [];
+      const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
+      const contactName = primary.name || acct.contact || 'there';
+      const portalLink = acct.orderPortalToken
+        ? `https://purpl-crm.web.app/order?t=${acct.orderPortalToken}`
+        : null;
+      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order ref:</strong> ${d.poNumber || orderId}</p><p style="margin:4px 0"><strong>Cases:</strong> ${cases}</p>`;
+      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, false)
+        .then(result => {
+          const entry = {
+            id: uid(),
+            stage: 'order_confirmation',
+            sentAt: new Date().toISOString(),
+            sentBy: 'graham',
+            method: 'resend',
+            orderRef: d.poNumber || orderId,
+          };
+          if (result?.id) entry.sentMessageId = result.id;
+          DB.update('ac', d.accountId, a => ({
+            ...a,
+            lastContacted: today(),
+            cadence: [...(a.cadence || []), entry],
+          }));
+        })
+        .catch(err => console.warn('Order confirmation email failed:', err));
+    }
 
     // If prospect — prompt to convert
     if (d.isProspect && d.accountId) {
