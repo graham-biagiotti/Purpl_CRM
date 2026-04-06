@@ -559,6 +559,7 @@ function renderDash() {
 
   renderAttention();
   renderReorderPredictions();
+  renderInvoiceReminders();
 
   // Pending combined invoice notifications (portal orders awaiting invoicing)
   const pendingInvs = DB.a('pending_invoices').filter(x => x.status === 'pending');
@@ -1069,6 +1070,155 @@ function renderInvoiceStatus() {
         </div>
       </div>`;
     })()}`;
+}
+
+// ── Invoice Reminders ─────────────────────────────────────
+// Surfaces unpaid invoices due in 7 days or already overdue,
+// with a Send Reminder button that fires a Resend email and
+// marks the invoice so it won't resurface.
+function renderInvoiceReminders() {
+  const queue = [];
+
+  DB.a('iv').forEach(inv => {
+    if (inv.status === 'paid' || !inv.due || !inv.accountId || !inv.number) return;
+    if (inv.reminderSentAt) return;
+    const days = daysAgo(inv.due); // negative = future, positive = past
+    if (days !== -7 && days <= 0) return;
+    const ac = DB.a('ac').find(x => x.id === inv.accountId);
+    if (!ac || !ac.email) return;
+    queue.push({ inv, ac, collection: 'iv', isOverdue: days > 0, amount: inv.amount });
+  });
+
+  DB.a('lf_invoices').forEach(inv => {
+    if (inv.status === 'paid' || !inv.due || !inv.accountId) return;
+    if (inv.reminderSentAt) return;
+    const days = daysAgo(inv.due);
+    if (days !== -7 && days <= 0) return;
+    const ac = DB.a('ac').find(x => x.id === inv.accountId);
+    if (!ac || !ac.email) return;
+    queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total });
+  });
+
+  // Find or create container, inserted before #dash-dist-kpis
+  let el = document.getElementById('dash-invoice-reminders');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dash-invoice-reminders';
+    el.className = 'card';
+    el.style.marginBottom = '20px';
+    const anchor = document.getElementById('dash-dist-kpis');
+    if (anchor) anchor.parentNode.insertBefore(el, anchor);
+    else document.getElementById('page-dash')?.appendChild(el);
+  }
+
+  if (!queue.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+
+  el.innerHTML = `
+    <div class="section-hdr">
+      <h2>💌 Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle">${queue.length}</span></h2>
+      <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue</small>
+    </div>
+    <div id="dash-inv-reminders-list">
+      ${queue.map(({ inv, ac, collection, isOverdue, amount }) => `
+        <div class="attn-item" id="dir-${inv.id}">
+          <div class="attn-icon">${isOverdue ? '🔴' : '🟡'}</div>
+          <div class="attn-info" style="flex:1">
+            <div class="attn-name">${escHtml(ac.name)} — ${escHtml(inv.number || '')}</div>
+            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.due)}</div>
+          </div>
+          <button class="btn xs primary" onclick="sendInvoiceReminder('${inv.id}','${collection}')">Send Reminder</button>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+async function sendInvoiceReminder(invId, collection) {
+  const inv = DB.a(collection).find(x => x.id === invId);
+  if (!inv) return;
+  const ac = DB.a('ac').find(x => x.id === inv.accountId);
+  if (!ac || !ac.email) { toast('No email on file for this account'); return; }
+
+  const isOverdue = daysAgo(inv.due) > 0;
+  const subject = isOverdue
+    ? `Payment reminder — ${inv.number || ''} (${ac.name})`
+    : `Invoice due soon — ${inv.number || ''} (${ac.name})`;
+  const html = buildInvoiceReminderHTML(inv, collection, isOverdue);
+
+  try {
+    const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
+    toast('Reminder sent ✓');
+    DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString() }));
+    const entry = {
+      id: uid(), stage: 'invoice_reminder',
+      sentAt: new Date().toISOString(),
+      sentBy: 'graham', method: 'resend',
+      invoiceId: invId, invoiceRef: inv.number || '',
+    };
+    if (result?.id) entry.sentMessageId = result.id;
+    DB.update('ac', ac.id, a => ({
+      ...a,
+      lastContacted: today(),
+      cadence: [...(a.cadence || []), entry],
+    }));
+    // Remove row without full re-render
+    const row = document.getElementById('dir-' + invId);
+    if (row) row.remove();
+    const list = document.getElementById('dash-inv-reminders-list');
+    if (list && !list.children.length) {
+      document.getElementById('dash-invoice-reminders').style.display = 'none';
+    }
+  } catch (err) {
+    toast('Failed to send reminder — ' + (err.message || 'unknown error'));
+  }
+}
+
+function buildInvoiceReminderHTML(inv, collection, isOverdue) {
+  const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || 0);
+  const invSettings = DB.obj('invoice_settings') || {};
+  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
+  const isLf = collection === 'lf_invoices';
+  const accentColor = isLf ? '#4a7c59' : '#2D1B4E';
+  const accentLight = isLf ? '#dcfce7' : '#ede4f5';
+  const headerGrad = isLf
+    ? 'background:linear-gradient(135deg,#2d5a3d 0%,#4a7c59 100%)'
+    : 'background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%)';
+  const contacts = ac.contacts || [];
+  const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
+  const contactName = primary.name || ac.contact || 'there';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="${headerGrad};padding:24px 40px">
+    <div style="color:rgba(255,255,255,0.75);font-size:11px;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:4px">Pumpkin Blossom Farm · Wholesale</div>
+    <div style="color:#fff;font-size:22px;font-weight:700">${isOverdue ? 'Payment Overdue' : 'Invoice Due Soon'}</div>
+  </td></tr>
+  <tr><td style="background:${accentColor};height:4px"></td></tr>
+  <tr><td style="padding:28px 40px">
+    <p style="font-size:15px;color:#1a1a2e;margin:0 0 16px">Hi ${escHtml(contactName)},</p>
+    <p style="font-size:15px;color:#1a1a2e;margin:0 0 16px">
+      ${isOverdue
+        ? `This is a friendly reminder that invoice <strong>${escHtml(inv.number||'')}</strong> for <strong>${escHtml(ac.name||'')}</strong> was due on <strong>${dueLabel}</strong> and remains unpaid.`
+        : `Invoice <strong>${escHtml(inv.number||'')}</strong> for <strong>${escHtml(ac.name||'')}</strong> is due on <strong>${dueLabel}</strong> — just a heads up!`}
+    </p>
+    <div style="background:${accentLight};border-radius:8px;padding:20px 24px;margin:20px 0;text-align:center">
+      <div style="font-size:13px;color:#6b7280;margin-bottom:4px">Amount Due</div>
+      <div style="font-size:30px;font-weight:700;color:${accentColor}">$${parseFloat(amount).toFixed(2)}</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:4px">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
+    </div>
+    ${invSettings.stripeLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
+    <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
+    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    lavender@pbfwholesale.com · 603-748-3038
+  </td></tr>
+</table></td></tr></table></body></html>`;
 }
 
 function setInvStatus(id, status) {
