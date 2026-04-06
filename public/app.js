@@ -4307,11 +4307,16 @@ function reactivateProspect(id) {
 // ══════════════════════════════════════════════════════════
 
 const DIST_STATUS = {
-  active:      {label:'Active',      cls:'green'},
-  negotiating: {label:'Negotiating', cls:'amber'},
-  on_hold:     {label:'On Hold',     cls:'gray'},
-  inactive:    {label:'Inactive',    cls:'red'},
+  in_conversation: {label:'In Conversation', cls:'blue'},
+  submitted:       {label:'Submitted',       cls:'purple'},
+  under_review:    {label:'Under Review',    cls:'amber'},
+  active:          {label:'Active',          cls:'green'},
+  inactive:        {label:'Inactive',        cls:'gray'},
+  // legacy values — kept for backward compat
+  negotiating:     {label:'Negotiating',     cls:'amber'},
+  on_hold:         {label:'On Hold',         cls:'gray'},
 };
+const DIST_PIPELINE_ORDER = ['in_conversation','submitted','under_review','active','inactive'];
 
 const DIST_PO_STATUS = {
   pending:   {label:'Pending',   cls:'amber'},
@@ -4339,20 +4344,39 @@ function _renderDistListKPIs() {
   const allPOs   = DB.a('dist_pos');
   const allInvs  = DB.a('dist_invoices');
 
-  const totalDoors = all.reduce((s,d)=>{
+  const totalDoors = active.reduce((s,d)=>{
     const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
     return s + (dc||d.doorCount||0);
   }, 0);
   const outstanding = allInvs.filter(i=>['unpaid','overdue'].includes(i.status));
   const outstandingVal = outstanding.reduce((s,i)=>s+(i.total||0),0);
-  const lastPO  = allPOs.sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0]?.dateReceived||null;
+
+  // Cases moved this month (sum dist_pos cases where dateReceived >= first of month)
+  const now = new Date();
+  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const casesThisMonth = allPOs
+    .filter(p=>p.dateReceived&&p.dateReceived>=fom&&p.status!=='cancelled')
+    .reduce((s,p)=>{
+      const c = (p.items||[]).reduce((a,i)=>a+(parseInt(i.cases)||parseInt(i.qty)||0),0);
+      return s + (c || parseInt(p.total)||0);
+    },0);
+
+  // Overdue reorders: active distributors where today > lastOrderDate + reorderCycleDays
+  const todayStr = today();
+  const overdueReorders = active.filter(d=>{
+    if (!d.reorderCycleDays || !d.lastOrderDate) return false;
+    const nextDate = new Date(d.lastOrderDate);
+    nextDate.setDate(nextDate.getDate() + parseInt(d.reorderCycleDays));
+    return nextDate.toISOString().slice(0,10) < todayStr;
+  }).length;
 
   if (kpiEl) {
     kpiEl.innerHTML = `
       <div>${kpiHtml('Active Distributors', active.length, 'purple')}</div>
-      <div>${kpiHtml('Total Doors', fmt(totalDoors)||'—', 'blue')}</div>
-      <div>${kpiHtml('Outstanding Inv.', fmtC(outstandingVal), outstandingVal>0?'red':'green')}</div>
-      <div>${kpiHtml('Last PO', lastPO?fmtD(lastPO):'None', 'gray')}</div>`;
+      <div>${kpiHtml('Total Doors (Active)', fmt(totalDoors)||'—', 'blue')}</div>
+      <div>${kpiHtml('Cases This Month', fmt(casesThisMonth)||'0', 'green')}</div>
+      <div>${kpiHtml('Overdue Reorders', overdueReorders, overdueReorders>0?'red':'gray')}</div>
+      <div>${kpiHtml('Outstanding Inv.', fmtC(outstandingVal), outstandingVal>0?'amber':'green')}</div>`;
   }
 
   if (attnEl) {
@@ -4391,6 +4415,72 @@ function _renderDistListKPIs() {
 }
 
 // ── List Page ─────────────────────────────────────────────
+function _distCardHTML(d) {
+  const pos    = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
+  const invs   = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
+  const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
+  const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d.doorCount || 0;
+  const pendingVal = invs.reduce((s,i)=>s+(i.total||0),0);
+  const lastOrder = d.lastOrderDate || pos[0]?.dateReceived || null;
+
+  // Cases moved this month
+  const now = new Date();
+  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const casesThisMonth = pos
+    .filter(p=>p.dateReceived&&p.dateReceived>=fom&&p.status!=='cancelled')
+    .reduce((s,p)=>{
+      return s + (p.items||[]).reduce((a,i)=>a+(parseInt(i.cases)||parseInt(i.qty)||0),0);
+    },0);
+
+  // Overdue reorder flag
+  let isReorderOverdue = false;
+  let nextOrderDate = null;
+  if (d.reorderCycleDays && lastOrder) {
+    const next = new Date(lastOrder);
+    next.setDate(next.getDate() + parseInt(d.reorderCycleDays));
+    nextOrderDate = next.toISOString().slice(0,10);
+    isReorderOverdue = nextOrderDate < today();
+  }
+
+  // Brands carried badges
+  const brands = d.brandsCarried || [];
+  const brandBadges = [
+    brands.includes('purpl')||brands.includes('both') ? '<span class="badge purple" style="font-size:10px">purpl</span>' : '',
+    brands.includes('lf')||brands.includes('both')    ? '<span class="badge green"  style="font-size:10px">LF</span>'    : '',
+  ].filter(Boolean).join('');
+
+  return `<div class="ac-card">
+    <div class="ac-card-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+          <span class="ac-card-name">${escHtml(d.name)}</span>
+          ${d.platformType?`<span class="badge gray" style="font-size:10px">${escHtml(d.platformType)}</span>`:''}
+          ${brandBadges}
+        </div>
+        <div class="ac-card-sub">${d.territory||'No territory set'}</div>
+      </div>
+      <div class="ac-card-badges" style="align-items:flex-start;gap:4px">
+        ${statusBadge(DIST_STATUS, d.status)}
+        ${isReorderOverdue?'<span class="dist-overdue-flag">⚠ Reorder Overdue</span>':''}
+      </div>
+    </div>
+    <div class="ac-card-metrics" style="grid-template-columns:repeat(4,1fr)">
+      <div><div class="ac-metric-label">Doors</div><div class="ac-metric-val">${fmt(totalDoors)||'—'}</div></div>
+      <div><div class="ac-metric-label">Last Order</div><div class="ac-metric-val${lastOrder&&daysAgo(lastOrder)>60?' red':''}">${lastOrder?fmtD(lastOrder):'—'}</div></div>
+      <div><div class="ac-metric-label">Next Expected</div><div class="ac-metric-val${isReorderOverdue?' red':''}">${nextOrderDate?fmtD(nextOrderDate):'—'}</div></div>
+      <div><div class="ac-metric-label">Cases This Mo.</div><div class="ac-metric-val">${casesThisMonth||'0'}</div></div>
+    </div>
+    ${pendingVal>0?`<div class="ac-card-section"><div class="ac-card-section-label">Outstanding Invoices</div><div style="font-size:13px;color:var(--red)">${fmtC(pendingVal)}</div></div>`:''}
+    ${d.nextSteps?`<div class="ac-card-section"><div class="ac-card-section-label">Next Steps</div><div style="font-size:13px">${escHtml(d.nextSteps)}</div></div>`:''}
+    <div class="ac-card-actions">
+      <button class="btn sm primary" onclick="openDistributor('${d.id}')">View</button>
+      <button class="btn sm" onclick="logDistContact('${d.id}')">Log Contact</button>
+      <button class="btn sm" onclick="addDistInvoice('${d.id}')">+ Invoice</button>
+      <button class="btn sm" onclick="addDistPO('${d.id}')">+ Log PO</button>
+    </div>
+  </div>`;
+}
+
 function renderDistributors() {
   let list   = DB.a('dist_profiles');
   const search = qs('#dist-search')?.value?.toLowerCase().trim()||'';
@@ -4404,63 +4494,45 @@ function renderDistributors() {
   const cnt = qs('#dist-count');
   if (cnt) cnt.textContent = `${list.length} distributor${list.length!==1?'s':''}`;
 
-  // ── KPI Cards (Phase 4) ──────────────────────────────────
   _renderDistListKPIs();
 
   const el = qs('#dist-cards');
   if (!el) return;
 
-  el.innerHTML = list.map(d=>{
-    const reps  = DB.a('dist_reps').filter(r=>r.distId===d.id);
-    const pos   = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
-    const invs  = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
-    const lastPO = pos[0]?.dateReceived || null;
-    const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
-    const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d.doorCount || 0;
-    const pendingVal = invs.reduce((s,i)=>s+(i.total||0),0);
-    // Outreach
-    const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
-    const lastContact = outreach[0]?.date || null;
-    const lastContactDays = lastContact ? daysAgo(lastContact) : null;
-    const nextFollowup = d.nextFollowup || null;
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🚚</div>No distributors yet. Add your first distributor to get started.</div>`;
+    return;
+  }
 
-    const linkedAcCount = DB.a('ac').filter(a=>a.fulfilledBy===d.id).length;
-    return `<div class="ac-card${lastContactDays!==null&&lastContactDays>30?' needs-attention':''}">
-      <div class="ac-card-hdr">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <span class="ac-card-name">${d.name}</span>
-            <span class="badge gray">${d.platformType||'Other'}</span>
-            ${linkedAcCount>0?`<span class="badge amber" style="font-size:10px">${linkedAcCount} account${linkedAcCount!==1?'s':''}</span>`:''}
-          </div>
-          <div class="ac-card-sub">${d.territory||'No territory set'}</div>
-        </div>
-        <div class="ac-card-badges">
-          ${statusBadge(DIST_STATUS, d.status)}
-          ${lastContactDays!==null&&lastContactDays>30?'<span class="badge amber">⚠ Needs Attention</span>':''}
-        </div>
+  // Group by pipeline status
+  const groups = [];
+  const pipelineOrder = [...DIST_PIPELINE_ORDER];
+  // Include any legacy statuses present in data
+  list.forEach(d=>{ if (!pipelineOrder.includes(d.status)) pipelineOrder.push(d.status); });
+
+  pipelineOrder.forEach(status=>{
+    const group = list.filter(d=>d.status===status);
+    if (!group.length) return;
+    const info = DIST_STATUS[status] || {label: status, cls:'gray'};
+    groups.push(`<div class="dist-pipeline-group">
+      <div class="dist-pipeline-group-hdr">
+        <h3>${info.label}</h3>
+        <span class="dist-pipeline-count">${group.length}</span>
       </div>
-      <div class="ac-card-metrics" style="grid-template-columns:repeat(${nextFollowup?5:4},1fr)">
-        <div><div class="ac-metric-label">Total Doors</div><div class="ac-metric-val">${fmt(totalDoors)||'—'}</div></div>
-        <div><div class="ac-metric-label">Sales Reps</div><div class="ac-metric-val">${reps.length}</div></div>
-        <div><div class="ac-metric-label">Last Contacted</div><div class="ac-metric-val${lastContactDays!==null&&lastContactDays>30?' red':''}">${lastContact?`${fmtD(lastContact)} (${lastContactDays}d)`:'—'}</div></div>
-        <div><div class="ac-metric-label">Last PO</div><div class="ac-metric-val${lastPO&&daysAgo(lastPO)>60?' red':''}">${lastPO?fmtD(lastPO):'—'}</div></div>
-        ${nextFollowup?`<div><div class="ac-metric-label">Next Follow-Up</div><div class="ac-metric-val${nextFollowup<today()?' red':nextFollowup===today()?' amber':''}">${fmtD(nextFollowup)}</div></div>`:''}
-      </div>
-      ${outreach[0]?`<div class="ac-card-section"><div class="ac-card-section-label">Last Contact</div><div style="font-size:13px">${outreach[0].type} · ${fmtD(outreach[0].date)}${outreach[0].note?' — '+outreach[0].note:''}</div></div>`:''}
-      ${pendingVal>0?`<div class="ac-card-section"><div class="ac-card-section-label">Outstanding Invoices</div><div style="font-size:13px;color:var(--red)">${fmtC(pendingVal)}</div></div>`:''}
-      ${d.notes?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${d.notes}</div></div>`:''}
-      <div class="ac-card-actions">
-        <button class="btn sm primary" onclick="logDistContact('${d.id}')">📞 Log Contact</button>
-        <button class="btn sm" onclick="openDistributor('${d.id}')">View Details</button>
-        <button class="btn sm" onclick="editDistributor('${d.id}')">Edit</button>
-        <button class="btn sm" onclick="addDistPO('${d.id}')">+ Log PO</button>
-      </div>
-    </div>`;
-  }).join('') || `<div class="empty">
-    <div class="empty-icon">🚚</div>
-    No distributors yet. Add your first distributor to get started.
-  </div>`;
+      <div>${group.map(_distCardHTML).join('')}</div>
+    </div>`);
+  });
+
+  // Any distributors with no status
+  const noStatus = list.filter(d=>!d.status);
+  if (noStatus.length) {
+    groups.push(`<div class="dist-pipeline-group">
+      <div class="dist-pipeline-group-hdr"><h3>No Status</h3><span class="dist-pipeline-count">${noStatus.length}</span></div>
+      <div>${noStatus.map(_distCardHTML).join('')}</div>
+    </div>`);
+  }
+
+  el.innerHTML = groups.join('');
 }
 
 // ── Log Contact (Phase 6 / 7) ─────────────────────────────
@@ -4537,6 +4609,7 @@ function renderDistTab(tab, distId) {
     case 'imports':   pane.innerHTML = renderDistImportsHTML(d); break;
     case 'outreach':  pane.innerHTML = renderDistOutreachHTML(d); break;
     case 'accounts':  pane.innerHTML = renderDistAccountsHTML(d); break;
+    case 'velocity':  pane.innerHTML = renderDistVelocityHTML(d); break;
   }
 }
 
@@ -4544,29 +4617,144 @@ function renderDistOverviewHTML(d) {
   const terms = d.paymentTerms==='custom' ? `Custom (${d.paymentTermsDays||'?'} days)` : d.paymentTerms||'Net 30';
   const linkedAccounts = DB.a('ac').filter(a=>a.fulfilledBy===d.id);
   const linkedCount = linkedAccounts.length;
-  const outstandingInvCount = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status)).length;
-  const outstandingInvVal = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+  const distInvs = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
+  const outstandingInvVal = distInvs.reduce((s,i)=>s+(i.total||0),0);
   const recentPO = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0];
   const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
   const lastContact = outreach[0]?.date || d.lastContacted || null;
-
-  // Warning: any linked account with no order in 30+ days
   const staleAccounts = linkedAccounts.filter(a=>daysAgo(a.lastOrder)>=30);
+
+  // Brands carried
+  const brands = d.brandsCarried||[];
+  const brandsStr = brands.length ? brands.join(', ') : '—';
+
+  // Pricing model
+  const pricingModel = d.pricing?.model || 'standard';
+
+  // Reorder cycle / next expected
+  const lastOrder = d.lastOrderDate || recentPO?.dateReceived || null;
+  let nextOrderDate = null;
+  if (d.reorderCycleDays && lastOrder) {
+    const next = new Date(lastOrder);
+    next.setDate(next.getDate() + parseInt(d.reorderCycleDays));
+    nextOrderDate = next.toISOString().slice(0,10);
+  }
+  const isOverdue = nextOrderDate && nextOrderDate < today();
+
+  // Contacts
+  const contacts = d.contacts||[];
 
   return `
   <div class="card-grid grid-2" style="margin-bottom:14px">
-    <div><span style="font-size:11px;color:var(--muted)">Platform Type</span><div>${d.platformType||'—'}</div></div>
-    <div><span style="font-size:11px;color:var(--muted)">Payment Terms</span><div>${terms}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Platform Type</span><div>${escHtml(d.platformType||'—')}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Payment Terms</span><div>${escHtml(terms)}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Contract Start</span><div>${d.contractStart?fmtD(d.contractStart):'—'}</div></div>
-    <div><span style="font-size:11px;color:var(--muted)">Total Doors</span><div><strong>${fmt(d.doorCount||0)}</strong></div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Brands Carried</span><div>${escHtml(brandsStr)}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Doors (Current / Target)</span><div><strong>${fmt(d.doorCount||0)}</strong>${d.targetDoorCount?` / ${fmt(d.targetDoorCount)} target`:''}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Reorder Cycle</span><div>${d.reorderCycleDays?`${d.reorderCycleDays} days`:'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Last Order</span><div>${lastOrder?fmtD(lastOrder):'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Next Expected</span><div class="${isOverdue?'red':''}">${nextOrderDate?`${fmtD(nextOrderDate)}${isOverdue?' ⚠ Overdue':''}` :'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">DC Address</span><div>${escHtml(d.dcAddress||'—')}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Pricing Model</span><div>${pricingModel==='custom'?'Custom rates':'Standard'}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Linked Accounts</span><div><strong style="cursor:pointer;color:var(--lavblue)" onclick="_switchDistTab('accounts')">${linkedCount}</strong></div></div>
-    <div><span style="font-size:11px;color:var(--muted)">Outstanding Invoices</span><div>${outstandingInvCount>0?`<span style="color:var(--red);font-weight:600">${fmtC(outstandingInvVal)}</span>`:'<span style="color:var(--green)">Clear</span>'}</div></div>
-    <div><span style="font-size:11px;color:var(--muted)">Most Recent Shipment</span><div>${recentPO?fmtD(recentPO.dateReceived):'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Outstanding Inv.</span><div>${distInvs.length>0?`<span style="color:var(--red);font-weight:600">${fmtC(outstandingInvVal)}</span>`:'<span style="color:var(--green)">Clear</span>'}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Last Contacted</span><div>${lastContact?`${fmtD(lastContact)} (${daysAgo(lastContact)}d ago)`:'—'}</div></div>
+    <div><span style="font-size:11px;color:var(--muted)">Linked Accounts</span><div><strong style="cursor:pointer;color:var(--lavblue)" onclick="_switchDistTab('accounts')">${linkedCount}</strong></div></div>
   </div>
-  ${staleAccounts.length>0?`<div style="background:#fef3c7;border:1px solid #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">⚠ ${staleAccounts.length} linked account${staleAccounts.length!==1?'s have':' has'} not ordered in 30+ days: ${staleAccounts.map(a=>`<strong>${a.name}</strong>`).join(', ')}</div>`:''}
-  <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${d.territory||'—'}</div></div>
-  ${d.notes?`<div class="highlight-box" style="margin-bottom:0"><div class="ac-card-section-label">Internal Notes</div><div style="font-size:13px;margin-top:4px">${d.notes}</div></div>`:''}`;
+  ${staleAccounts.length>0?`<div style="background:#fef3c7;border:1px solid #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">⚠ ${staleAccounts.length} linked account${staleAccounts.length!==1?'s have':' has'} not ordered in 30+ days: ${staleAccounts.map(a=>`<strong>${escHtml(a.name)}</strong>`).join(', ')}</div>`:''}
+  <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${escHtml(d.territory||'—')}</div></div>
+  ${d.nextSteps?`<div class="highlight-box" style="margin-bottom:12px"><div class="ac-card-section-label">Next Steps</div><div style="font-size:13px;margin-top:4px">${escHtml(d.nextSteps)}</div></div>`:''}
+  ${d.notes?`<div class="highlight-box" style="margin-bottom:12px"><div class="ac-card-section-label">Internal Notes</div><div style="font-size:13px;margin-top:4px">${escHtml(d.notes)}</div></div>`:''}
+  <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Contacts</span>
+    <button class="btn xs" onclick="_openDistContactForm('${d.id}',null)">+ Add Contact</button>
+  </div>
+  ${contacts.length ? contacts.map((c,i)=>`
+    <div class="attn-item" style="margin-bottom:6px">
+      <div class="attn-info" style="flex:1">
+        <div class="attn-name">${escHtml(c.name||'—')} ${c.role?`<span style="font-size:11px;color:var(--muted);font-weight:400">· ${escHtml(c.role)}</span>`:''}</div>
+        <div class="attn-reason">${c.email?`✉ ${escHtml(c.email)}`:''} ${c.phone?`📞 ${escHtml(c.phone)}`:''}</div>
+      </div>
+      <button class="btn xs" onclick="_openDistContactForm('${d.id}',${i})">Edit</button>
+    </div>`).join('') : '<div class="empty" style="padding:10px 0;font-size:13px">No contacts added yet</div>'}`;
+}
+
+function _openDistContactForm(distId, idx) {
+  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  if (!d) return;
+  const contacts = d.contacts||[];
+  const c = idx !== null ? (contacts[idx]||{}) : {};
+  const nameVal   = escHtml(c.name||'');
+  const roleVal   = escHtml(c.role||'');
+  const emailVal  = escHtml(c.email||'');
+  const phoneVal  = escHtml(c.phone||'');
+  const idxAttr   = idx !== null ? idx : -1;
+  // Show a simple inline prompt via a tiny overlay injected into body
+  const html = `<div id="dist-contact-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:400px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <strong style="font-size:15px">${idx!==null?'Edit':'Add'} Contact</strong>
+        <button class="btn sm" onclick="document.getElementById('dist-contact-overlay').remove()">✕</button>
+      </div>
+      <div class="form-row col2" style="margin-bottom:10px">
+        <div class="form-group"><label>Name *</label><input id="dct-name" value="${nameVal}"></div>
+        <div class="form-group"><label>Role</label><input id="dct-role" value="${roleVal}" placeholder="Buyer, AP, etc."></div>
+      </div>
+      <div class="form-row col2" style="margin-bottom:16px">
+        <div class="form-group"><label>Email</label><input id="dct-email" type="email" value="${emailVal}"></div>
+        <div class="form-group"><label>Phone</label><input id="dct-phone" type="tel" value="${phoneVal}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        ${idx!==null?`<button class="btn red" onclick="_deleteDistContact('${distId}',${idxAttr})">Delete</button>`:'<span></span>'}
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="document.getElementById('dist-contact-overlay').remove()">Cancel</button>
+          <button class="btn primary" onclick="_saveDistContact('${distId}',${idxAttr})">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  document.body.appendChild(el.firstElementChild);
+}
+
+function _saveDistContact(distId, idx) {
+  const name = qs('#dct-name')?.value?.trim();
+  if (!name) { toast('Contact name required'); return; }
+  const c = {
+    name,
+    role:  qs('#dct-role')?.value?.trim()||'',
+    email: qs('#dct-email')?.value?.trim()||'',
+    phone: qs('#dct-phone')?.value?.trim()||'',
+  };
+  DB.update('dist_profiles', distId, d=>{
+    const contacts = [...(d.contacts||[])];
+    if (idx < 0) contacts.push(c);
+    else contacts[idx] = c;
+    return {...d, contacts};
+  });
+  qs('#dist-contact-overlay')?.remove();
+  if (_currentDistId) { renderDistTab('overview', _currentDistId); }
+}
+
+function _deleteDistContact(distId, idx) {
+  if (!confirm2('Remove this contact?')) return;
+  DB.update('dist_profiles', distId, d=>{
+    const contacts = (d.contacts||[]).filter((_,i)=>i!==idx);
+    return {...d, contacts};
+  });
+  qs('#dist-contact-overlay')?.remove();
+  if (_currentDistId) { renderDistTab('overview', _currentDistId); }
+}
+
+function renderDistVelocityHTML(d) {
+  return `<div class="empty" style="padding:48px 0;flex-direction:column;gap:10px">
+    <div style="font-size:36px">📊</div>
+    <div style="font-weight:600;color:var(--text)">Velocity Analytics</div>
+    <div style="color:var(--muted);font-size:13px;max-width:320px;text-align:center">
+      Door-level sell-through, velocity trends, and reorder forecasting coming in the next update.
+    </div>
+  </div>`;
 }
 
 function renderDistRepsHTML(d) {
@@ -4936,15 +5124,27 @@ function editDistributor(id) {
   const d = isNew ? {id:uid()} : (DB.a('dist_profiles').find(x=>x.id===id)||{id:uid()});
 
   qs('#edist-title').textContent = isNew?'Add Distributor':'Edit Distributor';
-  qs('#edist-name').value     = d.name||'';
-  qs('#edist-platform').value = d.platformType||'Local Line';
-  qs('#edist-territory').value= d.territory||'';
-  qs('#edist-doors').value    = d.doorCount||'';
-  qs('#edist-contract').value = d.contractStart||'';
-  qs('#edist-status').value   = d.status||'active';
-  qs('#edist-terms').value    = d.paymentTerms||'Net 30';
-  qs('#edist-terms-days').value= d.paymentTermsDays||30;
-  qs('#edist-notes').value    = d.notes||'';
+  qs('#edist-name').value          = d.name||'';
+  qs('#edist-platform').value      = d.platformType||'Local Line';
+  qs('#edist-territory').value     = d.territory||'';
+  qs('#edist-dc-address').value    = d.dcAddress||'';
+  qs('#edist-doors').value         = d.doorCount||'';
+  qs('#edist-target-doors').value  = d.targetDoorCount||'';
+  qs('#edist-contract').value      = d.contractStart||'';
+  qs('#edist-status').value        = d.status||'active';
+  qs('#edist-terms').value         = d.paymentTerms||'Net 30';
+  qs('#edist-terms-days').value    = d.paymentTermsDays||30;
+  qs('#edist-reorder-days').value  = d.reorderCycleDays||'';
+  qs('#edist-last-order').value    = d.lastOrderDate||'';
+  qs('#edist-nextsteps').value     = d.nextSteps||'';
+  qs('#edist-notes').value         = d.notes||'';
+
+  // Brands carried checkboxes
+  const brands = d.brandsCarried||[];
+  const bp = qs('#edist-brands-purpl');
+  const bl = qs('#edist-brands-lf');
+  if (bp) bp.checked = brands.includes('purpl')||brands.includes('both');
+  if (bl) bl.checked = brands.includes('lf')||brands.includes('both');
 
   const delBtn = qs('#edist-delete-btn');
   if (delBtn) { delBtn.style.display = isNew?'none':''; delBtn.onclick=()=>deleteDistributor(d.id); }
@@ -4957,21 +5157,38 @@ function saveDistributor(id, isNew) {
   if (!name) { toast('Distributor name required'); return; }
   const terms = qs('#edist-terms')?.value||'Net 30';
   const existing = DB.a('dist_profiles').find(x=>x.id===id);
+
+  // Brands carried
+  const brandsPurpl = qs('#edist-brands-purpl')?.checked;
+  const brandsLf    = qs('#edist-brands-lf')?.checked;
+  const brandsCarried = brandsPurpl&&brandsLf ? ['both'] : brandsPurpl ? ['purpl'] : brandsLf ? ['lf'] : [];
+
   const rec = {
     id, name,
-    platformType:    qs('#edist-platform')?.value||'other',
-    territory:       qs('#edist-territory')?.value?.trim()||'',
-    doorCount:       (v=>isNaN(v)?0:v)(parseInt(qs('#edist-doors')?.value)),
-    contractStart:   qs('#edist-contract')?.value||'',
-    status:          qs('#edist-status')?.value||'active',
-    paymentTerms:    terms,
-    paymentTermsDays: (v=>isNaN(v)?30:v)(terms==='custom'?parseInt(qs('#edist-terms-days')?.value):parseInt(terms.replace('Net ',''))),
-    notes:           qs('#edist-notes')?.value?.trim()||'',
-    createdAt:       existing?.createdAt || today(),
-    // Preserve contact-history fields that are not editable in this form
-    outreach:        existing?.outreach || [],
-    nextFollowup:    existing?.nextFollowup || '',
-    lastContact:     existing?.lastContact || '',
+    platformType:      qs('#edist-platform')?.value||'other',
+    territory:         qs('#edist-territory')?.value?.trim()||'',
+    dcAddress:         qs('#edist-dc-address')?.value?.trim()||'',
+    doorCount:         (v=>isNaN(v)?0:v)(parseInt(qs('#edist-doors')?.value)),
+    targetDoorCount:   (v=>isNaN(v)?0:v)(parseInt(qs('#edist-target-doors')?.value)),
+    contractStart:     qs('#edist-contract')?.value||'',
+    status:            qs('#edist-status')?.value||'active',
+    paymentTerms:      terms,
+    paymentTermsDays:  (v=>isNaN(v)?30:v)(terms==='custom'?parseInt(qs('#edist-terms-days')?.value):parseInt(terms.replace('Net ',''))),
+    reorderCycleDays:  (v=>isNaN(v)||v<=0?0:v)(parseInt(qs('#edist-reorder-days')?.value)),
+    lastOrderDate:     qs('#edist-last-order')?.value||'',
+    brandsCarried,
+    nextSteps:         qs('#edist-nextsteps')?.value?.trim()||'',
+    notes:             qs('#edist-notes')?.value?.trim()||'',
+    createdAt:         existing?.createdAt || today(),
+    // Preserve fields not editable in this form
+    outreach:          existing?.outreach || [],
+    contacts:          existing?.contacts || [],
+    pricing:           existing?.pricing || {model:'standard'},
+    nextFollowup:      existing?.nextFollowup || '',
+    lastContacted:     existing?.lastContacted || '',
+    brokerFees:        existing?.brokerFees || [],
+    billbacks:         existing?.billbacks || [],
+    chargebacks:       existing?.chargebacks || [],
   };
   if (isNew) DB.push('dist_profiles', rec);
   else DB.update('dist_profiles', id, ()=>rec);
@@ -5207,6 +5424,8 @@ function markDistInvoicePaid(invId, distId) {
   const d = DB.a('dist_profiles').find(x=>x.id===distId);
   const pane = qs('#mdist-tab-invoices');
   if (d&&pane) pane.innerHTML = renderDistInvoicesHTML(d);
+  // Refresh invoice page column if open
+  if (qs('#inv-col-dist')) renderInvColDist();
   toast('Marked as paid');
 }
 
@@ -10850,12 +11069,14 @@ function renderInvoicesPage() {
   renderInvColPurpl();
   renderInvColLf();
   renderInvColCombined();
+  renderInvColDist();
 }
 
 function renderInvKpis() {
   const todayStr = today();
   const purplInvs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
   const lfInvs    = DB.a('lf_invoices');
+  const distInvs  = DB.a('dist_invoices');
 
   function purplStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
@@ -10864,22 +11085,30 @@ function renderInvKpis() {
     return inv.status || 'unpaid';
   }
 
+  const now = new Date();
+  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
   const totalInvoiced = purplInvs.reduce((s,x) => s + parseFloat(x.amount||0), 0)
-                      + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
+                      + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
+                      + distInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
   const outstanding   = purplInvs.filter(x => !['paid','draft'].includes(purplStatus(x)))
                           .reduce((s,x) => s + parseFloat(x.amount||0), 0)
                       + lfInvs.filter(x => x.status !== 'paid')
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
+                      + distInvs.filter(x => ['unpaid','overdue'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
                           .reduce((s,x) => s + parseFloat(x.amount||0), 0)
                       + lfInvs.filter(x => x.status !== 'paid' && (x.due||'') < todayStr && x.due)
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
+                      + distInvs.filter(x => x.status==='overdue' || (x.status!=='paid'&&x.dueDate&&x.dueDate<todayStr))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const now = new Date();
-  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
-  const collected = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
-                      .reduce((s,x) => s + parseFloat(x.amount||0), 0)
-                  + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
-                      .reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
+                      + distInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
 
   const el = qs('#inv-page-kpis');
   if (!el) return;
@@ -11147,10 +11376,100 @@ function toggleInvCol(col) {
   el.classList.toggle('expanded');
   // Render expanded content on open
   if (el.classList.contains('expanded')) {
-    if (col === 'purpl')    renderInvColPurpl();
-    else if (col === 'lf')  renderInvColLf();
+    if (col === 'purpl')         renderInvColPurpl();
+    else if (col === 'lf')       renderInvColLf();
     else if (col === 'combined') renderInvColCombined();
+    else if (col === 'dist')     renderInvColDist();
   }
+}
+
+function renderInvColDist() {
+  const todayStr = today();
+  const dists = DB.a('dist_profiles');
+  const allInvs = DB.a('dist_invoices').slice().sort((a,b)=>a.dueDate>b.dueDate?1:-1);
+
+  function effectiveStatus(inv) {
+    if (inv.status === 'paid') return 'paid';
+    if (inv.dueDate && inv.dueDate < todayStr) return 'overdue';
+    return inv.status || 'unpaid';
+  }
+
+  const unpaidInvs = allInvs.filter(i => effectiveStatus(i) !== 'paid');
+  const totalOut   = unpaidInvs.reduce((s,i) => s + parseFloat(i.total||0), 0);
+  const overdueAmt = unpaidInvs.filter(i=>effectiveStatus(i)==='overdue').reduce((s,i)=>s+(i.total||0),0);
+
+  const summaryEl = qs('#inv-col-dist-summary');
+  if (summaryEl) summaryEl.textContent = `${unpaidInvs.length} outstanding · ${fmtC(totalOut)}${overdueAmt>0?' · '+fmtC(overdueAmt)+' overdue':''}`;
+
+  // Compact: top 5 urgent
+  const compactEl = qs('#inv-col-dist-compact');
+  if (compactEl) {
+    const top5 = unpaidInvs.slice(0,5);
+    compactEl.innerHTML = top5.length ? top5.map(inv=>{
+      const d = dists.find(x=>x.id===inv.distId);
+      const st = effectiveStatus(inv);
+      return `<div class="inv-col-compact-row" onclick="openDistributor('${inv.distId}')" style="cursor:pointer">
+        <div>
+          <div style="font-size:13px;font-weight:500">${escHtml(d?.name||inv.distId)}</div>
+          <div style="font-size:11px;color:var(--muted)">${inv.invoiceNumber||'—'} · Due ${inv.dueDate?fmtD(inv.dueDate):'—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:600">${fmtC(inv.total||0)}</span>
+          <span class="badge ${DIST_INV_STATUS[st]?.cls||'gray'}">${DIST_INV_STATUS[st]?.label||st}</span>
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty" style="padding:16px">No outstanding distributor invoices</div>';
+  }
+
+  // Expanded: full table
+  const expandedEl = qs('#inv-col-dist-expanded');
+  if (expandedEl) {
+    expandedEl.innerHTML = `
+    <div style="padding:0 4px 8px;display:flex;justify-content:flex-end">
+      <button class="btn xs" onclick="event.stopPropagation()">+ New (open distributor)</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Invoice #</th><th>Distributor</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${allInvs.map(inv=>{
+          const d = dists.find(x=>x.id===inv.distId);
+          const st = effectiveStatus(inv);
+          return `<tr>
+            <td>${escHtml(inv.invoiceNumber||'—')}</td>
+            <td style="cursor:pointer;color:var(--lavblue)" onclick="openDistributor('${inv.distId}')">${escHtml(d?.name||inv.distId)}</td>
+            <td>${inv.dateIssued?fmtD(inv.dateIssued):'—'}</td>
+            <td class="${st==='overdue'?'red':''}">${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
+            <td>${fmtC(inv.total||0)}</td>
+            <td>${statusBadge(DIST_INV_STATUS, st)}</td>
+            <td style="white-space:nowrap">
+              ${st!=='paid'?`<button class="btn xs" onclick="markDistInvoicePaid('${inv.id}','${inv.distId}')">✓ Paid</button>`:''}
+              <button class="btn xs" onclick="_sendDistInvoiceReminder('${inv.id}')">✉ Remind</button>
+            </td>
+          </tr>`;
+        }).join('')||'<tr><td colspan="7" class="empty">No distributor invoices</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  }
+}
+
+function _sendDistInvoiceReminder(invId) {
+  const inv = DB.a('dist_invoices').find(x=>x.id===invId);
+  if (!inv) return;
+  const d = DB.a('dist_profiles').find(x=>x.id===inv.distId);
+  const name = d?.name || 'Distributor';
+  const subject = `Invoice Reminder — ${inv.invoiceNumber||'Outstanding Balance'}`;
+  const html = `<p>Hi ${escHtml(name)},</p><p>This is a friendly reminder that invoice <strong>${escHtml(inv.invoiceNumber||'—')}</strong> for <strong>${fmtC(inv.total||0)}</strong> is due ${inv.dueDate?`on ${fmtD(inv.dueDate)}`:''}.</p><p>Please remit payment at your earliest convenience. Reply to this email with any questions.</p><p>Thank you,<br>Pumpkin Blossom Farm</p>`;
+  // Find a contact email on the distributor
+  const contacts = d?.contacts||[];
+  const repEmail = (DB.a('dist_reps').find(r=>r.distId===inv.distId&&r.email))?.email || '';
+  const to = contacts.find(c=>c.email)?.email || repEmail;
+  if (!to) { toast('No contact email found for this distributor'); return; }
+  callSendEmail(to, 'lavender@pbfwholesale.com', subject, html).then(()=>{
+    DB.update('dist_invoices', invId, i=>({...i, reminderSentAt:today()}));
+    toast('Reminder sent ✓');
+    renderInvColDist();
+  }).catch(()=>toast('Failed to send reminder'));
 }
 
 function markInvoiceSent(id) {

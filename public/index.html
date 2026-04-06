@@ -338,9 +338,10 @@
         <input id="dist-search" type="search" placeholder="Search distributors...">
         <select id="dist-status-filter">
           <option value="">All Status</option>
+          <option value="in_conversation">In Conversation</option>
+          <option value="submitted">Submitted</option>
+          <option value="under_review">Under Review</option>
           <option value="active">Active</option>
-          <option value="negotiating">Negotiating</option>
-          <option value="on_hold">On Hold</option>
           <option value="inactive">Inactive</option>
         </select>
         <div class="spacer"></div>
@@ -348,7 +349,7 @@
         <button class="btn primary" onclick="editDistributor('_new_')">+ Add Distributor</button>
       </div>
       <!-- Distributor KPIs (Phase 4) -->
-      <div class="card-grid grid-4" id="dist-list-kpis" style="margin-bottom:16px"></div>
+      <div class="card-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px" id="dist-list-kpis"></div>
       <!-- Needs Attention (Phase 4) -->
       <div class="card" id="dist-list-attention" style="margin-bottom:16px;display:none">
         <div class="section-hdr" style="margin-bottom:10px"><h2>⚠ Needs Attention</h2></div>
@@ -1487,6 +1488,19 @@
           <div class="inv-col-expanded" id="inv-col-combined-expanded"></div>
         </div>
 
+        <!-- Distributors column -->
+        <div class="inv-col" id="inv-col-dist">
+          <div class="inv-col-header dist" onclick="toggleInvCol('dist')">
+            <div>
+              <div class="inv-col-title">🚚 Distributor Invoices</div>
+              <div class="inv-col-summary" id="inv-col-dist-summary"></div>
+            </div>
+            <span class="inv-col-toggle">▼</span>
+          </div>
+          <div class="inv-col-compact" id="inv-col-dist-compact"></div>
+          <div class="inv-col-expanded" id="inv-col-dist-expanded"></div>
+        </div>
+
       </div>
     </div>
 
@@ -2278,6 +2292,7 @@
       <button class="tab" data-dtab="imports">Imported Data</button>
       <button class="tab" data-dtab="outreach">Outreach Log</button>
       <button class="tab" data-dtab="accounts">Accounts</button>
+      <button class="tab" data-dtab="velocity">Velocity</button>
     </div>
     <div id="mdist-tab-overview"  class="dtab-pane"></div>
     <div id="mdist-tab-reps"      class="dtab-pane" style="display:none"></div>
@@ -2288,6 +2303,7 @@
     <div id="mdist-tab-imports"   class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-outreach"  class="dtab-pane" style="display:none"></div>
     <div id="mdist-tab-accounts"  class="dtab-pane" style="display:none"></div>
+    <div id="mdist-tab-velocity"  class="dtab-pane" style="display:none"></div>
     <div class="modal-footer">
       <button class="btn" onclick="logDistContact(_currentDistId)">📞 Log Contact</button>
       <button class="btn" id="mdist-po-btn">+ Log PO</button>
@@ -2332,10 +2348,21 @@
 
 <!-- Edit/Add Distributor -->
 <div class="overlay" id="modal-edit-distributor">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-hdr"><h2 id="edist-title">Add Distributor</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Distributor name *</label><input id="edist-name" placeholder="e.g. NESS, Local Line"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="edist-status">
+          <option value="in_conversation">In Conversation</option>
+          <option value="submitted">Submitted</option>
+          <option value="under_review">Under Review</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row col2">
       <div class="form-group"><label>Platform type</label>
         <select id="edist-platform">
           <option value="Local Line">Local Line</option>
@@ -2344,20 +2371,28 @@
           <option value="other">Other</option>
         </select>
       </div>
+      <div class="form-group"><label>Contract start date</label><input id="edist-contract" type="date"></div>
     </div>
     <div class="form-group" style="margin-bottom:10px"><label>Territory description</label>
-      <textarea id="edist-territory" placeholder="e.g. Northeast — Price Chopper/Market 32 and Tops Markets" style="min-height:50px"></textarea>
+      <textarea id="edist-territory" placeholder="e.g. Northeast — Price Chopper/Market 32 and Tops Markets" style="min-height:44px"></textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:10px"><label>DC / Warehouse address</label>
+      <input id="edist-dc-address" placeholder="e.g. 123 Logistics Dr, Albany, NY 12201">
     </div>
     <div class="form-row col3">
-      <div class="form-group"><label>Total doors / stores</label><input id="edist-doors" type="number" placeholder="280" min="0"></div>
-      <div class="form-group"><label>Contract start date</label><input id="edist-contract" type="date"></div>
-      <div class="form-group"><label>Status</label>
-        <select id="edist-status">
-          <option value="active">Active</option>
-          <option value="negotiating">Negotiating</option>
-          <option value="on_hold">On Hold</option>
-          <option value="inactive">Inactive</option>
-        </select>
+      <div class="form-group"><label>Current doors</label><input id="edist-doors" type="number" placeholder="280" min="0"></div>
+      <div class="form-group"><label>Target doors</label><input id="edist-target-doors" type="number" placeholder="400" min="0"></div>
+      <div class="form-group"><label>Reorder cycle (days)</label><input id="edist-reorder-days" type="number" placeholder="30" min="1"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Last order date</label><input id="edist-last-order" type="date"></div>
+      <div class="form-group" style="padding-top:24px">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <input type="checkbox" id="edist-brands-purpl"> purpl Beverages
+        </label>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="edist-brands-lf"> Lavender Fields
+        </label>
       </div>
     </div>
     <div class="form-row col2" style="margin-bottom:10px">
@@ -2372,6 +2407,9 @@
       <div class="form-group"><label>Custom terms (days)</label>
         <input id="edist-terms-days" type="number" placeholder="30" min="0">
       </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px"><label>Next steps</label>
+      <textarea id="edist-nextsteps" style="min-height:44px" placeholder="What's the immediate next action?"></textarea>
     </div>
     <div class="form-group" style="margin-bottom:16px"><label>Internal notes</label>
       <textarea id="edist-notes" style="min-height:60px" placeholder="Pricing negotiations, contacts, context..."></textarea>

@@ -634,13 +634,14 @@ th{padding:11px 14px}
 @media(max-width:900px){.invoices-split{grid-template-columns:1fr}}
 
 /* ── Three-column collapsible invoice layout ── */
-.inv-three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
+.inv-three-col{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
 .inv-col{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .inv-col-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;user-select:none;border-bottom:1px solid var(--border)}
 .inv-col-header:hover{background:#fafafa}
 .inv-col-header.purpl{border-left:3px solid var(--purple)}
 .inv-col-header.lf{border-left:3px solid #4a7c59}
 .inv-col-header.combined{border-left:3px solid var(--amber)}
+.inv-col-header.dist{border-left:3px solid #6366f1}
 .inv-col-title{font-size:14px;font-weight:600}
 .inv-col-summary{font-size:12px;color:var(--muted);margin-top:2px}
 .inv-col-toggle{font-size:12px;color:var(--muted);transition:transform 0.2s}
@@ -651,7 +652,7 @@ th{padding:11px 14px}
 .inv-col-expanded{display:none;padding:12px 16px}
 .inv-col.expanded .inv-col-compact{display:none}
 .inv-col.expanded .inv-col-expanded{display:block}
-@media(max-width:1100px){.inv-three-col{grid-template-columns:1fr 1fr}}
+@media(max-width:1400px){.inv-three-col{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.inv-three-col{grid-template-columns:1fr}}
 
 /* ══════════════════════════════════════════════════════════
@@ -710,3 +711,43 @@ td { padding: 9px 12px; font-size: 13px; }
 .sb-more { opacity: 0.65; font-size: 12px !important; }
 .sb-more:hover, .sb-more.active { opacity: 1 !important; }
 .sb-logo { padding: 14px 16px; }
+
+/* ── Distributor Pipeline ──────────────────────────────────── */
+.dist-pipeline-group { margin-bottom: 28px; }
+.dist-pipeline-group-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+.dist-pipeline-group-hdr h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin: 0;
+}
+.dist-pipeline-count {
+  font-size: 11px;
+  background: var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.dist-overdue-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
