@@ -69,6 +69,13 @@ let _currentDistId = null;  // tracks which distributor detail is open
 // ── Accounts view state ──────────────────────────────────
 let _acBrandFilter = '';   // '' | 'purpl' | 'lf' | 'both'
 let _acCompact = false;
+let _distGroupExpanded = new Set(); // distIds explicitly expanded; empty = all collapsed
+
+function toggleDistGroup(distId) {
+  if (_distGroupExpanded.has(distId)) _distGroupExpanded.delete(distId);
+  else _distGroupExpanded.add(distId);
+  renderAccounts();
+}
 let _repBrand = 'purpl';   // 'purpl' | 'lf'
 let _lfRepPeriod = 30;     // days; 0 = all time
 function nav(page) {
@@ -1774,6 +1781,106 @@ function toggleAccountStar(id) {
   renderAccounts();
 }
 
+function _acCardHTML(a, muted) {
+  const lastContact  = acLastContacted(a);
+  const needsAttn    = !muted && (daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30);
+
+  const lastOrderHtml = a.lastOrder
+    ? `<span class="ac-metric-val${daysAgo(a.lastOrder)>=30?' red':''}">${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d)</span>`
+    : `<span class="ac-metric-val red">Never</span>`;
+
+  const lastContactHtml = lastContact
+    ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
+    : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
+
+  const acOrds = DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled')
+    .sort((x,y)=>x.dueDate>y.dueDate?1:-1);
+  let velocityHtml = `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
+  if (acOrds.length>=2) {
+    const intervals=[];
+    for (let i=1;i<acOrds.length;i++){
+      const d=(new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
+      if(d>0) intervals.push(d);
+    }
+    if (intervals.length) {
+      const avg=Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
+      velocityHtml=`<span class="ac-metric-val">Every ${avg}d</span>`;
+    }
+  }
+
+  const outstanding = DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid');
+  const outstandingHtml = outstanding.length
+    ? `<span class="ac-metric-val red">${outstanding.length} unpaid</span>`
+    : `<span class="ac-metric-val green">Clear</span>`;
+
+  const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
+  const lastOutreach = a.outreach?.length ? a.outreach[a.outreach.length-1] : null;
+  const locs = (a.locs && a.locs.length) ? a.locs
+    : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
+
+  const nfu = a.nextFollowUp;
+  let nfuHtml = '';
+  if (nfu) {
+    const nfuColor = nfu < today() ? '#dc2626' : nfu === today() ? '#d97706' : '#1d4ed8';
+    const nfuLabel = nfu < today() ? 'Overdue' : nfu === today() ? 'Today' : fmtD(nfu);
+    nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}</div></div>`;
+  }
+
+  return `<div class="ac-card${needsAttn?' needs-attention':''}${muted?' ac-dist-served':''}">
+    <div class="ac-card-hdr">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+          <span class="ac-card-name">${escHtml(a.name)}</span>
+          ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
+          ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
+          ${muted ? _getFulfillBadge(a) : ''}
+        </div>
+        <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).map(escHtml).join(' · ')}</div>
+        ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
+        ${a.email?`<div class="ac-card-email">✉ ${escHtml(a.email)}</div>`:''}
+        ${lastNote?.text?`<div class="ac-compact-notes">${escHtml(lastNote.text.slice(0,80))}</div>`:''}
+        ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
+      </div>
+      <div class="ac-card-badges">
+        <button class="ac-star${a.starred?' active':''}" onclick="event.stopPropagation();toggleAccountStar('${a.id}')" title="${a.starred?'Unpin':'Pin to top'}">${a.starred?'★':'☆'}</button>
+        ${a.type?`<span class="badge gray">${a.type}</span>`:''}
+        ${statusBadge(AC_STATUS,a.status)}
+        ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
+        ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
+      </div>
+    </div>
+    ${locs.length>1?`<div id="ac-locs-${a.id}" class="ac-locs-drawer" style="display:none">${locs.map(l=>`
+      <div class="ac-loc-item">
+        <div class="ac-loc-dot"></div>
+        <div style="flex:1;min-width:0">
+          ${l.label?`<div class="ac-loc-label">${l.label}</div>`:''}
+          ${l.address?`<div class="ac-loc-addr">${l.address}</div>`:''}
+          ${l.contact||l.phone?`<div class="ac-loc-addr" style="margin-top:2px">${[l.contact,l.phone].filter(Boolean).join(' · ')}</div>`:''}
+          ${l.dropOffRules?`<div class="ac-loc-drop">🚚 ${l.dropOffRules}</div>`:''}
+        </div>
+      </div>`).join('')}</div>`:''}
+    <div class="ac-card-metrics">
+      <div><div class="ac-metric-label">Last Order</div>${lastOrderHtml}</div>
+      <div><div class="ac-metric-label">Last Contacted</div>${lastContactHtml}</div>
+      <div><div class="ac-metric-label">Velocity</div>${velocityHtml}</div>
+      <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
+    </div>
+    ${nfuHtml}
+    ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
+    ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
+    ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
+    ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
+    <div class="ac-card-actions">
+      <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
+      <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
+      <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
+      <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
+      <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
+      <button class="btn sm" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button>
+    </div>
+  </div>`;
+}
+
 function renderAccounts() {
   _populateFulfillFilter();
   let list = DB.a('ac');
@@ -1804,116 +1911,64 @@ function renderAccounts() {
     return 0;
   });
 
-  // Keep compact state in sync after re-render
-  if (_acCompact) {
-    const cards = qs('#ac-cards');
-    if (cards) cards.classList.add('ac-compact');
-  }
-
   const el = qs('#ac-cards');
   if (!el) return;
   if (qs('#ac-count')) qs('#ac-count').textContent = `${list.length} account${list.length!==1?'s':''}`;
 
-  el.innerHTML = list.map(a=>{
-    const lastContact  = acLastContacted(a);
-    const needsAttn    = daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30;
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">No accounts match your filters. Click "+ Add Account" to get started.</div>';
+    el.classList.toggle('ac-compact', _acCompact);
+    return;
+  }
 
-    const lastOrderHtml = a.lastOrder
-      ? `<span class="ac-metric-val${daysAgo(a.lastOrder)>=30?' red':''}">${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d)</span>`
-      : `<span class="ac-metric-val red">Never</span>`;
+  // Determine if any filter is active (for auto-expand logic)
+  const hasActiveFilter = !!(search || typeFilter || fulfillFilter || (_acBrandFilter && _acBrandFilter !== ''));
 
-    const lastContactHtml = lastContact
-      ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
-      : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
+  // Split into direct and per-distributor
+  const directList = list.filter(a => !a.fulfilledBy || a.fulfilledBy === 'direct');
+  const distMap    = new Map(); // distId → account[]
+  list.filter(a => a.fulfilledBy && a.fulfilledBy !== 'direct').forEach(a => {
+    if (!distMap.has(a.fulfilledBy)) distMap.set(a.fulfilledBy, []);
+    distMap.get(a.fulfilledBy).push(a);
+  });
 
-    const acOrds = DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled')
-      .sort((x,y)=>x.dueDate>y.dueDate?1:-1);
-    let velocityHtml = `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
-    if (acOrds.length>=2) {
-      const intervals=[];
-      for (let i=1;i<acOrds.length;i++){
-        const d=(new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
-        if(d>0) intervals.push(d);
-      }
-      if (intervals.length) {
-        const avg=Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
-        velocityHtml=`<span class="ac-metric-val">Every ${avg}d</span>`;
-      }
-    }
+  const allDists = DB.a('dist_profiles');
+  const parts = [];
 
-    const outstanding = DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid');
-    const outstandingHtml = outstanding.length
-      ? `<span class="ac-metric-val red">${outstanding.length} unpaid</span>`
-      : `<span class="ac-metric-val green">Clear</span>`;
-
-    const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
-    const lastOutreach = a.outreach?.length ? a.outreach[a.outreach.length-1] : null;
-    const locs = (a.locs && a.locs.length) ? a.locs
-      : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
-
-    // Next follow-up date with color coding
-    const nfu = a.nextFollowUp;
-    let nfuHtml = '';
-    if (nfu) {
-      const nfuColor = nfu < today() ? '#dc2626' : nfu === today() ? '#d97706' : '#1d4ed8';
-      const nfuLabel = nfu < today() ? 'Overdue' : nfu === today() ? 'Today' : fmtD(nfu);
-      nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}</div></div>`;
-    }
-
-    return `<div class="ac-card${needsAttn?' needs-attention':''}">
-      <div class="ac-card-hdr">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
-            <span class="ac-card-name">${escHtml(a.name)}</span>
-            ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
-            ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
-            ${_getFulfillBadge(a)}
-          </div>
-          <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).map(escHtml).join(' · ')}</div>
-          ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
-          ${a.email?`<div class="ac-card-email">✉ ${escHtml(a.email)}</div>`:''}
-          ${lastNote?.text?`<div class="ac-compact-notes">${escHtml(lastNote.text.slice(0,80))}</div>`:''}
-          ${locs.length>1?`<button id="ac-locs-btn-${a.id}" class="btn sm" style="margin-top:4px" onclick="toggleAcLocs('${a.id}')">▼ ${locs.length} Locations</button>`:''}
-        </div>
-        <div class="ac-card-badges">
-          <button class="ac-star${a.starred?' active':''}" onclick="event.stopPropagation();toggleAccountStar('${a.id}')" title="${a.starred?'Unpin':'Pin to top'}">${a.starred?'★':'☆'}</button>
-          ${a.type?`<span class="badge gray">${a.type}</span>`:''}
-          ${statusBadge(AC_STATUS,a.status)}
-          ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
-          ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
-        </div>
+  // ── Direct Accounts group (always expanded, no toggle) ────
+  if (directList.length > 0 || distMap.size === 0) {
+    parts.push(`<div class="ac-group">
+      <div class="ac-group-hdr ac-group-hdr-direct">
+        <h3>Direct Accounts</h3>
+        <span class="ac-group-count">${directList.length}</span>
       </div>
-      ${locs.length>1?`<div id="ac-locs-${a.id}" class="ac-locs-drawer" style="display:none">${locs.map(l=>`
-        <div class="ac-loc-item">
-          <div class="ac-loc-dot"></div>
-          <div style="flex:1;min-width:0">
-            ${l.label?`<div class="ac-loc-label">${l.label}</div>`:''}
-            ${l.address?`<div class="ac-loc-addr">${l.address}</div>`:''}
-            ${l.contact||l.phone?`<div class="ac-loc-addr" style="margin-top:2px">${[l.contact,l.phone].filter(Boolean).join(' · ')}</div>`:''}
-            ${l.dropOffRules?`<div class="ac-loc-drop">🚚 ${l.dropOffRules}</div>`:''}
-          </div>
-        </div>`).join('')}</div>`:''}
-      <div class="ac-card-metrics">
-        <div><div class="ac-metric-label">Last Order</div>${lastOrderHtml}</div>
-        <div><div class="ac-metric-label">Last Contacted</div>${lastContactHtml}</div>
-        <div><div class="ac-metric-label">Velocity</div>${velocityHtml}</div>
-        <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
+      <div class="ac-group-cards">${directList.map(a=>_acCardHTML(a,false)).join('')}</div>
+    </div>`);
+  }
+
+  // ── Per-distributor groups (collapsible, collapsed by default) ──
+  distMap.forEach((accounts, distId) => {
+    const d = allDists.find(x=>x.id===distId);
+    const distName  = d?.name || 'Unknown Distributor';
+    const chains    = DB.a('dist_chains').filter(c=>c.distId===distId);
+    const doorCount = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d?.doorCount || 0;
+    // Auto-expand when a filter is active and this group has matches; else use persisted state
+    const isExpanded = hasActiveFilter ? true : _distGroupExpanded.has(distId);
+    parts.push(`<div class="ac-group" id="ac-group-${distId}">
+      <div class="ac-group-hdr" onclick="toggleDistGroup('${distId}')">
+        <span class="ac-group-toggle">${isExpanded?'▼':'▶'}</span>
+        <h3>${escHtml(distName)}</h3>
+        <span class="ac-group-count">${accounts.length}</span>
+        ${doorCount?`<span class="badge amber" style="font-size:10px">${fmt(doorCount)} doors</span>`:''}
       </div>
-      ${nfuHtml}
-      ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
-      ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
-      ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
-      ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
-      <div class="ac-card-actions">
-        <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
-        <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
-        <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
-        <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
-        <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
-        <button class="btn sm" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button>
+      <div class="ac-group-cards"${isExpanded?'':' style="display:none"'}>
+        ${accounts.map(a=>_acCardHTML(a,true)).join('')}
       </div>
-    </div>`;
-  }).join('')||'<div class="empty">No accounts yet. Click "+ Add Account" to get started.</div>';
+    </div>`);
+  });
+
+  el.innerHTML = parts.join('');
+  el.classList.toggle('ac-compact', _acCompact);
 }
 
 function toggleAcLocs(id) {

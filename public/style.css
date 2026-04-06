@@ -751,3 +751,40 @@ td { padding: 9px 12px; font-size: 13px; }
   padding: 2px 6px;
   white-space: nowrap;
 }
+
+/* ── Account Groups (Direct / Distributor) ─────────────────── */
+.ac-group { margin-bottom: 20px; }
+.ac-group-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  user-select: none;
+}
+.ac-group-hdr.ac-group-hdr-direct { cursor: default; }
+.ac-group-hdr:not(.ac-group-hdr-direct) { cursor: pointer; }
+.ac-group-hdr:not(.ac-group-hdr-direct):hover { background: #e2e2ea; }
+.ac-group-hdr h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  margin: 0;
+}
+.ac-group-count {
+  font-size: 11px;
+  background: rgba(0,0,0,.08);
+  border-radius: 10px;
+  padding: 1px 7px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.ac-group-toggle { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+/* Distributor-served cards — slightly muted, no transition needed */
+.ac-card.ac-dist-served { opacity: 0.72; }
+.ac-card.ac-dist-served:hover,
+.ac-card.ac-dist-served:focus-within { opacity: 1; }
