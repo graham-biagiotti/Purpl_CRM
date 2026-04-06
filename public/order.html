@@ -487,18 +487,29 @@ const LF_SKU_FALLBACK = [
   {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
   {id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null},
   {id:'lf-scrunchie', name:'Aromatherapy Scrunchie', wholesalePrice:7.49, caseSize:6, msrp:14.99, variants:[
-    {id:'classic-lavender',  name:'Classic Lavender'},
-    {id:'lavender-mint',     name:'Lavender Mint'},
-    {id:'lavender-rose',     name:'Lavender Rose'},
+    {id:'blossom-satin',    name:'Blossom Satin'},
+    {id:'blossom-corduroy', name:'Blossom Corduroy'},
+    {id:'blossom-velvet',   name:'Blossom Velvet'},
+    {id:'sage-satin',       name:'Sage Satin'},
+    {id:'sage-corduroy',    name:'Sage Corduroy'},
+    {id:'sage-velvet',      name:'Sage Velvet'},
+    {id:'dusk-satin',       name:'Dusk Satin'},
+    {id:'dusk-corduroy',    name:'Dusk Corduroy'},
+    {id:'dusk-velvet',      name:'Dusk Velvet'},
+    {id:'chai-satin',       name:'Chai Satin'},
+    {id:'chai-corduroy',    name:'Chai Corduroy'},
+    {id:'chai-velvet',      name:'Chai Velvet'},
   ]},
   {id:'lf-sachet', name:'Seatbelt Sachet', wholesalePrice:4.99, caseSize:12, msrp:9.99, variants:[
-    {id:'classic-lavender',  name:'Classic Lavender'},
-    {id:'lavender-mint',     name:'Lavender Mint'},
+    {id:'sage-corduroy',  name:'Sage Corduroy'},
+    {id:'blue-floral',    name:'Blue Floral'},
+    {id:'chai-corduroy',  name:'Chai Corduroy'},
+    {id:'purple-floral',  name:'Purple Floral'},
   ]},
   {id:'lf-candle', name:'Soy Candle', wholesalePrice:14.99, caseSize:12, msrp:24.99, variants:[
-    {id:'classic-lavender',  name:'Classic Lavender'},
-    {id:'lavender-vanilla',  name:'Lavender Vanilla'},
-    {id:'lemon-lavender',    name:'Lemon Lavender'},
+    {id:'simply-lavender',        name:'Simply Lavender'},
+    {id:'lavender-lemonade',      name:'Lavender Lemonade'},
+    {id:'lavender-white-birch',   name:'Lavender White Birch'},
   ]},
   {id:'lf-refresh-powder',  name:'Lavender Refresh Powder',       wholesalePrice:4.99,  caseSize:12, msrp:9.99},
   {id:'lf-roll-on',         name:'Aromatherapy Roll-On',          wholesalePrice:9.99,  caseSize:24, msrp:19.99},
@@ -713,10 +724,16 @@ function loadLfSkus(prevOrder) {
   db.collection('workspace').doc('main').collection('data').doc('store').get()
     .then(function(doc) {
       var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
-      renderLfSkus(skus.length ? skus : LF_SKU_FALLBACK, prevOrder);
+      if (skus.length) {
+        console.log('LF SKUs loaded from Firestore: ' + skus.length + ' skus');
+        renderLfSkus(skus, prevOrder);
+      } else {
+        console.log('LF SKUs: Firestore returned 0 skus (doc.exists=' + doc.exists + ') — using fallback');
+        renderLfSkus(LF_SKU_FALLBACK, prevOrder);
+      }
     })
     .catch(function(err) {
-      console.error('LF SKU load error:', err);
+      console.error('LF SKU load error — using fallback:', err);
       renderLfSkus(LF_SKU_FALLBACK, prevOrder);
     });
 }
