@@ -1877,6 +1877,7 @@
       <button class="tab" data-tab="outreach">Outreach</button>
       <button class="tab" data-tab="notes">Notes</button>
       <button class="tab" data-tab="portal-orders">Portal Orders</button>
+      <button class="tab" data-tab="samples">🧪 Samples</button>
       <button class="tab" data-tab="invoices">Invoices</button>
       <button class="tab" data-tab="emails">✉️ Emails</button>
     </div>
@@ -1944,6 +1945,14 @@
       <div id="mac-portal-orders-content">
         <div style="text-align:center;padding:24px;color:var(--muted)">Loading portal orders…</div>
       </div>
+    </div>
+    <!-- Samples tab -->
+    <div id="mac-tab-samples" class="tab-pane" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span style="font-size:13px;font-weight:600;color:var(--muted)">Sample History</span>
+        <button class="btn sm" id="mac-tab-log-sample-btn">+ Log Sample</button>
+      </div>
+      <div id="mac-samples-tab-content"></div>
     </div>
     <!-- Invoices tab -->
     <div id="mac-tab-invoices" class="tab-pane" style="display:none">
@@ -2766,13 +2775,17 @@
 
 <!-- Log Sample Modal -->
 <div class="overlay" id="modal-log-sample">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="max-width:460px">
     <div class="modal-hdr"><h2>Log Sample</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Date Sent</label><input type="date" id="lsmp-date"></div>
       <div class="form-group"><label>Follow-up Date</label><input type="date" id="lsmp-followup"></div>
     </div>
-    <div class="form-group"><label>Flavors / Products</label><input id="lsmp-flavors" placeholder="Classic, Blueberry..."></div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Product (SKU)</label><select id="lsmp-sku"></select></div>
+      <div class="form-group"><label>Quantity (cans)</label><input type="number" id="lsmp-qty" min="1" step="1" placeholder="e.g. 6"></div>
+    </div>
+    <div class="form-group"><label>Contact</label><input id="lsmp-contact" placeholder="Who received the sample?"></div>
     <div class="form-group"><label>Notes</label><textarea id="lsmp-notes" placeholder="What was included, any feedback..."></textarea></div>
     <div class="modal-footer">
       <button class="modal-close btn">Cancel</button>

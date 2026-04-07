@@ -803,23 +803,27 @@ function renderAttention() {
     items.push({icon:'📅', name:`${d.name} — Follow-Up Overdue`, reason:`Scheduled ${fmtD(d.nextFollowup)}`, action:`openDistributor('${d.id}')`, borderColor:'#d97706'});
   });
 
-  // Sample follow-ups — prospects/accounts where a sample was sent 14+ days ago and follow-up is not done
+  // Sample follow-ups — due within 7 days or overdue
   const _smpSources = [
     ...DB.a('pr').filter(p=>!['won','lost'].includes(p.status)),
     ...DB.a('ac').filter(a=>a.status==='active'),
   ];
+  const _7daysOut = new Date(); _7daysOut.setDate(_7daysOut.getDate()+7);
+  const _7dStr = _7daysOut.toISOString().slice(0,10);
   _smpSources.forEach(r=>{
     (r.samples||[]).forEach(s=>{
-      if (s.followUpDone) return;
-      const age = daysAgo(s.date);
-      if (age < 14) return;
+      if (s.followUpDone || !s.followUpDate) return;
+      if (s.followUpDate > _7dStr) return; // not due within 7 days
       const isPr = !!DB.a('pr').find(x=>x.id===r.id);
+      const overdue = s.followUpDate < todayStr;
       items.push({
         icon:'🧪',
         name: r.name,
-        reason:`Sample sent ${age} days ago — follow-up pending`,
+        reason: overdue
+          ? `Sample follow-up overdue (due ${fmtD(s.followUpDate)})`
+          : `Sample follow-up due ${fmtD(s.followUpDate)}`,
         action: isPr ? `openProspect('${r.id}')` : `openAccount('${r.id}')`,
-        borderColor:'#d97706',
+        borderColor: overdue ? '#dc2626' : '#d97706',
       });
     });
   });
@@ -2234,6 +2238,7 @@ function openAccount(id) {
       const pane = document.getElementById('mac-tab-'+t.dataset.tab);
       if (pane) pane.style.display='block';
       if (t.dataset.tab === 'portal-orders') renderMacPortalOrdersTab(id);
+      if (t.dataset.tab === 'samples') renderMacSamplesTab(id);
       if (t.dataset.tab === 'invoices') renderMacInvoicesTab(id);
       if (t.dataset.tab === 'emails') renderMacEmailsTab(id);
     };
@@ -2439,6 +2444,47 @@ function markCadenceEmailSent(sentMessageId) {
 }
 
 // ══════════════════════════════════════════════════════════
+// ── Samples Tab ───────────────────────────────────────────
+function renderMacSamplesTab(accountId) {
+  const a   = DB.a('ac').find(x => x.id === accountId);
+  const el  = qs('#mac-samples-tab-content');
+  if (!el || !a) return;
+
+  // Wire + Log Sample button
+  const btn = qs('#mac-tab-log-sample-btn');
+  if (btn) btn.onclick = () => openLogSampleModal('ac', accountId);
+
+  const samples = (a.samples || []).slice().sort((x, y) => (x.date > y.date ? -1 : 1));
+  if (!samples.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">No samples logged yet.</div>';
+    return;
+  }
+
+  const todayStr = today();
+  el.innerHTML = samples.map(s => {
+    const skuLabel = SKU_MAP[s.sku]?.label || s.sku || '—';
+    const overdue  = !s.followUpDone && s.followUpDate && s.followUpDate < todayStr;
+    const pending  = !s.followUpDone && s.followUpDate && s.followUpDate >= todayStr;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <span style="font-weight:600;font-size:13px">${escHtml(skuLabel)}</span>
+          ${s.qty ? `<span style="font-size:12px;color:var(--muted);margin-left:6px">${s.qty} cans</span>` : ''}
+          <span style="font-size:12px;color:var(--muted);margin-left:8px">${fmtD(s.date)}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${overdue ? `<span class="badge red" style="font-size:10px">Follow-up overdue</span>` : ''}
+          ${pending ? `<span class="badge amber" style="font-size:10px">Follow-up ${fmtD(s.followUpDate)}</span>` : ''}
+          ${s.followUpDone ? `<span class="badge green" style="font-size:10px">Done</span>` : ''}
+        </div>
+      </div>
+      ${s.contact ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Contact: ${escHtml(s.contact)}</div>` : ''}
+      ${s.notes   ? `<div style="font-size:12px;color:var(--text);margin-top:3px">${escHtml(s.notes)}</div>` : ''}
+      ${(!s.followUpDone && s.followUpDate) ? `<button class="btn xs" style="margin-top:6px" onclick="markSampleFollowUpDone('ac','${accountId}','${s.id}')">Mark Done</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
 //  EMAIL CADENCE TAB
 // ══════════════════════════════════════════════════════════
 
@@ -4411,8 +4457,15 @@ function openLogSampleModal(type, id) {
   _logSampleCtx = { type, id };
   if (qs('#lsmp-date'))    qs('#lsmp-date').value    = today();
   if (qs('#lsmp-followup')) qs('#lsmp-followup').value = '';
-  if (qs('#lsmp-flavors')) qs('#lsmp-flavors').value  = '';
+  if (qs('#lsmp-qty'))     qs('#lsmp-qty').value      = '';
+  if (qs('#lsmp-contact')) qs('#lsmp-contact').value  = '';
   if (qs('#lsmp-notes'))   qs('#lsmp-notes').value    = '';
+  // Populate SKU dropdown from purpl SKUs
+  const skuSel = qs('#lsmp-sku');
+  if (skuSel) {
+    skuSel.innerHTML = `<option value="">— select SKU —</option>` +
+      SKUS.map(s => `<option value="${s.id}">${escHtml(s.label)}</option>`).join('');
+  }
   openModal('modal-log-sample');
 }
 
@@ -4421,11 +4474,13 @@ function saveLogSample() {
   const { type, id } = _logSampleCtx;
   const sample = {
     id: uid(),
-    date:          qs('#lsmp-date')?.value     || today(),
-    flavors:       qs('#lsmp-flavors')?.value?.trim() || '',
-    notes:         qs('#lsmp-notes')?.value?.trim()   || '',
-    followUpDate:  qs('#lsmp-followup')?.value || '',
-    followUpDone:  false,
+    date:         qs('#lsmp-date')?.value        || today(),
+    sku:          qs('#lsmp-sku')?.value?.trim()  || '',
+    qty:          parseInt(qs('#lsmp-qty')?.value) || null,
+    contact:      qs('#lsmp-contact')?.value?.trim() || '',
+    notes:        qs('#lsmp-notes')?.value?.trim()   || '',
+    followUpDate: qs('#lsmp-followup')?.value    || '',
+    followUpDone: false,
   };
   const col = type === 'pr' ? 'pr' : 'ac';
   DB.update(col, id, r => ({ ...r, samples: [...(r.samples || []), sample] }));
