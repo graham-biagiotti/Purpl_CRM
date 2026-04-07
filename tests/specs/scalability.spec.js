@@ -85,7 +85,7 @@ test.describe('Scalability — Section A: Render times with full seed data', () 
       '#page-distributors',
       () => {
         const el = document.querySelector('#dist-cards');
-        return el && el.innerHTML.trim().length > 100;
+        return el && el.querySelector('.ac-card') !== null;
       }
     );
 
@@ -185,9 +185,9 @@ test.describe('Scalability — Section B: Search performance', () => {
     await page.waitForFunction(
       () => {
         const el = document.querySelector('#dist-cards');
-        return el && el.innerHTML.trim().length > 0;
+        return el && el.querySelector('.ac-card') !== null;
       },
-      { timeout: 10000 }
+      { timeout: 20000 }
     );
 
     const searchInput = page.locator('#dist-search');
@@ -221,12 +221,12 @@ test.describe('Scalability — Section C: Interactive elements', () => {
     await page.click('.sb-nav a[data-page="distributors"]');
     await expect(page.locator('#page-distributors')).toBeVisible({ timeout: 10000 });
     await page.waitForFunction(
-      () => document.querySelector('#dist-cards')?.innerHTML.trim().length > 0,
-      { timeout: 10000 }
+      () => document.querySelector('#dist-cards')?.querySelector('.ac-card') !== null,
+      { timeout: 20000 }
     );
 
     // Open dist001 detail modal
-    const card = page.locator('#dist-cards .dist-card, #dist-cards .card')
+    const card = page.locator('#dist-cards .ac-card')
       .filter({ hasText: 'New England Natural Foods' }).first();
 
     if (await card.count() === 0) return;

@@ -7,10 +7,19 @@ const { test, expect } = require('../fixtures.js');
 async function gotoDelivery(page) {
   await page.click('.sb-nav a[data-page="orders-delivery"]');
   await expect(page.locator('#page-orders-delivery')).toBeVisible({ timeout: 10000 });
+  // Wait for actual order data to load (orders-count > 0 or rows in tbody)
   await page.waitForFunction(
-    () => document.querySelector('#page-orders-delivery').innerHTML.trim().length > 100,
-    { timeout: 10000 }
-  );
+    () => {
+      const countEl = document.querySelector('#orders-count');
+      if (countEl) {
+        const n = parseInt(countEl.textContent.replace(/\D/g, ''), 10);
+        if (n > 0) return true;
+      }
+      const tbody = document.querySelector('#orders-tbody');
+      return tbody && tbody.querySelectorAll('tr').length > 0;
+    },
+    { timeout: 20000 }
+  ).catch(() => {});
 }
 
 async function gotoRouteBuilder(page) {

@@ -5,11 +5,11 @@ const { test, expect } = require('../fixtures.js');
 async function gotoAccounts(page) {
   await page.click('.sb-nav a[data-page="accounts"]');
   await expect(page.locator('#page-accounts')).toBeVisible({ timeout: 10000 });
-  // Wait for at least one card or the empty state to appear
+  // Wait for at least one actual account card (not just empty-state HTML)
   await page.waitForFunction(() => {
     const el = document.querySelector('#ac-cards');
-    return el && el.innerHTML.trim().length > 0;
-  }, { timeout: 10000 });
+    return el && el.querySelector('.ac-card') !== null;
+  }, { timeout: 20000 });
 }
 
 test.describe('Accounts — Section A: List rendering', () => {

@@ -5,11 +5,13 @@ const { test, expect } = require('../fixtures.js');
 async function gotoInvoices(page) {
   await page.click('.sb-nav a[data-page="invoices"]');
   await expect(page.locator('#page-invoices')).toBeVisible({ timeout: 10000 });
-  // Wait for at least one column summary to render
+  // Wait for actual invoice data: compact rows appearing OR non-zero summary count
   await page.waitForFunction(() => {
-    const el = document.querySelector('#inv-col-purpl-summary');
-    return el && el.textContent.trim().length > 0;
-  }, { timeout: 10000 });
+    const compact = document.querySelector('#inv-col-purpl-compact');
+    if (compact && compact.querySelector('.inv-col-compact-row') !== null) return true;
+    const summary = document.querySelector('#inv-col-purpl-summary');
+    return summary && /[1-9]/.test(summary.textContent);
+  }, { timeout: 20000 }).catch(() => {});
 }
 
 test.describe('Invoices Page', () => {

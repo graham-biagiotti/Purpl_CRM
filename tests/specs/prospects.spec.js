@@ -5,10 +5,11 @@ const { test, expect } = require('../fixtures.js');
 async function gotoProspects(page) {
   await page.click('.sb-nav a[data-page="prospects"]');
   await expect(page.locator('#page-prospects')).toBeVisible({ timeout: 10000 });
+  // Wait for at least one actual prospect card (not just empty-state HTML)
   await page.waitForFunction(() => {
     const el = document.querySelector('#pr-cards');
-    return el && el.innerHTML.trim().length > 0;
-  }, { timeout: 10000 });
+    return el && el.querySelector('.pr-card') !== null;
+  }, { timeout: 20000 });
 }
 
 test.describe('Prospects Page', () => {

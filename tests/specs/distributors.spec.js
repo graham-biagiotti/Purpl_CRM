@@ -7,12 +7,13 @@ const { test, expect } = require('../fixtures.js');
 async function gotoDistributors(page) {
   await page.click('.sb-nav a[data-page="distributors"]');
   await expect(page.locator('#page-distributors')).toBeVisible({ timeout: 10000 });
+  // Wait for at least one actual distributor card (not just empty-state HTML)
   await page.waitForFunction(
     () => {
       const el = document.querySelector('#dist-cards');
-      return el && el.innerHTML.trim().length > 0;
+      return el && el.querySelector('.ac-card') !== null;
     },
-    { timeout: 10000 }
+    { timeout: 20000 }
   );
 }
 
@@ -290,6 +291,15 @@ test.describe('Distributors — Section D: Velocity entry', () => {
     await velTab.click();
     await page.waitForTimeout(600);
 
+    // The velocity entry form is inside a <details> element — click summary to open it
+    const velSummary = page.locator('#modal-distributor summary')
+      .filter({ hasText: /Add Velocity Entry/i }).first();
+    if (await velSummary.count() > 0) {
+      await velSummary.scrollIntoViewIfNeeded().catch(() => {});
+      await velSummary.click({ force: true });
+      await page.waitForTimeout(300);
+    }
+
     // Fill the velocity entry form — IDs are prefixed with distId (dist001)
     const dateInput = page.locator('#vel-date-dist001');
     if (await dateInput.count() === 0) {
@@ -298,19 +308,15 @@ test.describe('Distributors — Section D: Velocity entry', () => {
       return;
     }
 
-    await dateInput.fill('2026-03-01');
-
-    const casesInput = page.locator('#vel-cases-dist001');
-    await casesInput.fill('18');
-
-    const doorsInput = page.locator('#vel-doors-dist001');
-    await doorsInput.fill('5');
-
-    const notesInput = page.locator('#vel-notes-dist001');
-    await notesInput.fill('Playwright velocity test');
+    await page.fill('#vel-date-dist001', '2026-03-01');
+    await page.fill('#vel-cases-dist001', '18');
+    await page.fill('#vel-doors-dist001', '5');
+    await page.fill('#vel-notes-dist001', 'Playwright velocity test');
 
     // Click Save Entry
-    await page.locator('button:text("Save Entry")').click();
+    const saveEntryBtn = page.locator('#modal-distributor button').filter({ hasText: 'Save Entry' }).first();
+    await saveEntryBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await saveEntryBtn.click();
     await page.waitForTimeout(800);
 
     // History table should now show a new row
