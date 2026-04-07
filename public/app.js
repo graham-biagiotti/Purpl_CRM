@@ -630,6 +630,7 @@ function renderDash() {
   renderPendingOrders();
   renderInvoiceStatus();
   renderProjections();
+  renderProdPlan();
   renderCadenceOverdue();
   renderDistDashKPIs();
   renderLfDashKpis();
@@ -1574,6 +1575,60 @@ function calcProjections() {
   });
 
   return {proj30, proj60, proj90, accountsWithData, velocities};
+}
+
+// ── Production Planning dashboard card ───────────────────────
+function renderProdPlan() {
+  const el = qs('#dash-prod-plan');
+  if (!el) return;
+
+  // Current on-hand cans (same calculation used in renderDash KPI)
+  const inv = DB.a('iv');
+  const currentCans = SKUS.reduce((sum, sk) => {
+    const totalIn  = inv.filter(i => i.sku === sk.id && (i.type === 'in'  || i.type === 'return')).reduce((t, i) => t + (i.qty || 0), 0);
+    const totalOut = inv.filter(i => i.sku === sk.id &&  i.type === 'out').reduce((t, i) => t + (i.qty || 0), 0);
+    return sum + Math.max(0, totalIn - totalOut);
+  }, 0);
+
+  // Projected 30-day demand in cans from velocity data
+  const { velocities } = calcProjections();
+  const totalWeeklyCases = velocities.reduce((sum, v) => {
+    return sum + SKUS.reduce((s, sk) => s + (v.weeklyUnits[sk.id] || 0), 0);
+  }, 0);
+  const projected30Cases = Math.round(totalWeeklyCases * (30 / 7));
+  const projected30Cans  = projected30Cases * CANS_PER_CASE;
+
+  const surplus = currentCans - projected30Cans;
+  const hasSurplus = surplus >= 0;
+
+  const surplusColor  = hasSurplus ? 'var(--green)' : 'var(--red)';
+  const surplusLabel  = hasSurplus
+    ? `<span style="color:var(--green);font-weight:600">+${fmt(surplus)} cans buffer</span>`
+    : `<span style="color:var(--red);font-weight:600">&minus;${fmt(Math.abs(surplus))} cans deficit</span>`;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px">
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Current Inventory</div>
+        <div style="font-size:28px;font-weight:700;color:var(--text)">${fmt(currentCans)}</div>
+        <div style="font-size:12px;color:var(--muted)">cans on hand</div>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Projected 30-Day Demand</div>
+        <div style="font-size:28px;font-weight:700;color:var(--text)">${fmt(projected30Cans)}</div>
+        <div style="font-size:12px;color:var(--muted)">${fmt(projected30Cases)} cases at ${CANS_PER_CASE} cans/case</div>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Surplus / Deficit</div>
+        <div style="font-size:28px;font-weight:700;color:${surplusColor}">${hasSurplus ? '+' : ''}${fmt(surplus)}</div>
+        <div style="font-size:12px;color:var(--muted)">cans (current &minus; projected)</div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;border-radius:8px;background:${hasSurplus ? '#f0fdf4' : '#fef3c7'};border:1px solid ${hasSurplus ? '#bbf7d0' : '#fde68a'};font-size:13px;color:${hasSurplus ? '#166534' : '#92400e'}">
+      ${hasSurplus
+        ? `${surplusLabel} &mdash; you have enough stock to cover projected 30-day demand.`
+        : `${surplusLabel} &mdash; Schedule a production run. You need <strong>${fmt(Math.abs(surplus))} more cans</strong> (${fmt(Math.ceil(Math.abs(surplus) / CANS_PER_CASE))} cases) to meet projected demand.`}
+    </div>`;
 }
 
 // ── Store by Store Velocity ───────────────────────────────
