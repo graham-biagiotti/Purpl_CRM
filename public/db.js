@@ -147,6 +147,13 @@ const DB = {
   // ── Persist to Firestore (fire-and-forget) ──────────
   _save() {
     if (!this._db) return;
+    // Guard: never overwrite Firestore before the initial snapshot has loaded.
+    // Without this check, a save triggered during the 10-second boot timeout
+    // (when _cache is still all-empty) would wipe all existing data in Firestore.
+    if (!this._firestoreReady) {
+      console.warn('DB._save() blocked — Firestore not yet ready (data still loading)');
+      return;
+    }
     this._updateSyncUI('syncing');
     const { setDoc } = window.FirestoreAPI;
     const ref = this._ref();
