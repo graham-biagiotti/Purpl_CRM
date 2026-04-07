@@ -275,7 +275,15 @@ async function callSendOrderConfirmation(to, accountName, contactName, orderSumm
   }
 }
 
-function buildEmailHTML(headerHTML, accentColor, bodyHTML) {
+function buildEmailHTML(headerHTML, accentColor, bodyHTML, unsubscribeAccountId) {
+  const unsubRow = unsubscribeAccountId
+    ? `<tr><td style="background:#f9fafb;padding:10px 40px 16px;
+        border-top:1px solid #e5e7eb;text-align:center;
+        font-size:11px;color:#9ca3af">
+        <a href="https://purpl-crm.web.app/?optout=${encodeURIComponent(unsubscribeAccountId)}"
+          style="color:#9ca3af">Unsubscribe from marketing emails</a>
+      </td></tr>`
+    : '';
   return `<!DOCTYPE html><html><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -309,6 +317,7 @@ font-family:Inter,Arial,sans-serif">
         <a href="https://pumpkinblossomfarm.com"
           style="color:#9ca3af">pumpkinblossomfarm.com</a>
       </td></tr>
+      ${unsubRow}
     </table>
   </td></tr>
 </table></body></html>`;
@@ -1943,6 +1952,7 @@ function _acCardHTML(a, muted) {
         ${statusBadge(AC_STATUS,a.status)}
         ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
         ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
+        ${a.emailOptOut?`<span class="badge gray" style="font-size:10px">✉ Unsubscribed</span>`:''}
       </div>
     </div>
     ${locs.length>1?`<div id="ac-locs-${a.id}" class="ac-locs-drawer" style="display:none">${locs.map(l=>`
@@ -3253,17 +3263,21 @@ async function meBroadcastSend() {
 
   if (!subject || !body) { toast('Enter a subject and body before sending'); return; }
 
-  // Build email HTML once — body is plain text with possible newlines
+  // Body is plain text with possible newlines
   const bodyHtml  = body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-  const html      = buildEmailHTML(PBF_HEADER_HTML, '#8B5FBF', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`);
 
   if (sendBtn) sendBtn.disabled = true;
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, skipped = 0;
 
   for (let i = 0; i < accounts.length; i++) {
     const a     = accounts[i];
     const email = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
     if (statusEl) statusEl.textContent = `Sending ${i+1} of ${accounts.length}…`;
+
+    if (a.emailOptOut) { skipped++; continue; }
+
+    // Build per-account HTML so each email has a unique unsubscribe link
+    const html = buildEmailHTML(PBF_HEADER_HTML, '#8B5FBF', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`, a.id);
 
     if (!email) { failed++; }
     else {
@@ -3288,7 +3302,7 @@ async function meBroadcastSend() {
     if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 300));
   }
 
-  const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}`;
+  const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   if (sendBtn) sendBtn.disabled = false;
   toast(summary, 5000);
@@ -10180,6 +10194,102 @@ function openCombinedInvoicePreview(combinedId) {
 
 // ── Manual combined invoice creation from account detail ──
 
+function printAccountStatement(accountId) {
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) return;
+
+  const purplInvs = DB.a('iv').filter(x => x.accountId === accountId);
+  const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid' };
+
+  let totalOutstanding = 0;
+  const rows = purplInvs
+    .slice()
+    .sort((x, y) => (x.date || '') > (y.date || '') ? -1 : 1)
+    .map(iv => {
+      const balance = iv.status === 'paid' ? 0 : (iv.amount || 0);
+      totalOutstanding += balance;
+      return `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.number || iv.invoiceNumber || '—')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${fmtD(iv.date)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtC(iv.amount || 0)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${statuses[iv.status] || (iv.status || 'Unpaid')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:${balance > 0 ? '600' : '400'}">${balance > 0 ? fmtC(balance) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+  const locs  = a.locations || (a.address ? [{ address: a.address }] : []);
+  const addr  = locs[0]?.address || a.address || '';
+  const today_str = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+  const html = `<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>Statement of Account — ${escHtml(a.name || '')}</title>
+<style>
+  body { font-family: Inter, Arial, sans-serif; color: #1a1a2e; margin: 0; padding: 40px; font-size: 14px; }
+  h1 { font-family: 'Playfair Display', Georgia, serif; font-weight: 400; font-size: 26px; margin: 0 0 4px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #8B5FBF; }
+  .pbf-brand { color: #8B5FBF; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+  .pbf-addr { font-size: 12px; color: #6b7280; line-height: 1.6; margin-top: 4px; }
+  .ac-section { margin-bottom: 28px; }
+  .ac-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #8B5FBF; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #f9fafb; padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
+  thead th.right { text-align: right; }
+  tfoot td { padding: 10px 12px; font-weight: 700; font-size: 15px; border-top: 2px solid #8B5FBF; }
+  tfoot td.right { text-align: right; color: #8B5FBF; }
+  .date-line { font-size: 12px; color: #6b7280; margin-top: 6px; }
+  @media print { body { padding: 20px; } }
+</style>
+</head><body>
+<div class="header">
+  <div>
+    <div class="pbf-brand">Pumpkin Blossom Farm</div>
+    <h1>Statement of Account</h1>
+    <div class="date-line">As of ${today_str}</div>
+  </div>
+  <div style="text-align:right">
+    <div class="pbf-addr">
+      393 Pumpkin Hill Rd · Warner, NH 03278<br>
+      lavender@pbfwholesale.com · 603-748-3038
+    </div>
+  </div>
+</div>
+<div class="ac-section">
+  <div class="ac-label">Account</div>
+  <div style="font-size:16px;font-weight:600">${escHtml(a.name || '—')}</div>
+  ${addr ? `<div style="font-size:13px;color:#6b7280;margin-top:2px">${escHtml(addr)}</div>` : ''}
+  ${a.email ? `<div style="font-size:13px;color:#6b7280">${escHtml(a.email)}</div>` : ''}
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Invoice #</th>
+      <th>Date</th>
+      <th class="right">Amount</th>
+      <th>Status</th>
+      <th class="right">Balance Due</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows || '<tr><td colspan="5" style="padding:12px;color:#6b7280">No invoices found.</td></tr>'}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">Total Outstanding</td>
+      <td class="right">${fmtC(totalOutstanding)}</td>
+    </tr>
+  </tfoot>
+</table>
+<script>window.onload=()=>{window.print();}<\/script>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  }
+}
+
 function renderMacInvoicesTab(accountId) {
   const a       = DB.a('ac').find(x => x.id === accountId);
   const el      = qs('#mac-invoices-content');
@@ -10261,6 +10371,9 @@ function renderMacInvoicesTab(accountId) {
   }
 
   el.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn sm" onclick="printAccountStatement('${accountId}')">🖨 Statement of Account</button>
+    </div>
     <div style="margin-bottom:16px">
       <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--purple);margin-bottom:8px">purpl Invoices</div>
       ${purplRows}
@@ -10547,6 +10660,18 @@ window.onAppReady = function() {
 
   // Sync mobile bottom nav active state with sidebar nav
   const _originalNav = nav;
+
+  // Handle email unsubscribe deeplink (?optout=ACCOUNT_ID)
+  const _optoutId = new URLSearchParams(window.location.search).get('optout');
+  if (_optoutId) {
+    const _optoutAc = DB.a('ac').find(x => x.id === _optoutId);
+    if (_optoutAc && !_optoutAc.emailOptOut) {
+      DB.update('ac', _optoutId, ac => ({ ...ac, emailOptOut: true }));
+      toast(`${_optoutAc.name || 'Account'} has been unsubscribed from marketing emails.`, 6000);
+    }
+    // Clean URL so refresh doesn't re-trigger
+    history.replaceState(null, '', window.location.pathname);
+  }
 
   // Navigate to dashboard
   nav('dashboard');
