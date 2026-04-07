@@ -998,10 +998,10 @@
 
       <!-- Accounts Going Cold -->
       <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr"><h2>Accounts Going Cold</h2><small style="color:var(--muted);font-size:12px">No order in 45+ days, previously ordered</small></div>
+        <div class="section-hdr"><h2>Accounts Going Cold</h2><small style="color:var(--muted);font-size:12px">Active accounts with no recent order — 3 tiers</small></div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Account</th><th>Last Order</th><th>Days Since Order</th><th>Outstanding Balance</th></tr></thead>
+            <thead><tr><th>Account</th><th>Last Order</th><th>Days Since Order</th><th>Tier</th><th>Outstanding Balance</th></tr></thead>
             <tbody id="rep-going-cold-tbody"></tbody>
           </table>
         </div>
@@ -1009,7 +1009,8 @@
 
       <!-- Month over Month Summary -->
       <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr"><h2>Month over Month</h2><small style="color:var(--muted);font-size:12px">Last 6 months — cases and revenue from orders</small></div>
+        <div class="section-hdr"><h2>Month over Month</h2><small style="color:var(--muted);font-size:12px">Last 24 months — same month across years for seasonal comparison</small></div>
+        <div id="rep-mom-callout"></div>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>Month</th><th>Orders</th><th>Cases Moved</th><th>Est. Revenue</th></tr></thead>

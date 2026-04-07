@@ -7685,36 +7685,42 @@ function renderGoingColdReport() {
   const tb = qs('#rep-going-cold-tbody');
   if (!tb) return;
 
-  const COLD_DAYS   = 45;
-  const todayStr    = today();
-  const orders      = DB.a('orders').filter(o => o.status !== 'cancelled');
-  const accounts    = DB.a('ac').filter(a => a.status === 'active');
-  const invoices    = DB.a('iv');
+  const TIERS = [
+    { days: 90, label: '90+ days', bg: '#fef2f2', color: '#dc2626', cls: 'red'   },
+    { days: 60, label: '60+ days', bg: '#fff7ed', color: '#ea580c', cls: 'orange' },
+    { days: 45, label: '45+ days', bg: '#fefce8', color: '#d97706', cls: 'amber' },
+  ];
+
+  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const accounts = DB.a('ac').filter(a => a.status === 'active');
+  const invoices = DB.a('iv');
 
   const rows = [];
   accounts.forEach(ac => {
     const acOrds = orders.filter(o => o.accountId === ac.id);
-    if (!acOrds.length) return; // must have at least one order
+    if (!acOrds.length) return;
 
-    const lastOrd = acOrds.reduce((best, o) => (!best || (o.dueDate || '') > (best.dueDate || '') ? o : best), null);
+    const lastOrd   = acOrds.reduce((best, o) => (!best || (o.dueDate || '') > (best.dueDate || '') ? o : best), null);
     const daysSince = lastOrd ? daysAgo(lastOrd.dueDate) : 999;
-    if (daysSince < COLD_DAYS) return;
+    if (daysSince < 45) return;
 
+    const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
     const outstanding = invoices.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding });
+    rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding, tier });
   });
 
   rows.sort((a, b) => b.daysSince - a.daysSince);
 
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="4" class="empty">No accounts going cold &mdash; great!</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="empty">No accounts going cold &mdash; great!</td></tr>';
     return;
   }
 
-  tb.innerHTML = rows.map(r => `<tr>
+  tb.innerHTML = rows.map(r => `<tr style="background:${r.tier.bg}">
     <td>${escHtml(r.name)}</td>
     <td>${r.lastOrder ? fmtD(r.lastOrder) : '—'}</td>
-    <td><span style="color:var(--red);font-weight:600">${r.daysSince}d</span></td>
+    <td><span style="color:${r.tier.color};font-weight:600">${r.daysSince}d</span></td>
+    <td><span class="badge" style="background:${r.tier.bg};color:${r.tier.color};border:1px solid ${r.tier.color};font-size:10px">${r.tier.label}</span></td>
     <td>${r.outstanding > 0 ? fmtC(r.outstanding) : '<span style="color:var(--muted)">—</span>'}</td>
   </tr>`).join('');
 }
@@ -7728,7 +7734,8 @@ function renderMomReport() {
   const months = [];
   const now    = new Date();
 
-  for (let i = 5; i >= 0; i--) {
+  // Show last 24 months so each calendar month appears across 2 years
+  for (let i = 23; i >= 0; i--) {
     const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -7746,8 +7753,30 @@ function renderMomReport() {
     m.revenue += calcOrderValue(o);
   });
 
+  // Best / Worst month by cases (exclude months with 0 cases)
+  const withData = months.filter(m => m.cases > 0);
+  const bestMo   = withData.length ? withData.reduce((a, b) => b.cases > a.cases ? b : a) : null;
+  const worstMo  = withData.length ? withData.reduce((a, b) => b.cases < a.cases ? b : a) : null;
+
+  const calloutEl = qs('#rep-mom-callout');
+  if (calloutEl) {
+    calloutEl.innerHTML = (bestMo || worstMo) ? `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        ${bestMo  ? `<div style="flex:1;min-width:180px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px">
+          <div style="font-size:11px;font-weight:600;color:#16a34a;text-transform:uppercase;letter-spacing:0.05em">Best Month</div>
+          <div style="font-size:18px;font-weight:700;margin:2px 0">${bestMo.label}</div>
+          <div style="font-size:13px;color:#16a34a">${fmt(bestMo.cases)} cases &nbsp;·&nbsp; ${fmtC(bestMo.revenue)}</div>
+        </div>` : ''}
+        ${worstMo && worstMo.key !== bestMo?.key ? `<div style="flex:1;min-width:180px;padding:12px 16px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px">
+          <div style="font-size:11px;font-weight:600;color:#ea580c;text-transform:uppercase;letter-spacing:0.05em">Worst Month</div>
+          <div style="font-size:18px;font-weight:700;margin:2px 0">${worstMo.label}</div>
+          <div style="font-size:13px;color:#ea580c">${fmt(worstMo.cases)} cases &nbsp;·&nbsp; ${fmtC(worstMo.revenue)}</div>
+        </div>` : ''}
+      </div>` : '';
+  }
+
   tb.innerHTML = months.map(m => `<tr>
-    <td>${m.label}</td>
+    <td style="${m.key === bestMo?.key ? 'font-weight:600;color:#16a34a' : m.key === worstMo?.key ? 'font-weight:600;color:#ea580c' : ''}">${m.label}</td>
     <td>${m.orderCount}</td>
     <td>${fmt(m.cases)}</td>
     <td>${fmtC(m.revenue)}</td>
