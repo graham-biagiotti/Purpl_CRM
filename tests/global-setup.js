@@ -62,37 +62,57 @@ module.exports = async function globalSetup() {
     if (dp) dp.velocityReports.push(vr);
   }
 
-  // ── Write main data store — split into chunks ─────────────
-  // The full SEED object exceeds gRPC default timeout when written
-  // as one .set() call. Write a skeleton first, then update large
-  // arrays one at a time with 500ms gaps.
+  // ── Write main data store — skip if already seeded ───────────
+  // Overwriting a large existing document via gRPC causes DEADLINE_EXCEEDED.
+  // The emulator keeps data between spec runs and tests use unique IDs for
+  // any created records, so re-seeding is only needed when the store is empty.
   const LARGE_KEYS = [
     'ac','pr','iv','orders','inv_log','prod_hist',
     'lf_invoices','combined_invoices','dist_invoices','dist_profiles',
     'audit_log',
   ];
 
-  // Build skeleton without large arrays
-  const skeleton = {};
-  for (const k of Object.keys(SEED)) {
-    if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
-  }
-
   const storeRef = db.collection('workspace').doc('main').collection('data').doc('store');
 
-  console.log('[setup] Writing skeleton seed data...');
-  await storeRef.set(skeleton);
-  await delay(500);
-  console.log('[setup] Skeleton written.');
+  // Check if store already has seed data (ac array present and non-empty)
+  const existing = await storeRef.get();
+  const alreadySeeded = existing.exists && (existing.data()?.ac?.length > 0);
 
-  // Write each large array as a separate update
-  for (const key of LARGE_KEYS) {
-    if (SEED[key] === undefined) continue;
-    console.log(`[setup] Writing ${key} (${Array.isArray(SEED[key]) ? SEED[key].length + ' items' : 'object'})...`);
-    await storeRef.update({ [key]: SEED[key] });
-    await delay(500);
+  if (alreadySeeded) {
+    console.log('[setup] Store already seeded (' + (existing.data().ac?.length||0) + ' accounts) — skipping write.');
+  } else {
+    // Build skeleton without large arrays (to avoid gRPC timeout on first write)
+    const skeleton = {};
+    for (const k of Object.keys(SEED)) {
+      if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
+    }
+
+    console.log('[setup] Writing skeleton seed data...');
+    await storeRef.set(skeleton);
+    await delay(1000);
+    console.log('[setup] Skeleton written.');
+
+    // Write each large array as a separate update with retry
+    for (const key of LARGE_KEYS) {
+      if (SEED[key] === undefined) continue;
+      const len = Array.isArray(SEED[key]) ? SEED[key].length + ' items' : 'object';
+      console.log(`[setup] Writing ${key} (${len})...`);
+      let attempts = 0;
+      while (attempts < 3) {
+        try {
+          await storeRef.update({ [key]: SEED[key] });
+          break;
+        } catch (e) {
+          attempts++;
+          if (attempts >= 3) throw e;
+          console.log(`[setup] Retry ${attempts} for ${key}...`);
+          await delay(1000 * attempts);
+        }
+      }
+      await delay(700);
+    }
+    console.log('[setup] Main store written.');
   }
-  console.log('[setup] Main store written.');
 
   // ── Write portal orders ───────────────────────────────────
   const ordBatch = db.batch();
