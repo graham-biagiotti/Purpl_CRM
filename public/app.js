@@ -1373,6 +1373,12 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
 
   qs('#iv-save-btn').onclick = () => saveInv(id, isNew);
 
+  const ivPdfBtn = qs('#iv-pdf-btn');
+  if (ivPdfBtn) {
+    ivPdfBtn.style.display = isNew ? 'none' : '';
+    ivPdfBtn.onclick = () => generateInvoicePrint(id);
+  }
+
   const ivSendBtn = qs('#iv-send-btn');
   if (ivSendBtn) {
     ivSendBtn.style.display = isNew ? 'none' : '';
@@ -9497,6 +9503,12 @@ function openLfInvoiceModal(id) {
 
   qs('#lfi-save-btn').onclick = () => saveLfInvoice(id, isNew);
 
+  const lfiPdfBtn = qs('#lfi-pdf-btn');
+  if (lfiPdfBtn) {
+    lfiPdfBtn.style.display = isNew ? 'none' : '';
+    lfiPdfBtn.onclick = () => generateLfInvoicePrint(id);
+  }
+
   const lfiSendBtn = qs('#lfi-send-btn');
   if (lfiSendBtn) {
     lfiSendBtn.style.display = isNew ? 'none' : '';
@@ -12672,6 +12684,166 @@ function generateInvoicePrint(invoiceId) {
 <div class="footer">
   Thank you for your business — purpl by Pumpkin Blossom Farm
   <br>drinkpurpl.com · lavender@pbfwholesale.com
+</div>
+
+</body></html>`);
+  w.document.close();
+}
+
+function generateLfInvoicePrint(invoiceId) {
+  const inv = DB.a('lf_invoices').find(x => x.id === invoiceId);
+  if (!inv) { toast('Invoice not found'); return; }
+  const s        = DB.obj('invoice_settings', {});
+  const ac       = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const fromName = s.fromName  || 'Pumpkin Blossom Farm LLC';
+  const fromAddr = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
+  const invNum   = inv.number || '—';
+  const status   = inv.status || 'unpaid';
+
+  const itemRows = (inv.lineItems || []).map(li => {
+    if (li.hasVariants && li.variantLines) {
+      return li.variantLines.map(vl => `<tr>
+        <td><strong>${esc(li.skuName || 'Item')}</strong> — ${esc(vl.variantName || '')}</td>
+        <td style="text-align:center">${vl.units || 0}</td>
+        <td style="text-align:right">$${parseFloat(li.unitPrice || 0).toFixed(2)}</td>
+        <td style="text-align:right">$${parseFloat(vl.lineTotal || 0).toFixed(2)}</td>
+      </tr>`).join('');
+    }
+    return `<tr>
+      <td><strong>${esc(li.skuName || 'Item')}</strong></td>
+      <td style="text-align:center">${li.units || 0}</td>
+      <td style="text-align:right">$${parseFloat(li.unitPrice || 0).toFixed(2)}</td>
+      <td style="text-align:right">$${parseFloat(li.lineTotal || 0).toFixed(2)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="4" style="color:#9ca3af">No line items</td></tr>`;
+
+  const paymentHtml = `
+    ${s.stripeLink ?
+      `<div style="margin-bottom:8px">
+        <a href="${s.stripeLink}"
+          style="background:#2a5c3f;color:#fff;padding:10px 20px;
+          border-radius:8px;text-decoration:none;font-weight:600;
+          display:inline-block">
+          💳 Pay Now Online →</a></div>` : ''}
+    ${s.achRouting ?
+      `<div style="margin-bottom:4px">
+        <strong>ACH Transfer:</strong>
+        Routing: ${s.achRouting} ·
+        Account: ${s.achAccount}</div>` : ''}
+    ${(s.checkInstructions || s.paymentInstructions) ?
+      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
+      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
+  w.document.write(`<!DOCTYPE html>
+<html><head><title>Invoice ${invNum}</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    max-width:800px;margin:40px auto;padding:0 20px;
+    color:#1a1a2e;font-size:13px}
+  .header{display:flex;justify-content:space-between;
+    align-items:flex-start;margin-bottom:32px;
+    padding-bottom:20px;border-bottom:2px solid #2a5c3f}
+  .inv-label{font-size:32px;font-weight:700;
+    color:#2a5c3f;letter-spacing:-1px}
+  .inv-meta div{margin-bottom:4px;font-size:12px}
+  .bill-to{display:grid;grid-template-columns:1fr 1fr;
+    gap:20px;margin-bottom:24px}
+  .section-label{font-size:10px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.08em;
+    color:#9ca3af;margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px}
+  th{background:#f9fafb;padding:8px 12px;text-align:left;
+    font-size:11px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.05em;color:#6b7280;
+    border-bottom:2px solid #e5e7eb}
+  td{padding:10px 12px;border-bottom:1px solid #f3f4f6}
+  .total-row td{font-weight:700;font-size:15px;
+    color:#2a5c3f;border-top:2px solid #2a5c3f;border-bottom:none}
+  .payment-box{background:#f0fdf4;border-radius:8px;
+    padding:16px;margin-bottom:20px}
+  .footer{text-align:center;color:#9ca3af;font-size:11px;
+    margin-top:32px;padding-top:16px;
+    border-top:1px solid #e5e7eb}
+  .status-badge{display:inline-block;padding:3px 10px;
+    border-radius:20px;font-size:11px;font-weight:600;
+    background:${status==='paid'?'#dcfce7':
+      status==='overdue'?'#fee2e2':'#fef3c7'};
+    color:${status==='paid'?'#166534':
+      status==='overdue'?'#991b1b':'#92400e'}}
+  @media print{button{display:none}}
+</style></head><body>
+
+<div class="header">
+  <div>
+    <div style="font-size:16px;font-weight:700;color:#2a5c3f">
+      Lavender Fields at Pumpkin Blossom Farm
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:#6b7280">
+      ${fromName}<br>${fromAddr}<br>lavender@pbfwholesale.com · 603-748-3038
+    </div>
+  </div>
+  <div style="text-align:right">
+    <div class="inv-label">INVOICE</div>
+    <div class="inv-meta" style="margin-top:8px">
+      <div><strong>#${invNum}</strong></div>
+      <div>Date: ${fmtDate(inv.issued || inv.date || '')}</div>
+      <div>Due: ${fmtDate(inv.due || '')}</div>
+      <div style="margin-top:6px">
+        <span class="status-badge">${status.toUpperCase()}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bill-to">
+  <div>
+    <div class="section-label">Bill To</div>
+    <div style="font-weight:600;font-size:14px">${esc(ac.name || inv.accountName || '?')}</div>
+    ${ac.address ? `<div style="color:#6b7280;font-size:12px;margin-top:4px">${esc(ac.address)}</div>` : ''}
+    ${ac.email   ? `<div style="color:#6b7280;font-size:12px">${esc(ac.email)}</div>` : ''}
+  </div>
+  <div>
+    <div class="section-label">Payment Terms</div>
+    <div>Net ${s.terms || 30} days</div>
+  </div>
+</div>
+
+<table>
+  <thead><tr>
+    <th>Product</th>
+    <th style="text-align:center">Units</th>
+    <th style="text-align:right">Unit Price</th>
+    <th style="text-align:right">Total</th>
+  </tr></thead>
+  <tbody>${itemRows}</tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="3">Total Due</td>
+      <td style="text-align:right">$${parseFloat(inv.total || 0).toFixed(2)}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<div class="payment-box">
+  <div class="section-label" style="margin-bottom:10px">Payment Options</div>
+  ${paymentHtml}
+</div>
+
+${inv.notes ? `<div style="margin-bottom:20px;font-size:13px;color:#6b7280"><strong>Notes:</strong> ${esc(inv.notes)}</div>` : ''}
+
+<div style="text-align:center;margin:20px 0">
+  <button onclick="window.print()"
+    style="background:#2a5c3f;color:#fff;border:none;
+    padding:10px 24px;border-radius:8px;font-size:14px;
+    font-weight:600;cursor:pointer">
+    🖨️ Print / Save as PDF</button>
+</div>
+
+<div class="footer">
+  Thank you for your business — Lavender Fields at Pumpkin Blossom Farm
+  <br>pumpkinblossomfarm.com · lavender@pbfwholesale.com
 </div>
 
 </body></html>`);
