@@ -632,6 +632,12 @@ function renderDash() {
   renderReorderPredictions();
   renderInvoiceReminders();
 
+  // Check for new wholesale applications (async, non-blocking)
+  firebase.firestore().collection('portal_inquiries')
+    .where('status', '==', 'new').get()
+    .then(snap => _updateApplicationsBadge(snap.size))
+    .catch(() => {});
+
   // Pending combined invoice notifications (portal orders awaiting invoicing)
   const pendingInvs = DB.a('pending_invoices').filter(x => x.status === 'pending');
   if (pendingInvs.length) {
@@ -3885,6 +3891,9 @@ function renderProspects() {
     el.innerHTML = _dbLoadingHTML(4);
     return;
   }
+
+  // Load applications asynchronously (non-blocking)
+  renderApplications();
 
   el.classList.toggle('pr-compact', _prCompact);
   const btn = qs('#pr-compact-btn');
@@ -13003,4 +13012,217 @@ async function importWholesaleInquiries() {
     console.error(e);
     toast('Error importing inquiries');
   }
+}
+
+// ── Wholesale Application Pipeline ───────────────────────
+
+async function renderApplications() {
+  const el = qs('#pr-applications-section');
+  if (!el) return;
+
+  el.innerHTML = `<div style="font-size:13px;color:var(--muted);padding:8px 0">Loading applications…</div>`;
+
+  let docs = [];
+  try {
+    const snap = await firebase.firestore()
+      .collection('portal_inquiries')
+      .orderBy('submittedAt', 'desc')
+      .limit(50)
+      .get();
+    docs = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+  } catch(e) {
+    try {
+      // Fallback: no orderBy if index missing
+      const snap2 = await firebase.firestore().collection('portal_inquiries').get();
+      docs = snap2.docs.map(d => ({ _docId: d.id, ...d.data() }))
+        .sort((a, b) => (b.submittedAt || '') > (a.submittedAt || '') ? 1 : -1);
+    } catch(e2) {
+      el.innerHTML = `<div style="font-size:13px;color:var(--muted)">Could not load applications.</div>`;
+      return;
+    }
+  }
+
+  // Update sidebar badge and dashboard card with new count
+  const newCount = docs.filter(d => !d.status || d.status === 'new').length;
+  _updateApplicationsBadge(newCount);
+
+  if (!docs.length) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const statusLabel = { new:'New', reviewed:'Reviewed', approved:'Approved', rejected:'Rejected', imported:'Imported', duplicate:'Duplicate' };
+  const statusColor = { new:'#dc2626', reviewed:'#d97706', approved:'#16a34a', rejected:'#6b7280', imported:'#6b7280', duplicate:'#6b7280' };
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:13px;font-weight:600">📋 Wholesale Applications <span class="badge ${newCount > 0 ? 'red' : 'gray'}" style="margin-left:6px">${docs.length}</span></div>
+      <button class="btn xs" onclick="renderApplications()">Refresh</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+      ${docs.map(app => {
+        const st = app.status || 'new';
+        const brands = (app.brandsInterested || []).join(', ') || '—';
+        const dateStr = app.submittedAt
+          ? (typeof app.submittedAt === 'string' ? fmtD(app.submittedAt.slice(0,10))
+             : (app.submittedAt.toDate ? fmtD(app.submittedAt.toDate().toISOString().slice(0,10)) : '—'))
+          : '—';
+        const isActive = st === 'new' || st === 'reviewed';
+        return `<div class="card" style="padding:14px;border-left:3px solid ${statusColor[st] || '#9ca3af'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div style="font-weight:600;font-size:14px">${escHtml(app.businessName || '—')}</div>
+            <span class="badge" style="background:${statusColor[st]};color:#fff;font-size:10px">${statusLabel[st] || st}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.7">
+            ${app.contactName ? `<div>👤 ${escHtml(app.contactName)}</div>` : ''}
+            ${app.email ? `<div>✉ ${escHtml(app.email)}</div>` : ''}
+            ${app.phone ? `<div>📞 ${escHtml(app.phone)}</div>` : ''}
+            ${app.storeType ? `<div>🏪 ${escHtml(app.storeType)}</div>` : ''}
+            <div>🏷 Interested in: ${escHtml(brands)}</div>
+            <div>📅 Submitted: ${dateStr}</div>
+          </div>
+          ${isActive ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn sm primary" onclick="approveApplication('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Approve</button>
+            <button class="btn sm" onclick="convertApplicationToProspect('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Convert to Prospect</button>
+            <button class="btn sm" style="color:var(--red);border-color:var(--red)" onclick="rejectApplication('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Reject</button>
+          </div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function _updateApplicationsBadge(count) {
+  const badge = qs('#nav-applications-badge');
+  if (badge) {
+    if (count > 0) { badge.textContent = count; badge.style.display = 'inline'; }
+    else { badge.style.display = 'none'; }
+  }
+  const card = qs('#dash-applications-card');
+  if (card) {
+    if (count > 0) {
+      card.style.display = '';
+      card.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:600;font-size:14px;color:#991b1b;margin-bottom:2px">📋 ${count} new wholesale application${count !== 1 ? 's' : ''} pending review</div>
+          <div style="font-size:13px;color:#7f1d1d">New retailers have applied through your wholesale page.</div>
+        </div>
+        <button class="btn xs" style="background:#dc2626;color:#fff;border:none;flex-shrink:0" onclick="nav('prospects')">Review Applications</button>
+      </div>`;
+    } else {
+      card.style.display = 'none';
+      card.innerHTML = '';
+    }
+  }
+}
+
+async function approveApplication(docId, app) {
+  if (!confirm2(`Approve ${app.businessName || 'this application'} and create an account?`)) return;
+
+  const acId    = uid();
+  const token   = btoa(acId + ':' + Math.random().toString(36).slice(2)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const isPbf   = (app.brandsInterested || []).some(b => b === 'lf' || b === 'lavender');
+
+  const rec = {
+    id:         acId,
+    name:       app.businessName || app.contactName || '—',
+    contact:    app.contactName  || '',
+    email:      app.email        || '',
+    phone:      app.phone        || '',
+    address:    app.address      || '',
+    type:       app.storeType    || 'Retail',
+    status:     'active',
+    isPbf,
+    since:      today(),
+    source:     'Wholesale Page',
+    orderPortalToken: token,
+    orderPortalTokenCreatedAt: today(),
+    contacts:   app.contactName || app.email
+      ? [{ id: uid(), name: app.contactName||'', email: app.email||'', phone: app.phone||'', isPrimary: true }]
+      : [],
+    notes: [],
+    outreach: [],
+    samples: [],
+    skus: [],
+    par: {},
+  };
+
+  DB.push('ac', rec);
+  auditLog('create', 'account', acId, rec.name);
+
+  // Send approved cadence email
+  if (app.email) {
+    try {
+      const tpl = getCadenceEmailTemplate('approved', rec);
+      await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+    } catch(e) { console.error('Approve email failed', e); }
+  }
+
+  // Mark application approved in Firestore
+  try {
+    await firebase.firestore().collection('portal_inquiries').doc(docId).update({
+      status: 'approved', approvedAt: firebase.firestore.FieldValue.serverTimestamp(), accountId: acId
+    });
+  } catch(e) { console.error('Firestore update failed', e); }
+
+  toast(`${rec.name} approved and added as an account`);
+  renderAccounts();
+  renderApplications();
+}
+
+async function rejectApplication(docId, app) {
+  if (!confirm2(`Reject application from ${app.businessName || 'this applicant'}?`)) return;
+
+  if (app.email) {
+    try {
+      const tmpAc = { name: app.businessName||'', email: app.email||'', contact: app.contactName||'', contacts: [{name:app.contactName||'',email:app.email||'',isPrimary:true}], orderPortalToken: null };
+      const tpl = getCadenceEmailTemplate('rejected', tmpAc);
+      await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+    } catch(e) { console.error('Reject email failed', e); }
+  }
+
+  try {
+    await firebase.firestore().collection('portal_inquiries').doc(docId).update({
+      status: 'rejected', rejectedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) { console.error('Firestore update failed', e); }
+
+  toast('Application rejected');
+  renderApplications();
+}
+
+async function convertApplicationToProspect(docId, app) {
+  const isPbf = (app.brandsInterested || []).some(b => b === 'lf' || b === 'lavender');
+  const notes = [
+    app.storeDescription ? 'Store: ' + app.storeDescription : '',
+    app.howHeard         ? 'How they heard: ' + app.howHeard : '',
+    app.monthlyVolume    ? 'Monthly volume: ' + app.monthlyVolume : '',
+  ].filter(Boolean).join('\n');
+
+  DB.push('pr', {
+    id:       uid(),
+    name:     app.businessName || app.contactName || '—',
+    contact:  app.contactName  || '',
+    email:    app.email        || '',
+    phone:    app.phone        || '',
+    address:  app.address      || '',
+    type:     app.storeType    || 'Retail',
+    isPbf,
+    status:   'lead',
+    priority: 'medium',
+    source:   'Wholesale Page',
+    notes:    notes ? [{ id: uid(), text: notes, date: today() }] : [],
+    outreach: [],
+    samples:  [],
+    createdAt: today(),
+  });
+
+  try {
+    await firebase.firestore().collection('portal_inquiries').doc(docId).update({
+      status: 'reviewed', reviewedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) { console.error('Firestore update failed', e); }
+
+  toast(`${app.businessName || 'Applicant'} converted to prospect`);
+  renderProspects();
+  renderApplications();
 }
