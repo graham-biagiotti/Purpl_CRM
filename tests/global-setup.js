@@ -1,37 +1,25 @@
 'use strict';
 // =============================================================
 //  global-setup.js  —  Playwright global setup
-//  1. Seeds Firebase emulator with test data
-//  2. Creates test auth user
-//  3. Creates empty .auth/user.json (auth is injected per-test
-//     via IndexedDB in fixtures.js — storageState is not used
-//     for Firebase auth since it stores in IndexedDB)
+//  1. Seeds Firebase emulator with test data (always fresh)
+//  2. Creates test auth users
+//  3. Creates empty .auth/user.json placeholder
 // =============================================================
 
 const path = require('path');
 const fs   = require('fs');
 
-// Start emulators before running tests:
-//   firebase emulators:start --only firestore,auth,functions
-//
-// The functions emulator requires functions/index.js to be present.
-// RESEND_API_KEY is stubbed to 'test-key' via functions/.env.local so
-// no real emails are sent during test runs.
-
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 module.exports = async function globalSetup() {
-  // ── Point Firebase Admin SDK at local emulators ───────────
-  process.env.FIRESTORE_EMULATOR_HOST      = 'localhost:8080';
-  process.env.FIREBASE_AUTH_EMULATOR_HOST  = 'localhost:9099';
+  process.env.FIRESTORE_EMULATOR_HOST          = 'localhost:8080';
+  process.env.FIREBASE_AUTH_EMULATOR_HOST      = 'localhost:9099';
   process.env.FIREBASE_FUNCTIONS_EMULATOR_HOST = 'localhost:5001';
 
   const admin = require('firebase-admin');
-
   if (!admin.apps.length) {
     admin.initializeApp({ projectId: 'purpl-crm' });
   }
-
   const db   = admin.firestore();
   const auth = admin.auth();
 
@@ -39,149 +27,109 @@ module.exports = async function globalSetup() {
   const { SEED, PORTAL_ORDERS, PORTAL_NOTIFY } = require('./seed-data.js');
   const {
     extraAccounts, productionRuns, orders: ph1Orders, invoices: ph1Invoices,
-    outreach, samples, portalInquiries, auditLog, distVelocity,
+    portalInquiries, auditLog, distVelocity,
   } = require('./seed-phase1.js');
 
-  // ── Merge Phase 1 data into SEED ─────────────────────────
+  // ── Merge Phase 1 into SEED arrays ───────────────────────
   SEED.ac.push(...extraAccounts);
   SEED.prod_hist.push(...productionRuns);
   SEED.orders.push(...ph1Orders);
-
-  const ph1Purpl = ph1Invoices.filter(iv => iv.type === 'purpl');
-  const ph1LF    = ph1Invoices.filter(iv => iv.type === 'lf');
-  const ph1Dist  = ph1Invoices.filter(iv => iv.type === 'dist');
-  SEED.iv.push(...ph1Purpl);
-  SEED.lf_invoices.push(...ph1LF);
-  SEED.dist_invoices.push(...ph1Dist);
-
+  SEED.iv.push(...ph1Invoices.filter(iv => iv.type === 'purpl'));
+  SEED.lf_invoices.push(...ph1Invoices.filter(iv => iv.type === 'lf'));
+  SEED.dist_invoices.push(...ph1Invoices.filter(iv => iv.type === 'dist'));
   SEED.audit_log = auditLog;
-
-  // Append velocity reports into matching dist_profiles entries
   for (const vr of distVelocity) {
     const dp = SEED.dist_profiles.find(d => d.id === vr.distributorId);
     if (dp) dp.velocityReports.push(vr);
   }
 
-  // ── Write main data store — skip if already seeded ───────────
-  // Overwriting a large existing document via gRPC causes DEADLINE_EXCEEDED.
-  // The emulator keeps data between spec runs and tests use unique IDs for
-  // any created records, so re-seeding is only needed when the store is empty.
+  // ── Clear Firestore emulator data (fresh start every run) ────
+  // Creates from scratch — faster than overwriting a large existing document.
+  try {
+    const http = require('http');
+    await new Promise((resolve) => {
+      const req = http.request({
+        hostname: 'localhost', port: 8080, method: 'DELETE',
+        path: '/emulator/v1/projects/purpl-crm/databases/(default)/documents',
+      }, (res) => { res.resume(); res.on('end', resolve); });
+      req.on('error', () => resolve());
+      req.setTimeout(5000, () => { req.destroy(); resolve(); }); // 5s timeout
+      req.end();
+    });
+    console.log('[setup] Emulator data cleared.');
+    await delay(300);
+  } catch (e) {
+    console.log('[setup] Clear skipped:', e.message.slice(0, 60));
+  }
+
+  // ── Write store document — skeleton first, then large arrays ─
+  // Writing the full document in one .set() call causes DEADLINE_EXCEEDED.
+  // Strategy: set a tiny skeleton (no large arrays), then .update() each
+  // large array one at a time with 500ms gaps between writes.
   const LARGE_KEYS = [
-    'ac','pr','iv','orders','inv_log','prod_hist',
-    'lf_invoices','combined_invoices','dist_invoices','dist_profiles',
-    'audit_log',
+    'ac', 'pr', 'iv', 'orders', 'inv_log',
+    'prod_hist', 'lf_invoices', 'combined_invoices',
+    'dist_invoices', 'dist_profiles',
   ];
 
-  const storeRef = db.collection('workspace').doc('main').collection('data').doc('store');
-
-  // Check if store already has seed data (ac array present and non-empty)
-  const existing = await storeRef.get();
-  const alreadySeeded = existing.exists && (existing.data()?.ac?.length > 0);
-
-  if (alreadySeeded) {
-    console.log('[setup] Store already seeded (' + (existing.data().ac?.length||0) + ' accounts) — skipping write.');
-  } else {
-    // Build skeleton without large arrays (to avoid gRPC timeout on first write)
-    const skeleton = {};
-    for (const k of Object.keys(SEED)) {
-      if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
-    }
-
-    console.log('[setup] Writing skeleton seed data...');
-    await storeRef.set(skeleton);
-    await delay(1000);
-    console.log('[setup] Skeleton written.');
-
-    // Write each large array as a separate update with retry
-    for (const key of LARGE_KEYS) {
-      if (SEED[key] === undefined) continue;
-      const len = Array.isArray(SEED[key]) ? SEED[key].length + ' items' : 'object';
-      console.log(`[setup] Writing ${key} (${len})...`);
-      let attempts = 0;
-      while (attempts < 3) {
-        try {
-          await storeRef.update({ [key]: SEED[key] });
-          break;
-        } catch (e) {
-          attempts++;
-          if (attempts >= 3) throw e;
-          console.log(`[setup] Retry ${attempts} for ${key}...`);
-          await delay(1000 * attempts);
-        }
-      }
-      await delay(700);
-    }
-    console.log('[setup] Main store written.');
+  const skeleton = {};
+  for (const k of Object.keys(SEED)) {
+    if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
   }
+  // Include audit_log in skeleton (it's small — 80 entries / ~13 KB)
+  skeleton.audit_log = SEED.audit_log;
 
-  // ── Write portal orders ───────────────────────────────────
+  const storeRef = db.collection('workspace').doc('main')
+                     .collection('data').doc('store');
+
+  console.log('[setup] Writing skeleton...');
+  await storeRef.set(skeleton);
+  await delay(500);
+
+  for (const key of LARGE_KEYS) {
+    if (SEED[key] === undefined) continue;
+    const n = Array.isArray(SEED[key]) ? SEED[key].length : '—';
+    console.log(`[setup]   .update ${key} (${n})`);
+    await storeRef.update({ [key]: SEED[key] });
+    await delay(500);
+  }
+  console.log('[setup] Main store written.');
+
+  // ── Portal collections ────────────────────────────────────
   const ordBatch = db.batch();
-  for (const order of PORTAL_ORDERS) {
-    ordBatch.set(db.collection('portal_orders').doc(order.id), order);
-  }
+  for (const o of PORTAL_ORDERS) ordBatch.set(db.collection('portal_orders').doc(o.id), o);
   await ordBatch.commit();
   console.log('[setup] Portal orders written:', PORTAL_ORDERS.length);
 
-  // ── Write portal notify ───────────────────────────────────
   const notBatch = db.batch();
-  for (const n of PORTAL_NOTIFY) {
-    notBatch.set(db.collection('portal_notify').doc(n.id), n);
-  }
+  for (const n of PORTAL_NOTIFY) notBatch.set(db.collection('portal_notify').doc(n.id), n);
   await notBatch.commit();
   console.log('[setup] Portal notify written:', PORTAL_NOTIFY.length);
 
-  // ── Write portal inquiries ────────────────────────────────
   const inqBatch = db.batch();
-  for (const inq of portalInquiries) {
-    inqBatch.set(db.collection('portal_inquiries').doc(inq.id), inq);
-  }
+  for (const inq of portalInquiries) inqBatch.set(db.collection('portal_inquiries').doc(inq.id), inq);
   await inqBatch.commit();
   console.log('[setup] Portal inquiries written:', portalInquiries.length);
 
-  // ── Create test auth user (CRM admin) ────────────────────
-  try {
-    await auth.createUser({
-      uid:         'test-uid-001',
-      email:       'test@purpl.local',
-      password:    'testpass123',
-      displayName: 'Test User',
-    });
-    console.log('[setup] Test auth user created.');
-  } catch (e) {
-    if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
-      console.log('[setup] Test auth user already exists — OK.');
-    } else {
-      throw e;
+  // ── Auth users ────────────────────────────────────────────
+  for (const u of [
+    { uid: 'test-uid-001',    email: 'test@purpl.local',    password: 'testpass123',  displayName: 'Test User'    },
+    { uid: 'test-retailer-001', email: 'retailer@test.local', password: 'retailer123', displayName: 'Test Retailer' },
+  ]) {
+    try {
+      await auth.createUser(u);
+      console.log(`[setup] Auth user created: ${u.email}`);
+    } catch (e) {
+      if (['auth/uid-already-exists','auth/email-already-exists'].includes(e.code)) {
+        console.log(`[setup] Auth user exists: ${u.email}`);
+      } else throw e;
     }
   }
 
-  // ── Create retailer auth user (no CRM access) ─────────────
-  // Used to verify that authenticated non-CRM users cannot reach the
-  // CRM dashboard (index.html) — security boundary test.
-  try {
-    await auth.createUser({
-      uid:         'test-retailer-001',
-      email:       'retailer@test.local',
-      password:    'retailer123',
-      displayName: 'Test Retailer',
-    });
-    console.log('[setup] Retailer auth user created.');
-  } catch (e) {
-    if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
-      console.log('[setup] Retailer auth user already exists — OK.');
-    } else {
-      throw e;
-    }
-  }
-
-  // ── Create .auth/user.json placeholder ───────────────────
-  // Real auth injection happens per-test via addInitScript in fixtures.js.
-  // The 'crm' project still references this file as storageState;
-  // an empty-but-valid file satisfies Playwright's check.
+  // ── .auth/user.json placeholder ───────────────────────────
   const authDir = path.join(__dirname, '.auth');
   if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-  const placeholder = { cookies: [], origins: [] };
-  fs.writeFileSync(path.join(authDir, 'user.json'), JSON.stringify(placeholder));
+  fs.writeFileSync(path.join(authDir, 'user.json'), JSON.stringify({ cookies: [], origins: [] }));
   console.log('[setup] Auth placeholder created.');
 
   await admin.app().delete();
