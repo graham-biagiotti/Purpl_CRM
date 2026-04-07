@@ -188,6 +188,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   <!-- Past order history (shown only for matched accounts with history) -->
   <div id="order-history" style="display:none"></div>
 
+  <!-- Outstanding invoices (shown only for matched accounts with unpaid invoices) -->
+  <div id="outstanding-invoices-section" style="display:none"></div>
+
   <!-- Pre-order banner -->
   <div class="banner" id="preorder-banner">
     ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
@@ -274,6 +277,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
             oninput="updateCans()">
         </div>
         <div class="cans-calc" id="cans-calc"></div>
+        <div id="purpl-prefill-note" style="display:none;font-size:11px;color:var(--purpl);margin-top:4px;font-style:italic">
+          Pre-filled from your last order — adjust as needed.
+        </div>
         <div class="preorder-note" id="preorder-note">
           Pricing and delivery details confirmed at launch.
         </div>
@@ -825,6 +831,9 @@ function init() {
           updateBrandVisibility();
           if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
 
+          // Load outstanding invoices
+          loadOutstandingInvoices(accountId);
+
           var prefs = data.portalPrefs || {};
           if (prefs.billingEmail) {
             var be = document.getElementById('billing-email');
@@ -863,6 +872,8 @@ function init() {
             var dw = document.getElementById('delivery-window');
             if (dw) dw.value = prefs.deliveryNotes;
           }
+          // Auto-fill purpl cases from last order
+          if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
 
           firebase.firestore()
             .collection('portal_orders')
@@ -1223,6 +1234,7 @@ function submitOrder() {
             'portalPrefs.deliveryNotes': (document.getElementById('delivery-window')?.value||'').trim(),
             'portalPrefs.lastUpdated': firebase.firestore.FieldValue.serverTimestamp(),
             ...(lfItems.length ? {'portalPrefs.lfLastOrder': lfLastOrder} : {}),
+            ...(cases > 0 ? {'portalPrefs.purplLastCases': cases} : {}),
           }).catch(function(e) {
             console.log('Prefs save error:', e);
           });
@@ -1294,6 +1306,18 @@ function renderPastOrders(orders) {
   var list = document.getElementById('past-orders-list');
   if (!section || !list) return;
   section.style.display = 'block';
+
+  // Update header to be a collapsible toggle
+  var h2 = section.querySelector('h2');
+  if (h2 && !h2.dataset.wired) {
+    h2.dataset.wired = '1';
+    var countLabel = orders && orders.length ? ' (' + orders.length + ')' : '';
+    h2.innerHTML = '<span style="cursor:pointer;user-select:none" onclick="toggleOrderHistory()">▶ Order History' + countLabel + '</span>';
+    list.style.display = 'none'; // collapsed by default
+    var descEl = section.querySelector('p');
+    if (descEl) descEl.style.display = 'none'; // hide description when collapsed
+  }
+
   if (!orders || !orders.length) {
     list.innerHTML = '<div style="text-align:center;' +
       'padding:20px;color:#9ca3af;font-size:13px">' +
@@ -1594,6 +1618,86 @@ function getDistributors() {
   ).map(function(i) {
     return i.value.trim();
   }).filter(function(v) { return v.length > 0; });
+}
+
+// ── Order History toggle ──────────────────────────────────
+function toggleOrderHistory() {
+  var list = document.getElementById('past-orders-list');
+  var section = document.getElementById('past-orders-section');
+  if (!list) return;
+  var open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : 'block';
+  var descEl = section && section.querySelector('p');
+  if (descEl) descEl.style.display = open ? 'none' : 'block';
+  var h2 = section && section.querySelector('h2 span');
+  if (h2) {
+    h2.textContent = h2.textContent.replace(/^[▶▼] /, (open ? '▶ ' : '▼ '));
+  }
+}
+
+// ── Outstanding invoices ──────────────────────────────────
+function loadOutstandingInvoices(acId) {
+  // Read from the CRM store doc to get unpaid invoices for this account
+  db.collection('workspace').doc('main').collection('data').doc('store')
+    .get()
+    .then(function(doc) {
+      if (!doc.exists) return;
+      var data = doc.data();
+      var invoices = (data.iv || []).filter(function(i) {
+        return i.accountId === acId && i.status !== 'paid';
+      });
+      var settings = data.invoice_settings || {};
+      renderOutstandingInvoices(invoices, settings);
+    })
+    .catch(function(e) { console.log('Invoice load error:', e); });
+}
+
+function renderOutstandingInvoices(invoices, settings) {
+  var el = document.getElementById('outstanding-invoices-section');
+  if (!el || !invoices.length) return;
+
+  var stripeLink = settings.stripeLink || '';
+  var today = new Date().toISOString().slice(0, 10);
+  var rows = invoices.map(function(inv) {
+    var num    = inv.number || inv.invoiceNumber || '—';
+    var due    = inv.due || inv.dueDate || '';
+    var amt    = parseFloat(inv.amount || 0);
+    var status = inv.status || 'unpaid';
+    var isOver = due && due < today;
+    var color  = isOver ? '#dc2626' : '#d97706';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;' +
+      'padding:8px 0;border-bottom:1px solid #ede9fe;font-size:13px">' +
+      '<div>' +
+      '<span style="font-weight:600">Invoice ' + num + '</span>' +
+      (due ? '<div style="font-size:11px;color:#6b7280">Due ' + new Date(due+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:11px;font-weight:600;color:'+color+';">' + status.toUpperCase() + '</span>' +
+      '<span style="font-weight:700">$' + amt.toFixed(2) + '</span>' +
+      (stripeLink ? '<a href="'+stripeLink+'" target="_blank" style="background:#7B4FA0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500">Pay Now</a>' : '') +
+      '</div></div>';
+  }).join('');
+
+  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || 0); }, 0);
+  el.innerHTML = '<div class="card" style="border-left:3px solid #7B4FA0;padding:16px 20px;margin-bottom:16px">' +
+    '<div style="font-size:14px;font-weight:600;color:#4B2082;margin-bottom:12px">' +
+    '💜 Outstanding Invoices' +
+    '</div>' +
+    rows +
+    '<div style="display:flex;justify-content:space-between;padding-top:10px;font-size:13px;font-weight:700;color:#4B2082">' +
+    '<span>Total Outstanding</span><span>$' + total.toFixed(2) + '</span>' +
+    '</div>' +
+    '</div>';
+  el.style.display = 'block';
+}
+
+// ── Auto-fill purpl cases from portalPrefs ────────────────
+function applyPurplPrefill(cases) {
+  if (!cases || cases <= 0) return;
+  var input = document.getElementById('classic-cases');
+  var note  = document.getElementById('purpl-prefill-note');
+  if (input) { input.value = cases; updateCans(); }
+  if (note)  note.style.display = 'block';
 }
 
 function renderOrderHistory(orders) {
