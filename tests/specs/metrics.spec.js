@@ -6,23 +6,31 @@
 'use strict';
 const { test, expect } = require('../fixtures.js');
 const { SEED } = require('../seed-data.js');
+const { invoices: ph1Invoices, extraAccounts } = require('../seed-phase1.js');
 
-// ── Pre-compute expected values from SEED ────────────────────
+// ── Pre-compute expected values from SEED + Phase 1 ─────────
 
 const TODAY = '2026-04-02'; // BASE date anchored in seed-data.js
 
-const activeAccounts = SEED.ac.filter(a => a.status === 'active');
+// Merge Phase 1 data for expected value computation
+const allAc  = [...SEED.ac, ...extraAccounts];
+const ph1Purpl = ph1Invoices.filter(iv => iv.type === 'purpl');
+const ph1LF    = ph1Invoices.filter(iv => iv.type === 'lf');
+const allIv  = [...SEED.iv, ...ph1Purpl];
+const allLf  = [...SEED.lf_invoices, ...ph1LF];
+
+const activeAccounts = allAc.filter(a => a.status === 'active');
 const EXPECTED_ACTIVE_COUNT = activeAccounts.length;
 
 // Purpl outstanding: all iv entries with (accountId || number) and status !== 'paid'
-const unpaidPurplInvoices = SEED.iv.filter(
+const unpaidPurplInvoices = allIv.filter(
   x => (x.accountId || x.number) && x.status !== 'paid'
 );
 const EXPECTED_PURPL_OUTSTANDING = unpaidPurplInvoices
   .reduce((s, x) => s + parseFloat(x.amount || 0), 0);
 
 // LF outstanding: all lf_invoices with status !== 'paid'
-const unpaidLfInvoices = SEED.lf_invoices.filter(i => i.status !== 'paid');
+const unpaidLfInvoices = allLf.filter(i => i.status !== 'paid');
 const EXPECTED_LF_OUTSTANDING = unpaidLfInvoices
   .reduce((s, i) => s + (i.total || 0), 0);
 
@@ -34,7 +42,7 @@ const overdueePurplInvoices = unpaidPurplInvoices.filter(
 );
 const EXPECTED_PURPL_OVERDUE_COUNT = overdueePurplInvoices.length;
 
-// LF overdue: unpaid AND due < TODAY
+// LF overdue: unpaid AND due < TODAY (note: Phase 1 LF invoices may be unpaid past TODAY)
 const overdueLfInvoices = unpaidLfInvoices.filter(
   i => i.due && i.due < TODAY
 );
