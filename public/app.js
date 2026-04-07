@@ -11398,14 +11398,19 @@ async function renderMacPortalOrdersTab(accountId) {
 }
 
 // ── Wire portal settings render into renderSettings ───────
-// Extend renderSettings to also load portal settings
-const _origRenderSettings = renderSettings;
-function renderSettings() {
-  _origRenderSettings();
-  renderPortalSettings();
-  loadInvoiceSettings();
-  loadApiSettings();
-}
+// Extend renderSettings to also load portal settings.
+// Use IIFE + variable assignment (not function declaration) to avoid
+// hoisting — a function declaration would capture itself as _orig,
+// causing infinite recursion / Maximum call stack size exceeded.
+(function () {
+  const _orig = renderSettings;
+  renderSettings = function () {
+    _orig();
+    renderPortalSettings();
+    loadInvoiceSettings();
+    loadApiSettings();
+  };
+}());
 
 
 // ═══════════ INVOICES PAGE (v2 — reads from iv collection) ═══════════
