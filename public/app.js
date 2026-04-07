@@ -7546,6 +7546,7 @@ function renderReports() {
   renderTopAccountsReport();
   renderGoingColdReport();
   renderMomReport();
+  renderSkuPerformanceReport();
 }
 
 // ── Top 10 Accounts by Volume ─────────────────────────────
@@ -7661,6 +7662,77 @@ function renderMomReport() {
     <td>${fmt(m.cases)}</td>
     <td>${fmtC(m.revenue)}</td>
   </tr>`).join('');
+}
+
+// ── SKU Performance ───────────────────────────────────────
+function renderSkuPerformanceReport() {
+  const el = qs('#rep-sku-perf-body');
+  if (!el) return;
+
+  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const accounts = DB.a('ac');
+
+  // Cases per SKU, plus top 3 accounts per SKU
+  const skuTotals = {}; // { skuId: { cases, acMap: { accountId: cases } } }
+  SKUS.forEach(sk => { skuTotals[sk.id] = { cases: 0, acMap: {} }; });
+
+  orders.forEach(o => {
+    (o.items || []).forEach(i => {
+      const entry = skuTotals[i.sku];
+      if (!entry) return;
+      entry.cases += (i.qty || 0);
+      entry.acMap[o.accountId] = (entry.acMap[o.accountId] || 0) + (i.qty || 0);
+    });
+  });
+
+  const totalCases = SKUS.reduce((s, sk) => s + skuTotals[sk.id].cases, 0);
+
+  if (!totalCases) {
+    el.innerHTML = '<div class="empty">No order data yet</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Cases Moved</th>
+            <th>% of Volume</th>
+            <th>Top 3 Accounts</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${SKUS.map(sk => {
+            const d    = skuTotals[sk.id];
+            const pct  = totalCases > 0 ? (d.cases / totalCases * 100).toFixed(1) : '0.0';
+            const top3 = Object.entries(d.acMap)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([id, qty]) => {
+                const ac = accounts.find(a => a.id === id);
+                return `${escHtml(ac?.name || '(deleted)')} (${fmt(qty)})`;
+              })
+              .join(', ') || '—';
+
+            return `<tr>
+              <td>${skuBadge(sk.id)}</td>
+              <td>${fmt(d.cases)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px;min-width:80px">
+                    <div style="background:var(--purpl);height:100%;width:${pct}%;border-radius:4px;opacity:0.7"></div>
+                  </div>
+                  <span style="font-size:12px;min-width:36px">${pct}%</span>
+                </div>
+              </td>
+              <td style="font-size:12px;color:var(--muted)">${top3}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function _repDateRange() {
