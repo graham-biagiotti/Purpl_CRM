@@ -35,6 +35,30 @@ module.exports = async function globalSetup() {
 
   // ── Load seed data ────────────────────────────────────────
   const { SEED, PORTAL_ORDERS, PORTAL_NOTIFY } = require('./seed-data.js');
+  const {
+    extraAccounts, productionRuns, orders: ph1Orders, invoices: ph1Invoices,
+    outreach, samples, portalInquiries, auditLog, distVelocity,
+  } = require('./seed-phase1.js');
+
+  // ── Merge Phase 1 data into SEED ─────────────────────────
+  SEED.ac.push(...extraAccounts);
+  SEED.prod_hist.push(...productionRuns);
+  SEED.orders.push(...ph1Orders);
+
+  const ph1Purpl = ph1Invoices.filter(iv => iv.type === 'purpl');
+  const ph1LF    = ph1Invoices.filter(iv => iv.type === 'lf');
+  const ph1Dist  = ph1Invoices.filter(iv => iv.type === 'dist');
+  SEED.iv.push(...ph1Purpl);
+  SEED.lf_invoices.push(...ph1LF);
+  SEED.dist_invoices.push(...ph1Dist);
+
+  SEED.audit_log = auditLog;
+
+  // Append velocity reports into matching dist_profiles entries
+  for (const vr of distVelocity) {
+    const dp = SEED.dist_profiles.find(d => d.id === vr.distributorId);
+    if (dp) dp.velocityReports.push(vr);
+  }
 
   // ── Write main data store ─────────────────────────────────
   console.log('[setup] Writing seed data to Firestore emulator...');
@@ -59,6 +83,14 @@ module.exports = async function globalSetup() {
   }
   await notBatch.commit();
   console.log('[setup] Portal notify written:', PORTAL_NOTIFY.length);
+
+  // ── Write portal inquiries ────────────────────────────────
+  const inqBatch = db.batch();
+  for (const inq of portalInquiries) {
+    inqBatch.set(db.collection('portal_inquiries').doc(inq.id), inq);
+  }
+  await inqBatch.commit();
+  console.log('[setup] Portal inquiries written:', portalInquiries.length);
 
   // ── Create test auth user (CRM admin) ────────────────────
   try {
