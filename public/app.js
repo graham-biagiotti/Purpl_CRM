@@ -551,11 +551,30 @@ function renderDash() {
              - inv.filter(i => i.sku === sk.id && i.type === 'out').reduce((t, i) => t + i.qty, 0);
     return sum + Math.max(0, oh);
   }, 0);
-  const lowInvThreshold = DB.obj('settings', {}).lowInvThreshold || 500;
+  const lowStockThreshold = DB.obj('settings', {}).lowStockThreshold || 500;
   const kpiInvEl = qs('#dash-kpi-inv-cans');
   if (kpiInvEl) {
-    kpiInvEl.innerHTML = kpiHtml('Total Inventory', totalCans + ' cans', totalCans < lowInvThreshold ? 'red' : 'gray');
-    kpiInvEl.style.border = totalCans < lowInvThreshold ? '1.5px solid var(--red)' : '';
+    kpiInvEl.innerHTML = kpiHtml('Total Inventory', totalCans + ' cans', totalCans < lowStockThreshold ? 'red' : 'gray');
+    kpiInvEl.style.border = totalCans < lowStockThreshold ? '1.5px solid var(--red)' : '';
+  }
+
+  // ── Low stock alert card ──────────────────────────────────
+  const alertEl = qs('#dash-low-stock-alert');
+  if (alertEl) {
+    if (totalCans < lowStockThreshold) {
+      alertEl.style.display = '';
+      alertEl.innerHTML = `
+        <div style="background:#fef3c7;border:1.5px solid #d97706;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-weight:600;font-size:14px;color:#92400e;margin-bottom:2px">&#9888;&#xFE0E; Low Stock &mdash; ${fmt(totalCans)} cans remaining</div>
+            <div style="font-size:13px;color:#78350f">Below your alert threshold of ${fmt(lowStockThreshold)} cans. Consider scheduling a production run.</div>
+          </div>
+          <button class="btn xs" style="background:#d97706;color:#fff;border:none;flex-shrink:0" onclick="nav('inventory')">View Inventory</button>
+        </div>`;
+    } else {
+      alertEl.style.display = 'none';
+      alertEl.innerHTML = '';
+    }
   }
 
   const allPr      = DB.a('pr');
@@ -8390,7 +8409,7 @@ function renderSettings() {
   if(qs('#set-company'))            qs('#set-company').value            = s.company||'';
   if(qs('#set-payment-terms'))     qs('#set-payment-terms').value     = s.payment_terms||30;
   if(qs('#set-lead-time'))         qs('#set-lead-time').value         = s.production_lead_time||14;
-  if(qs('#set-low-inv-threshold')) qs('#set-low-inv-threshold').value = s.lowInvThreshold||500;
+  if(qs('#set-low-inv-threshold')) qs('#set-low-inv-threshold').value = s.lowStockThreshold||500;
   if(qs('#set-mpg'))              qs('#set-mpg').value              = s.mpg||25;
   if(qs('#set-gas-price'))        qs('#set-gas-price').value        = s.gasPrice||3.50;
 
@@ -8477,12 +8496,12 @@ function saveSettings() {
     default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
     default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
     variety_recipe:        recipeTotal === CANS_PER_CASE ? recipe : (DB.obj('settings',{}).variety_recipe||{}),
-    lowInvThreshold:       parseInt(qs('#set-low-inv-threshold')?.value)||500,
+    lowStockThreshold:       parseInt(qs('#set-low-inv-threshold')?.value)||500,
     mpg:                   parseFloat(qs('#set-mpg')?.value)||25,
     gasPrice:              parseFloat(qs('#set-gas-price')?.value)||3.50,
     // Preserve existing fields (known_users etc.)
     ...Object.fromEntries(
-      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowInvThreshold','mpg','gasPrice'].includes(k))
+      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowStockThreshold','mpg','gasPrice'].includes(k))
     ),
   };
   DB.setObj('settings', s);

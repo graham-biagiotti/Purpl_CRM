@@ -177,6 +177,9 @@
         </div>
       </div>
 
+      <!-- Low stock alert card (shown when inventory < threshold) -->
+      <div id="dash-low-stock-alert" style="display:none"></div>
+
       <!-- Row 1: Combined 6-card KPI row -->
       <div class="card-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:14px;margin-bottom:20px" id="dash-combined-kpis">
         <div id="dash-kpi-total-ac"></div>
@@ -1177,9 +1180,9 @@
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Used by production planning projections</div>
           </div>
           <div class="form-group" style="margin-bottom:12px">
-            <label>Low inventory alert threshold (cans)</label>
+            <label>Low Stock Alert Threshold (cans)</label>
             <input id="set-low-inv-threshold" type="number" placeholder="500" min="0" step="1">
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">Dashboard KPI turns red when total on-hand cans falls below this</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">An alert card appears on the dashboard when total on-hand cans falls below this. Default: 500.</div>
           </div>
           <div class="form-row col2">
             <div class="form-group" style="margin-bottom:12px">
