@@ -18,6 +18,8 @@ const fs   = require('fs');
 // RESEND_API_KEY is stubbed to 'test-key' via functions/.env.local so
 // no real emails are sent during test runs.
 
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
 module.exports = async function globalSetup() {
   // ── Point Firebase Admin SDK at local emulators ───────────
   process.env.FIRESTORE_EMULATOR_HOST      = 'localhost:8080';
@@ -60,12 +62,36 @@ module.exports = async function globalSetup() {
     if (dp) dp.velocityReports.push(vr);
   }
 
-  // ── Write main data store ─────────────────────────────────
-  console.log('[setup] Writing seed data to Firestore emulator...');
-  await db
-    .collection('workspace').doc('main')
-    .collection('data').doc('store')
-    .set(SEED);
+  // ── Write main data store — split into chunks ─────────────
+  // The full SEED object exceeds gRPC default timeout when written
+  // as one .set() call. Write a skeleton first, then update large
+  // arrays one at a time with 500ms gaps.
+  const LARGE_KEYS = [
+    'ac','pr','iv','orders','inv_log','prod_hist',
+    'lf_invoices','combined_invoices','dist_invoices','dist_profiles',
+    'audit_log',
+  ];
+
+  // Build skeleton without large arrays
+  const skeleton = {};
+  for (const k of Object.keys(SEED)) {
+    if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
+  }
+
+  const storeRef = db.collection('workspace').doc('main').collection('data').doc('store');
+
+  console.log('[setup] Writing skeleton seed data...');
+  await storeRef.set(skeleton);
+  await delay(500);
+  console.log('[setup] Skeleton written.');
+
+  // Write each large array as a separate update
+  for (const key of LARGE_KEYS) {
+    if (SEED[key] === undefined) continue;
+    console.log(`[setup] Writing ${key} (${Array.isArray(SEED[key]) ? SEED[key].length + ' items' : 'object'})...`);
+    await storeRef.update({ [key]: SEED[key] });
+    await delay(500);
+  }
   console.log('[setup] Main store written.');
 
   // ── Write portal orders ───────────────────────────────────
