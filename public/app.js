@@ -7543,6 +7543,124 @@ function renderReports() {
   _reportType = tabs?.querySelector('.tab.active')?.dataset.rep || 'revenue';
   renderReportContent();
   renderSavedReports();
+  renderTopAccountsReport();
+  renderGoingColdReport();
+  renderMomReport();
+}
+
+// ── Top 10 Accounts by Volume ─────────────────────────────
+function renderTopAccountsReport() {
+  const tb = qs('#rep-top-accounts-tbody');
+  if (!tb) return;
+
+  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const accounts = DB.a('ac');
+
+  const byAc = {};
+  orders.forEach(o => {
+    if (!o.accountId) return;
+    if (!byAc[o.accountId]) byAc[o.accountId] = { cases: 0, revenue: 0, lastOrder: '' };
+    const e = byAc[o.accountId];
+    (o.items || []).forEach(i => { e.cases += (i.qty || 0); });
+    e.revenue  += calcOrderValue(o);
+    if (!e.lastOrder || (o.dueDate || '') > e.lastOrder) e.lastOrder = o.dueDate || '';
+  });
+
+  const rows = Object.entries(byAc)
+    .map(([id, d]) => {
+      const ac = accounts.find(a => a.id === id);
+      return { name: ac?.name || '(deleted)', territory: ac?.territory || '', ...d };
+    })
+    .sort((a, b) => b.cases - a.cases)
+    .slice(0, 10);
+
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="empty">No order data yet</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = rows.map((r, i) => `<tr>
+    <td>${i + 1}</td>
+    <td>${escHtml(r.name)}<br><small style="color:var(--muted)">${escHtml(r.territory)}</small></td>
+    <td>${fmt(r.cases * CANS_PER_CASE)}</td>
+    <td>${fmt(r.cases)}</td>
+    <td>${fmtC(r.revenue)}</td>
+    <td>${r.lastOrder ? fmtD(r.lastOrder) : '—'}</td>
+  </tr>`).join('');
+}
+
+// ── Accounts Going Cold ───────────────────────────────────
+function renderGoingColdReport() {
+  const tb = qs('#rep-going-cold-tbody');
+  if (!tb) return;
+
+  const COLD_DAYS   = 45;
+  const todayStr    = today();
+  const orders      = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const accounts    = DB.a('ac').filter(a => a.status === 'active');
+  const invoices    = DB.a('iv');
+
+  const rows = [];
+  accounts.forEach(ac => {
+    const acOrds = orders.filter(o => o.accountId === ac.id);
+    if (!acOrds.length) return; // must have at least one order
+
+    const lastOrd = acOrds.reduce((best, o) => (!best || (o.dueDate || '') > (best.dueDate || '') ? o : best), null);
+    const daysSince = lastOrd ? daysAgo(lastOrd.dueDate) : 999;
+    if (daysSince < COLD_DAYS) return;
+
+    const outstanding = invoices.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding });
+  });
+
+  rows.sort((a, b) => b.daysSince - a.daysSince);
+
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="empty">No accounts going cold &mdash; great!</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${escHtml(r.name)}</td>
+    <td>${r.lastOrder ? fmtD(r.lastOrder) : '—'}</td>
+    <td><span style="color:var(--red);font-weight:600">${r.daysSince}d</span></td>
+    <td>${r.outstanding > 0 ? fmtC(r.outstanding) : '<span style="color:var(--muted)">—</span>'}</td>
+  </tr>`).join('');
+}
+
+// ── Month over Month ──────────────────────────────────────
+function renderMomReport() {
+  const tb = qs('#rep-mom-tbody');
+  if (!tb) return;
+
+  const orders = DB.a('orders').filter(o => o.status !== 'cancelled');
+  const months = [];
+  const now    = new Date();
+
+  for (let i = 5; i >= 0; i--) {
+    const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    months.push({ key, label, orderCount: 0, cases: 0, revenue: 0 });
+  }
+
+  orders.forEach(o => {
+    const dateStr = o.dueDate || o.created || '';
+    if (!dateStr) return;
+    const key = dateStr.slice(0, 7);
+    const m   = months.find(x => x.key === key);
+    if (!m) return;
+    m.orderCount++;
+    (o.items || []).forEach(i => { m.cases += (i.qty || 0); });
+    m.revenue += calcOrderValue(o);
+  });
+
+  tb.innerHTML = months.map(m => `<tr>
+    <td>${m.label}</td>
+    <td>${m.orderCount}</td>
+    <td>${fmt(m.cases)}</td>
+    <td>${fmtC(m.revenue)}</td>
+  </tr>`).join('');
 }
 
 function _repDateRange() {

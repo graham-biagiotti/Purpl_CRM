@@ -980,6 +980,40 @@
         </div>
       </div>
       <div id="rep-extra" style="margin-bottom:16px"></div>
+
+      <!-- Top 10 Accounts by Volume -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr"><h2>Top 10 Accounts by Volume</h2><small style="color:var(--muted);font-size:12px">All time, purpl orders only</small></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Account</th><th>Total Cans</th><th>Total Cases</th><th>Est. Revenue</th><th>Last Order</th></tr></thead>
+            <tbody id="rep-top-accounts-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Accounts Going Cold -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr"><h2>Accounts Going Cold</h2><small style="color:var(--muted);font-size:12px">No order in 45+ days, previously ordered</small></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Account</th><th>Last Order</th><th>Days Since Order</th><th>Outstanding Balance</th></tr></thead>
+            <tbody id="rep-going-cold-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Month over Month Summary -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-hdr"><h2>Month over Month</h2><small style="color:var(--muted);font-size:12px">Last 6 months — cases and revenue from orders</small></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Month</th><th>Orders</th><th>Cases Moved</th><th>Est. Revenue</th></tr></thead>
+            <tbody id="rep-mom-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Saved Reports -->
       <div class="card">
         <div class="section-hdr">
