@@ -3639,7 +3639,13 @@ async function saveAccount(id, isNew) {
 
 function deleteAccount(id) {
   if (!confirm2('Delete this account? This cannot be undone.')) return;
-  DB.remove('ac', id);
+  DB.atomicUpdate(cache => {
+    cache['ac']              = (cache['ac']             ||[]).filter(r=>r.id!==id);
+    cache['iv']              = (cache['iv']             ||[]).filter(r=>r.accountId!==id);
+    cache['orders']          = (cache['orders']         ||[]).filter(r=>r.accountId!==id);
+    cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(r=>r.accountId!==id);
+    cache['returns']         = (cache['returns']        ||[]).filter(r=>r.accountId!==id);
+  });
   closeModal('modal-edit-account');
   renderAccounts();
   toast('Account deleted');
