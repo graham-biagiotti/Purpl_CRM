@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Page Not Found — Pumpkin Blossom Farm</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --purpl:#8B5FBF; --purpl-dark:#2D1B4E;
+  --purpl-mid:#6B3FA0; --purpl-soft:#F0EBF8;
+  --purpl-border:#D4B8F0;
+  --cream:#faf9f6; --text:#1a1a2e;
+  --muted:#6b7280; --border:#e5e7eb; --white:#ffffff;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;color:var(--text);background:var(--white);-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.7;margin:0;padding:0;min-height:100vh;display:flex;flex-direction:column}
+h1,h2,h3{font-family:'Playfair Display',serif;font-weight:400}
+
+/* NAV */
+.ws-nav{position:fixed;top:0;left:0;right:0;height:64px;z-index:100;background:rgba(255,255,255,0.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.ws-nav-inner{max-width:1100px;margin:0 auto;height:100%;padding:0 24px;display:flex;align-items:center;position:relative}
+.ws-nav-links{position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;list-style:none}
+.ws-nav-links a{font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:20px;padding:6px 14px;transition:all 0.2s}
+.ws-nav-links a:hover{background:var(--cream)}
+.ws-nav-login{margin-left:auto;border:1px solid var(--purpl);color:var(--purpl);border-radius:20px;padding:6px 16px;font-size:13px;text-decoration:none;font-family:Inter,sans-serif;transition:all 0.15s}
+.ws-nav-login:hover{background:var(--purpl);color:white}
+@media(max-width:768px){.ws-nav-links{display:none}}
+
+/* BODY */
+.not-found-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:120px 24px 80px;text-align:center}
+.not-found-inner{max-width:480px}
+.not-found-code{font-family:'Playfair Display',serif;font-size:96px;font-weight:400;color:var(--purpl-soft);line-height:1;margin-bottom:8px;letter-spacing:-4px}
+.not-found-h1{font-size:clamp(24px,4vw,36px);color:var(--text);margin-bottom:16px}
+.not-found-desc{font-size:16px;color:var(--muted);line-height:1.75;margin-bottom:36px}
+.not-found-link{display:inline-block;background:var(--purpl);color:white;padding:13px 32px;border-radius:4px;font-size:14px;font-weight:500;letter-spacing:0.03em;text-decoration:none;transition:background 0.2s}
+.not-found-link:hover{background:var(--purpl-mid)}
+.not-found-divider{width:40px;height:1px;background:var(--border);margin:32px auto}
+.not-found-sub{font-size:13px;color:var(--muted)}
+.not-found-sub a{color:var(--purpl);text-decoration:none}
+.not-found-sub a:hover{text-decoration:underline}
+
+/* FOOTER */
+.ws-footer{background:#1a1229;padding:48px 24px;text-align:center}
+.ws-footer,.ws-footer p,.ws-footer span{font-family:Inter,sans-serif;color:rgba(255,255,255,0.5);font-size:13px;line-height:2}
+.ws-footer a{color:rgba(255,255,255,0.7);text-decoration:none;transition:0.15s}
+.ws-footer a:hover{text-decoration:underline;color:rgba(255,255,255,0.9)}
+</style>
+</head>
+<body>
+
+<nav class="ws-nav">
+  <div class="ws-nav-inner">
+    <ul class="ws-nav-links">
+      <li><a href="/wholesale.html">Wholesale</a></li>
+      <li><a href="/order">Place an Order</a></li>
+      <li><a href="/wholesale.html#terms">Terms</a></li>
+    </ul>
+    <a href="/" class="ws-nav-login">Login</a>
+  </div>
+</nav>
+
+<div class="not-found-wrap">
+  <div class="not-found-inner">
+    <div class="not-found-code">404</div>
+    <h1 class="not-found-h1">Page not found</h1>
+    <p class="not-found-desc">The page you were looking for doesn&rsquo;t exist or may have moved.</p>
+    <a href="/wholesale.html" class="not-found-link">Go to wholesale.html</a>
+    <div class="not-found-divider"></div>
+    <p class="not-found-sub">
+      Questions? <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
+    </p>
+  </div>
+</div>
+
+<footer class="ws-footer">
+  <div style="max-width:800px;margin:0 auto">
+    <div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">
+      <a href="/wholesale.html">Wholesale</a>
+      <span style="color:rgba(255,255,255,0.2)">·</span>
+      <a href="/order">Place an Order</a>
+      <span style="color:rgba(255,255,255,0.2)">·</span>
+      <a href="/privacy.html">Privacy Policy</a>
+      <span style="color:rgba(255,255,255,0.2)">·</span>
+      <a href="/terms.html">Terms of Use</a>
+    </div>
+    <div style="font-size:12px;color:rgba(255,255,255,0.4)">
+      Pumpkin Blossom Farm LLC &middot; 393 Pumpkin Hill Rd &middot; Warner, NH 03278<br>
+      &copy; 2026 Pumpkin Blossom Farm LLC. All rights reserved.
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

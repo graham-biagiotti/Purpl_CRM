@@ -788,3 +788,42 @@ td { padding: 9px 12px; font-size: 13px; }
 .ac-card.ac-dist-served { opacity: 0.72; }
 .ac-card.ac-dist-served:hover,
 .ac-card.ac-dist-served:focus-within { opacity: 1; }
+
+/* ── Loading skeleton ─────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0 }
+  100% { background-position:  400px 0 }
+}
+.loading-skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, #f3f4f6 50%, var(--border) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+  min-height: 120px;
+}
+.db-loading-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0;
+}
+.db-loading-placeholder .loading-skeleton { min-height: 80px; }
+
+/* ── Offline banner ────────────────────────────────── */
+#offline-banner {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #92400e;
+  color: #fff;
+  text-align: center;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+#offline-banner.visible { display: block; }
+body.offline-mode #app-shell { padding-top: 40px; }

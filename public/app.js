@@ -29,6 +29,28 @@ function toast(msg, dur=3000) {
 
 function confirm2(msg) { return window.confirm(msg); }
 
+// ── DB loading placeholder ───────────────────────────────
+// Shows a shimmer skeleton while Firestore hasn't yet delivered its first snapshot.
+function _dbLoadingHTML(rows = 3) {
+  const items = Array.from({length: rows}, () =>
+    '<div class="loading-skeleton"></div>').join('');
+  return `<div class="db-loading-placeholder">${items}</div>`;
+}
+
+// ── Offline / online banner ──────────────────────────────
+(function _initOfflineBanner() {
+  const banner = document.getElementById('offline-banner');
+  if (!banner) return;
+  function update() {
+    const offline = !navigator.onLine;
+    banner.classList.toggle('visible', offline);
+    document.body.classList.toggle('offline-mode', offline);
+  }
+  window.addEventListener('offline', update);
+  window.addEventListener('online',  update);
+  update(); // apply immediately on boot
+}());
+
 // ── SKU definitions ──────────────────────────────────────
 // ── Fulfillment helpers ──────────────────────────────────
 function _getFulfillBadge(a) {
@@ -1913,6 +1935,12 @@ function renderAccounts() {
 
   const el = qs('#ac-cards');
   if (!el) return;
+
+  if (!DB._firestoreReady) {
+    el.innerHTML = _dbLoadingHTML(4);
+    return;
+  }
+
   if (qs('#ac-count')) qs('#ac-count').textContent = `${list.length} account${list.length!==1?'s':''}`;
 
   if (!list.length) {
@@ -3695,6 +3723,12 @@ function renderProspects() {
 
   const el = qs('#pr-cards');
   if (!el) return;
+
+  if (!DB._firestoreReady) {
+    el.innerHTML = _dbLoadingHTML(4);
+    return;
+  }
+
   el.classList.toggle('pr-compact', _prCompact);
   const btn = qs('#pr-compact-btn');
   if (btn) btn.classList.toggle('active', _prCompact);
@@ -4559,6 +4593,11 @@ function renderDistributors() {
 
   const el = qs('#dist-cards');
   if (!el) return;
+
+  if (!DB._firestoreReady) {
+    el.innerHTML = _dbLoadingHTML(3);
+    return;
+  }
 
   if (!list.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🚚</div>No distributors yet. Add your first distributor to get started.</div>`;
@@ -11440,6 +11479,13 @@ function editInv(id) {
 }
 
 function renderInvoicesPage() {
+  if (!DB._firestoreReady) {
+    ['#inv-col-purpl-compact','#inv-col-lf-compact','#inv-col-combined-compact','#inv-col-dist-compact'].forEach(sel => {
+      const el = qs(sel);
+      if (el) el.innerHTML = _dbLoadingHTML(3);
+    });
+    return;
+  }
   const actionsEl = qs('#inv-page-actions');
   if (actionsEl) {
     actionsEl.innerHTML = DB.a('ac').some(a => a.isPbf)
