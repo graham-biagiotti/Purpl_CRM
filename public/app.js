@@ -153,7 +153,21 @@ const renders = {
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   emails:           renderEmailsPage,
+  'audit-log':      renderAuditLog,
 };
+
+// ── Audit Log ────────────────────────────────────────────
+function auditLog(action, entityType, entityId, entityName) {
+  DB.push('audit_log', {
+    id:         uid(),
+    timestamp:  new Date().toISOString(),
+    action,       // 'create' | 'update' | 'delete'
+    entityType,   // 'account' | 'invoice' | 'order'
+    entityId,
+    entityName,
+    changedBy:  'graham',
+  });
+}
 
 // ── STATUS CONFIG ────────────────────────────────────────
 const AC_STATUS = {
@@ -3794,6 +3808,7 @@ async function saveAccount(id, isNew) {
 
   if (isNew) DB.push('ac', rec);
   else DB.update('ac', id, ()=>rec);
+  auditLog(isNew ? 'create' : 'update', 'account', id, rec.name);
   closeModal('modal-edit-account');
   renderAccounts();
   toast(isNew?'Account added':'Account updated');
@@ -3801,6 +3816,7 @@ async function saveAccount(id, isNew) {
 
 function deleteAccount(id) {
   if (!confirm2('Delete this account? This cannot be undone.')) return;
+  const acName = DB.a('ac').find(x=>x.id===id)?.name || id;
   DB.atomicUpdate(cache => {
     cache['ac']              = (cache['ac']             ||[]).filter(r=>r.id!==id);
     cache['iv']              = (cache['iv']             ||[]).filter(r=>r.accountId!==id);
@@ -3808,6 +3824,7 @@ function deleteAccount(id) {
     cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(r=>r.accountId!==id);
     cache['returns']         = (cache['returns']        ||[]).filter(r=>r.accountId!==id);
   });
+  auditLog('delete', 'account', id, acName);
   closeModal('modal-edit-account');
   renderAccounts();
   toast('Account deleted');
@@ -6777,6 +6794,8 @@ function createOrder({accountId, dueDate, notes='', items, source='manual', stat
     cache['orders'] = [...(cache['orders']||[]), ord];
     cache['ac'] = (cache['ac']||[]).map(a => a.id===accountId ? {...a, lastOrder:today()} : a);
   });
+  const acName = DB.a('ac').find(x=>x.id===accountId)?.name || accountId;
+  auditLog('create', 'order', ord.id, acName);
   return ord;
 }
 
@@ -6841,9 +6860,11 @@ function openOrderDetail(id) {
 
   qs('#mod-delete-btn').onclick = ()=>{
     if (!confirm2('Delete this order?')) return;
+    const ordAcName = DB.a('ac').find(x=>x.id===o.accountId)?.name || o.accountId;
     // Remove linked inventory out-entries (from run delivery or manual delivery)
     DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
     DB.remove('orders', id);
+    auditLog('delete', 'order', id, ordAcName);
     closeModal('modal-order-detail');
     renderOrders();
     renderInventory();
@@ -7813,6 +7834,47 @@ function _repDateRange() {
 function _repFilterOrders(orders) {
   const {from, to} = _repDateRange();
   return orders.filter(o=>o.status!=='cancelled'&&o.dueDate>=from&&o.dueDate<=to);
+}
+
+// ── Audit Log Page ───────────────────────────────────────
+function renderAuditLog() {
+  const el = qs('#page-audit-log');
+  if (!el) return;
+
+  const actionFilter = qs('#al-filter-action')?.value || 'all';
+  const typeFilter   = qs('#al-filter-type')?.value   || 'all';
+
+  let entries = DB.a('audit_log')
+    .slice()
+    .sort((a, b) => (a.timestamp > b.timestamp ? -1 : 1))
+    .slice(0, 100);
+
+  if (actionFilter !== 'all') entries = entries.filter(e => e.action === actionFilter);
+  if (typeFilter   !== 'all') entries = entries.filter(e => e.entityType === typeFilter);
+
+  const actionBadge = a =>
+    a === 'create' ? `<span class="badge green"  style="font-size:10px">create</span>`  :
+    a === 'update' ? `<span class="badge blue"   style="font-size:10px">update</span>`  :
+    a === 'delete' ? `<span class="badge red"    style="font-size:10px">delete</span>`  :
+                     `<span class="badge gray"   style="font-size:10px">${escHtml(a)}</span>`;
+  const typeBadge  = t =>
+    t === 'account' ? `<span class="badge purple" style="font-size:10px">account</span>` :
+    t === 'invoice' ? `<span class="badge amber"  style="font-size:10px">invoice</span>` :
+    t === 'order'   ? `<span class="badge blue"   style="font-size:10px">order</span>`   :
+                      `<span class="badge gray"   style="font-size:10px">${escHtml(t)}</span>`;
+
+  const tbody = qs('#al-tbody');
+  if (tbody) {
+    tbody.innerHTML = entries.length
+      ? entries.map(e => `<tr>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap">${e.timestamp ? new Date(e.timestamp).toLocaleString() : '—'}</td>
+          <td>${actionBadge(e.action)}</td>
+          <td>${typeBadge(e.entityType)}</td>
+          <td style="font-size:13px">${escHtml(e.entityName || e.entityId || '—')}</td>
+          <td style="font-size:12px;color:var(--muted)">${escHtml(e.changedBy || '—')}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No audit log entries found.</td></tr>`;
+  }
 }
 
 function _drawChart(type, labels, datasets, title) {
@@ -12654,6 +12716,7 @@ function saveInv(id, isNew) {
 
   if (_isNew) DB.push('iv', rec);
   else DB.update('iv', id, () => rec);
+  auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
 
   closeModal('modal-add-inv');
   if (currentPage === 'invoices') renderInvoicesPage();
@@ -12663,7 +12726,9 @@ function saveInv(id, isNew) {
 
 function deleteInvRecord(id) {
   if (!confirm2('Delete this invoice?')) return;
+  const invNum = DB.a('iv').find(x=>x.id===id)?.number || id;
   DB.remove('iv', id);
+  auditLog('delete', 'invoice', id, invNum);
   closeModal('modal-add-inv');
   if (currentPage === 'invoices') renderInvoicesPage();
   renderInvoiceStatus();
