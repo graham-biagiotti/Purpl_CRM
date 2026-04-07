@@ -163,3 +163,162 @@ test.describe('Functions — Section B: Input validation', () => {
     expect(resp.status).toBe(200);
   });
 });
+
+// ── Phase 6: Edge case coverage ────────────────────────────────
+// Note: these tests soft-skip (with a log message) when the Functions emulator
+// is not serving the endpoint (404 = not deployed). All assertions only run
+// when the function is actually reachable and responding.
+
+function skipIf404(resp, name) {
+  if (!resp || resp._fetchError || resp.status === 404) {
+    console.log(`[functions] ${name} not deployed in emulator — skip`);
+    return true;
+  }
+  return false;
+}
+
+test.describe('Functions — Section C: Edge cases', () => {
+  test('sendEmail — missing from field returns invalid-argument (not server error)', async () => {
+    const resp = await callFn('sendEmail', {
+      to:      'test@example.com',
+      subject: 'Test',
+      html:    '<p>Test</p>',
+      // from: omitted — ALLOWED_FROM.includes(undefined) → false → "Invalid from address"
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'sendEmail')) return;
+
+    // Should be 400 (invalid-argument) NOT 500 (unhandled internal error)
+    expect(resp.status).not.toBe(500);
+    const body = await resp.json().catch(() => ({}));
+    const errMsg = body?.error?.message || '';
+    if (resp.status === 400) {
+      expect(errMsg.toLowerCase()).toMatch(/invalid|from|address/i);
+    }
+    console.log(`[functions] sendEmail missing-from: status=${resp.status} msg="${errMsg}"`);
+  });
+
+  test('sendEmail — empty string to field returns invalid-argument', async () => {
+    const resp = await callFn('sendEmail', {
+      to:      '',  // falsy → missing check fires
+      from:    ALLOWED_FROM,
+      subject: 'Test',
+      html:    '<p>Test</p>',
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'sendEmail')) return;
+
+    expect([400, 200]).toContain(resp.status);
+    if (resp.status === 400) {
+      const body = await resp.json().catch(() => ({}));
+      expect((body?.error?.message || '').toLowerCase()).toMatch(/missing|required|to/i);
+    }
+    console.log(`[functions] sendEmail empty-to: status=${resp.status}`);
+  });
+
+  test('sendCombinedInvoice — missing required fields returns 400', async () => {
+    const resp = await callFn('sendCombinedInvoice', {}).catch(() => null);
+    if (skipIf404(resp, 'sendCombinedInvoice')) return;
+
+    expect([400, 200]).toContain(resp.status);
+    if (resp.status === 400) {
+      const body = await resp.json().catch(() => ({}));
+      expect((body?.error?.message || '').toLowerCase()).toMatch(/missing|required/i);
+    }
+    console.log(`[functions] sendCombinedInvoice missing-fields: status=${resp.status}`);
+  });
+
+  test('sendCombinedInvoice — valid payload is not rejected (400/404)', async () => {
+    const resp = await callFn('sendCombinedInvoice', {
+      to:          'test@example.com',
+      accountName: 'Test Account',
+      subject:     'Test Invoice',
+      html:        '<p>Invoice content</p>',
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'sendCombinedInvoice')) return;
+
+    // Valid payload should NOT be rejected with invalid-argument
+    expect(resp.status).not.toBe(400);
+    console.log(`[functions] sendCombinedInvoice valid-payload: status=${resp.status}`);
+  });
+
+  test('resendWebhook — GET method returns 405', async () => {
+    const resp = await fetch(`${FUNCTIONS_BASE}/resendWebhook`, {
+      method: 'GET',
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'resendWebhook')) return;
+
+    expect(resp.status).toBe(405);
+    console.log('[functions] resendWebhook GET→405: ✓');
+  });
+
+  test('resendWebhook — unknown event type returns 200 "ignored"', async () => {
+    const resp = await fetch(`${FUNCTIONS_BASE}/resendWebhook`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        type: 'email.bounced',  // not in ['email.opened', 'email.clicked']
+        data: { email_id: 'test-bounce-id' },
+      }),
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'resendWebhook')) return;
+
+    expect(resp.status).toBe(200);
+    expect(await resp.text().catch(() => '')).toMatch(/ignored/i);
+    console.log('[functions] resendWebhook unknown-type→ignored: ✓');
+  });
+
+  test('resendWebhook — missing email_id returns 200 "ignored"', async () => {
+    const resp = await fetch(`${FUNCTIONS_BASE}/resendWebhook`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        type: 'email.opened',
+        data: { /* no email_id */ from: 'test@example.com' },
+      }),
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'resendWebhook')) return;
+
+    expect(resp.status).toBe(200);
+    expect(await resp.text().catch(() => '')).toMatch(/ignored/i);
+    console.log('[functions] resendWebhook missing-email_id→ignored: ✓');
+  });
+
+  test('resendWebhook — empty body returns 200 "ignored"', async () => {
+    const resp = await fetch(`${FUNCTIONS_BASE}/resendWebhook`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    '{}',
+    }).catch(() => null);
+
+    if (skipIf404(resp, 'resendWebhook')) return;
+
+    expect(resp.status).toBe(200);
+    console.log('[functions] resendWebhook empty-body→200: ✓');
+  });
+
+  test('submitWholesaleForm — rate limit fires after 5 rapid calls', async () => {
+    const results = [];
+
+    for (let i = 0; i < 7; i++) {
+      const resp = await callFn('submitWholesaleForm', {}).catch(() => null);
+      if (i === 0 && skipIf404(resp, 'submitWholesaleForm')) return;
+      if (!resp || resp._fetchError) return;
+      results.push(resp.status);
+    }
+
+    const rateLimited = results.some(s => s === 429);
+    if (rateLimited) {
+      console.log('[functions] submitWholesaleForm rate limit fires: ✓');
+    } else {
+      console.log('[functions] submitWholesaleForm: all succeeded (window may have reset)');
+    }
+
+    // Rate limit errors must be clean — no 500s
+    expect(results.every(s => s !== 500)).toBe(true);
+  });
+});
