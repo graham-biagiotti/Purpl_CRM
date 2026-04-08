@@ -531,6 +531,8 @@ const LF_SKU_FALLBACK = [
   {id:'lf-dryer-sachet',    name:'Dryer Sachet 2-Pack',           wholesalePrice:5.49,  caseSize:12, msrp:9.99},
 ];
 
+function _isRefillable(name) { return /satin/i.test(name || ''); }
+
 function toggleBrand(brand) {
   if (brand === 'purpl') {
     _brandPurpl = !_brandPurpl;
@@ -588,7 +590,7 @@ function renderLfSkus(skus, prevOrder) {
       var variantHtml = activeVariants.map(function(v) {
         var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
         return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
-          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+'</span>' +
+          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : '')+'</span>' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
           '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
@@ -1031,7 +1033,7 @@ function showThankYou(data) {
       if (it.hasVariants && it.variantLines && it.variantLines.length) {
         summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + it.skuName + '</span>';
         it.variantLines.forEach(function(vl) {
-          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + vl.variantName + ': ' + vl.units + ' units</span>';
+          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + vl.variantName + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
         });
         summaryHtml += '<span style="align-self:flex-end;font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
       } else {
@@ -1070,7 +1072,7 @@ function showThankYou(data) {
       data.lfItems.forEach(function(it) {
         if (it.hasVariants && it.variantLines) {
           it.variantLines.forEach(function(vl) {
-            body += '  · ' + it.skuName + ' (' + vl.variantName + '): ' + vl.units + ' units\n';
+            body += '  · ' + it.skuName + ' (' + vl.variantName + (_isRefillable(vl.variantName) ? ', Refillable' : '') + '): ' + vl.units + ' units\n';
           });
         } else {
           body += '  · ' + it.skuName + ': ' + it.cases + ' case' + (it.cases !== 1 ? 's' : '') + '\n';

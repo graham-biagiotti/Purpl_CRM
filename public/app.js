@@ -478,6 +478,9 @@ function seedIfEmpty() {
   DB.setObj('settings', settings);
 }
 
+// Returns true for satin Aromatherapy Scrunchie variants that are refillable
+function _isRefillable(variantName) { return /satin/i.test(variantName || ''); }
+
 // ── LF SKU variant migration (idempotent) ─────────────────
 function migrateLfSkuVariants() {
   if (!DB._firestoreReady) return;
@@ -9834,7 +9837,7 @@ function _lfInvBuildVariantArea(rowId, item) {
       return `
         <div class="lfi-variant-row" data-variant-id="${v.id}"
           style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
-          <span style="width:180px;flex-shrink:0">${escHtml(v.name)}</span>
+          <span style="width:180px;flex-shrink:0">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
           <input class="lfi-var-cases" type="number" min="0" step="1" value="${vl?.cases||0}"
             style="width:60px" oninput="_lfInvRowCalc('${rowId}')">
           <span>cases</span>
@@ -10263,7 +10266,7 @@ function buildCombinedInvoiceHTML(combinedId) {
   const lfRows = (lfInv.lineItems||[]).map(li => {
     if (li.hasVariants && li.variantLines) {
       return li.variantLines.map(vl => `<tr>
-        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}</td>
+        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
         <td style="${itemCellStyle};text-align:right">${vl.units||0}</td>
         <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
         <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(vl.lineTotal||0).toFixed(2)}</td>
@@ -10449,7 +10452,7 @@ function buildLfInvoiceEmailHTML(inv) {
   const itemRows = (inv.lineItems||[]).map(li => {
     if (li.hasVariants && li.variantLines) {
       return li.variantLines.map(vl => `<tr>
-        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}</td>
+        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
         <td style="${itemCellStyle};text-align:right">${vl.units||0}</td>
         <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
         <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(vl.lineTotal||0).toFixed(2)}</td>
@@ -10810,7 +10813,7 @@ function showWixPullModal(inv, deductionId) {
       if (l.hasVariants && l.variantLines?.length) {
         const varHtml = l.variantLines.map(vl => `
           <div style="display:flex;justify-content:space-between;padding:3px 0 3px 24px;font-size:12px;color:var(--muted)">
-            <span>${escHtml(vl.variantName)}</span>
+            <span>${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</span>
             <span>${vl.cases} case${vl.cases!==1?'s':''} (${vl.units} units)</span>
           </div>`).join('');
         return `
@@ -12941,7 +12944,7 @@ function generateLfInvoicePrint(invoiceId) {
   const itemRows = (inv.lineItems || []).map(li => {
     if (li.hasVariants && li.variantLines) {
       return li.variantLines.map(vl => `<tr>
-        <td><strong>${esc(li.skuName || 'Item')}</strong> — ${esc(vl.variantName || '')}</td>
+        <td><strong>${esc(li.skuName || 'Item')}</strong> — ${esc(vl.variantName || '')}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
         <td style="text-align:center">${vl.units || 0}</td>
         <td style="text-align:right">$${parseFloat(li.unitPrice || 0).toFixed(2)}</td>
         <td style="text-align:right">$${parseFloat(vl.lineTotal || 0).toFixed(2)}</td>
