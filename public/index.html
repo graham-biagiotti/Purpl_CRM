@@ -126,10 +126,6 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Reports
       </a>
-      <a data-page="audit-log" class="sb-more">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        Audit Log
-      </a>
       <a data-page="settings" class="sb-more">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
         Settings
@@ -1226,252 +1222,128 @@
     </div>
 
     <!-- ═══════ SETTINGS ═══════ -->
-    <!-- Audit Log Page -->
-    <div class="page" id="page-audit-log" style="display:none">
-      <div class="section-hdr"><h2>📋 Audit Log</h2></div>
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <div class="form-group" style="margin:0;min-width:140px">
-            <label style="font-size:11px">Action</label>
-            <select id="al-filter-action" onchange="renderAuditLog()">
-              <option value="all">All actions</option>
-              <option value="create">Create</option>
-              <option value="update">Update</option>
-              <option value="delete">Delete</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin:0;min-width:140px">
-            <label style="font-size:11px">Entity Type</label>
-            <select id="al-filter-type" onchange="renderAuditLog()">
-              <option value="all">All types</option>
-              <option value="account">Account</option>
-              <option value="invoice">Invoice</option>
-              <option value="order">Order</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Action</th>
-                <th>Type</th>
-                <th>Entity</th>
-                <th>By</th>
-              </tr>
-            </thead>
-            <tbody id="al-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
     <div class="page" id="page-settings">
-      <div class="card-grid grid-2" style="margin-bottom:16px">
-        <!-- Company & Payment -->
-        <div class="card">
-          <div class="section-hdr"><h2>Company</h2></div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Company name</label>
-            <input id="set-company" placeholder="purpl Beverages">
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Payment terms (days)</label>
-            <input id="set-payment-terms" type="number" value="30">
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Production lead time (days)</label>
-            <input id="set-lead-time" type="number" placeholder="14" min="1" max="365">
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">Used by production planning projections</div>
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Low Stock Alert Threshold (cans)</label>
-            <input id="set-low-inv-threshold" type="number" placeholder="500" min="0" step="1">
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">An alert card appears on the dashboard when total on-hand cans falls below this. Default: 500.</div>
-          </div>
-          <div class="form-row col2">
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Vehicle MPG</label>
-              <input id="set-mpg" type="number" step="1" placeholder="25" min="1">
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">For delivery cost estimation</div>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Gas Price ($/gallon)</label>
-              <input id="set-gas-price" type="number" step="0.01" placeholder="3.50" min="0">
-            </div>
-          </div>
-          <button class="btn primary" id="save-settings-btn">Save Settings</button>
-        </div>
 
-        <!-- COGS & Margins -->
-        <div class="card">
-          <div class="section-hdr"><h2>COGS &amp; Margins</h2></div>
-          <div style="margin-bottom:12px">
-            <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cost per can by SKU</label>
-            <div id="sku-cost-inputs">
-              <div class="sku-row classic-bg"><div><span class="badge sku-classic">Classic</span></div><input type="number" id="cost-classic" step="0.01" placeholder="2.10" style="width:90px"></div>
-              <div class="sku-row blueberry-bg"><div><span class="badge sku-blueberry">Blueberry</span></div><input type="number" id="cost-blueberry" step="0.01" placeholder="2.20" style="width:90px"></div>
-              <div class="sku-row peach-bg"><div><span class="badge sku-peach">Peach</span></div><input type="number" id="cost-peach" step="0.01" placeholder="2.15" style="width:90px"></div>
-              <div class="sku-row raspberry-bg"><div><span class="badge sku-raspberry">Raspberry</span></div><input type="number" id="cost-raspberry" step="0.01" placeholder="2.18" style="width:90px"></div>
-              <div class="sku-row variety-bg"><div><span class="badge sku-variety">Variety</span></div><input type="number" id="cost-variety" step="0.01" placeholder="2.25" style="width:90px"></div>
-            </div>
-          </div>
-          <div class="form-row col2">
-            <div class="form-group">
-              <label>Monthly overhead ($)</label>
-              <input id="cost-overhead" type="number" step="50" placeholder="1200">
-            </div>
-            <div class="form-group">
-              <label>Target margin (%)</label>
-              <input id="cost-target-margin" type="number" step="1" placeholder="60">
-            </div>
-          </div>
-        </div>
+      <!-- Settings tab bar -->
+      <div style="display:flex;gap:2px;margin-bottom:20px;border-bottom:2px solid var(--border);overflow-x:auto;flex-shrink:0">
+        <button class="tab active" data-stab="business">Business Info</button>
+        <button class="tab" data-stab="invoicing">Invoicing</button>
+        <button class="tab" data-stab="email">Email</button>
+        <button class="tab" data-stab="inventory">Inventory &amp; Production</button>
+        <button class="tab" data-stab="integrations">Integrations</button>
+        <button class="tab" data-stab="audit">Audit Log</button>
       </div>
 
-      <div class="card-grid grid-2" style="margin-bottom:16px">
-        <!-- Territory Defaults -->
-        <div class="card">
-          <div class="section-hdr"><h2>Territory Defaults</h2></div>
-          <div class="form-group" style="margin-bottom:10px">
-            <label>Default state / region</label>
-            <input id="set-default-state" placeholder="IL">
-          </div>
-          <div class="form-group" style="margin-bottom:10px">
-            <label>Default account type</label>
-            <select id="set-default-account-type">
-              <option value="Grocery">Grocery</option>
-              <option value="Gym">Gym</option>
-              <option value="Café">Café</option>
-              <option value="Restaurant">Restaurant</option>
-              <option value="Spa / Wellness">Spa / Wellness</option>
-              <option value="Specialty / Gift">Specialty / Gift</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Default payment terms (days)</label>
-            <input id="set-default-terms" type="number" placeholder="30" min="0">
-          </div>
-        </div>
-
-        <!-- Units Info Panel (read-only) -->
-        <div class="card">
-          <div class="section-hdr"><h2>Units &amp; Display</h2></div>
-          <div class="highlight-box" style="margin-bottom:10px">
-            <div style="font-size:13px;font-weight:600;margin-bottom:6px">Unit Reference</div>
-            <div style="font-size:13px;display:grid;gap:4px">
-              <div>📦 <strong>1 case</strong> = <strong id="set-cans-per-case">12</strong> cans</div>
-              <div>📋 <strong>Orders</strong> are entered and tracked in <strong>cases</strong></div>
-              <div>🏭 <strong>Inventory</strong> is tracked in individual <strong>cans</strong></div>
-              <div>🚚 <strong>Deliveries</strong> are confirmed in <strong>cases</strong></div>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--muted)">These values are fixed constants used throughout the app to ensure consistent unit conversion.</div>
-        </div>
-      </div>
-
-      <!-- Variety Pack Recipe -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr"><h2>Variety Pack Recipe</h2></div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Define how many cans of each flavor go into one variety pack. Total must equal <strong>12 cans</strong>.</div>
-        <div id="set-variety-recipe" style="display:grid;gap:8px;margin-bottom:12px">
-          <!-- Filled by JS -->
-        </div>
-        <div id="set-variety-total" style="font-size:13px;font-weight:600;margin-bottom:12px"></div>
-      </div>
-
-      <!-- Wholesale Order Portal Settings -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr">
-          <h2>🛒 Wholesale Order Portal</h2>
-          <button class="btn sm primary" onclick="savePortalSettings()">Save Portal Settings</button>
-        </div>
+      <!-- Tab 1: Business Info -->
+      <div id="stab-business" class="stab-pane">
         <div class="card-grid grid-2" style="margin-bottom:16px">
-          <!-- Mode toggle -->
-          <div>
+          <div class="card">
+            <div class="section-hdr"><h2>Farm / Business</h2></div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Portal Mode</label>
-              <select id="portal-mode">
-                <option value="preorder">Pre-Order Mode</option>
-                <option value="liveorder">Live Orders Mode</option>
+              <label>Company name</label>
+              <input id="set-company" placeholder="Pumpkin Blossom Farm LLC">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Address</label>
+              <textarea id="set-address" rows="2" placeholder="393 Pumpkin Hill Rd&#10;Warner, NH 03278" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Phone</label>
+                <input id="set-phone" type="tel" placeholder="603-748-3038">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>EIN / Tax ID</label>
+                <input id="set-ein" placeholder="XX-XXXXXXX">
+              </div>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Billing Email</label>
+                <div class="highlight-box" style="padding:8px 10px;font-size:13px">lavender@pbfwholesale.com</div>
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Website</label>
+                <input id="set-website" placeholder="https://drinkpurpl.com">
+              </div>
+            </div>
+            <button class="btn primary" onclick="saveBusinessSettings()">Save Business Info</button>
+          </div>
+          <div class="card">
+            <div class="section-hdr"><h2>Territory Defaults</h2></div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label>Default state / region</label>
+              <input id="set-default-state" placeholder="NH">
+            </div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label>Default account type</label>
+              <select id="set-default-account-type">
+                <option value="Grocery">Grocery</option>
+                <option value="Gym">Gym</option>
+                <option value="Café">Café</option>
+                <option value="Restaurant">Restaurant</option>
+                <option value="Spa / Wellness">Spa / Wellness</option>
+                <option value="Specialty / Gift">Specialty / Gift</option>
+                <option value="Other">Other</option>
               </select>
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">Pre-Order shows a launch banner. Live Orders shows pricing if set.</div>
             </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Classic — Price per case ($)</label>
-              <input type="number" id="portal-price-per-case" step="0.01" min="0" placeholder="Leave blank to hide price">
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">Shown on form in Live Orders mode only.</div>
-            </div>
-            <div class="form-group" style="margin-bottom:8px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
-                <input type="checkbox" id="portal-deadline-enabled" onchange="togglePortalDeadline()">
-                Enable order deadline
-              </label>
-            </div>
-            <div id="portal-deadline-row" style="display:none;margin-bottom:12px">
-              <div class="form-group">
-                <label>Order Deadline Date</label>
-                <input type="date" id="portal-deadline">
-                <div style="font-size:11px;color:var(--muted);margin-top:3px">Shown on form as "Pre-orders close: [date]"</div>
-              </div>
-            </div>
-          </div>
-          <!-- Status card -->
-          <div>
-            <div class="highlight-box" id="portal-status-card">
-              <div style="font-size:13px;font-weight:600;margin-bottom:8px">Portal Status</div>
-              <div id="portal-status-body" style="font-size:13px;color:var(--muted)">Loading…</div>
-              <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn sm primary" onclick="nav('pre-orders')">View Order Forms →</button>
-                <button class="btn sm" onclick="window.open('/order','_blank')">Preview Form ↗</button>
-              </div>
+            <div class="form-group" style="margin-bottom:16px">
+              <label>Default payment terms (days)</label>
+              <input id="set-default-terms" type="number" placeholder="30" min="0">
             </div>
           </div>
         </div>
+        <div class="card">
+          <div class="section-hdr"><h2>Team Access</h2></div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">All team members share the same workspace. Users who have signed in are listed below.</div>
+          <div id="set-users-list"><div style="font-size:13px;color:var(--muted)">User tracking available after multiple sign-ins.</div></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
+        </div>
       </div>
 
-      <!-- User Management (read-only) -->
-      <div class="card">
-        <div class="section-hdr"><h2>Team Access</h2></div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">All team members share the same workspace. Users who have signed in are listed below.</div>
-        <div id="set-users-list">
-          <div style="font-size:13px;color:var(--muted)">User tracking available after multiple sign-ins.</div>
-        </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
-      </div>
-
-      <!-- Invoice Settings -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr">
-          <h2>Invoice Settings</h2>
-          <button class="btn sm primary" onclick="saveInvoiceSettings()">Save Invoice Settings</button>
-        </div>
+      <!-- Tab 2: Invoicing -->
+      <div id="stab-invoicing" class="stab-pane" style="display:none">
         <div class="card-grid grid-2" style="margin-bottom:16px">
-          <div>
+          <div class="card">
+            <div class="section-hdr"><h2>Invoice Header</h2></div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Invoice from name</label>
+              <label>From name</label>
               <input id="inv-from-name" placeholder="Pumpkin Blossom Farm LLC">
             </div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Invoice from email</label>
-              <input type="email" id="inv-from-email" placeholder="lavender@pumpkinblossomfarm.com">
+              <label>From email</label>
+              <input type="email" id="inv-from-email" placeholder="lavender@pbfwholesale.com">
             </div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Invoice from address</label>
+              <label>From address</label>
               <input id="inv-from-address" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
             </div>
+            <div class="form-row col2">
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Default terms (days)</label>
+                <input type="number" id="inv-terms" value="30" min="0">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Next purpl invoice #</label>
+                <input type="number" id="set-next-purpl-inv-num" min="1" step="1" placeholder="1001">
+              </div>
+            </div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Default payment terms (days)</label>
-              <input type="number" id="inv-terms" value="30" min="0">
+              <label>Next LF invoice #</label>
+              <input type="number" id="set-next-lf-inv-num" min="1" step="1" placeholder="1001">
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Auto-increments when a new invoice is saved</div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Invoice footer notes</label>
+              <textarea id="inv-footer-notes" rows="2" placeholder="Thank you for your business." style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Appears on all invoice print/PDF views</div>
             </div>
           </div>
-          <div>
+          <div class="card">
+            <div class="section-hdr"><h2>Payment Methods</h2></div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Payment instructions</label>
-              <textarea id="inv-payment-instructions" rows="4" placeholder="e.g. Make checks payable to Pumpkin Blossom Farm LLC&#10;Mail to: 393 Pumpkin Hill Rd, Warner NH 03278" style="width:100%;resize:vertical"></textarea>
+              <label>Stripe payment link</label>
+              <input id="inv-stripe-link" placeholder="https://buy.stripe.com/...">
             </div>
             <div class="form-group" style="margin-bottom:12px">
               <label>ACH routing number</label>
@@ -1482,63 +1354,229 @@
               <input id="inv-ach-account" placeholder="Account number">
             </div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Stripe payment link</label>
-              <input id="inv-stripe-link" placeholder="https://buy.stripe.com/...">
+              <label>Payment instructions</label>
+              <textarea id="inv-payment-instructions" rows="3" placeholder="e.g. Make checks payable to Pumpkin Blossom Farm LLC&#10;Mail to: 393 Pumpkin Hill Rd, Warner NH 03278" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+            </div>
+            <input type="hidden" id="inv-check-instructions">
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <button class="btn primary" onclick="saveInvoiceSettings()">Save Invoicing Settings</button>
+        </div>
+        <!-- Portal settings -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>🛒 Wholesale Order Portal</h2>
+            <button class="btn sm primary" onclick="savePortalSettings()">Save Portal Settings</button>
+          </div>
+          <div class="card-grid grid-2">
+            <div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Portal Mode</label>
+                <select id="portal-mode">
+                  <option value="preorder">Pre-Order Mode</option>
+                  <option value="liveorder">Live Orders Mode</option>
+                </select>
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">Pre-Order shows a launch banner. Live Orders shows pricing if set.</div>
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Classic — Price per case ($)</label>
+                <input type="number" id="portal-price-per-case" step="0.01" min="0" placeholder="Leave blank to hide price">
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
+                  <input type="checkbox" id="portal-deadline-enabled" onchange="togglePortalDeadline()">
+                  Enable order deadline
+                </label>
+              </div>
+              <div id="portal-deadline-row" style="display:none;margin-bottom:12px">
+                <div class="form-group">
+                  <label>Order Deadline Date</label>
+                  <input type="date" id="portal-deadline">
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="highlight-box" id="portal-status-card">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px">Portal Status</div>
+                <div id="portal-status-body" style="font-size:13px;color:var(--muted)">Loading…</div>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn sm primary" onclick="nav('pre-orders')">View Order Forms →</button>
+                  <button class="btn sm" onclick="window.open('/order','_blank')">Preview Form ↗</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- AI Settings -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr">
-          <h2>AI Settings</h2>
-          <button class="btn sm primary" onclick="saveApiSettings()">Save</button>
-        </div>
-        <div class="form-group" style="max-width:480px">
-          <label>Anthropic API Key</label>
-          <input type="password" id="set-anthropic-key" placeholder="sk-ant-..." autocomplete="off">
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">Required for AI draft generation and mass email AI. Key is stored in your Firestore database.</div>
+      <!-- Tab 3: Email -->
+      <div id="stab-email" class="stab-pane" style="display:none">
+        <div class="card" style="max-width:600px;margin-bottom:16px">
+          <div class="section-hdr"><h2>Email Configuration</h2></div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Resend API Key</label>
+            <input type="password" id="set-resend-key" placeholder="re_..." autocomplete="off">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Used for sending invoice emails, order confirmations, and reminders via Resend.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Default From Address</label>
+            <div class="highlight-box" style="padding:8px 10px;font-size:13px">lavender@pbfwholesale.com <span style="font-size:11px;color:var(--muted)">(contact dev to change)</span></div>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Reply-To Address</label>
+            <div class="highlight-box" style="padding:8px 10px;font-size:13px">graham@pumpkinblossomfarm.com <span style="font-size:11px;color:var(--muted)">(contact dev to change)</span></div>
+          </div>
+          <div class="form-group" style="margin-bottom:16px">
+            <label>Email Signature / Footer</label>
+            <textarea id="set-email-sig" rows="4" placeholder="Graham Biagiotti&#10;Pumpkin Blossom Farm LLC&#10;603-748-3038" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <button class="btn primary" onclick="saveEmailSettings()">Save Email Settings</button>
         </div>
       </div>
 
-      <!-- One-time NEM show accounts import — hidden after run -->
-      <div class="card" id="nem-import-card" style="border:2px solid var(--amber,#f59e0b)">
-        <div class="section-hdr"><h2>Import NEM Show Accounts (March 2026)</h2></div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
-          Imports 18 accounts won at the March 2026 NEM trade show. Checks for duplicates by name. Run once — disappears automatically after import.
-        </div>
-        <button class="btn primary" onclick="importNEMShowAccounts()">Import NEM Show Accounts (18 records)</button>
-      </div>
-
-      <!-- One-time trade show import — hidden after run -->
-      <div class="card" id="tradeshow-import-card" style="border:2px solid var(--amber,#f59e0b)">
-        <div class="section-hdr"><h2>Import Trade Show Prospects</h2></div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
-          Imports 34 prospects met at the spring 2026 trade show. Checks for duplicates by name before inserting.
-          Run once — this button disappears automatically after the import completes.
-        </div>
-        <button class="btn primary" onclick="importTradeShowProspects()">Import Trade Show Prospects (34 records)</button>
-      </div>
-
-      <!-- LF SKU Catalog -->
-      <div class="card" style="margin-top:16px">
-        <div class="section-hdr">
-          <h2>🌿 Lavender Fields SKUs</h2>
-          <div style="display:flex;gap:8px;align-items:center">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-              <input type="checkbox" id="lf-sku-show-archived" onchange="renderLfSkuSettings()"> Show archived
-            </label>
-            <button class="btn sm primary" onclick="addLfSku()">+ Add SKU</button>
+      <!-- Tab 4: Inventory & Production -->
+      <div id="stab-inventory" class="stab-pane" style="display:none">
+        <div class="card-grid grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="section-hdr"><h2>Thresholds &amp; Defaults</h2></div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Low Stock Alert Threshold (cans)</label>
+              <input id="set-low-inv-threshold" type="number" placeholder="500" min="0" step="1">
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Alert appears on dashboard when on-hand cans fall below this. Default: 500.</div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Default Production Run Size (cans)</label>
+              <input id="set-prod-run-size" type="number" placeholder="2400" min="0" step="1">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Production Lead Time (days)</label>
+              <input id="set-lead-time" type="number" placeholder="14" min="1" max="365">
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Used by production planning projections.</div>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Vehicle MPG</label>
+                <input id="set-mpg" type="number" step="1" placeholder="25" min="1">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Gas Price ($/gallon)</label>
+                <input id="set-gas-price" type="number" step="0.01" placeholder="3.50" min="0">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:4px">
+              <label>Cans per Case</label>
+              <div class="highlight-box" style="padding:8px 10px;font-size:13px"><strong id="set-cans-per-case">12</strong> cans <span style="font-size:11px;color:var(--muted)">(contact dev to change)</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="section-hdr"><h2>COGS &amp; Margins</h2></div>
+            <div style="margin-bottom:12px">
+              <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:8px">Cost per can by SKU</label>
+              <div id="sku-cost-inputs">
+                <div class="sku-row classic-bg"><div><span class="badge sku-classic">Classic</span></div><input type="number" id="cost-classic" step="0.01" placeholder="2.10" style="width:90px"></div>
+                <div class="sku-row blueberry-bg"><div><span class="badge sku-blueberry">Blueberry</span></div><input type="number" id="cost-blueberry" step="0.01" placeholder="2.20" style="width:90px"></div>
+                <div class="sku-row peach-bg"><div><span class="badge sku-peach">Peach</span></div><input type="number" id="cost-peach" step="0.01" placeholder="2.15" style="width:90px"></div>
+                <div class="sku-row raspberry-bg"><div><span class="badge sku-raspberry">Raspberry</span></div><input type="number" id="cost-raspberry" step="0.01" placeholder="2.18" style="width:90px"></div>
+                <div class="sku-row variety-bg"><div><span class="badge sku-variety">Variety</span></div><input type="number" id="cost-variety" step="0.01" placeholder="2.25" style="width:90px"></div>
+              </div>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group">
+                <label>Monthly overhead ($)</label>
+                <input id="cost-overhead" type="number" step="50" placeholder="1200">
+              </div>
+              <div class="form-group">
+                <label>Target margin (%)</label>
+                <input id="cost-target-margin" type="number" step="1" placeholder="60">
+              </div>
+            </div>
           </div>
         </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Name</th><th>Wholesale $/unit</th><th>Case Size</th><th>MSRP</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="lf-sku-tbody"></tbody>
-          </table>
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr"><h2>Variety Pack Recipe</h2></div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Define how many cans of each flavor go into one variety pack. Total must equal <strong>12 cans</strong>.</div>
+          <div id="set-variety-recipe" style="display:grid;gap:8px;margin-bottom:12px"></div>
+          <div id="set-variety-total" style="font-size:13px;font-weight:600;margin-bottom:12px"></div>
+        </div>
+        <div style="margin-bottom:16px">
+          <button class="btn primary" onclick="saveInventorySettings()">Save Inventory &amp; Production</button>
+        </div>
+        <!-- LF SKU Catalog -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="section-hdr">
+            <h2>🌿 Lavender Fields SKUs</h2>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <input type="checkbox" id="lf-sku-show-archived" onchange="renderLfSkuSettings()"> Show archived
+              </label>
+              <button class="btn sm primary" onclick="addLfSku()">+ Add SKU</button>
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Wholesale $/unit</th><th>Case Size</th><th>MSRP</th><th>Actions</th></tr></thead>
+              <tbody id="lf-sku-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Import cards (hidden after run) -->
+        <div class="card" id="nem-import-card" style="border:2px solid var(--amber,#f59e0b);margin-bottom:16px">
+          <div class="section-hdr"><h2>Import NEM Show Accounts (March 2026)</h2></div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Imports 18 accounts won at the March 2026 NEM trade show. Checks for duplicates by name. Run once — disappears automatically after import.</div>
+          <button class="btn primary" onclick="importNEMShowAccounts()">Import NEM Show Accounts (18 records)</button>
+        </div>
+        <div class="card" id="tradeshow-import-card" style="border:2px solid var(--amber,#f59e0b)">
+          <div class="section-hdr"><h2>Import Trade Show Prospects</h2></div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Imports 34 prospects met at the spring 2026 trade show. Checks for duplicates by name before inserting. Run once — this button disappears automatically after the import completes.</div>
+          <button class="btn primary" onclick="importTradeShowProspects()">Import Trade Show Prospects (34 records)</button>
+        </div>
+      </div>
+
+      <!-- Tab 5: Integrations -->
+      <div id="stab-integrations" class="stab-pane" style="display:none">
+        <div class="card" style="max-width:600px">
+          <div class="section-hdr"><h2>AI — Anthropic</h2></div>
+          <div class="form-group" style="max-width:480px;margin-bottom:16px">
+            <label>Anthropic API Key</label>
+            <input type="password" id="set-anthropic-key" placeholder="sk-ant-..." autocomplete="off">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Required for AI draft generation and mass email AI. Stored in your Firestore database.</div>
+          </div>
+          <button class="btn primary" onclick="saveApiSettings()">Save Integrations</button>
+        </div>
+      </div>
+
+      <!-- Tab 6: Audit Log -->
+      <div id="stab-audit" class="stab-pane" style="display:none">
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <div class="form-group" style="margin:0;min-width:140px">
+              <label style="font-size:11px">Action</label>
+              <select id="al-filter-action" onchange="renderAuditLog()">
+                <option value="all">All actions</option>
+                <option value="create">Create</option>
+                <option value="update">Update</option>
+                <option value="delete">Delete</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;min-width:140px">
+              <label style="font-size:11px">Entity Type</label>
+              <select id="al-filter-type" onchange="renderAuditLog()">
+                <option value="all">All types</option>
+                <option value="account">Account</option>
+                <option value="invoice">Invoice</option>
+                <option value="order">Order</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Timestamp</th><th>Action</th><th>Type</th><th>Entity</th><th>By</th></tr></thead>
+              <tbody id="al-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 

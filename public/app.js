@@ -153,7 +153,6 @@ const renders = {
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   emails:           renderEmailsPage,
-  'audit-log':      renderAuditLog,
 };
 
 // ── Audit Log ────────────────────────────────────────────
@@ -8113,8 +8112,8 @@ function _repFilterOrders(orders) {
 
 // ── Audit Log Page ───────────────────────────────────────
 function renderAuditLog() {
-  const el = qs('#page-audit-log');
-  if (!el) return;
+  const tbody = qs('#al-tbody');
+  if (!tbody) return;
 
   const actionFilter = qs('#al-filter-action')?.value || 'all';
   const typeFilter   = qs('#al-filter-type')?.value   || 'all';
@@ -8138,7 +8137,6 @@ function renderAuditLog() {
     t === 'order'   ? `<span class="badge blue"   style="font-size:10px">order</span>`   :
                       `<span class="badge gray"   style="font-size:10px">${escHtml(t)}</span>`;
 
-  const tbody = qs('#al-tbody');
   if (tbody) {
     tbody.innerHTML = entries.length
       ? entries.map(e => `<tr>
@@ -9056,13 +9054,26 @@ function renderSettings() {
   const s = DB.obj('settings', {});
   const c = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
 
-  // Company
-  if(qs('#set-company'))            qs('#set-company').value            = s.company||'';
-  if(qs('#set-payment-terms'))     qs('#set-payment-terms').value     = s.payment_terms||30;
-  if(qs('#set-lead-time'))         qs('#set-lead-time').value         = s.production_lead_time||14;
-  if(qs('#set-low-inv-threshold')) qs('#set-low-inv-threshold').value = s.lowStockThreshold||500;
-  if(qs('#set-mpg'))              qs('#set-mpg').value              = s.mpg||25;
-  if(qs('#set-gas-price'))        qs('#set-gas-price').value        = s.gasPrice||3.50;
+  // Tab 1: Business Info
+  if(qs('#set-company'))              qs('#set-company').value              = s.company||'';
+  if(qs('#set-address'))              qs('#set-address').value              = s.address||'';
+  if(qs('#set-phone'))                qs('#set-phone').value                = s.phone||'';
+  if(qs('#set-website'))              qs('#set-website').value              = s.website||'';
+  if(qs('#set-ein'))                  qs('#set-ein').value                  = s.ein||'';
+  if(qs('#set-default-state'))        qs('#set-default-state').value        = s.default_state||'';
+  if(qs('#set-default-account-type')) qs('#set-default-account-type').value = s.default_account_type||'Grocery';
+  if(qs('#set-default-terms'))        qs('#set-default-terms').value        = s.default_payment_terms||30;
+
+  // Tab 3: Email
+  if(qs('#set-email-sig'))            qs('#set-email-sig').value            = s.emailSignature||'';
+
+  // Tab 4: Inventory & Production
+  if(qs('#set-low-inv-threshold'))    qs('#set-low-inv-threshold').value    = s.lowStockThreshold||500;
+  if(qs('#set-prod-run-size'))        qs('#set-prod-run-size').value        = s.defaultProdRunSize||'';
+  if(qs('#set-lead-time'))            qs('#set-lead-time').value            = s.production_lead_time||14;
+  if(qs('#set-mpg'))                  qs('#set-mpg').value                  = s.mpg||25;
+  if(qs('#set-gas-price'))            qs('#set-gas-price').value            = s.gasPrice||3.50;
+  if(qs('#set-cans-per-case'))        qs('#set-cans-per-case').textContent  = CANS_PER_CASE;
 
   // COGS
   SKUS.forEach(sk=>{
@@ -9070,14 +9081,6 @@ function renderSettings() {
   });
   if(qs('#cost-overhead'))      qs('#cost-overhead').value      = c.overhead_monthly||1200;
   if(qs('#cost-target-margin')) qs('#cost-target-margin').value = (c.target_margin||.6)*100;
-
-  // Territory defaults
-  if(qs('#set-default-state'))        qs('#set-default-state').value        = s.default_state||'';
-  if(qs('#set-default-account-type')) qs('#set-default-account-type').value = s.default_account_type||'Grocery';
-  if(qs('#set-default-terms'))        qs('#set-default-terms').value        = s.default_payment_terms||30;
-
-  // Units info panel — update display
-  if(qs('#set-cans-per-case')) qs('#set-cans-per-case').textContent = CANS_PER_CASE;
 
   // Variety pack recipe
   const recipe = s.variety_recipe || {};
@@ -9092,14 +9095,13 @@ function renderSettings() {
     _updateVarietyTotal();
   }
 
-  // Trade show import button — hide once import has run
+  // Import buttons — hide once run
   const tsBtn = qs('#tradeshow-import-card');
   if (tsBtn) tsBtn.style.display = s.tradeshow_2026_imported ? 'none' : '';
-  // NEM show accounts import button — hide once import has run
   const nemBtn = qs('#nem-import-card');
   if (nemBtn) nemBtn.style.display = s.nem_show_2026_imported ? 'none' : '';
 
-  // User list (read-only — show known signed-in users from settings)
+  // User list (read-only)
   const usersEl = qs('#set-users-list');
   if (usersEl && s.known_users?.length) {
     usersEl.innerHTML = `<div class="tbl-wrap"><table>
@@ -9114,6 +9116,18 @@ function renderSettings() {
 
   // LF SKU catalog
   renderLfSkuSettings();
+
+  // Wire settings tab switching
+  document.querySelectorAll('#page-settings [data-stab]').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#page-settings [data-stab]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('#page-settings .stab-pane').forEach(p => p.style.display = 'none');
+      btn.classList.add('active');
+      const pane = document.getElementById('stab-' + btn.dataset.stab);
+      if (pane) pane.style.display = '';
+      if (btn.dataset.stab === 'audit') renderAuditLog();
+    };
+  });
 }
 
 function _updateVarietyTotal() {
@@ -9166,6 +9180,61 @@ function saveSettings() {
   };
   DB.setObj('costs', c);
   toast('Settings saved');
+}
+
+function saveBusinessSettings() {
+  const existing = DB.obj('settings', {});
+  DB.setObj('settings', {
+    ...existing,
+    company:               qs('#set-company')?.value?.trim()||'',
+    address:               qs('#set-address')?.value?.trim()||'',
+    phone:                 qs('#set-phone')?.value?.trim()||'',
+    website:               qs('#set-website')?.value?.trim()||'',
+    ein:                   qs('#set-ein')?.value?.trim()||'',
+    default_state:         qs('#set-default-state')?.value?.trim()||'',
+    default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
+    default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
+  });
+  toast('Business info saved ✓');
+}
+
+function saveInventorySettings() {
+  const recipe = {};
+  let recipeTotal = 0;
+  SKUS.filter(sk=>sk.id!=='variety').forEach(sk=>{
+    const v = parseInt(qs('#variety-recipe-'+sk.id)?.value)||0;
+    recipe[sk.id] = v; recipeTotal += v;
+  });
+  if (recipeTotal > 0 && recipeTotal !== CANS_PER_CASE) {
+    toast(`Variety recipe must total ${CANS_PER_CASE} cans (currently ${recipeTotal})`);
+    return;
+  }
+  const existing = DB.obj('settings', {});
+  DB.setObj('settings', {
+    ...existing,
+    lowStockThreshold:    parseInt(qs('#set-low-inv-threshold')?.value)||500,
+    defaultProdRunSize:   parseInt(qs('#set-prod-run-size')?.value)||0,
+    production_lead_time: parseInt(qs('#set-lead-time')?.value)||14,
+    mpg:                  parseFloat(qs('#set-mpg')?.value)||25,
+    gasPrice:             parseFloat(qs('#set-gas-price')?.value)||3.50,
+    variety_recipe:       recipeTotal === CANS_PER_CASE ? recipe : (existing.variety_recipe||{}),
+  });
+  const cogs = {};
+  SKUS.forEach(sk=>{ cogs[sk.id]=parseFloat(qs('#cost-'+sk.id)?.value)||2.15; });
+  DB.setObj('costs', {
+    cogs,
+    overhead_monthly: parseFloat(qs('#cost-overhead')?.value)||1200,
+    target_margin:    (parseFloat(qs('#cost-target-margin')?.value)||60)/100,
+  });
+  toast('Inventory & production settings saved ✓');
+}
+
+function saveEmailSettings() {
+  const existing = DB.obj('settings', {});
+  DB.setObj('settings', { ...existing, emailSignature: qs('#set-email-sig')?.value||'' });
+  const apiExisting = DB.obj('api_settings', {});
+  DB.setObj('api_settings', { ...apiExisting, resendKey: qs('#set-resend-key')?.value?.trim()||'' });
+  toast('Email settings saved ✓');
 }
 
 
@@ -12701,19 +12770,21 @@ function deleteInvoice(id) {
 }
 
 function saveInvoiceSettings() {
+  const get = id => document.getElementById(id);
+  const existing = DB.obj('invoice_settings', {});
   const s = {
-    fromName: document.getElementById('inv-from-name')?.value ||
-      'Pumpkin Blossom Farm LLC',
-    fromEmail: document.getElementById('inv-from-email')?.value ||
-      'lavender@pbfwholesale.com',
-    fromAddress: document.getElementById('inv-from-address')?.value ||
-      '393 Pumpkin Hill Rd, Warner, NH 03278',
-    terms: parseInt(document.getElementById('inv-terms')?.value)||30,
-    stripeLink: document.getElementById('inv-stripe-link')?.value||'',
-    achRouting: document.getElementById('inv-ach-routing')?.value||'',
-    achAccount: document.getElementById('inv-ach-account')?.value||'',
-    checkInstructions: document.getElementById(
-      'inv-check-instructions')?.value||''
+    ...existing,
+    fromName:      get('inv-from-name')?.value    || 'Pumpkin Blossom Farm LLC',
+    fromEmail:     get('inv-from-email')?.value   || 'lavender@pbfwholesale.com',
+    fromAddress:   get('inv-from-address')?.value || '393 Pumpkin Hill Rd, Warner, NH 03278',
+    terms:         parseInt(get('inv-terms')?.value)||30,
+    nextPurplNum:  parseInt(get('set-next-purpl-inv-num')?.value)||existing.nextPurplNum||null,
+    nextLfNum:     parseInt(get('set-next-lf-inv-num')?.value)||existing.nextLfNum||null,
+    footerNotes:   get('inv-footer-notes')?.value||'',
+    stripeLink:    get('inv-stripe-link')?.value||'',
+    achRouting:    get('inv-ach-routing')?.value||'',
+    achAccount:    get('inv-ach-account')?.value||'',
+    checkInstructions: get('inv-payment-instructions')?.value || get('inv-check-instructions')?.value||'',
   };
   DB.setObj('invoice_settings', s);
   toast('Invoice settings saved ✓');
@@ -12721,19 +12792,18 @@ function saveInvoiceSettings() {
 
 function loadInvoiceSettings() {
   const s = DB.obj('invoice_settings', {});
-  const set = (id, val) => {
-    const el = document.getElementById(id);
-    if (el && val != null) el.value = val;
-  };
-  set('inv-from-name',          s.fromName);
-  set('inv-from-email',         s.fromEmail);
-  set('inv-from-address',       s.fromAddress);
-  set('inv-terms',              s.terms);
-  set('inv-stripe-link',        s.stripeLink);
-  set('inv-ach-routing',        s.achRouting);
-  set('inv-ach-account',        s.achAccount);
-  set('inv-check-instructions', s.checkInstructions);
-  // legacy field aliases
+  const set = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
+  set('inv-from-name',           s.fromName);
+  set('inv-from-email',          s.fromEmail);
+  set('inv-from-address',        s.fromAddress);
+  set('inv-terms',               s.terms);
+  set('set-next-purpl-inv-num',  s.nextPurplNum);
+  set('set-next-lf-inv-num',     s.nextLfNum);
+  set('inv-footer-notes',        s.footerNotes);
+  set('inv-stripe-link',         s.stripeLink);
+  set('inv-ach-routing',         s.achRouting);
+  set('inv-ach-account',         s.achAccount);
+  set('inv-check-instructions',  s.checkInstructions);
   set('inv-payment-instructions', s.checkInstructions || s.paymentInstructions);
 }
 
@@ -12748,6 +12818,8 @@ function loadApiSettings() {
   const s = DB.obj('api_settings', {});
   const el = document.getElementById('set-anthropic-key');
   if (el && s.anthropicKey) el.value = s.anthropicKey;
+  const re = document.getElementById('set-resend-key');
+  if (re && s.resendKey) re.value = s.resendKey;
 }
 
 function generateInvoicePrint(invoiceId) {
