@@ -2620,8 +2620,25 @@
       <div class="form-group"><label>Account *</label><select id="iv-account" onchange="ivAccountChange()"></select></div>
     </div>
     <div class="form-row col2">
-      <div class="form-group"><label>Issued</label><input type="date" id="iv-date"></div>
+      <div class="form-group"><label>Issued</label><input type="date" id="iv-date" onchange="ivTermsChange()"></div>
       <div class="form-group"><label>Due</label><input type="date" id="iv-due"></div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Payment Terms</label>
+        <select id="iv-terms" onchange="ivTermsChange()">
+          <option value="due_on_receipt">Due on Receipt</option>
+          <option value="net7">Net 7</option>
+          <option value="net15">Net 15</option>
+          <option value="net30">Net 30</option>
+          <option value="net45">Net 45</option>
+          <option value="net60">Net 60</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group" id="iv-terms-custom-row" style="display:none">
+        <label>Custom Terms</label>
+        <input id="iv-terms-custom" placeholder="e.g. Net 14, Due on Delivery">
+      </div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Pricing Tier</label>

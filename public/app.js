@@ -409,7 +409,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               </tr>
               <tr>
                 <td style="font-size:13px;color:#6b7280">Payment Terms</td>
-                <td align="right" style="font-size:13px;color:#1a1a2e">Net 30</td>
+                <td align="right" style="font-size:13px;color:#1a1a2e">${extra.paymentTerms||'Net 30'}</td>
               </tr>
             </table>
             ${extra.invoiceLink?`<div style="margin-top:16px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center"><a href="${extra.invoiceLink}" style="color:${accentColor};font-size:14px;font-weight:500">View Invoice →</a></div>`:''}
@@ -1462,8 +1462,12 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     const num = existing.length + 1;
     if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
-    const terms  = DB.obj('invoice_settings',{}).terms || 30;
-    const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
+    const settingsTerms = DB.obj('invoice_settings',{}).terms || 30;
+    const defaultTermsKey = Object.entries(_TERMS_DAYS).find(([,d]) => d === settingsTerms)?.[0] || 'net30';
+    if (qs('#iv-terms')) { qs('#iv-terms').value = defaultTermsKey; }
+    if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = 'none';
+    if (qs('#iv-terms-custom')) qs('#iv-terms-custom').value = '';
+    const dueStr = new Date(Date.now() + settingsTerms * 864e5).toISOString().slice(0,10);
     if (qs('#iv-due'))    qs('#iv-due').value    = dueStr;
     if (qs('#iv-status')) qs('#iv-status').value = 'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = prefillNotes || '';
@@ -1474,6 +1478,10 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-due'))    qs('#iv-due').value    = inv.due||'';
     if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
+    const savedTerms = inv.paymentTerms || 'net30';
+    if (qs('#iv-terms')) qs('#iv-terms').value = savedTerms;
+    if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = savedTerms === 'custom' ? '' : 'none';
+    if (qs('#iv-terms-custom')) qs('#iv-terms-custom').value = inv.paymentTermsCustom || '';
     if (qs('#iv-delete-btn')) {
       qs('#iv-delete-btn').style.display = '';
       qs('#iv-delete-btn').onclick = () => deleteInvRecord(id);
@@ -1577,6 +1585,39 @@ function _ivRenderLineRows(existingItems) {
     container.appendChild(row);
   });
   _ivCalcTotal();
+}
+
+const _TERMS_DAYS = { net7: 7, net15: 15, net30: 30, net45: 45, net60: 60 };
+
+function _invTermsLabel(inv) {
+  const labels = {
+    due_on_receipt: 'Due on Receipt',
+    net7: 'Net 7', net15: 'Net 15', net30: 'Net 30',
+    net45: 'Net 45', net60: 'Net 60',
+  };
+  const t = inv?.paymentTerms;
+  if (!t || t === 'net30') return 'Net 30';
+  if (t === 'custom') return inv.paymentTermsCustom || 'Custom';
+  return labels[t] || t;
+}
+
+function ivTermsChange() {
+  const terms = qs('#iv-terms')?.value;
+  const customRow = qs('#iv-terms-custom-row');
+  if (customRow) customRow.style.display = terms === 'custom' ? '' : 'none';
+  if (terms === 'custom') return;
+
+  const dateVal = qs('#iv-date')?.value;
+  const dueEl   = qs('#iv-due');
+  if (!dueEl || !dateVal) return;
+
+  if (terms === 'due_on_receipt') {
+    dueEl.value = dateVal;
+  } else {
+    const days = _TERMS_DAYS[terms] || 30;
+    dueEl.value = new Date(new Date(dateVal + 'T12:00:00').getTime() + days * 864e5)
+      .toISOString().slice(0, 10);
+  }
 }
 
 function ivAccountChange() {
@@ -10367,6 +10408,7 @@ function buildPurplInvoiceEmailHTML(inv) {
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
         ${inv.date ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
         <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
+        <div style="font-size:13px;color:#6b7280;margin-top:2px">Terms: ${_invTermsLabel(inv)}</div>
       </td>
     </tr></table>
   </td></tr>
@@ -12815,7 +12857,7 @@ function generateInvoicePrint(invoiceId) {
   </div>
   <div>
     <div class="section-label">Payment Terms</div>
-    <div>Net ${s.terms||30} days</div>
+    <div>${_invTermsLabel(iv)}</div>
     ${iv.linkedOrderId ?
       `<div style="font-size:11px;color:#9ca3af;margin-top:4px">
         Order ref: ${iv.linkedOrderId}</div>` : ''}
@@ -13056,6 +13098,8 @@ function saveInv(id, isNew) {
   const status    = qs('#iv-status')?.value || 'draft';
   const notes     = qs('#iv-notes')?.value?.trim() || '';
   const tier      = qs('#iv-tier')?.value || 'direct';
+  const paymentTerms = qs('#iv-terms')?.value || 'net30';
+  const paymentTermsCustom = paymentTerms === 'custom' ? (qs('#iv-terms-custom')?.value?.trim() || '') : undefined;
 
   if (!accountId) { toast('Select an account'); return; }
 
@@ -13107,6 +13151,8 @@ function saveInv(id, isNew) {
     status,
     notes,
     lineItems,
+    paymentTerms,
+    ...(paymentTermsCustom !== undefined ? { paymentTermsCustom } : {}),
     source:       existing?.source || 'manual',
     fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };
