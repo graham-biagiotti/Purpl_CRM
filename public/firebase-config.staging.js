@@ -21,10 +21,10 @@ window.GOOGLE_PLACES_KEY = '';  // optional — paste key here if you want addre
 window.OLD_OWNER_UID = '';
 
 window.FIREBASE_CONFIG = {
-  apiKey:            "PASTE_STAGING_API_KEY_HERE",
+  apiKey:            "AIzaSyA8C177ja3e-npoyL_NluL8rNw705R1rB0",
   authDomain:        "purpl-crm-staging.firebaseapp.com",
   projectId:         "purpl-crm-staging",
   storageBucket:     "purpl-crm-staging.firebasestorage.app",
-  messagingSenderId: "PASTE_STAGING_MESSAGING_SENDER_ID",
-  appId:             "PASTE_STAGING_APP_ID"
+  messagingSenderId: "112798197802",
+  appId:             "1:112798197802:web:547101ee18ecf221303b53"
 };
