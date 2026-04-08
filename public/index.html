@@ -3029,6 +3029,18 @@ window.FirestoreAPI = {
 
 <!-- App files -->
 <script src="firebase-config.js"></script>
+<script>
+  // Staging banner — only shown when not connected to the production project
+  (function() {
+    if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.projectId !== 'purpl-crm') {
+      var b = document.createElement('div');
+      b.id = 'staging-banner';
+      b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#d97706;color:#fff;text-align:center;font-size:13px;font-weight:600;padding:6px 12px;letter-spacing:.03em';
+      b.textContent = '\u26a0 STAGING \u2014 ' + window.FIREBASE_CONFIG.projectId + ' \u2014 not production data';
+      document.addEventListener('DOMContentLoaded', function() { document.body.prepend(b); });
+    }
+  })();
+</script>
 <script src="db.js"></script>
 <script src="places.js"></script>
 <script src="app.js"></script>

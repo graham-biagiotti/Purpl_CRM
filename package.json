@@ -9,7 +9,9 @@
     "test:ui": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'npx playwright test --ui'",
     "test:debug": "firebase emulators:exec --only auth,firestore,hosting --project purpl-crm 'PWDEBUG=1 npx playwright test'",
     "test:report": "npx playwright show-report",
-    "emulators": "firebase emulators:start --only auth,firestore,hosting --project purpl-crm"
+    "emulators": "firebase emulators:start --only auth,firestore,hosting --project purpl-crm",
+    "deploy:prod": "bash deploy-prod.sh",
+    "deploy:staging": "bash deploy-staging.sh"
   },
   "repository": {
     "type": "git",

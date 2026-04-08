@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "purpl-crm"
+    "default": "purpl-crm",
+    "staging": "purpl-crm-staging"
   }
 }
