@@ -1094,10 +1094,10 @@
             <div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Invoice</th><th>Due</th><th>Amount</th></tr></thead><tbody id="lf-rep-out-tbody"></tbody></table></div>
           </div>
         </div>
-        <!-- Wix Deduction Log -->
+        <!-- LF Deduction Log -->
         <div class="card">
           <div class="section-hdr">
-            <h2>Wix Deduction Log</h2>
+            <h2>LF Deduction Log</h2>
             <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('wix')">⬇ CSV</button>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Run</th><th>SKU</th><th>Cases</th><th>Status</th></tr></thead><tbody id="lf-rep-wix-tbody"></tbody></table></div>
@@ -2153,7 +2153,7 @@
           <option value="partial">Partial</option>
         </select>
       </div>
-      <div class="form-group"><label>Wix Invoice Link (optional)</label><input id="lfi-link" placeholder="https://…"></div>
+      <div class="form-group"><label>External Ref / Invoice # (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
     </div>
     <div class="form-group" style="margin-bottom:16px">
       <label>Notes</label>
@@ -2169,16 +2169,16 @@
   </div>
 </div>
 
-<!-- Wix inventory pull alert -->
+<!-- LF inventory deduction alert -->
 <div class="overlay" id="modal-wix-pull">
   <div class="modal" style="max-width:480px">
-    <div class="modal-hdr"><h2>🔴 Wix Inventory Pull Required</h2><button class="modal-close btn sm" onclick="confirmWixPull(false)">✕</button></div>
-    <p style="font-size:13px;margin-bottom:12px">Deduct the following from Wix inventory for <strong id="wix-pull-account"></strong>:</p>
+    <div class="modal-hdr"><h2>🔴 LF Inventory Deduction Required</h2><button class="modal-close btn sm" onclick="confirmWixPull(false)">✕</button></div>
+    <p style="font-size:13px;margin-bottom:12px">Deduct the following from LF inventory for <strong id="wix-pull-account"></strong>:</p>
     <div id="wix-pull-items" style="margin-bottom:16px"></div>
     <p style="font-size:12px;color:var(--muted)">Invoice: <strong id="wix-pull-inv-number"></strong></p>
     <div class="modal-footer">
       <button class="btn" onclick="confirmWixPull(false)">Remind me later</button>
-      <button class="btn primary" onclick="confirmWixPull(true)">✓ Got it — I'll update Wix now</button>
+      <button class="btn primary" onclick="confirmWixPull(true)">✓ Mark as Deducted</button>
     </div>
   </div>
 </div>
@@ -2694,7 +2694,7 @@
       <div id="mdinv-sku-inputs"></div>
     </div>
     <div class="form-row col2" style="margin-bottom:10px">
-      <div class="form-group"><label>External invoice link / ref</label><input id="mdinv-ext-ref" placeholder="Wix INV# or URL"></div>
+      <div class="form-group"><label>External invoice link / ref</label><input id="mdinv-ext-ref" placeholder="Ext. ref / invoice #"></div>
       <div class="form-group"><label>Status</label>
         <select id="mdinv-status">
           <option value="unpaid">Unpaid</option>

@@ -566,7 +566,7 @@ function renderDash() {
   if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🌿 LF', lfAcCount, 'green');
   if (qs('#dash-kpi-combined-outstanding')) qs('#dash-kpi-combined-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(combinedOutstanding), combinedOutstanding > 0 ? 'amber' : 'gray');
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
-  if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('Wix Pulls', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
+  if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('LF Deductions', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
   // Low inventory KPI
   const totalCans = SKUS.reduce((sum, sk) => {
@@ -8795,7 +8795,7 @@ function renderLfReports() {
       : '<tr><td colspan="4" style="color:var(--muted);text-align:center">No outstanding invoices</td></tr>';
   }
 
-  // Wix Deduction Log
+  // LF Deduction Log
   const wixTbody = qs('#lf-rep-wix-tbody');
   if (wixTbody) {
     const deductions = DB.a('lf_wix_deductions').filter(d => !cutoff || (d.date||'') >= cutoff)
@@ -8811,7 +8811,7 @@ function renderLfReports() {
             <td><span class="badge ${d.confirmed?'green':'amber'}" style="font-size:10px">${d.confirmed?'Confirmed':'Pending'}</span></td>
           </tr>`);
         }).join('')
-      : '<tr><td colspan="5" style="color:var(--muted);text-align:center">No Wix deductions in period</td></tr>';
+      : '<tr><td colspan="5" style="color:var(--muted);text-align:center">No LF deductions in period</td></tr>';
   }
 }
 
@@ -9624,7 +9624,7 @@ function renderLfInvoicesPage() {
 
   if (qs('#lf-inv-kpi-outstanding')) qs('#lf-inv-kpi-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(outstanding), 'blue');
   if (qs('#lf-inv-kpi-overdue'))     qs('#lf-inv-kpi-overdue').innerHTML     = kpiHtml('Overdue', fmtC(overdueAmt), overdueAmt > 0 ? 'red' : 'gray');
-  if (qs('#lf-inv-kpi-wix'))         qs('#lf-inv-kpi-wix').innerHTML         = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+  if (qs('#lf-inv-kpi-wix'))         qs('#lf-inv-kpi-wix').innerHTML         = kpiHtml('Pending LF Deductions', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
 
   // Overdue list
   const overdueCard = qs('#inv-lf-overdue-card');
@@ -10841,7 +10841,7 @@ function confirmWixPull(confirmed) {
   closeModal('modal-wix-pull');
   if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
-  toast(confirmed ? '✓ Wix pull confirmed' : 'Reminder set — pull when ready');
+  toast(confirmed ? '✓ Deduction confirmed' : 'Reminder set — deduct when ready');
   _wixPullDeductionId = null;
   _wixPullInvoiceId   = null;
 }
@@ -10862,7 +10862,7 @@ function renderLfDashKpis() {
   if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🌿 LF Accounts', lfAc, 'green');
   if (qs('#dash-kpi-lf-outstanding')) qs('#dash-kpi-lf-outstanding').innerHTML = kpiHtml('LF Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray');
   if (qs('#dash-kpi-lf-overdue'))     qs('#dash-kpi-lf-overdue').innerHTML     = kpiHtml('LF Overdue', lfOverdue, lfOverdue > 0 ? 'red' : 'gray');
-  if (qs('#dash-kpi-lf-wix'))         qs('#dash-kpi-lf-wix').innerHTML         = kpiHtml('Pending Wix Pulls', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+  if (qs('#dash-kpi-lf-wix'))         qs('#dash-kpi-lf-wix').innerHTML         = kpiHtml('Pending LF Deductions', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -12491,7 +12491,7 @@ function renderInvColLf() {
     <div style="overflow-x:auto">
     <table class="data-table" style="width:100%;font-size:13px">
       <thead><tr>
-        <th>#</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th>Wix</th><th></th>
+        <th>#</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th>Deducted</th><th></th>
       </tr></thead>
       <tbody>${!sorted.length
         ? '<tr><td colspan="7" class="empty">No LF invoices yet</td></tr>'
