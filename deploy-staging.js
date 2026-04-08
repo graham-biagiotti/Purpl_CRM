@@ -36,7 +36,7 @@ try {
   fs.copyFileSync(STAGING, PROD);
 
   console.log('→ Deploying to staging (purpl-crm-staging)...');
-  execSync('firebase deploy --only "hosting,firestore" --project staging', { stdio: 'inherit' });
+  execSync('firebase deploy --only "hosting,firestore,functions" --project staging', { stdio: 'inherit' });
 
   console.log('✓ Staging deploy complete.');
 } catch (err) {
