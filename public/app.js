@@ -2818,10 +2818,75 @@ function renderEmailsPage() {
   `;
 
   _renderEmailsTemplatesCol();
+  _renderEmailsAutoSends(accounts);
   _renderEmailsRightCol();
   renderEmailsTabOverview(accounts);
   renderEmailsTabHistory(accounts);
   renderMassEmail();
+}
+
+const _AUTO_SEND_STAGES = new Set([
+  'invoice_reminder', 'order_confirmation',
+  'approved', 'approved_welcome',
+  'rejected', 'rejected_decline',
+  'application_received', 'application-received',
+]);
+
+const _AUTO_SEND_LABELS = {
+  'invoice_reminder':     'Invoice Reminder',
+  'order_confirmation':   'Order Confirmation',
+  'approved':             'Approved — Welcome',
+  'approved_welcome':     'Approved — Welcome',
+  'rejected':             'Rejected — Decline',
+  'rejected_decline':     'Rejected — Decline',
+  'application_received': 'Application Received',
+  'application-received': 'Application Received',
+};
+
+function _renderEmailsAutoSends(accounts) {
+  const el = document.getElementById('emails-auto-sends');
+  if (!el) return;
+
+  const entries = [];
+  (accounts || DB.a('ac')).forEach(a => {
+    (a.cadence || []).forEach(c => {
+      if (_AUTO_SEND_STAGES.has(c.stage)) {
+        entries.push({ ...c, accountName: a.name, accountId: a.id });
+      }
+    });
+  });
+  entries.sort((a, b) => (b.sentAt || '') > (a.sentAt || '') ? 1 : -1);
+  const recent = entries.slice(0, 10);
+
+  if (!recent.length) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const rows = recent.map(e => {
+    const label = _AUTO_SEND_LABELS[e.stage] || e.stage || '—';
+    const dt = e.sentAt
+      ? new Date(e.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '—';
+    const status = e.opened
+      ? `<span class="badge green" style="font-size:10px">👁 Opened${e.openedAt ? ' ' + fmtD(e.openedAt) : ''}</span>`
+      : e.clicked
+        ? `<span class="badge green" style="font-size:10px">🔗 Clicked</span>`
+        : `<span class="badge gray" style="font-size:10px">Sent</span>`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(label)}</div>
+        <div style="color:var(--muted)">${escHtml(e.accountName || '—')} · ${dt}</div>
+      </div>
+      <div>${status}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Recent Auto-Sends</div>
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;overflow:hidden">${rows}</div>
+    </div>`;
 }
 
 function _renderEmailsTemplatesCol() {
@@ -3127,6 +3192,8 @@ function renderEmailsTabHistory(accounts) {
     'rejected_decline':     'Rejected',
     'invoice-sent':         'Invoice Sent',
     'invoice_sent':         'Invoice Sent',
+    'invoice_reminder':     'Invoice Reminder',
+    'order_confirmation':   'Order Confirmation',
     'first-order':          'First Order Follow-up',
     'first_order_followup': 'First Order Follow-up',
   };
@@ -13149,11 +13216,18 @@ async function approveApplication(docId, app) {
   DB.push('ac', rec);
   auditLog('create', 'account', acId, rec.name);
 
-  // Send approved cadence email
+  // Send approved cadence email and log to cadence
   if (app.email) {
     try {
       const tpl = getCadenceEmailTemplate('approved', rec);
-      await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+      const result = await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+      const entry = {
+        id: uid(), stage: 'approved_welcome',
+        sentAt: new Date().toISOString(),
+        sentBy: 'graham', method: 'auto',
+      };
+      if (result?.id) entry.sentMessageId = result.id;
+      DB.update('ac', acId, a => ({ ...a, cadence: [...(a.cadence || []), entry] }));
     } catch(e) { console.error('Approve email failed', e); }
   }
 
