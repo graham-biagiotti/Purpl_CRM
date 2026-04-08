@@ -678,23 +678,143 @@ function renderQuickNotes() {
     </div>`).join('');
 }
 
-// ── Dashboard personal scratchpad (localStorage) ─────────
-let _scratchDebounceTimer = null;
+// ── Dashboard notes scratchpad (sectioned, Firestore) ─────
+const _NOTE_DEFAULTS = [
+  { id: 'general',       name: 'General',            content: '' },
+  { id: 'follow-ups',    name: 'Follow-Up Reminders', content: '' },
+  { id: 'sales-ideas',   name: 'Sales Ideas',         content: '' },
+  { id: 'production',    name: 'Production Notes',    content: '' },
+];
+let _noteDebounceTimer = null;
+let _noteActiveSectionId = 'general';
+
 function loadScratchpad() {
-  const el = qs('#dash-scratchpad');
+  // Migrate old localStorage content into General on first load
+  const settings = DB.obj('settings', {});
+  let sections = settings.noteSections;
+
+  if (!sections || !sections.length) {
+    const legacy = localStorage.getItem('pbf_dash_notes') || '';
+    sections = _NOTE_DEFAULTS.map(s => ({ ...s }));
+    if (legacy) sections[0].content = legacy;
+    DB.setObj('settings', { ...settings, noteSections: sections });
+  }
+
+  // Ensure active section still exists
+  if (!sections.find(s => s.id === _noteActiveSectionId)) {
+    _noteActiveSectionId = sections[0]?.id || 'general';
+  }
+
+  _renderNoteSidebar(sections);
+  _renderNoteContent(sections);
+}
+
+function _renderNoteSidebar(sections) {
+  const el = qs('#dash-notes-sidebar');
   if (!el) return;
-  el.value = localStorage.getItem('pbf_dash_notes') || '';
+  const canDelete = sections.length > 1;
+  const items = sections.map(s => {
+    const isActive = s.id === _noteActiveSectionId;
+    const bg    = isActive ? 'var(--primary,#2D1B4E)' : 'transparent';
+    const color = isActive ? '#fff' : 'inherit';
+    const delColor = isActive ? 'rgba(255,255,255,0.55)' : 'var(--muted)';
+    const delBtn = canDelete
+      ? `<span onclick="event.stopPropagation();deleteNoteSection('${s.id}')"
+               title="Delete section"
+               style="margin-left:auto;padding-left:6px;cursor:pointer;color:${delColor};font-size:14px;line-height:1;flex-shrink:0">×</span>`
+      : '';
+    return `<div onclick="selectNoteSection('${s.id}')"
+                 ondblclick="renameNoteSection('${s.id}')"
+                 title="Double-click to rename"
+                 style="display:flex;align-items:center;padding:7px 8px;font-size:12px;cursor:pointer;
+                        border-bottom:1px solid var(--border);user-select:none;
+                        background:${bg};color:${color}">
+               <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(s.name)}</span>
+               ${delBtn}
+             </div>`;
+  }).join('');
+
+  el.innerHTML = items + `
+    <div style="padding:7px 10px;margin-top:auto">
+      <button class="btn xs" style="width:100%;font-size:11px" onclick="addNoteSection()">+ Add Section</button>
+    </div>`;
 }
-function debounceSaveScratchpad() {
-  clearTimeout(_scratchDebounceTimer);
-  _scratchDebounceTimer = setTimeout(() => {
-    const el = qs('#dash-scratchpad');
-    if (!el) return;
-    localStorage.setItem('pbf_dash_notes', el.value);
-    const savedEl = qs('#dash-scratchpad-saved');
-    if (savedEl) { savedEl.style.opacity = '1'; setTimeout(() => { savedEl.style.opacity = '0'; }, 1200); }
-  }, 500);
+
+function _renderNoteContent(sections) {
+  const el = qs('#dash-notes-content');
+  if (!el) return;
+  const sec = sections.find(s => s.id === _noteActiveSectionId) || sections[0];
+  if (sec) el.value = sec.content || '';
 }
+
+function selectNoteSection(id) {
+  // Flush any pending save for current section first
+  clearTimeout(_noteDebounceTimer);
+  _flushNoteSave();
+
+  _noteActiveSectionId = id;
+  const sections = DB.obj('settings', {}).noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
+  _renderNoteSidebar(sections);
+  _renderNoteContent(sections);
+}
+
+function debounceNoteSectionSave() {
+  clearTimeout(_noteDebounceTimer);
+  _noteDebounceTimer = setTimeout(_flushNoteSave, 800);
+}
+
+function _flushNoteSave() {
+  const el = qs('#dash-notes-content');
+  if (!el) return;
+  const settings = DB.obj('settings', {});
+  const sections = (settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }))).map(s =>
+    s.id === _noteActiveSectionId ? { ...s, content: el.value } : s
+  );
+  DB.setObj('settings', { ...settings, noteSections: sections });
+  const savedEl = qs('#dash-notes-saved');
+  if (savedEl) { savedEl.style.opacity = '1'; setTimeout(() => { savedEl.style.opacity = '0'; }, 1200); }
+}
+
+function addNoteSection() {
+  const name = prompt('Section name:');
+  if (!name || !name.trim()) return;
+  const settings = DB.obj('settings', {});
+  const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
+  const newSec = { id: uid(), name: name.trim(), content: '' };
+  const updated = [...sections, newSec];
+  DB.setObj('settings', { ...settings, noteSections: updated });
+  _noteActiveSectionId = newSec.id;
+  _renderNoteSidebar(updated);
+  _renderNoteContent(updated);
+}
+
+function renameNoteSection(id) {
+  const settings = DB.obj('settings', {});
+  const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
+  const sec = sections.find(s => s.id === id);
+  if (!sec) return;
+  const newName = prompt('Rename section:', sec.name);
+  if (!newName || !newName.trim() || newName.trim() === sec.name) return;
+  const updated = sections.map(s => s.id === id ? { ...s, name: newName.trim() } : s);
+  DB.setObj('settings', { ...settings, noteSections: updated });
+  _renderNoteSidebar(updated);
+}
+
+function deleteNoteSection(id) {
+  const settings = DB.obj('settings', {});
+  const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
+  if (sections.length <= 1) { toast('Cannot delete the last section'); return; }
+  if (!confirm('Delete this section and its content?')) return;
+  const updated = sections.filter(s => s.id !== id);
+  if (_noteActiveSectionId === id) _noteActiveSectionId = updated[0].id;
+  DB.setObj('settings', { ...settings, noteSections: updated });
+  _renderNoteSidebar(updated);
+  _renderNoteContent(updated);
+}
+
+// Keep old name callable (renderDash calls loadScratchpad)
+// debounceSaveScratchpad kept as alias for any stale references
+function debounceSaveScratchpad() { debounceNoteSectionSave(); }
 
 function addQuickNote() {
   const inp = qs('#qn-input');

@@ -172,12 +172,19 @@
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page" id="page-dashboard">
 
-      <!-- Scratchpad -->
+      <!-- Notes Scratchpad -->
       <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">📝 Quick Notes</div>
-        <div style="position:relative">
-          <textarea id="dash-scratchpad" placeholder="Quick notes — thoughts, to-dos, reminders..." style="width:100%;min-height:72px;max-height:160px;resize:vertical;font-size:13px;padding:10px 12px;border:none;border-radius:8px;background:#fafaf8;font-family:inherit;box-shadow:inset 0 0 0 1px var(--border);line-height:1.5;box-sizing:border-box" oninput="debounceSaveScratchpad()"></textarea>
-          <span id="dash-scratchpad-saved" style="position:absolute;bottom:8px;right:10px;font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s">Saved</span>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
+          <span>📝 Notes</span>
+          <span id="dash-notes-saved" style="font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s;text-transform:none;letter-spacing:0;font-weight:400">Saved</span>
+        </div>
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fafaf8;min-height:160px">
+          <!-- Section sidebar -->
+          <div id="dash-notes-sidebar" style="width:140px;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f5f4f0"></div>
+          <!-- Section content -->
+          <div style="flex:1;display:flex;flex-direction:column;position:relative">
+            <textarea id="dash-notes-content" placeholder="Start typing…" oninput="debounceNoteSectionSave()" style="flex:1;width:100%;min-height:160px;padding:10px 12px;border:none;background:transparent;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;outline:none"></textarea>
+          </div>
         </div>
       </div>
 
