@@ -47,7 +47,7 @@ async function setupAppRoutes(context) {
   // ── Catch-all: abort anything not handled by routes below ──
   // (Added first = lowest priority since Playwright uses LIFO matching)
   await context.route('**/*', async (route) => {
-    await route.abort('blockedbyclient');
+    await route.abort('blockedbyclient').catch(() => {});
   });
 
   // ── Firebase Firestore emulator ──────────────────────────
@@ -57,7 +57,7 @@ async function setupAppRoutes(context) {
       const resp = await route.fetch({ url: target });
       await route.fulfill({ response: resp });
     } catch (e) {
-      await route.abort('failed');
+      await route.abort('failed').catch(() => {});
     }
   });
 
@@ -68,7 +68,7 @@ async function setupAppRoutes(context) {
       const resp = await route.fetch({ url: target });
       await route.fulfill({ response: resp });
     } catch (e) {
-      await route.abort('failed');
+      await route.abort('failed').catch(() => {});
     }
   });
 
@@ -80,7 +80,7 @@ async function setupAppRoutes(context) {
       const resp = await route.fetch({ url: target });
       await route.fulfill({ response: resp });
     } catch (e) {
-      await route.abort('failed');
+      await route.abort('failed').catch(() => {});
     }
   });
 
@@ -95,7 +95,7 @@ async function setupAppRoutes(context) {
       const resp = await route.fetch({ url: target });
       await route.fulfill({ response: resp });
     } catch (e) {
-      await route.abort('failed');
+      await route.abort('failed').catch(() => {});
     }
   });
 
@@ -110,22 +110,26 @@ async function setupAppRoutes(context) {
         body:        fs.readFileSync(sdkPath),
       });
     } else {
-      await route.abort('blockedbyclient');
+      await route.abort('blockedbyclient').catch(() => {});
     }
   });
 
   // ── App files from ./public/ ──────────────────────────────
   await context.route('http://127.0.0.1:5000/**', async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    const filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      await route.fulfill({
-        status:      200,
-        contentType: getMime(filePath),
-        body:        fs.readFileSync(filePath),
-      });
-    } else {
-      await route.fulfill({ status: 404, contentType: 'text/plain', body: `Not found: ${pathname}` });
+    try {
+      const pathname = new URL(route.request().url()).pathname;
+      const filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        await route.fulfill({
+          status:      200,
+          contentType: getMime(filePath),
+          body:        fs.readFileSync(filePath),
+        });
+      } else {
+        await route.fulfill({ status: 404, contentType: 'text/plain', body: `Not found: ${pathname}` });
+      }
+    } catch (e) {
+      await route.abort('failed').catch(() => {});
     }
   });
 }

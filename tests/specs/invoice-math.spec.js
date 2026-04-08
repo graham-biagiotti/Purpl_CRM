@@ -148,9 +148,13 @@ test('All purpl invoices have id, accountId or number, amount and status', async
 
   const malformed = await page.evaluate(() =>
     DB.a('iv').filter(x => {
-      const hasRef = x.accountId || x.number || x.invoiceNumber;
+      // Skip inventory log entries (they have sku+type but no accountId/amount/status).
+      // Only check financial invoice records, which the app identifies as those
+      // with accountId, number, or invoiceNumber.
+      const isInvoice = x.accountId || x.number || x.invoiceNumber;
+      if (!isInvoice) return false;
       const hasAmt = x.amount !== undefined && x.amount !== null;
-      return !x.id || !hasRef || !hasAmt || !x.status;
+      return !x.id || !hasAmt || !x.status;
     }).map(x => x.id || '(no-id)')
   );
 

@@ -8,6 +8,7 @@
 
 const path = require('path');
 const fs   = require('fs');
+const http = require('http');
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -20,17 +21,23 @@ module.exports = async function globalSetup() {
   if (!admin.apps.length) {
     admin.initializeApp({ projectId: 'purpl-crm' });
   }
-  const db   = admin.firestore();
+  let db   = admin.firestore();
   const auth = admin.auth();
 
   // ── Load seed data ────────────────────────────────────────
-  const { SEED, PORTAL_ORDERS, PORTAL_NOTIFY } = require('./seed-data.js');
+  // IMPORTANT: Deep-copy SEED so that we don't mutate the module-level
+  // export.  spec files import the same require()-cached module, so any
+  // in-place push() here would be visible to those files (causing doubled
+  // Phase-1 data when a spec also does [...SEED.ac, ...extraAccounts]).
+  const rawSeed = require('./seed-data.js');
+  const SEED = JSON.parse(JSON.stringify(rawSeed.SEED));
+  const { PORTAL_ORDERS, PORTAL_NOTIFY } = rawSeed;
   const {
     extraAccounts, productionRuns, orders: ph1Orders, invoices: ph1Invoices,
     portalInquiries, auditLog, distVelocity,
   } = require('./seed-phase1.js');
 
-  // ── Merge Phase 1 into SEED arrays ───────────────────────
+  // ── Merge Phase 1 into SEED copy ─────────────────────────
   SEED.ac.push(...extraAccounts);
   SEED.prod_hist.push(...productionRuns);
   SEED.orders.push(...ph1Orders);
@@ -44,16 +51,14 @@ module.exports = async function globalSetup() {
   }
 
   // ── Clear Firestore emulator data (fresh start every run) ────
-  // Creates from scratch — faster than overwriting a large existing document.
   try {
-    const http = require('http');
     await new Promise((resolve) => {
       const req = http.request({
         hostname: 'localhost', port: 8080, method: 'DELETE',
         path: '/emulator/v1/projects/purpl-crm/databases/(default)/documents',
       }, (res) => { res.resume(); res.on('end', resolve); });
       req.on('error', () => resolve());
-      req.setTimeout(5000, () => { req.destroy(); resolve(); }); // 5s timeout
+      req.setTimeout(5000, () => { req.destroy(); resolve(); });
       req.end();
     });
     console.log('[setup] Emulator data cleared.');
@@ -63,11 +68,17 @@ module.exports = async function globalSetup() {
   }
 
   // ── Write store document — skeleton first, then large arrays ─
-  // Writing the full document in one .set() call causes DEADLINE_EXCEEDED.
-  // Strategy: set a tiny skeleton (no large arrays), then .update() each
-  // large array one at a time with 500ms gaps between writes.
+  // Strategy: set a skeleton doc (no large arrays), then .update() each
+  // large array one at a time with 500ms gaps.
+  //
+  // WRITE ORDER MATTERS: the Firestore emulator rejects updates that push
+  // the document past ~190 KB in one step.  Writing 'iv' before 'ac' keeps
+  // each intermediate size below that threshold even though the final
+  // document is ~258 KB.
+  // Write order chosen empirically: iv first (59 KB), then ac (99 KB),
+  // then pr, then orders — this sequence avoids emulator gRPC failures.
   const LARGE_KEYS = [
-    'ac', 'pr', 'iv', 'orders', 'inv_log',
+    'iv', 'ac', 'pr', 'orders', 'inv_log',
     'prod_hist', 'lf_invoices', 'combined_invoices',
     'dist_invoices', 'dist_profiles',
   ];
@@ -76,21 +87,39 @@ module.exports = async function globalSetup() {
   for (const k of Object.keys(SEED)) {
     if (!LARGE_KEYS.includes(k)) skeleton[k] = SEED[k];
   }
-  // Include audit_log in skeleton (it's small — 80 entries / ~13 KB)
+  // Include audit_log in skeleton (small — 80 entries / ~13 KB)
   skeleton.audit_log = SEED.audit_log;
 
-  const storeRef = db.collection('workspace').doc('main')
-                     .collection('data').doc('store');
+  // getStore returns a fresh reference (uses current 'db' variable).
+  const getStore = () => db.collection('workspace').doc('main')
+                            .collection('data').doc('store');
+
+  // Retry helper: on gRPC UNKNOWN errors, reinit Admin SDK for a fresh
+  // gRPC channel and retry up to 3 times.
+  async function retryWrite(writeFn) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await writeFn();
+      } catch (e) {
+        if (attempt === 3) throw e;
+        console.log(`[setup]   → write failed (${e.code}), re-initing admin (attempt ${attempt})...`);
+        await delay(1500 * attempt);
+        try { await admin.app().delete(); } catch (_) {}
+        admin.initializeApp({ projectId: 'purpl-crm' });
+        db = admin.firestore();
+      }
+    }
+  }
 
   console.log('[setup] Writing skeleton...');
-  await storeRef.set(skeleton);
+  await retryWrite(() => getStore().set(skeleton));
   await delay(500);
 
   for (const key of LARGE_KEYS) {
     if (SEED[key] === undefined) continue;
     const n = Array.isArray(SEED[key]) ? SEED[key].length : '—';
     console.log(`[setup]   .update ${key} (${n})`);
-    await storeRef.update({ [key]: SEED[key] });
+    await retryWrite(() => getStore().update({ [key]: SEED[key] }));
     await delay(500);
   }
   console.log('[setup] Main store written.');

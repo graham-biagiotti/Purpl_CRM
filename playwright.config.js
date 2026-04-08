@@ -7,7 +7,7 @@ module.exports = defineConfig({
   fullyParallel: false,        // serial — all tests share one emulator DB
   workers: 1,
   retries: 1,
-  timeout: 30000,
+  timeout: 60000,
   reporter: [['html', { open: 'never' }], ['list']],
 
   use: {

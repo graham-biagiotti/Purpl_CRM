@@ -34,11 +34,19 @@ async function gotoOrdersTab(page) {
   const tab = page.locator('[data-od-tab="all-orders"]').first();
   if (await tab.count() > 0) {
     await tab.click();
-    await page.waitForTimeout(400);
+    // Wait for renderOrders() to populate the count (increased for larger datasets)
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('#orders-count');
+        return el && parseInt(el.textContent.replace(/\D/g, ''), 10) > 0;
+      },
+      { timeout: 10000 }
+    ).catch(() => { /* table may be empty — let test handle assertion */ });
   } else {
     // Try text-based tab
     const textTab = page.locator('#page-orders-delivery .tab').filter({ hasText: /orders/i }).first();
     if (await textTab.count() > 0) await textTab.click();
+    await page.waitForTimeout(800);
   }
 }
 
