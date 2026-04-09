@@ -9760,6 +9760,7 @@ function markLfInvPaid(id) {
 function openLfInvoiceModal(id) {
   const isNew = !id;
   const inv   = id ? DB.a('lf_invoices').find(x => x.id === id) : null;
+  _lfPortalOrderId = null; // cleared here; set by createLfInvoiceFromPortal after this call
 
   qs('#lfi-modal-title').textContent = isNew ? 'New LF Invoice' : 'Edit LF Invoice';
 
@@ -10093,6 +10094,14 @@ function saveLfInvoice(id, isNew) {
   renderLfDashKpis();
   toast(`Invoice ${rec.number} saved ✓`);
   showWixPullModal(rec, deduction.id);
+
+  // If created from a portal order, mark it confirmed
+  if (isNew && _lfPortalOrderId) {
+    firebase.firestore().collection('portal_orders').doc(_lfPortalOrderId)
+      .update({ status: 'confirmed', confirmedAt: new Date().toISOString() })
+      .catch(e => console.error('portal order confirm failed:', e));
+    _lfPortalOrderId = null;
+  }
 }
 
 function deleteLfInvoice(id) {
@@ -11634,10 +11643,15 @@ function _renderPoAll() {
         <td>${multiFlag}</td>
         <td style="white-space:nowrap">
           <button class="btn xs" onclick="reviewPortalOrder('${o.id}')">Review</button>
-          ${o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
-            ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : ''}
-          ${o.status!=='declined'&&o.status!=='confirmed'
+          ${o.brand === 'lf'
+            ? (o.status !== 'confirmed' && o.status !== 'discarded'
+                ? `<button class="btn xs primary" onclick="createLfInvoiceFromPortal('${o.id}')">Create Invoice</button>` : '')
+            : (o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
+                ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : '')}
+          ${o.brand !== 'lf' && o.status!=='declined'&&o.status!=='confirmed'
             ? `<button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
+          ${o.brand === 'lf' && o.status!=='discarded'&&o.status!=='confirmed'
+            ? `<button class="btn xs red" onclick="discardLfPortalOrder('${o.id}')">Discard</button>` : ''}
           <button class="btn xs red" onclick="deletePortalOrder('${o.id}')">✕</button>
         </td>
       </tr>`;
@@ -11832,46 +11846,30 @@ function createLfInvoiceFromPortal(portalOrderId) {
     .then(doc => {
       if (!doc.exists) { toast('Order not found'); return; }
       const o = doc.data();
-      nav('invoices');
-      // Open blank new invoice modal, then fill in from portal order data
-      setTimeout(() => {
-        openLfInvoiceModal(null);
-        // Set account if known
-        const acSel = qs('#lfi-account');
-        if (acSel && o.accountId) acSel.value = o.accountId;
-        // Set notes
-        if (qs('#lfi-notes')) qs('#lfi-notes').value = 'From portal: ' + (o.billingEmail||'');
-        // Clear default line items and add portal items
-        const tbody = qs('#lfi-line-items');
-        if (tbody) {
-          tbody.innerHTML = '';
-          (o.lineItems||[]).forEach(it => {
-            lfInvAddLineItem();
-            // find the last row added and fill it
-            const rows = tbody.querySelectorAll('[data-row-id]');
-            const lastRow = rows[rows.length-1];
-            if (!lastRow) return;
-            const rowId = lastRow.dataset.rowId;
-            // Set SKU name and price manually
-            const skuSel = qs('#lfi-sku-'+rowId);
-            if (skuSel) {
-              // Try to find matching SKU by name
-              const matchOpt = Array.from(skuSel.options).find(opt => opt.text.includes(it.skuName||''));
-              if (matchOpt) {
-                skuSel.value = matchOpt.value;
-                skuSel.dispatchEvent(new Event('change'));
-              }
-            }
-            const casesEl = qs('#lfi-cases-'+rowId);
-            if (casesEl) { casesEl.value = it.cases||0; _lfInvRowCalc(rowId); }
-            const priceEl = qs('#lfi-price-'+rowId);
-            if (priceEl && it.unitPrice) { priceEl.value = parseFloat(it.unitPrice).toFixed(2); _lfInvRowCalc(rowId); }
-          });
-          _lfInvCalcTotal();
-        }
-      }, 350);
+
+      // Open modal directly — no navigation or setTimeout needed
+      openLfInvoiceModal(null);
+
+      // Set account
+      const acSel = qs('#lfi-account');
+      if (acSel && o.accountId) acSel.value = o.accountId;
+
+      // Set notes
+      if (qs('#lfi-notes')) qs('#lfi-notes').value = o.notes || ('From portal — ' + (o.billingEmail||''));
+
+      // Replace the blank row with portal line items using the proper renderer
+      // _lfInvRenderLineRow handles skuId selection and variant areas automatically
+      const container = qs('#lfi-line-items');
+      if (container && (o.lineItems||[]).length) {
+        container.innerHTML = '';
+        o.lineItems.forEach(item => _lfInvRenderLineRow(item));
+        _lfInvCalcTotal();
+      }
+
+      // Track so saveLfInvoice can mark this portal order as confirmed
+      _lfPortalOrderId = portalOrderId;
     })
-    .catch(e => toast('Error: '+e.message));
+    .catch(e => toast('Error loading portal order: ' + e.message));
 }
 
 function linkPortalLfToAccount(portalOrderId) {
@@ -11919,10 +11917,48 @@ async function reviewPortalOrder(id) {
   if (!o) return;
 
   // Mark as reviewed
-  if (o.status === 'new') {
+  if (o.status === 'new' || o.status === 'pending') {
     await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
   }
 
+  // ── LF order review ──────────────────────────────────────
+  if (o.brand === 'lf') {
+    const itemsHtml = (o.lineItems||[]).map(i => {
+      if (i.hasVariants && i.variantLines) {
+        return `<div style="margin-bottom:4px"><strong>${escHtml(i.skuName)}</strong>: ${i.variantLines.map(v=>`${v.units} ${escHtml(v.variantName)}`).join(', ')}</div>`;
+      }
+      return `<div style="margin-bottom:4px"><strong>${escHtml(i.skuName)}</strong>: ${i.cases} case${i.cases!==1?'s':''}</div>`;
+    }).join('') || '—';
+
+    qs('#mpr-body').innerHTML = `
+      <div class="card-grid grid-2" style="gap:12px;margin-bottom:12px">
+        <div><div style="font-size:11px;color:var(--muted)">Business</div><div style="font-weight:600">${escHtml(o.accountName||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Billing Email</div><div>${escHtml(o.billingEmail||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Submitted</div><div style="font-size:13px">${_fmtPoDate(o.submittedAt)}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Order Total</div><div style="font-weight:600">${fmtC(o.total||0)}</div></div>
+        <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Items</div>${itemsHtml}</div>
+        <div><div style="font-size:11px;color:var(--muted)">Notes</div><div style="font-size:13px">${escHtml(o.notes||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Status</div><div>${_poStatusBadge(o.status||'pending')}</div></div>
+      </div>`;
+
+    const linkRow = qs('#mpr-link-account-row');
+    if (linkRow) linkRow.style.display = 'none';
+
+    const confirmBtn = qs('#mpr-confirm-btn');
+    const declineBtn = qs('#mpr-decline-btn');
+    if (confirmBtn) {
+      confirmBtn.textContent = 'Create Invoice';
+      confirmBtn.onclick = () => { closeModal('modal-portal-review'); createLfInvoiceFromPortal(id); };
+    }
+    if (declineBtn) {
+      declineBtn.textContent = 'Discard';
+      declineBtn.onclick = () => { discardLfPortalOrder(id); closeModal('modal-portal-review'); };
+    }
+    openModal('modal-portal-review');
+    return;
+  }
+
+  // ── Purpl order review ───────────────────────────────────
   const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
   const cans  = cases * CANS_PER_CASE;
   const notifySkus = (o.notifyMe||[]).map(n => n.sku).join(', ');
@@ -12019,6 +12055,7 @@ async function deletePortalOrder(orderId) {
 
 let _confirmPortalOrderId = null;
 let _portalOrderId = null;
+let _lfPortalOrderId = null;
 
 function openConfirmPortalOrder(id) {
   _confirmPortalOrderId = id;
