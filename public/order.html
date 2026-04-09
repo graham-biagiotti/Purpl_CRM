@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
+<script src="firebase-config.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -474,15 +475,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 </div>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyBbEQ1wV7MwJJjSC9_EalYxHMvTjHklwFY",
-  authDomain: "purpl-crm.firebaseapp.com",
-  projectId: "purpl-crm",
-  storageBucket: "purpl-crm.firebasestorage.app",
-  messagingSenderId: "805074818841",
-  appId: "1:805074818841:web:69655531888bd5904d5788"
-};
-firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(window.FIREBASE_CONFIG);
 const db = firebase.firestore();
 
 const CANS_PER_CASE = 12;
