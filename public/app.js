@@ -556,11 +556,14 @@ function renderDash() {
   loadScratchpad();
   const purplAcCount = allAc.filter(a => !a.isPbf).length;
   const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
-  const purplOutstanding = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid').reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const purplOutstanding = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid').reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                         + DB.a('retail_invoices').filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.total||0), 0);
   const lfOutstanding    = DB.a('lf_invoices').filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
-  const purplOverdueCount    = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid' && x.due && x.due < today()).length;
-  const lfOverdueCount       = DB.a('lf_invoices').filter(i => i.status !== 'paid' && i.due && i.due < today()).length;
+  const todayStr = today();
+  const purplOverdueCount    = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid' && x.due && x.due < todayStr).length
+                             + DB.a('retail_invoices').filter(x => x.status !== 'paid' && x.dueDate && x.dueDate < todayStr).length;
+  const lfOverdueCount       = DB.a('lf_invoices').filter(i => i.status !== 'paid' && i.due && i.due < todayStr).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
@@ -1294,6 +1297,16 @@ function renderInvoiceReminders() {
     queue.push({ inv, ac, collection: 'iv', isOverdue: days > 0, amount: inv.amount });
   });
 
+  DB.a('retail_invoices').forEach(inv => {
+    if (inv.status === 'paid' || !inv.dueDate || !inv.accountId) return;
+    if (inv.reminderSentAt) return;
+    const days = daysAgo(inv.dueDate);
+    if (days !== -7 && days <= 0) return;
+    const ac = DB.a('ac').find(x => x.id === inv.accountId);
+    if (!ac || !ac.email) return;
+    queue.push({ inv: {...inv, number: inv.invoiceNumber||inv.number||'', due: inv.dueDate}, ac, collection: 'retail_invoices', isOverdue: days > 0, amount: inv.total });
+  });
+
   DB.a('lf_invoices').forEach(inv => {
     if (inv.status === 'paid' || !inv.due || !inv.accountId) return;
     if (inv.reminderSentAt) return;
@@ -1339,12 +1352,16 @@ function renderInvoiceReminders() {
 }
 
 async function sendInvoiceReminder(invId, collection) {
-  const inv = DB.a(collection).find(x => x.id === invId);
-  if (!inv) return;
+  const rawInv = DB.a(collection).find(x => x.id === invId);
+  if (!rawInv) return;
+  // Normalize field names across invoice collections
+  const inv = collection === 'retail_invoices'
+    ? { ...rawInv, number: rawInv.invoiceNumber || rawInv.number || '', due: rawInv.dueDate || '', amount: rawInv.total || 0 }
+    : rawInv;
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
   if (!ac || !ac.email) { toast('No email on file for this account'); return; }
 
-  const isOverdue = daysAgo(inv.due) > 0;
+  const isOverdue = inv.due ? daysAgo(inv.due) > 0 : false;
   const subject = isOverdue
     ? `Payment reminder — ${inv.number || ''} (${ac.name})`
     : `Invoice due soon — ${inv.number || ''} (${ac.name})`;
@@ -1380,7 +1397,7 @@ async function sendInvoiceReminder(invId, collection) {
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || 0);
+  const amount = (collection === 'lf_invoices' || collection === 'retail_invoices') ? (inv.total || 0) : (inv.amount || 0);
   const invSettings = DB.obj('invoice_settings') || {};
   const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
   const isLf = collection === 'lf_invoices';
@@ -1685,6 +1702,7 @@ function calcInvTotal() { _ivCalcTotal(); }
 function markRetailInvPaid(id) {
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
   renderInvoiceStatus();
+  renderInvoicesPage();
   toast('Marked as paid');
 }
 
@@ -7006,7 +7024,7 @@ function renderOrders() {
 
   tbody.innerHTML = list.map(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-    const isOverdue = o.status==='pending' && o.dueDate < today();
+    const isOverdue = (o.status==='pending' || o.status==='invoiced') && o.dueDate < today();
     const srcBadge  = SOURCE_BADGE[o.source] || '';
     // qty in items is CASES; show with 'cs' label
     return `<tr class="${isOverdue?'overdue-row':''}">
@@ -7151,13 +7169,15 @@ function openOrderDetail(id) {
     const ordAcName = DB.a('ac').find(x=>x.id===o.accountId)?.name || o.accountId;
     // Remove linked inventory out-entries (from run delivery or manual delivery)
     DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
+    // Remove linked retail_invoices (from delivery run or portal)
+    DB.a('retail_invoices').filter(e=>e.orderId===id||e.linkedPortalOrderId===id).forEach(e=>DB.remove('retail_invoices',e.id));
     DB.remove('orders', id);
     auditLog('delete', 'order', id, ordAcName);
     closeModal('modal-order-detail');
     renderOrders();
     renderInventory();
     renderDash();
-    toast('Order and linked inventory entries removed');
+    toast('Order and linked inventory/invoice entries removed');
   };
   qs('#mod-status-btn').onclick    = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
   qs('#mod-reschedule-btn').onclick = ()=>{
@@ -7572,14 +7592,21 @@ function toggleStop(i) {
   const run = DB.obj('today_run', {date:today(), stops:[]});
   if (!run.stops[i]) { renderDelivery(); return; }
   const wasDone = run.stops[i].done;
-  run.stops[i].done = !wasDone;
   const stop = run.stops[i];
 
-  // Look up account (prefer stored accountId, fallback to name match)
+  // Look up account BEFORE modifying done flag — if account not found,
+  // reject the completion so inventory/orders are not silently skipped.
   const ac2 = (stop.accountId ? DB.a('ac').find(a=>a.id===stop.accountId) : null)
             || DB.a('ac').find(a=>a.name===stop.name);
 
-  if (!wasDone && stop.done && ac2) {
+  if (!wasDone && !ac2) {
+    toast('⚠ Account not found for this stop — cannot record delivery');
+    return;
+  }
+
+  run.stops[i].done = !wasDone;
+
+  if (!wasDone && run.stops[i].done && ac2) {
     // ── Atomic delivery confirmation ──────────────────────
     // All four side-effects in one Firestore write:
     //  1. today_run updated above (done flag)
@@ -7681,11 +7708,11 @@ function createDeliveryInvoice(accountId, ordId) {
   const terms   = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
-  // Auto-increment invoice number from the single invoice collection
-  const lastNum = DB.a('retail_invoices').reduce((max,inv)=>{
-    const n = parseInt((inv.invoiceNumber||'').replace(/\D/g,'')) || 0;
-    return Math.max(max, n);
-  }, 0);
+  // Auto-increment invoice number — scan both iv and retail_invoices to avoid collisions
+  const lastNum = Math.max(
+    DB.a('retail_invoices').reduce((max,inv)=>Math.max(max, parseInt((inv.invoiceNumber||inv.number||'').replace(/\D/g,''))||0), 0),
+    DB.a('iv').reduce((max,inv)=>Math.max(max, parseInt((inv.number||inv.invoiceNumber||'').replace(/\D/g,''))||0), 0)
+  );
   const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
 
   // Build line items in CASES with pricing
@@ -7865,8 +7892,9 @@ function renderReports() {
       combinedEl.style.marginBottom = '12px';
       kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
     }
-    const purplInvoiced = DB.a('iv').reduce((s,x) => s + parseFloat(x.amount||0), 0);
-    const lfInvoiced    = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
+    const purplInvoiced  = DB.a('iv').reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                         + DB.a('retail_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
+    const lfInvoiced     = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
     combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
       `<div class="num">${fmtC(purplInvoiced + lfInvoiced)}</div>` +
       `<div class="label">Total Invoiced (All Brands)</div>` +
@@ -7944,6 +7972,15 @@ function renderTopAccountsReport() {
     e.revenue  += calcOrderValue(o);
     if (!e.lastOrder || (o.dueDate || '') > e.lastOrder) e.lastOrder = o.dueDate || '';
   });
+  // Add revenue from retail_invoices (portal/delivery orders)
+  DB.a('retail_invoices').forEach(inv => {
+    if (!inv.accountId) return;
+    if (!byAc[inv.accountId]) byAc[inv.accountId] = { cases: 0, revenue: 0, lastOrder: '' };
+    const e = byAc[inv.accountId];
+    e.revenue += parseFloat(inv.total || 0);
+    e.cases   += inv.cases || (inv.lineItems||[]).reduce((s,li)=>s+(li.cases||0),0);
+    if (!e.lastOrder || (inv.date || '') > e.lastOrder) e.lastOrder = inv.date || '';
+  });
 
   const rows = Object.entries(byAc)
     .map(([id, d]) => {
@@ -7988,13 +8025,14 @@ function renderGoingColdReport() {
     const acOrds = orders.filter(o => o.accountId === ac.id);
     if (!acOrds.length) return;
 
-    const lastOrd   = acOrds.reduce((best, o) => (!best || (o.dueDate || '') > (best.dueDate || '') ? o : best), null);
-    const daysSince = lastOrd ? daysAgo(lastOrd.dueDate) : 999;
+    const lastOrd   = acOrds.reduce((best, o) => (!best || (o.created || '') > (best.created || '') ? o : best), null);
+    const daysSince = lastOrd ? daysAgo(lastOrd.created) : 999;
     if (daysSince < 45) return;
 
     const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
-    const outstanding = invoices.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding, tier });
+    const outstanding = invoices.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0)
+                      + DB.a('retail_invoices').filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total || 0), 0);
+    rows.push({ name: ac.name, lastOrder: lastOrd?.created || '', daysSince, outstanding, tier });
   });
 
   rows.sort((a, b) => b.daysSince - a.daysSince);
@@ -8343,6 +8381,26 @@ function repRevenue() {
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
+  });
+  // Also count revenue from retail_invoices (portal/delivery) not already in orders
+  const from = qs('#rep-date-from')?.value || '';
+  const to   = qs('#rep-date-to')?.value   || '';
+  DB.a('retail_invoices').forEach(inv => {
+    if (from && inv.date < from) return;
+    if (to   && inv.date > to)   return;
+    // retail_invoices have lineItems with sku/cases/pricePerCase
+    (inv.lineItems||[]).forEach(li => {
+      const sku = li.sku || 'classic';
+      if (bySkuRev[sku] !== undefined) {
+        bySkuRev[sku]   += li.amount || (li.cases * (li.pricePerCase||0));
+        bySkuCases[sku] += li.cases || 0;
+      }
+    });
+    // fallback for invoices with cases/pricePerCase at top level
+    if (!(inv.lineItems||[]).length && inv.cases) {
+      bySkuRev['classic']   = (bySkuRev['classic']||0) + parseFloat(inv.total||0);
+      bySkuCases['classic'] = (bySkuCases['classic']||0) + (inv.cases||0);
+    }
   });
 
   const totalRev   = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
@@ -9798,6 +9856,35 @@ function markLfInvPaid(id) {
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
 }
 
+function sendLfInvoice(id) {
+  const inv = DB.a('lf_invoices').find(x => x.id === id);
+  if (!inv) { toast('Invoice not found'); return; }
+  const ac  = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const to  = inv.billingEmail || ac.email;
+  if (!to) { toast('No email address on file for this account'); return; }
+  const subject = `LF Invoice ${inv.number || ''} — ${inv.accountName || ac.name || ''}`;
+  const html = buildLfInvoiceEmailHTML(inv);
+  callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
+    .then(result => {
+      toast('LF invoice sent ✓');
+      DB.update('lf_invoices', id, x => ({...x, status: x.status === 'draft' ? 'sent' : x.status}));
+      const entry = {
+        id: uid(), stage: 'invoice_sent',
+        sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend',
+        invoiceId: id, invoiceRef: inv.number || '',
+      };
+      if (result?.id) entry.sentMessageId = result.id;
+      DB.update('ac', inv.accountId, a => ({
+        ...a, lastContacted: today(),
+        cadence: [...(a.cadence||[]), entry],
+      }));
+      renderInvoicesPage();
+    })
+    .catch(() => {
+      window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+    });
+}
+
 // ── LF Invoice modal ─────────────────────────────────────
 
 function openLfInvoiceModal(id) {
@@ -10680,9 +10767,9 @@ function openCombinedInvoicePreview(combinedId) {
 
   qs('#civ-account-name').textContent = rec.accountName;
   qs('#civ-invoice-nums').textContent = [purplInv.number || purplInv.invoiceNumber, lfInv.number].filter(Boolean).join(' · ');
-  qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
-  qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
-  qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
+  qs('#civ-purpl-sub').textContent    = fmtC(rec.purplSubtotal || 0);
+  qs('#civ-lf-sub').textContent       = fmtC(rec.lfSubtotal || 0);
+  qs('#civ-grand-total').textContent  = fmtC(rec.grandTotal || 0);
 
   qs('#civ-preview-frame').srcdoc = html;
 
@@ -10741,20 +10828,31 @@ function printAccountStatement(accountId) {
   const a = DB.a('ac').find(x => x.id === accountId);
   if (!a) return;
 
-  const purplInvs = DB.a('iv').filter(x => x.accountId === accountId);
+  // Merge all purpl invoices (legacy + portal/delivery)
+  const allPurplInvs = [
+    ...DB.a('iv').filter(x => x.accountId === accountId)
+      .map(x => ({ num: x.number||x.invoiceNumber||'—', date: x.date||'', amount: x.amount||0, status: x.status||'unpaid', brand: 'purpl' })),
+    ...DB.a('retail_invoices').filter(x => x.accountId === accountId)
+      .map(x => ({ num: x.invoiceNumber||x.number||'—', date: x.date||'', amount: x.total||0, status: x.status||'unpaid', brand: 'purpl' })),
+  ];
+  const lfInvsStmt   = a.isPbf ? DB.a('lf_invoices').filter(x => x.accountId === accountId)
+      .map(x => ({ num: x.number||'—', date: x.issued||'', amount: x.total||0, status: x.status||'unpaid', brand: 'lf' })) : [];
+  const allInvs = [...allPurplInvs, ...lfInvsStmt]
+    .sort((x, y) => (y.date || '') > (x.date || '') ? 1 : -1);
+
   const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid' };
 
   let totalOutstanding = 0;
-  const rows = purplInvs
-    .slice()
-    .sort((x, y) => (x.date || '') > (y.date || '') ? -1 : 1)
-    .map(iv => {
-      const balance = iv.status === 'paid' ? 0 : (iv.amount || 0);
+  const rows = allInvs.map(iv => {
+      const balance = iv.status === 'paid' ? 0 : iv.amount;
       totalOutstanding += balance;
+      const brandBadge = iv.brand === 'lf'
+        ? '<span style="font-size:10px;color:#4a7c59;font-weight:600;margin-left:4px">LF</span>'
+        : '<span style="font-size:10px;color:#8B5FBF;font-weight:600;margin-left:4px">purpl</span>';
       return `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.number || iv.invoiceNumber || '—')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.num)}${brandBadge}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${fmtD(iv.date)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtC(iv.amount || 0)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtC(iv.amount)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${statuses[iv.status] || (iv.status || 'Unpaid')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:${balance > 0 ? '600' : '400'}">${balance > 0 ? fmtC(balance) : '—'}</td>
       </tr>`;
@@ -10838,7 +10936,13 @@ function renderMacInvoicesTab(accountId) {
   const el      = qs('#mac-invoices-content');
   if (!el || !a) return;
 
-  const purplInvs = DB.a('iv').filter(x => x.accountId === accountId);
+  // Merge legacy iv + portal/delivery retail_invoices
+  const _ivRaw      = DB.a('iv').filter(x => x.accountId === accountId);
+  const _retailRaw  = DB.a('retail_invoices').filter(x => x.accountId === accountId);
+  const purplInvs   = [
+    ..._ivRaw,
+    ..._retailRaw.map(x => ({...x, _source:'retail', amount: x.total, due: x.dueDate||'', number: x.invoiceNumber||x.number||''})),
+  ];
   const lfInvs    = DB.a('lf_invoices').filter(x => x.accountId === accountId);
   const combined  = DB.a('combined_invoices').filter(x => x.accountId === accountId);
 
@@ -10893,7 +10997,7 @@ function renderMacInvoicesTab(accountId) {
     const unpaidLf    = lfInvs.filter(x => x.status !== 'paid' && !x.combinedInvoiceId);
     if (unpaidPurpl.length && unpaidLf.length) {
       const purplOpts = unpaidPurpl.map(iv =>
-        `<option value="${iv.id}">${escHtml(iv.number||iv.invoiceNumber||iv.id)} — ${fmtC(iv.amount||0)}</option>`).join('');
+        `<option value="${iv.id}" data-src="${iv._source||'iv'}">${escHtml(iv.number||iv.invoiceNumber||iv.id)} — ${fmtC(iv.amount||0)}</option>`).join('');
       const lfOpts = unpaidLf.map(inv =>
         `<option value="${inv.id}">${escHtml(inv.number||inv.id)} — ${fmtC(inv.total||0)}</option>`).join('');
       manualSection = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
@@ -11762,10 +11866,19 @@ function _renderPoConfirmed() {
     return;
   }
   el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
-    <thead><tr><th>Submitted</th><th>Account</th><th>Cases</th><th>Confirmed</th><th>Order ID</th></tr></thead>
+    <thead><tr><th>Submitted</th><th>Account</th><th>Cases</th><th>Confirmed</th><th>Invoice</th></tr></thead>
     <tbody>${orders.map(o => {
       const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
       const confirmDate = o.confirmedAt instanceof Date ? fmtD(o.confirmedAt.toISOString().slice(0,10)) : (o.confirmedAt||'—');
+      // Find combined invoice for this portal order
+      const combinedInv = DB.a('combined_invoices').find(x => x.portalOrderId === o.id);
+      const retailInv   = !combinedInv ? DB.a('retail_invoices').find(x => x.linkedPortalOrderId === o.id) : null;
+      let invCell = '—';
+      if (combinedInv) {
+        invCell = `<button class="btn xs" onclick="openCombinedInvoicePreview('${combinedInv.id}')">${fmtC(combinedInv.grandTotal||0)}</button>`;
+      } else if (retailInv) {
+        invCell = `<span style="font-size:12px">${retailInv.invoiceNumber||'—'} ${fmtC(retailInv.total||0)}</span>`;
+      }
       return `<tr>
         <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
         <td>${o.isMatched&&o.accountId
@@ -11773,7 +11886,7 @@ function _renderPoConfirmed() {
           : escHtml(o.accountName||'')}</td>
         <td>${cases}</td>
         <td style="font-size:12px">${confirmDate}</td>
-        <td style="font-size:11px;color:var(--muted)">${o.convertedOrderId||'—'}</td>
+        <td>${invCell}</td>
       </tr>`;
     }).join('')}</tbody>
   </table></div></div>`;
@@ -11947,8 +12060,16 @@ function linkPortalLfToAccount(portalOrderId) {
   const ac = accounts.find(a=>a.name.toLowerCase()===chosen.toLowerCase().trim());
   if (!ac) { toast('Account not found'); return; }
   firebase.firestore().collection('portal_orders').doc(portalOrderId)
-    .update({ accountId: ac.id, accountName: ac.name })
-    .then(() => { toast('Linked to '+ac.name); _renderPoLf(); })
+    .update({ accountId: ac.id, accountName: ac.name, isMatched: true })
+    .then(() => {
+      // Update PortalDB cache so UI reflects the link without a page refresh
+      const idx = PortalDB._orders.findIndex(o => o.id === portalOrderId);
+      if (idx >= 0) {
+        PortalDB._orders[idx] = { ...PortalDB._orders[idx], accountId: ac.id, accountName: ac.name, isMatched: true };
+      }
+      toast('Linked to '+ac.name);
+      _renderPoAll();
+    })
     .catch(e => toast('Error: '+e.message));
 }
 
@@ -11966,20 +12087,6 @@ function discardLfPortalOrder(portalOrderId) {
 }
 
 // ── Review modal ──────────────────────────────────────────
-
-async function deletePortalOrder(id) {
-  if (!confirm('Permanently delete this portal order? This cannot be undone.')) return;
-  try {
-    await firebase.firestore().collection('portal_orders').doc(id).delete();
-    PortalDB._orders = PortalDB._orders.filter(o => o.id !== id);
-    toast('Portal order deleted');
-    _renderPoAll();
-    _renderPoKpis();
-  } catch(e) {
-    console.error('deletePortalOrder error:', e);
-    toast('Delete failed — check your connection');
-  }
-}
 
 let _currentReviewOrderId = null;
 
@@ -12124,15 +12231,16 @@ async function declinePortalOrder(id) {
 }
 
 async function deletePortalOrder(orderId) {
-  if (!confirm('Delete this submission? Cannot be undone.')) return;
+  if (!confirm('Permanently delete this portal order? This cannot be undone.')) return;
   try {
-    await firebase.firestore()
-      .collection('portal_orders').doc(orderId).delete();
-    toast('Deleted ✓');
-    renderPreOrders(true);
+    await firebase.firestore().collection('portal_orders').doc(orderId).delete();
+    PortalDB._orders = PortalDB._orders.filter(o => o.id !== orderId);
+    toast('Portal order deleted');
+    _renderPoAll();
+    _renderPoKpis();
   } catch(e) {
-    console.error(e);
-    toast('Error deleting');
+    console.error('deletePortalOrder error:', e);
+    toast('Delete failed — check your connection');
   }
 }
 
@@ -12243,12 +12351,27 @@ function openConfirmPortalOrder(id) {
   const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
   const a = DB.a('ac').find(x => x.id === o.accountId);
 
+  // Build LF items summary for the confirm modal
+  const lfItemsHtml = (o.lineItems||[]).length
+    ? `<div style="margin-top:8px;padding:8px;background:#f0fdf4;border-radius:6px;font-size:12px">
+        <div style="font-weight:600;color:#166534;margin-bottom:4px">🌿 LF Items included:</div>
+        ${(o.lineItems||[]).map(li => {
+          if (li.hasVariants && li.variantLines) {
+            return `<div>${escHtml(li.skuName)}: ${li.variantLines.map(v=>`${v.units} ${escHtml(v.variantName)}`).join(', ')}</div>`;
+          }
+          return `<div>${escHtml(li.skuName)}: ${li.cases} case${li.cases!==1?'s':''}</div>`;
+        }).join('')}
+        <div style="color:var(--muted);margin-top:4px;font-size:11px">A combined invoice will be created automatically.</div>
+      </div>`
+    : '';
+
   qs('#mcpo-body').innerHTML = `
     <div style="font-size:14px;margin-bottom:12px">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${escHtml(o.accountName)}</div>
       <div style="font-size:12px;color:var(--muted)">Portal submission · ${_fmtPoDate(o.submittedAt)}</div>
       ${o.poNumber?`<div style="font-size:12px;margin-top:4px">PO# ${escHtml(o.poNumber)}</div>`:''}
       ${o.distributor?`<div style="font-size:12px;margin-top:4px"><strong>Distributor:</strong> ${escHtml(o.distributor)}</div>`:''}
+      ${lfItemsHtml}
     </div>
   `;
 
@@ -12607,13 +12730,20 @@ function renderInvoicesPage() {
 
 function renderInvKpis() {
   const todayStr = today();
-  const purplInvs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
-  const lfInvs    = DB.a('lf_invoices');
-  const distInvs  = DB.a('dist_invoices');
+  const purplInvs  = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
+  const retailInvs = DB.a('retail_invoices');
+  const lfInvs     = DB.a('lf_invoices');
+  const distInvs   = DB.a('dist_invoices');
 
   function purplStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
     const due = inv.due || inv.dueDate || '';
+    if (due && due < todayStr) return 'overdue';
+    return inv.status || 'unpaid';
+  }
+  function retailStatus(inv) {
+    if (inv.status === 'paid') return 'paid';
+    const due = inv.dueDate || '';
     if (due && due < todayStr) return 'overdue';
     return inv.status || 'unpaid';
   }
@@ -12622,22 +12752,29 @@ function renderInvKpis() {
   const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
 
   const totalInvoiced = purplInvs.reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + retailInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
   const outstanding   = purplInvs.filter(x => !['paid','draft'].includes(purplStatus(x)))
                           .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + retailInvs.filter(x => retailStatus(x) !== 'paid')
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + lfInvs.filter(x => x.status !== 'paid')
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => ['unpaid','overdue'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
                           .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + retailInvs.filter(x => retailStatus(x) === 'overdue')
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + lfInvs.filter(x => x.status !== 'paid' && (x.due||'') < todayStr && x.due)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => x.status==='overdue' || (x.status!=='paid'&&x.dueDate&&x.dueDate<todayStr))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
                           .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                      + retailInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
@@ -12842,7 +12979,9 @@ function renderInvColLf() {
               <td>${wixHtml}</td>
               <td style="white-space:nowrap">
                 <button class="btn xs" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
-                <button class="btn xs ${inv.status==='paid'?'':'primary'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'✓ Paid'}</button>
+                ${inv.status!=='paid'?`<button class="btn xs primary" onclick="sendLfInvoice('${inv.id}')">Send</button>`:''}
+                <button class="btn xs ${inv.status==='paid'?'':'green'}" onclick="markLfInvPaid('${inv.id}')">${inv.status==='paid'?'Unpay':'✓ Paid'}</button>
+                <button class="btn xs red" onclick="deleteLfInvoice('${inv.id}')">✕</button>
               </td>
             </tr>`;
           }).join('')}
