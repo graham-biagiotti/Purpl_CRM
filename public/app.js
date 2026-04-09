@@ -11910,10 +11910,15 @@ function linkPortalLfToAccount(portalOrderId) {
 }
 
 function discardLfPortalOrder(portalOrderId) {
-  if (!confirm2('Mark this LF submission as discarded?')) return;
+  if (!confirm2('Mark this submission as discarded?')) return;
   firebase.firestore().collection('portal_orders').doc(portalOrderId)
     .update({ status: 'discarded' })
-    .then(() => { toast('Discarded'); _renderPoLf(); })
+    .then(() => {
+      const idx = PortalDB._orders.findIndex(o => o.id === portalOrderId);
+      if (idx >= 0) PortalDB._orders[idx] = { ...PortalDB._orders[idx], status: 'discarded' };
+      toast('Discarded');
+      _renderPoAll();
+    })
     .catch(e => toast('Error: '+e.message));
 }
 
@@ -11938,11 +11943,12 @@ let _currentReviewOrderId = null;
 async function reviewPortalOrder(id) {
   _currentReviewOrderId = id;
   const o = PortalDB.getOrders().find(x => x.id === id);
-  if (!o) return;
+  if (!o) { toast('Order not found — try refreshing'); return; }
 
-  // Mark as reviewed
+  // Mark as reviewed — fire-and-forget so a Firestore error never blocks the modal
   if (o.status === 'new' || o.status === 'pending') {
-    await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
+    PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() })
+      .catch(e => console.warn('reviewPortalOrder status update failed:', e));
   }
 
   // ── LF or combined order review ──────────────────────────
@@ -12333,17 +12339,23 @@ async function confirmPortalOrder() {
     // If the order has LF items, auto-create LF invoice + combined invoice
     const lfItems = (d.lineItems||[]).filter(li => li.skuId);
     if (lfItems.length && d.accountId) {
-      const lfResult = _autoSaveLfFromPortal(d, _portalOrderId);
-      if (lfResult) {
-        const combinedId = createCombinedFromPortal(retailInvId, lfResult.lfInvId, d.accountId, _portalOrderId);
-        if (combinedId) {
-          toast('✓ Order confirmed · Combined invoice created');
-          setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
+      try {
+        const lfResult = _autoSaveLfFromPortal(d, _portalOrderId);
+        if (lfResult) {
+          const combinedId = createCombinedFromPortal(retailInvId, lfResult.lfInvId, d.accountId, _portalOrderId);
+          if (combinedId) {
+            toast('✓ Order confirmed · Combined invoice created');
+            setTimeout(() => openCombinedInvoicePreview(combinedId), 400);
+          } else {
+            toast('✓ Order confirmed · LF invoice created (combined invoice failed — check console)');
+            console.error('createCombinedFromPortal returned null', {retailInvId, lfInvId: lfResult.lfInvId, accountId: d.accountId});
+          }
         } else {
-          toast('✓ Order confirmed · LF invoice created');
+          toast('✓ Order confirmed · purpl invoice created (no LF items found)');
         }
-      } else {
-        toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+      } catch(lfErr) {
+        console.error('LF/combined invoice creation error:', lfErr);
+        toast('✓ Order confirmed · purpl invoice created (LF invoice error — check console)');
       }
     } else {
       toast('✓ Order confirmed · Invoice draft created · Inventory updated');
