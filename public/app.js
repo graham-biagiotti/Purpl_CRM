@@ -11897,6 +11897,20 @@ function discardLfPortalOrder(portalOrderId) {
 
 // ── Review modal ──────────────────────────────────────────
 
+async function deletePortalOrder(id) {
+  if (!confirm('Permanently delete this portal order? This cannot be undone.')) return;
+  try {
+    await firebase.firestore().collection('portal_orders').doc(id).delete();
+    PortalDB._orders = PortalDB._orders.filter(o => o.id !== id);
+    toast('Portal order deleted');
+    _renderPoAll();
+    _renderPoKpis();
+  } catch(e) {
+    console.error('deletePortalOrder error:', e);
+    toast('Delete failed — check your connection');
+  }
+}
+
 let _currentReviewOrderId = null;
 
 async function reviewPortalOrder(id) {
