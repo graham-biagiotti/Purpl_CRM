@@ -11578,7 +11578,7 @@ function _renderPoTabs() {
 }
 
 function _switchPoTab(tab) {
-  ['all','unmatched','confirmed','notify','links','lf'].forEach(id => {
+  ['all','unmatched','confirmed','notify','links'].forEach(id => {
     const el = qs(`#po-pane-${id}`);
     if (el) el.style.display = id === tab ? '' : 'none';
   });
@@ -11587,7 +11587,6 @@ function _switchPoTab(tab) {
   if (tab === 'confirmed') _renderPoConfirmed();
   if (tab === 'notify')    _renderPoNotify();
   if (tab === 'links')     _renderPoLinks();
-  if (tab === 'lf')        _renderPoLf();
 }
 
 const PO_STATUS_LABELS = {
@@ -11921,14 +11920,21 @@ async function reviewPortalOrder(id) {
     await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
   }
 
-  // ── LF order review ──────────────────────────────────────
-  if (o.brand === 'lf') {
-    const itemsHtml = (o.lineItems||[]).map(i => {
+  // ── LF or combined order review ──────────────────────────
+  if (o.brand === 'lf' || o.brand === 'combined') {
+    const purplCases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+    const purplHtml = purplCases > 0
+      ? `<div style="margin-bottom:8px"><strong style="color:var(--primary)">💜 purpl</strong><div style="margin-top:2px">Classic Lavender Lemonade — ${purplCases} case${purplCases!==1?'s':''}</div></div>`
+      : '';
+    const lfHtml = (o.lineItems||[]).map(i => {
       if (i.hasVariants && i.variantLines) {
         return `<div style="margin-bottom:4px"><strong>${escHtml(i.skuName)}</strong>: ${i.variantLines.map(v=>`${v.units} ${escHtml(v.variantName)}`).join(', ')}</div>`;
       }
       return `<div style="margin-bottom:4px"><strong>${escHtml(i.skuName)}</strong>: ${i.cases} case${i.cases!==1?'s':''}</div>`;
-    }).join('') || '—';
+    }).join('');
+    const itemsHtml = (purplHtml ? `<div style="color:var(--primary);font-size:11px;font-weight:600;margin-bottom:4px">💜 purpl</div>${purplHtml}` : '')
+      + (lfHtml ? `<div style="color:#166534;font-size:11px;font-weight:600;margin:${purplHtml?'8px':0} 0 4px">🌿 Lavender Fields</div>${lfHtml}` : '')
+      || '—';
 
     qs('#mpr-body').innerHTML = `
       <div class="card-grid grid-2" style="gap:12px;margin-bottom:12px">
@@ -11947,8 +11953,13 @@ async function reviewPortalOrder(id) {
     const confirmBtn = qs('#mpr-confirm-btn');
     const declineBtn = qs('#mpr-decline-btn');
     if (confirmBtn) {
-      confirmBtn.textContent = 'Create Invoice';
-      confirmBtn.onclick = () => { closeModal('modal-portal-review'); createLfInvoiceFromPortal(id); };
+      const hasPurpl = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0) > 0;
+      confirmBtn.textContent = hasPurpl ? 'Confirm & Invoice' : 'Create Invoice';
+      confirmBtn.onclick = () => {
+        closeModal('modal-portal-review');
+        if (hasPurpl) openConfirmPortalOrder(id);
+        else createLfInvoiceFromPortal(id);
+      };
     }
     if (declineBtn) {
       declineBtn.textContent = 'Discard';
@@ -12205,6 +12216,11 @@ async function confirmPortalOrder() {
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+
+    // If the order also had LF items, open LF invoice modal pre-filled
+    if ((d.lineItems||[]).length) {
+      createLfInvoiceFromPortal(_portalOrderId);
+    }
 
     // Send order confirmation email and log to cadence
     const emailTo = d.billingEmail || acct.email;

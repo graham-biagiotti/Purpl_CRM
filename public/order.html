@@ -1153,46 +1153,27 @@ function submitOrder() {
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
 
-  // Write purpl order (unchanged logic — only if purpl brand selected and has items/notify)
-  var purplPromise = (_brandPurpl && (cases > 0 || orderData.notifyMe.length > 0))
-    ? db.collection('portal_orders').add(Object.assign({}, orderData, {brand:'purpl'}))
-    : Promise.resolve(null);
+  var hasPurpl = _brandPurpl && (cases > 0 || orderData.notifyMe.length > 0);
+  var hasLf    = lfItems.length > 0;
 
-  // Write LF order if any LF items
-  var lfPromise = lfItems.length > 0
-    ? db.collection('portal_orders').add({
-        id: null,
-        accountId: accountId || null,
-        accountName: finalAccountName,
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        brand: 'lf',
-        lineItems: lfItems,
-        total: lfTotal,
-        contactName: contactName || null,
-        contactEmail: billingEmail,
-        billingEmail: billingEmail,
-        notes: notes,
-        status: 'pending',
-        source: 'portal',
-        isMatched: isMatched,
-        isProspect: isProspect,
-      })
-    : Promise.resolve(null);
+  // Single combined submission document — one entry per order regardless of brands
+  var submissionDoc = Object.assign({}, orderData, {
+    lineItems: lfItems,
+    lfTotal:   lfTotal,
+    brand: (hasPurpl && hasLf) ? 'combined' : (hasLf ? 'lf' : 'purpl'),
+  });
 
-  Promise.all([purplPromise, lfPromise])
-    .then(function(results) {
-      var purplRef = results[0];
-      var lfRef    = results[1];
+  db.collection('portal_orders').add(submissionDoc)
+    .then(function(orderRef) {
 
-      // Notify CRM of combined invoice needed when isPbf account orders both brands
-      if (isPbf && isMatched && accountId && purplRef && lfRef) {
+      // Notify CRM of combined invoice needed for PBF accounts ordering both brands
+      if (isPbf && isMatched && accountId && hasPurpl && hasLf) {
         var notif = {
           id: (Date.now().toString(36) + Math.random().toString(36).slice(2)),
           type: 'combined_needed',
           accountId: accountId,
           accountName: finalAccountName,
-          portalOrderId: purplRef.id,
-          lfPortalOrderId: lfRef.id,
+          portalOrderId: orderRef.id,
           submittedAt: new Date().toISOString(),
           status: 'pending',
           brands: ['purpl', 'lf']
