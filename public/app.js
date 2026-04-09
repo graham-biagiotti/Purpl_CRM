@@ -10155,8 +10155,13 @@ function markCombinedPaid(combinedId) {
   if (!rec) return;
   const now = new Date().toISOString();
   DB.update('combined_invoices', combinedId, x => ({...x, status: 'paid', paidAt: now}));
-  DB.update('iv',          rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
-  DB.update('lf_invoices', rec.lfInvoiceId,    x => ({...x, status: 'paid', paidAt: now}));
+  // purpl invoice may be in 'iv' (legacy) or 'retail_invoices' (portal-originated)
+  if (DB.a('iv').find(x => x.id === rec.purplInvoiceId)) {
+    DB.update('iv', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
+  } else {
+    DB.update('retail_invoices', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
+  }
+  DB.update('lf_invoices', rec.lfInvoiceId, x => ({...x, status: 'paid', paidAt: now}));
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
 }
@@ -10314,7 +10319,8 @@ function buildCombinedInvoiceHTML(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
 
-  const purplInv   = DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv   = DB.a('iv').find(x => x.id === rec.purplInvoiceId)
+                  || DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || {};
   const lfInv      = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
   const account    = DB.a('ac').find(x => x.id === rec.accountId) || {};
   const invSettings = DB.obj('invoice_settings') || {};
@@ -10334,12 +10340,28 @@ function buildCombinedInvoiceHTML(combinedId) {
   </tr></thead>`;
 
   const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
-  const purplRows = (purplInv.lineItems||[]).map(li => `<tr>
-    <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Item')}</td>
-    <td style="${itemCellStyle};text-align:right">${li.qty||li.cases||0}</td>
-    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
-    <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.total||li.lineTotal||0).toFixed(2)}</td>
-  </tr>`).join('');
+  const _purplInvNum = purplInv.number || purplInv.invoiceNumber || '';
+  let purplRows;
+  if ((purplInv.lineItems||[]).length) {
+    purplRows = purplInv.lineItems.map(li => `<tr>
+      <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Item')}</td>
+      <td style="${itemCellStyle};text-align:right">${li.qty||li.cases||0}</td>
+      <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
+      <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.total||li.lineTotal||0).toFixed(2)}</td>
+    </tr>`).join('');
+  } else if (purplInv.cases) {
+    // retail_invoices format (from portal order confirmation)
+    const price = parseFloat(purplInv.pricePerCase || 0);
+    const lineTotal = price ? purplInv.cases * price : parseFloat(purplInv.total || rec.purplSubtotal || 0);
+    purplRows = `<tr>
+      <td style="${itemCellStyle}">Classic Lavender Lemonade (24-can case)</td>
+      <td style="${itemCellStyle};text-align:right">${purplInv.cases} cs</td>
+      <td style="${itemCellStyle};text-align:right">${price ? '$'+price.toFixed(2)+'/cs' : '—'}</td>
+      <td style="${itemCellStyle};text-align:right;font-weight:500">${lineTotal ? '$'+lineTotal.toFixed(2) : '—'}</td>
+    </tr>`;
+  } else {
+    purplRows = '';
+  }
 
   const lfRows = (lfInv.lineItems||[]).map(li => {
     if (li.hasVariants && li.variantLines) {
@@ -10390,7 +10412,7 @@ function buildCombinedInvoiceHTML(combinedId) {
       </td>
       <td align="right" style="vertical-align:middle">
         <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">INVOICE</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(purplInv.number||'')}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(_purplInvNum)}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
       </td>
     </tr></table>
   </td></tr>
@@ -10609,11 +10631,12 @@ function openCombinedInvoicePreview(combinedId) {
 
   const html     = buildCombinedInvoiceHTML(combinedId);
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
-  const purplInv = DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv = DB.a('iv').find(x => x.id === rec.purplInvoiceId)
+                || DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || {};
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
 
   qs('#civ-account-name').textContent = rec.accountName;
-  qs('#civ-invoice-nums').textContent = [purplInv.number, lfInv.number].filter(Boolean).join(' · ');
+  qs('#civ-invoice-nums').textContent = [purplInv.number || purplInv.invoiceNumber, lfInv.number].filter(Boolean).join(' · ');
   qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
   qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
   qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
@@ -11647,6 +11670,8 @@ function _renderPoAll() {
                 ? `<button class="btn xs primary" onclick="createLfInvoiceFromPortal('${o.id}')">Create Invoice</button>` : '')
             : (o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
                 ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : '')}
+          ${(o.brand === 'combined' || o.brand === 'purpl') && o.status === 'confirmed'
+            ? `<button class="btn xs" onclick="_viewCombinedInvoiceForPortalOrder('${o.id}')">View Invoice</button>` : ''}
           ${o.brand !== 'lf' && o.status!=='declined'&&o.status!=='confirmed'
             ? `<button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
           ${o.brand === 'lf' && o.status!=='discarded'&&o.status!=='confirmed'
@@ -12064,6 +12089,94 @@ async function deletePortalOrder(orderId) {
 
 // ── Confirm portal order flow ─────────────────────────────
 
+// ── Auto-create LF invoice from portal order data (no modal) ─────────────
+function _autoSaveLfFromPortal(portalData, portalOrderId) {
+  const lineItems = (portalData.lineItems || []).filter(li =>
+    li.skuId && (li.cases > 0 || (li.variantLines||[]).some(v => v.cases > 0)));
+  if (!lineItems.length) return null;
+
+  const ac = DB.a('ac').find(x => x.id === portalData.accountId) || {};
+  const total = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal) || 0), 0);
+  const lfNum = getNextInvoiceNumber('lf');
+  const saveId = uid();
+  const todayStr = today();
+  const invTerms = (DB.obj('invoice_settings', {terms:30}) || {}).terms || 30;
+  const dueStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
+
+  const rec = {
+    id: saveId, number: lfNum,
+    accountId: portalData.accountId,
+    accountName: ac.name || portalData.accountName || '',
+    issued: todayStr, due: dueStr,
+    lineItems, total, status: 'unpaid',
+    wixPulled: false, wixPulledAt: null,
+    notes: portalData.notes || 'From portal order',
+    link: '',
+    portalOrderId,
+  };
+  DB.push('lf_invoices', rec);
+
+  DB.push('lf_wix_deductions', {
+    id: uid(),
+    invoiceId: saveId, invoiceNumber: lfNum,
+    accountId: rec.accountId, accountName: rec.accountName,
+    date: todayStr,
+    items: lineItems.flatMap(l => l.hasVariants
+      ? (l.variantLines||[]).map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
+      : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
+    confirmed: false,
+  });
+
+  renderLfDashKpis();
+  return { lfInvId: saveId, lfTotal: total };
+}
+
+// ── Create combined invoice linking a retail_invoice + lf_invoice ─────────
+function createCombinedFromPortal(retailInvId, lfInvId, accountId, portalOrderId) {
+  const purplInv = DB.a('retail_invoices').find(x => x.id === retailInvId);
+  const lfInv    = DB.a('lf_invoices').find(x => x.id === lfInvId);
+  if (!purplInv || !lfInv) return null;
+
+  const id = uid();
+  const num = getNextInvoiceNumber('combined');
+  const purplSub = parseFloat(purplInv.total || (purplInv.pricePerCase * purplInv.cases) || 0);
+  const lfSub    = parseFloat(lfInv.total || 0);
+  const account  = DB.a('ac').find(x => x.id === accountId) || {};
+
+  const rec = {
+    id, number: num,
+    purplInvoiceId: retailInvId,
+    lfInvoiceId: lfInvId,
+    accountId,
+    accountName: account.name || purplInv.accountName || '',
+    status: 'unpaid',
+    createdAt: new Date().toISOString(),
+    sentAt: null, paidAt: null,
+    portalOrderId: portalOrderId || null,
+    purplSubtotal: purplSub,
+    lfSubtotal: lfSub,
+    grandTotal: purplSub + lfSub,
+    source: 'portal',
+  };
+
+  DB.atomicUpdate(cache => {
+    cache.combined_invoices = [...(cache.combined_invoices||[]), rec];
+    const pi = (cache.retail_invoices||[]).findIndex(x => x.id === retailInvId);
+    if (pi >= 0) cache.retail_invoices[pi] = {...cache.retail_invoices[pi], combinedInvoiceId: id};
+    const li = (cache.lf_invoices||[]).findIndex(x => x.id === lfInvId);
+    if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], combinedInvoiceId: id};
+  });
+
+  return id;
+}
+
+// ── Open combined invoice for a portal order ──────────────────────────────
+function _viewCombinedInvoiceForPortalOrder(portalOrderId) {
+  const combined = DB.a('combined_invoices').find(x => x.portalOrderId === portalOrderId);
+  if (combined) openCombinedInvoicePreview(combined.id);
+  else toast('No combined invoice found — may still be loading');
+}
+
 let _confirmPortalOrderId = null;
 let _portalOrderId = null;
 let _lfPortalOrderId = null;
@@ -12186,8 +12299,9 @@ async function confirmPortalOrder() {
     });
 
     // 4. Create single draft invoice in retail_invoices (the authoritative invoice collection)
+    const retailInvId = uid();
     DB.push('retail_invoices', {
-      id: uid(),
+      id: retailInvId,
       invoiceNumber,
       accountId: d.accountId || null,
       accountName: d.accountName,
@@ -12215,11 +12329,24 @@ async function confirmPortalOrder() {
 
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
-    toast('✓ Order confirmed · Invoice draft created · Inventory updated');
 
-    // If the order also had LF items, open LF invoice modal pre-filled
-    if ((d.lineItems||[]).length) {
-      createLfInvoiceFromPortal(_portalOrderId);
+    // If the order has LF items, auto-create LF invoice + combined invoice
+    const lfItems = (d.lineItems||[]).filter(li => li.skuId);
+    if (lfItems.length && d.accountId) {
+      const lfResult = _autoSaveLfFromPortal(d, _portalOrderId);
+      if (lfResult) {
+        const combinedId = createCombinedFromPortal(retailInvId, lfResult.lfInvId, d.accountId, _portalOrderId);
+        if (combinedId) {
+          toast('✓ Order confirmed · Combined invoice created');
+          setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
+        } else {
+          toast('✓ Order confirmed · LF invoice created');
+        }
+      } else {
+        toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+      }
+    } else {
+      toast('✓ Order confirmed · Invoice draft created · Inventory updated');
     }
 
     // Send order confirmation email and log to cadence
