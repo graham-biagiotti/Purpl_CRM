@@ -1258,7 +1258,8 @@ function renderInvoiceStatus() {
           <td>${fmtC(inv.total||0)}</td>
           <td><span class="badge ${statusCls}">${inv.status==='paid'?'Paid':daysAgo(inv.dueDate)>0?'Overdue':'Unpaid'}</span></td>
           <td style="white-space:nowrap">
-            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
+            ${inv.status!=='paid'?`<button class="btn xs primary" onclick="sendRetailInvoice('${inv.id}')">Send</button>`:''}
+            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️</button>
             ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">Mark Paid</button>`:''}
             <button class="btn xs red" onclick="deleteRetailInv('${inv.id}')">✕</button>
           </td>
@@ -1691,7 +1692,49 @@ function deleteRetailInv(id) {
   if (!confirm2('Delete this invoice?')) return;
   DB.remove('retail_invoices', id);
   renderInvoiceStatus();
+  renderInvoicesPage();
   toast('Invoice deleted');
+}
+
+function sendRetailInvoice(id) {
+  const inv = DB.a('retail_invoices').find(x => x.id === id);
+  if (!inv) { toast('Invoice not found'); return; }
+  const ac  = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const to  = inv.billingEmail || ac.email;
+  if (!to) { toast('No email address on file for this account'); return; }
+
+  // Normalize retail_invoices fields to match buildPurplInvoiceEmailHTML expectations
+  const normalized = {
+    ...inv,
+    number:    inv.invoiceNumber || inv.number || '',
+    amount:    parseFloat(inv.total || 0),
+    due:       inv.dueDate || inv.due || '',
+    lineItems: inv.lineItems || (inv.cases ? [{
+      skuName:     'Classic Lavender Lemonade',
+      cases:       inv.cases,
+      qty:         inv.cases,
+      pricePerCase: parseFloat(inv.pricePerCase || 0),
+      unitPrice:   parseFloat(inv.pricePerCase || 0),
+      lineTotal:   parseFloat(inv.total || 0),
+    }] : []),
+  };
+
+  const html    = buildPurplInvoiceEmailHTML(normalized);
+  const subject = 'Invoice from purpl — ' + (ac.name || inv.accountName || '');
+
+  callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
+    .then(result => {
+      DB.update('retail_invoices', id, i => ({
+        ...i, status: 'sent', sentAt: new Date().toISOString(),
+        ...(result?.id ? {sentMessageId: result.id} : {}),
+      }));
+      renderInvoiceStatus();
+      renderInvoicesPage();
+      toast('Invoice sent ✓');
+    })
+    .catch(() => {
+      window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+    });
 }
 
 
@@ -12611,9 +12654,14 @@ function renderInvKpis() {
 
 function renderInvColPurpl() {
   const todayStr = today();
-  // Exclude iv records that are part of a combined invoice
-  const invs = DB.a('iv')
-    .filter(x => (x.accountId || x.number || x.invoiceNumber) && !x.combinedInvoiceId);
+  // Combine legacy iv invoices + portal retail_invoices, normalizing field names
+  const ivInvs = DB.a('iv')
+    .filter(x => (x.accountId || x.number || x.invoiceNumber) && !x.combinedInvoiceId)
+    .map(x => ({...x, _source:'iv', amount: x.amount, due: x.due||x.dueDate||'', number: x.number||x.invoiceNumber||''}));
+  const retailInvs = DB.a('retail_invoices')
+    .filter(x => !x.combinedInvoiceId)
+    .map(x => ({...x, _source:'retail', amount: x.total, due: x.dueDate||'', number: x.invoiceNumber||''}));
+  const invs = [...ivInvs, ...retailInvs];
 
   function effectiveStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
@@ -12703,11 +12751,18 @@ function renderInvColPurpl() {
               <td><strong>${amt != null ? fmtC(amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
               <td><span class="badge ${statColor[st]||'gray'}">${st}</span></td>
               <td><div style="display:flex;gap:4px;flex-wrap:wrap">
-                ${st!=='paid' ? `<button class="btn xs green" onclick="markPaid('${iv.id}')">✓ Paid</button>` : ''}
-                ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
-                <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
-                <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
-                <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
+                ${iv._source==='retail' ? `
+                  ${st!=='paid'?`<button class="btn xs primary" onclick="sendRetailInvoice('${iv.id}')">Send</button>`:''}
+                  ${st!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${iv.id}')">✓ Paid</button>`:''}
+                  <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+                  <button class="btn xs red" onclick="deleteRetailInv('${iv.id}')">✕</button>
+                ` : `
+                  ${st!=='paid' ? `<button class="btn xs green" onclick="markPaid('${iv.id}')">✓ Paid</button>` : ''}
+                  ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
+                  <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
+                  <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
+                  <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
+                `}
               </div></td>
             </tr>`;
           }).join('')}
