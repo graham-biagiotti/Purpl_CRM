@@ -9,6 +9,12 @@
 // Always use CANS_PER_CASE when converting between them.
 const CANS_PER_CASE = 12;
 
+// ── purpl pricing constants ──────────────────────────────
+// All purpl prices are derived from MSRP so a single update cascades everywhere.
+const PURPL_MSRP            = 3.29;                                  // retail price per can
+const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE;   // direct retailer price/case
+const PURPL_DIST_PER_CASE   = PURPL_MSRP * 0.65 * 0.75 * CANS_PER_CASE; // distributor price/case
+
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -874,15 +880,15 @@ function dashFilterFulfill(val) {
 }
 
 // Price an order. Items qty is in CASES.
-// Account pricing (ac.pricing[sku]) should be price-per-case.
-// Fallback: COGS per can × 2.2 markup × CANS_PER_CASE = price per case.
+// Account pricing (ac.pricing[sku] or pricePerCaseDirect/Dist) takes priority.
+// Fallback: MSRP-based default (direct or dist tier depending on fulfilledBy).
 function calcOrderValue(o) {
-  const costs = DB.obj('costs', {cogs:{}});
-  const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
+  const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
   return (o.items||[]).reduce((s,i)=>{
-    // pricePerCase: account-specific or default (COGS × markup × cans per case)
+    const _dist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
     const pricePerCase = ac2?.pricing?.[i.sku]
-      || (costs.cogs[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+      || (_dist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect)
+      || (_dist ? PURPL_DIST_PER_CASE : PURPL_DIRECT_PER_CASE);
     return s + pricePerCase * i.qty; // i.qty = cases
   }, 0);
 }
@@ -1573,8 +1579,8 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
 
 function _ivGetPrice(ac, tier) {
   if (!ac) return 0;
-  if (tier === 'direct') return parseFloat(ac.pricePerCaseDirect) || 0;
-  if (tier === 'dist')   return parseFloat(ac.pricePerCaseDist)   || 0;
+  if (tier === 'direct') return parseFloat(ac.pricePerCaseDirect) || PURPL_DIRECT_PER_CASE;
+  if (tier === 'dist')   return parseFloat(ac.pricePerCaseDist)   || PURPL_DIST_PER_CASE;
   if (tier === 'custom') return parseFloat(ac.pricePerCaseCustom) || 0;
   return 0;
 }
@@ -7716,7 +7722,6 @@ function createDeliveryInvoice(accountId, ordId) {
   const ord     = DB.a('orders').find(o=>o.id===ordId);
   if (!ac || !ord) return;
 
-  const costs   = DB.obj('costs', {cogs:{}});
   const terms   = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
@@ -7728,9 +7733,12 @@ function createDeliveryInvoice(accountId, ordId) {
   const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
 
   // Build line items in CASES with pricing
-  // pricePerCase = account-specific rate OR (COGS per can × 2.2 markup × CANS_PER_CASE)
+  // Use account-specific price or MSRP-based default (direct or dist tier)
+  const _distFB = ac?.fulfilledBy && ac.fulfilledBy !== 'direct';
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = ac.pricing?.[i.sku] || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+    const pricePerCase = ac.pricing?.[i.sku]
+      || (_distFB ? ac.pricePerCaseDist : ac.pricePerCaseDirect)
+      || (_distFB ? PURPL_DIST_PER_CASE : PURPL_DIRECT_PER_CASE);
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -8388,8 +8396,11 @@ function repRevenue() {
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; pricePerCase = account pricing or COGS × markup × CANS_PER_CASE
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      // i.qty = cases; use account-specific price or MSRP-based default
+      const _dist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+      const pricePerCase = ac2?.pricing?.[i.sku]
+        || (_dist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect)
+        || (_dist ? PURPL_DIST_PER_CASE : PURPL_DIRECT_PER_CASE);
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
@@ -8442,7 +8453,6 @@ function repRevenue() {
 // ── Account Performance ────────────────────────────────────
 function repAccounts() {
   const orders = _repFilterOrders(DB.a('orders'));
-  const costs  = DB.obj('costs', {cogs:{}});
   const acMap  = {};
   DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
 
@@ -8451,8 +8461,11 @@ function repAccounts() {
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; price per case
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      // i.qty = cases; use account-specific price or MSRP-based default
+      const _dist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+      const pricePerCase = ac2?.pricing?.[i.sku]
+        || (_dist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect)
+        || (_dist ? PURPL_DIST_PER_CASE : PURPL_DIRECT_PER_CASE);
       acMap[o.accountId].rev += pricePerCase * i.qty;
       acMap[o.accountId].qty += i.qty; // cases
     });
@@ -8656,8 +8669,11 @@ function repProfit() {
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; price per case
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      // i.qty = cases; use account-specific price or MSRP-based default
+      const _dist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+      const pricePerCase = ac2?.pricing?.[i.sku]
+        || (_dist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect)
+        || (_dist ? PURPL_DIST_PER_CASE : PURPL_DIRECT_PER_CASE);
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
