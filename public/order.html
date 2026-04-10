@@ -447,8 +447,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
   <!-- Thank You state -->
   <div class="thankyou" id="thankyou">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      alt="purpl" style="height:44px;margin-bottom:20px">
+    <div id="ty-logo-area" style="margin-bottom:20px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+      alt="purpl" style="height:44px"></div>
     <h2 id="ty-heading">Order received!</h2>
     <p style="margin-bottom:20px">We'll be in touch shortly to confirm your delivery window.</p>
     <div class="summary-card" id="ty-summary"></div>
@@ -1010,6 +1010,21 @@ function showThankYou(data) {
   ty.style.display = 'block';
   document.getElementById('ty-heading').textContent = 'Thank you, ' + data.accountName + '!';
 
+  var hasPurpl = data.cases > 0;
+  var hasLf = data.lfItems && data.lfItems.length > 0;
+  var logoArea = document.getElementById('ty-logo-area');
+  if (logoArea) {
+    var _PURPL_LOGO = 'https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png';
+    var _LF_LOGO = '/images/lf-logo-circle-transparent.png';
+    if (hasPurpl && hasLf) {
+      logoArea.innerHTML = '<div style="display:flex;align-items:center;gap:16px;justify-content:center"><img src="' + _PURPL_LOGO + '" alt="purpl" style="height:44px"><img src="' + _LF_LOGO + '" alt="Lavender Fields" style="height:44px"></div>';
+    } else if (hasLf) {
+      logoArea.innerHTML = '<img src="' + _LF_LOGO + '" alt="Lavender Fields" style="height:52px">';
+    } else {
+      logoArea.innerHTML = '<img src="' + _PURPL_LOGO + '" alt="purpl" style="height:44px">';
+    }
+  }
+
   var orderData = data.orderData || {};
   var summaryHtml = '';
 
@@ -1024,11 +1039,13 @@ function showThankYou(data) {
     summaryHtml += '<div style="font-size:12px;font-weight:700;color:#166534;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🌿 Lavender Fields</div>';
     data.lfItems.forEach(function(it) {
       if (it.hasVariants && it.variantLines && it.variantLines.length) {
-        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + it.skuName + '</span>';
+        var totalUnits = it.variantLines.reduce(function(s, vl) { return s + (vl.units || 0); }, 0);
+        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px">';
+        summaryHtml += '<div style="display:flex;justify-content:space-between;width:100%"><span style="font-weight:600">' + it.skuName + ' &mdash; ' + totalUnits + ' units total</span><span style="font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
         it.variantLines.forEach(function(vl) {
-          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + vl.variantName + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
+          summaryHtml += '<span style="font-size:12px;color:var(--muted)">&nbsp;&nbsp;&bull; ' + vl.variantName + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
         });
-        summaryHtml += '<span style="align-self:flex-end;font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
+        summaryHtml += '</div>';
       } else {
         summaryHtml += '<div class="summary-row"><span>' + it.skuName + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
       }
@@ -1044,10 +1061,6 @@ function showThankYou(data) {
   if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + data.poNumber + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + data.billingEmail + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from delivery</span></div>';
-
-  if (data.bothBrands) {
-    summaryHtml += '<div style="background:#eff6ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#1e40af">You will receive <strong>separate invoices</strong> for purpl and Lavender Fields.</div>';
-  }
 
   document.getElementById('ty-summary').innerHTML = summaryHtml;
   _lastOrderData = data;
@@ -1075,7 +1088,6 @@ function showThankYou(data) {
     }
     if (data.poNumber) body += 'PO Number: ' + data.poNumber + '\n';
     body += 'Payment Terms: Net 30 from delivery\n';
-    if (data.bothBrands) body += '\nNote: You\'ll receive separate invoices for purpl and Lavender Fields.\n';
     body += '\nNext steps: We\'ll be in touch to confirm your delivery window within 1–2 business days.\n\n';
     body += 'Graham Biagiotti\nPumpkin Blossom Farm\n603-748-3038 · lavender@pbfwholesale.com';
     // Open mailto — non-blocking, best-effort
@@ -1476,6 +1488,20 @@ function printCurrentOrder() {
   var data = _lastOrderData;
   var dt = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
+  // Build logo HTML for print — use absolute URLs since the print window is about:blank
+  var _PURPL_LOGO_ABS = 'https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png';
+  var _LF_LOGO_ABS = window.location.origin + '/images/lf-logo-circle-transparent.png';
+  var printLogoHtml;
+  var printHasPurpl = data.cases > 0;
+  var printHasLf = data.lfItems && data.lfItems.length > 0;
+  if (printHasPurpl && printHasLf) {
+    printLogoHtml = '<div style="display:flex;align-items:center;gap:16px;justify-content:center;margin-bottom:12px"><img src="' + _PURPL_LOGO_ABS + '" style="height:44px"><img src="' + _LF_LOGO_ABS + '" style="height:44px"></div>';
+  } else if (printHasLf) {
+    printLogoHtml = '<img src="' + _LF_LOGO_ABS + '" style="height:52px;display:block;margin:0 auto 12px">';
+  } else {
+    printLogoHtml = '<img src="' + _PURPL_LOGO_ABS + '" style="height:44px;display:block;margin:0 auto 12px">';
+  }
+
   var itemRows = '';
   if (data.cases > 0) {
     itemRows += '<tr>' +
@@ -1486,12 +1512,18 @@ function printCurrentOrder() {
   }
   if (data.lfItems && data.lfItems.length) {
     data.lfItems.forEach(function(it) {
-      if (it.hasVariants && it.variantLines) {
+      if (it.hasVariants && it.variantLines && it.variantLines.length) {
+        var totalUnits = it.variantLines.reduce(function(s, vl) { return s + (vl.units || 0); }, 0);
+        itemRows += '<tr style="font-weight:600">' +
+          '<td>' + _e(it.skuName) + ' &mdash; ' + totalUnits + ' units total</td>' +
+          '<td style="color:#6b7280">🌿 LF</td>' +
+          '<td style="text-align:right">$' + it.lineTotal.toFixed(2) + '</td>' +
+        '</tr>';
         it.variantLines.forEach(function(vl) {
           itemRows += '<tr>' +
-            '<td>' + _e(it.skuName) + ' &mdash; ' + _e(vl.variantName) + '</td>' +
-            '<td style="color:#6b7280">🌿 LF</td>' +
-            '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + (vl.units*it.unitPrice).toFixed(2) + '</td>' +
+            '<td style="padding-left:16px;color:#6b7280">&bull; ' + _e(vl.variantName) + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + '</td>' +
+            '<td></td>' +
+            '<td style="text-align:right;color:#6b7280">' + vl.units + ' units &nbsp; $' + (vl.units*it.unitPrice).toFixed(2) + '</td>' +
           '</tr>';
         });
       } else {
@@ -1531,7 +1563,7 @@ function printCurrentOrder() {
     '@media print{button{display:none!important}}' +
     '</style></head><body>' +
     '<div class="hdr">' +
-    '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png">' +
+    printLogoHtml +
     '<h1>Order Confirmation</h1>' +
     '<div class="sub">' + _e(dt) + '</div>' +
     '</div>' +
@@ -1550,7 +1582,6 @@ function printCurrentOrder() {
     '<div class="confirm">' +
     '<strong>Order received &mdash; thank you!</strong><br>' +
     'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
-    (data.bothBrands ? '<br><br>You will receive <strong>separate invoices</strong> for purpl and Lavender Fields.' : '') +
     '</div>' +
     '<div style="text-align:center;margin:20px 0">' +
     '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
