@@ -3309,8 +3309,13 @@ async function _emailsApprovedGenerateToken() {
     }, { merge: true });
     DB.update('ac', account.id, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
     const link = window.location.origin + '/order?t=' + token;
-    await navigator.clipboard.writeText(link);
-    toast('Portal link generated & copied ✓');
+    // Clipboard write is best-effort — failure must not prevent UI refresh
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('Portal link generated & copied ✓');
+    } catch(_clipErr) {
+      toast('Portal link generated ✓');
+    }
     _renderEmailsRightCol();
   } catch(e) {
     console.error(e);

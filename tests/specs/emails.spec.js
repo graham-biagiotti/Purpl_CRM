@@ -129,19 +129,26 @@ test.describe('Emails Page', () => {
     if (await generateBtn.isVisible()) {
       await generateBtn.click();
 
-      // Wait for a toast or state change
-      await page.waitForTimeout(2000);
+      // Wait for toast to appear (faster check before it disappears)
+      let toastText = '';
+      try {
+        await page.waitForFunction(() => {
+          const el = document.getElementById('toast');
+          return el && el.textContent && el.textContent.trim().length > 0;
+        }, { timeout: 3000 });
+        toastText = await page.locator('#toast').textContent().catch(() => '');
+      } catch (_) {}
 
-      // Verify via toast or send button becoming enabled
-      const toast = await page.locator('#toast').textContent().catch(() => '');
+      await page.waitForTimeout(500);
+
+      // After token generation, send button should be enabled (no longer disabled)
       const sendBtn = page.locator('#emails-page-send-btn');
       const sendBtnVisible = await sendBtn.isVisible().catch(() => false);
-
       if (sendBtnVisible) {
-        // After token generation, send btn may be enabled
         const isDisabled = await sendBtn.isDisabled().catch(() => true);
-        // Either not disabled or toast was shown — either means success
-        expect(!isDisabled || toast.toLowerCase().includes('generat')).toBeTruthy();
+        // Token was generated: send btn enabled, OR toast mentions 'generat'
+        console.log(`[emails-test] Generate Portal Link: isDisabled=${isDisabled}, toast="${toastText}"`);
+        expect(!isDisabled || toastText.toLowerCase().includes('generat')).toBeTruthy();
       }
     }
   });
