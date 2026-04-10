@@ -14,10 +14,13 @@ test('Dashboard outstanding KPI within $0.01 of sum of all unpaid purpl invoices
 
   const { expected, displayed } = await page.evaluate(() => {
     const todayStr = today();
-    // app calculates: purplOutstanding = iv where accountId exists and status != 'paid', sum amount
+    // app calculates: purplOutstanding = iv + retail_invoices where status != 'paid', sum amount/total
     const purplOutstanding = DB.a('iv')
       .filter(x => (x.accountId || x.number) && x.status !== 'paid')
-      .reduce((s, x) => s + parseFloat(x.amount || 0), 0);
+      .reduce((s, x) => s + parseFloat(x.amount || 0), 0)
+      + DB.a('retail_invoices')
+      .filter(x => x.status !== 'paid')
+      .reduce((s, x) => s + parseFloat(x.total || 0), 0);
     const lfOutstanding = DB.a('lf_invoices')
       .filter(i => i.status !== 'paid')
       .reduce((s, i) => s + (i.total || 0), 0);
@@ -43,10 +46,13 @@ test('Dashboard overdue count matches unpaid invoices with due < today', async (
     const purplOverdue = DB.a('iv').filter(x =>
       (x.accountId || x.number) && x.status !== 'paid' && x.due && x.due < todayStr
     ).length;
+    const retailOverdue = DB.a('retail_invoices').filter(x =>
+      x.status !== 'paid' && x.dueDate && x.dueDate < todayStr
+    ).length;
     const lfOverdue = DB.a('lf_invoices').filter(i =>
       i.status !== 'paid' && i.due && i.due < todayStr
     ).length;
-    const expected = purplOverdue + lfOverdue;
+    const expected = purplOverdue + retailOverdue + lfOverdue;
     const el = document.querySelector('#dash-kpi-combined-overdue .num');
     const displayed = el ? parseInt(el.textContent.trim().replace(/,/g, ''), 10) : null;
     return { expected, displayed };

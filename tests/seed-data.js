@@ -1726,7 +1726,27 @@ const SEED = {
   dist_pricing:[], dist_pos:[], dist_chains:[], dist_imports:[],
   saved_reports:[], loose_cans:[], repack_jobs:[], pallets:[], pack_supply:[],
   quick_notes:[], stock_locations:[], stock_transfers:[],
-  lf_wix_deductions:[], retail_invoices:[], pending_invoices:[], returns:[],
+  lf_wix_deductions:[], retail_invoices:[
+    // retail_invoices from portal/delivery orders — these must show in dashboard KPIs,
+    // invoices page purpl column, account page, and reports
+    { id:'rinv-001', invoiceNumber:'INV-0100', accountId:'ac001', accountName:'Harvest Moon Co-op',
+      date: D(5), dueDate: D(-25), total: 432.00, status:'unpaid', source:'portal',
+      cases:12, pricePerCase:36, linkedPortalOrderId:'portal-order-001',
+      lineItems:[{sku:'classic', cases:12, pricePerCase:36, amount:432}] },
+    { id:'rinv-002', invoiceNumber:'INV-0101', accountId:'ac005', accountName:'Sunrise Wellness',
+      date: D(10), dueDate: D(-20), total: 252.00, status:'unpaid', source:'delivery_run',
+      cases:7, pricePerCase:36, orderId:'ord-seed-rinv',
+      lineItems:[{sku:'classic', cases:7, pricePerCase:36, amount:252}] },
+    { id:'rinv-003', invoiceNumber:'INV-0102', accountId:'ac011', accountName:'Birchwood Co-op',
+      date: D(15), dueDate: D(-10), total: 180.00, status:'paid', paidDate: D(2), source:'delivery_run',
+      cases:5, pricePerCase:36, orderId:'ord-seed-rinv2',
+      lineItems:[{sku:'classic', cases:5, pricePerCase:36, amount:180}] },
+    { id:'rinv-004', invoiceNumber:'INV-0103', accountId:'ac001', accountName:'Harvest Moon Co-op',
+      date: D(2), dueDate: D(-28), total: 360.00, status:'unpaid', source:'portal',
+      cases:10, pricePerCase:36, linkedPortalOrderId:'portal-order-combined',
+      combinedInvoiceId:'civ-seed-001',
+      lineItems:[{sku:'classic', cases:10, pricePerCase:36, amount:360}] },
+  ], pending_invoices:[], returns:[],
   costs: null, today_run: null,
 };
 

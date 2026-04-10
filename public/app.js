@@ -1703,6 +1703,7 @@ function markRetailInvPaid(id) {
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
   renderInvoiceStatus();
   renderInvoicesPage();
+  renderDash(); // update dashboard outstanding/overdue KPIs
   toast('Marked as paid');
 }
 
@@ -7133,6 +7134,22 @@ function saveNewOrder() {
   }
 }
 
+function deleteOrder(id) {
+  const o = DB.a('orders').find(x => x.id === id);
+  if (!o) return;
+  const ordAcName = DB.a('ac').find(x => x.id === o.accountId)?.name || o.accountId;
+  // Remove linked inventory out-entries
+  DB.a('iv').filter(e => e.ordId === id).forEach(e => DB.remove('iv', e.id));
+  // Remove linked retail_invoices (delivery run or portal)
+  DB.a('retail_invoices').filter(e => e.orderId === id || e.linkedPortalOrderId === id)
+    .forEach(e => DB.remove('retail_invoices', e.id));
+  DB.remove('orders', id);
+  auditLog('delete', 'order', id, ordAcName);
+  renderOrders();
+  renderInventory();
+  renderDash();
+}
+
 function openOrderDetail(id) {
   const o = DB.a('orders').find(x=>x.id===id);
   if (!o) return;
@@ -7166,18 +7183,8 @@ function openOrderDetail(id) {
 
   qs('#mod-delete-btn').onclick = ()=>{
     if (!confirm2('Delete this order?')) return;
-    const ordAcName = DB.a('ac').find(x=>x.id===o.accountId)?.name || o.accountId;
-    // Remove linked inventory out-entries (from run delivery or manual delivery)
-    DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
-    // Remove linked retail_invoices (from delivery run or portal)
-    DB.a('retail_invoices').filter(e=>e.orderId===id||e.linkedPortalOrderId===id).forEach(e=>DB.remove('retail_invoices',e.id));
-    DB.remove('orders', id);
-    auditLog('delete', 'order', id, ordAcName);
     closeModal('modal-order-detail');
-    renderOrders();
-    renderInventory();
-    renderDash();
-    toast('Order and linked inventory/invoice entries removed');
+    deleteOrder(id);
   };
   qs('#mod-status-btn').onclick    = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
   qs('#mod-reschedule-btn').onclick = ()=>{
@@ -12052,12 +12059,16 @@ function createLfInvoiceFromPortal(portalOrderId) {
     .catch(e => toast('Error loading portal order: ' + e.message));
 }
 
-function linkPortalLfToAccount(portalOrderId) {
+function linkPortalLfToAccount(portalOrderId, optAccountId) {
   const accounts = DB.a('ac').filter(a=>a.status==='active');
-  const sel = accounts.map(a=>`${a.id}|${a.name}`).join('\n');
-  const chosen = window.prompt('Enter account name to link:\n\n'+accounts.map(a=>a.name).join('\n'));
-  if (!chosen) return;
-  const ac = accounts.find(a=>a.name.toLowerCase()===chosen.toLowerCase().trim());
+  let ac;
+  if (optAccountId) {
+    ac = accounts.find(a => a.id === optAccountId);
+  } else {
+    const chosen = window.prompt('Enter account name to link:\n\n'+accounts.map(a=>a.name).join('\n'));
+    if (!chosen) return;
+    ac = accounts.find(a=>a.name.toLowerCase()===chosen.toLowerCase().trim());
+  }
   if (!ac) { toast('Account not found'); return; }
   firebase.firestore().collection('portal_orders').doc(portalOrderId)
     .update({ accountId: ac.id, accountName: ac.name, isMatched: true })
