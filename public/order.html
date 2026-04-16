@@ -486,6 +486,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 const CANS_PER_CASE = 12;
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 let isMatched = false;
 let isProspect = false;
 let accountId = null;
@@ -1045,11 +1046,11 @@ function showThankYou(data) {
 
   // Shared fields
   var dists = getDistributors();
-  if (dists.length) summaryHtml += '<div class="summary-row"><span>Distributor(s)</span><span>' + dists.join(', ') + '</span></div>';
-  if (orderData.leadTimeNeeded) summaryHtml += '<div class="summary-row"><span>Lead Time</span><span>' + orderData.leadTimeNeeded + '</span></div>';
-  if (data.deliveryWindow) summaryHtml += '<div class="summary-row"><span>Delivery Window</span><span>' + data.deliveryWindow + '</span></div>';
-  if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + data.poNumber + '</span></div>';
-  summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + data.billingEmail + '</span></div>';
+  if (dists.length) summaryHtml += '<div class="summary-row"><span>Distributor(s)</span><span>' + escHtml(dists.join(', ')) + '</span></div>';
+  if (orderData.leadTimeNeeded) summaryHtml += '<div class="summary-row"><span>Lead Time</span><span>' + escHtml(orderData.leadTimeNeeded) + '</span></div>';
+  if (data.deliveryWindow) summaryHtml += '<div class="summary-row"><span>Delivery Window</span><span>' + escHtml(data.deliveryWindow) + '</span></div>';
+  if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + escHtml(data.poNumber) + '</span></div>';
+  summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + escHtml(data.billingEmail) + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from delivery</span></div>';
 
   if (data.bothBrands) {
@@ -1357,8 +1358,8 @@ function renderPastOrders(orders) {
         'margin-top:2px">' +
         cases + ' case' + (cases!==1?'s':'') +
         ' · ' + cans + ' cans' +
-        (o.poNumber?' · PO: '+o.poNumber:'') +
-        (o.deliveryWindow?' · '+o.deliveryWindow:'') +
+        (o.poNumber?' · PO: '+escHtml(o.poNumber):'') +
+        (o.deliveryWindow?' · '+escHtml(o.deliveryWindow):'') +
       '</div></div>' +
       '<div style="display:flex;gap:8px;' +
         'align-items:center;flex-shrink:0">' +
@@ -1720,7 +1721,7 @@ function renderOrderHistory(orders) {
     html += '<div style="font-size:13px;font-weight:600">' + dt + '</div>';
     html += '<div style="font-size:12px;color:#6b7280">' + cases + ' cases · ' + (cases * CANS_PER_CASE) + ' cans</div>';
     if (o.poNumber) {
-      html += '<div style="font-size:11px;color:#9ca3af">PO: ' + o.poNumber + '</div>';
+      html += '<div style="font-size:11px;color:#9ca3af">PO: ' + escHtml(o.poNumber) + '</div>';
     }
     html += '</div>';
     html += '<span style="font-size:11px;font-weight:600;color:' + statusColor + '">' + status.toUpperCase() + '</span>';

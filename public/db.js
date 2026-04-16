@@ -10,42 +10,47 @@
 //    available even with no signal.
 // ═══════════════════════════════════════════════════════
 
-// Collections stored as arrays in Firestore as single docs
-// (small dataset, single user — simplest possible approach)
+// Superset of all array keys across every branch/version.
+// Keys not yet populated in Firestore will default to [].
+// Using {merge:true} on saves ensures we never delete keys
+// that exist in Firestore but aren't in this list.
 const ARRAY_KEYS = [
-  'ac','pr','iv','orders',
+  'ac','pr','iv','ord','orders','inv_log_v2',
   'prod_hist','prod_sched','shipments','dist',
   'rem','pack_types','runs',
   // Phase 4 — Distributors
-  'dist_profiles',   // distributor profiles
-  'dist_reps',       // sales reps per distributor
-  'dist_pricing',    // SKU pricing per distributor
-  'dist_pos',        // purchase orders from distributors
-  'dist_invoices',   // invoices sent to distributors
-  'dist_chains',     // store/chain coverage per distributor
-  'dist_imports',    // imported order records (CSV/webhook)
+  'dist_profiles',
+  'dist_reps',
+  'dist_pricing',
+  'dist_pos',
+  'dist_invoices',
+  'dist_chains',
+  'dist_imports',
   // Phase 6 — Reports
-  'saved_reports',   // saved report configurations
+  'saved_reports',
   // Phase 7 — Inventory
-  'loose_cans',      // raw can receipts (pre-pack)
-  'repack_jobs',     // loose cans → finished packs conversion jobs
-  'pallets',         // pallet tracking records
-  'pack_supply',     // packaging supplies (labels, cartons, films, etc.)
+  'loose_cans',
+  'repack_jobs',
+  'pallets',
+  'pack_supply',
   // UX Phase 2 — Dashboard Quick Notes
-  'quick_notes',     // scratchpad notes (text, author, ts)
+  'quick_notes',
   // UX Phase 5 — Inventory Locations
-  'stock_locations', // named stock locations (Warehouse, fridge, event trailer…)
-  'stock_transfers', // transfers between locations
+  'stock_locations',
+  'stock_transfers',
   // Lavender Fields
-  'lf_skus',            // LF product catalog (name, wholesalePrice, caseSize, msrp)
-  'lf_invoices',        // LF wholesale invoices (line-item format)
-  'lf_wix_deductions',  // Wix inventory pull requests tied to LF invoices
-  'retail_invoices',    // delivery-run invoices (already used — registering here)
-  'combined_invoices',  // combined purpl + LF invoices (cross-brand billing)
-  'pending_invoices',   // portal order notifications awaiting combined invoice creation
-  'returns',            // return / damage log records
+  'lf_skus',
+  'lf_invoices',
+  'lf_wix_deductions',
+  'retail_invoices',
+  'combined_invoices',
+  'pending_invoices',
+  'returns',
+  // Audit
+  'audit_log',
 ];
-// Collections stored as plain objects (settings, costs, today_run)
+
+// Superset of all object keys across every branch/version.
 const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];
 
 const DB = {
@@ -53,15 +58,14 @@ const DB = {
   _uid: null,
   _db: null,
   _syncStatus: 'synced', // 'synced' | 'syncing' | 'error'
-  _firestoreReady: false, // true only after Firestore confirms document state (never after timeout)
+  _firestoreReady: false,
+  _saveTimer: null,
 
-  // ── Shared workspace path (all users share same data) ─
   _ref() {
     const { doc } = window.FirestoreAPI;
     return doc(this._db, 'workspace', 'main', 'data', 'store');
   },
 
-  // ── Init ────────────────────────────────────────────
   async init(uid, firestoreDb) {
     this._uid = uid;
     this._db = firestoreDb;
@@ -69,7 +73,6 @@ const DB = {
     this._updateSyncUI('synced');
   },
 
-  // ── Real-time listener (replaces one-shot _loadAll) ─
   _subscribe() {
     return new Promise((resolve) => {
       const { onSnapshot } = window.FirestoreAPI;
@@ -84,12 +87,9 @@ const DB = {
             await this._migrateFromLegacyPath(this._uid);
           }
           this._firestoreReady = true;
-          // If the 10s timeout already fired and booted the app with empty cache,
-          // refresh whichever page is showing now that real data has loaded.
           if (window.refreshCurrentPage) window.refreshCurrentPage();
           resolve();
         } else if (snap.exists && !snap.metadata.hasPendingWrites) {
-          // Remote change from another user — update cache and refresh UI
           this._applyData(snap.data());
           if (window.refreshCurrentPage) window.refreshCurrentPage();
         }
@@ -105,15 +105,21 @@ const DB = {
   },
 
   _applyData(data) {
+    if (!data) return;
     ARRAY_KEYS.forEach(k => {
       this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
     });
     OBJ_KEYS.forEach(k => {
-      this._cache[k] = data[k] || null;
+      this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
+    });
+    // Preserve any keys in Firestore that we don't track yet
+    Object.keys(data).forEach(k => {
+      if (!ARRAY_KEYS.includes(k) && !OBJ_KEYS.includes(k)) {
+        this._cache[k] = data[k];
+      }
     });
   },
 
-  // ── One-time migration from old per-user path ───────
   async _migrateFromLegacyPath(oldUid) {
     const { doc, getDoc, setDoc } = window.FirestoreAPI;
     try {
@@ -127,12 +133,10 @@ const DB = {
         OBJ_KEYS.forEach(k => {
           this._cache[k] = data[k] || null;
         });
-        // Save to shared workspace
         const payload = {};
         ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
         OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
-        await setDoc(this._ref(), payload);
-        console.log('Migration complete: data moved to shared workspace');
+        await setDoc(this._ref(), payload, { merge: true });
       } else {
         ARRAY_KEYS.forEach(k => this._cache[k] = []);
         OBJ_KEYS.forEach(k => this._cache[k] = null);
@@ -144,23 +148,27 @@ const DB = {
     }
   },
 
-  // ── Persist to Firestore (fire-and-forget) ──────────
+  // Debounced save — coalesces rapid writes into a single Firestore write.
+  // Waits 500ms after the last write before persisting.
   _save() {
-    if (!this._db) return;
-    // Guard: never overwrite Firestore before the initial snapshot has loaded.
-    // Without this check, a save triggered during the 10-second boot timeout
-    // (when _cache is still all-empty) would wipe all existing data in Firestore.
-    if (!this._firestoreReady) {
-      console.warn('DB._save() blocked — Firestore not yet ready (data still loading)');
-      return;
-    }
+    if (!this._db || !this._firestoreReady) return;
     this._updateSyncUI('syncing');
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this._doSave(), 500);
+  },
+
+  _doSave() {
+    if (!this._db || !this._firestoreReady) return;
     const { setDoc } = window.FirestoreAPI;
     const ref = this._ref();
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
-    setDoc(ref, payload)
+    // Preserve unknown keys from cache (loaded by _applyData)
+    Object.keys(this._cache).forEach(k => {
+      if (!(k in payload)) payload[k] = this._cache[k];
+    });
+    setDoc(ref, payload, { merge: true })
       .then(() => this._updateSyncUI('synced'))
       .catch(e => {
         console.error('Firestore save error:', e);
@@ -178,7 +186,6 @@ const DB = {
     label.textContent = status === 'synced' ? 'Saved' : status === 'syncing' ? 'Saving…' : 'Sync error';
   },
 
-  // ── Public API (mirrors old localStorage DB object) ─
   get(k) { return this._cache[k] || []; },
   set(k, v) { this._cache[k] = v; this._save(); },
   obj(k, def = {}) { return this._cache[k] || def; },
@@ -192,16 +199,15 @@ const DB = {
   },
   remove(k, id) { this.set(k, this.a(k).filter(x => x.id !== id)); },
 
-  // ── Atomic multi-key update (single Firestore write) ─
-  // Apply fn(cache) which may mutate multiple keys,
-  // then persist once. Safe because all data is one doc.
   atomicUpdate(fn) {
     fn(this._cache);
     this._save();
   },
 
-  // ── Import from localStorage (one-time migration) ───
   async importFromLocalStorage() {
+    if (!this._firestoreReady) {
+      throw new Error('Cannot import: Firestore has not confirmed document state yet.');
+    }
     const PFX = 'pcrm5_';
     let imported = 0;
     ARRAY_KEYS.forEach(k => {
@@ -229,12 +235,18 @@ const DB = {
   },
 
   async _forceSave() {
+    if (!this._firestoreReady) {
+      throw new Error('Cannot save: Firestore has not confirmed document state yet.');
+    }
     const { setDoc } = window.FirestoreAPI;
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
     OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
+    Object.keys(this._cache).forEach(k => {
+      if (!(k in payload)) payload[k] = this._cache[k];
+    });
     try {
-      await setDoc(this._ref(), payload);
+      await setDoc(this._ref(), payload, { merge: true });
     } catch(e) {
       console.error('Firestore _forceSave error:', e);
       this._updateSyncUI('error');

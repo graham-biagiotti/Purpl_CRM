@@ -841,7 +841,7 @@ function fmtDt(ts) {
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function kpiHtml(label, val, color) {
@@ -2175,7 +2175,7 @@ function _acCardHTML(a, muted) {
       <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
       <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
       <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
-      <button class="btn sm" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button>
+      <button class="btn sm" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')">🔗 Copy Link</button>
     </div>
   </div>`;
 }
@@ -9317,6 +9317,25 @@ function restoreMyData() {
     {id:mkId(),name:'Sunapee Cellar and Pantry',type:'Specialty / Gift',contact:'Julie Woodworth',phone:'802-236-4695',email:'',address:'',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[],lastOrder:null,lastContacted:null},
     {id:mkId(),name:'Sweet Beet Market',type:'Co-op',contact:'Cassie',phone:'603-938-5323',email:'cassie@kearsargefoodhub.org',address:'11 West Main St, Bradford, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-02-25',text:'Reach out for first purpl order.',author:'you',nextAction:'',nextDate:''}],outreach:[{id:mkId(),type:'Email',date:'2026-02-25',note:'interested'}],lastOrder:'2026-01-20',lastContacted:'2026-02-25'},
     {id:mkId(),name:'Zebs General Store',type:'Specialty / Gift',contact:'Ray',phone:'',email:'shop@zebs.com',address:'North Conway, NH',lat:null,lng:null,territory:'',status:'active',since:'',dropOffRules:'',skus:[],par:{},pricing:{},notes:[],outreach:[{id:mkId(),type:'Email',date:'2025-09-06',note:''}],lastOrder:null,lastContacted:'2025-09-06'},
+    // NEM Show accounts (March 2026) — embedded here so they can never be lost again
+    {id:mkId(),name:'Osbornes',type:'Farm / Country Store',contact:'Gretchen Wolfe',phone:'603-228-8561',email:'gretchen@osbornesfarm.com',address:'258 Sheep Davis Road, Concord, NH',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Poland Provisions',type:'Specialty / Gift',contact:'Sheila Foley',phone:'207-402-7123',email:'info@polandprovisions.com',address:'1220 Maine St., Poland, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'New England Mercantile',type:'Specialty / Gift',contact:'Kyle Eldridge',phone:'603-772-0263',email:'keldridge.nemercantile@gmail.com',address:'Water St., Exeter, NH',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'Cash and carry. NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Wild Oats Bakery and Cafe',type:'Café',contact:'Colleen Gilliatt',phone:'207-725-6287',email:'market@wildoatsbakery.com',address:'166 Admiral Fitch Avenue, Brunswick, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Douglas Brook Farm',type:'Farm / Country Store',contact:'Kim Bragdon',phone:'207-659-9581',email:'douglasbrookfarm@gmail.com',address:'21 Files Rd, Gorham, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. Mid April invoice.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'New Morning Natural Foods',type:'Specialty / Gift',contact:'Ariel Peacock',phone:'207-985-6774',email:'ariel@newmorningme.com',address:'3 York Street, Kennebunk, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Harpswell Collective',type:'Specialty / Gift',contact:'Liz Negler',phone:'617-653-6960',email:'liz@harpswellcollective.com',address:'1906 Harpswell Neck Rd, Harpswell, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. Late May invoice.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Portsmouth Soap Co',type:'Specialty / Gift',contact:'Lauren',phone:'207-451-7904',email:'lauren@portsmouthsoaps.com',address:'175 Market St., Portsmouth, NH',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Enfield Shaker Museum',type:'Specialty / Gift',contact:'Carolyn Smith (Acting Director)',phone:'603-632-4346',email:'director@sharkermuseum.org',address:'477 NH Route 4A, Enfield, NH',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'Mothers Day? NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:"Singleton's Store",type:'Specialty / Gift',contact:'Allison and Danielle Singleton',phone:'802-226-7666',email:'store@singletonvt.com',address:'356 Main St, Proctorsville, VT',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Maine Homestead Market',type:'Farm / Country Store',contact:'',phone:'207-499-4292',email:'mainehomsteadstore@gmail.com',address:'1773 Alfred Rd, Lyman, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Beachside Variety',type:'Specialty / Gift',contact:'Sheila Gillian',phone:'207-450-0753',email:'',address:'124 W Grand Ave, Old Orchard Beach, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. CASH ON DELIVERY — mid May. Text when close, notify before delivery.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Wild Goose Country Store',type:'Farm / Country Store',contact:'Sharon Parsons',phone:'',email:'wildgoosecountrystore@hotmail.com',address:'77 Main St, Sunapee, NH 03782',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. CC info on order form. Ship to 511 North Road, Sunapee NH — mid May.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'The Seagull Shop',type:'Specialty / Gift',contact:'Brooke Cotter (Partner/GM)',phone:'207-677-2374',email:'seagullbrooke@gmail.com',address:'3119 Bristol Rd, New Harbor, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. May invoice.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Original General Store',type:'Specialty / Gift',contact:'Lauren Foley',phone:'802-746-8888',email:'ogs802@gmail.com',address:'3963 VT RT 100, Pittsfield, VT',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Whimsical Wishes',type:'Specialty / Gift',contact:'Joanne Meeks / Richard Torrey',phone:'508-317-0659',email:'joannemeeks@msn.com',address:'170 Water St, Plymouth, MA',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Love at First Light',type:'Specialty / Gift',contact:'Tammy Fairchild',phone:'207-213-5867',email:'loveatfirstlight@yahoo.com',address:'77 Water St, Lubec, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order. May invoice.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
+    {id:mkId(),name:'Nesting Dusk',type:'Specialty / Gift',contact:'Mary Thurlow and Ruth Brown',phone:'',email:'nestduck@aol.com',address:'17 Perkins Cove, Ogunquit, ME',lat:null,lng:null,territory:'',status:'active',since:'2026-03-17',dropOffRules:'',skus:[],par:{},pricing:{},notes:[{id:mkId(),date:'2026-03-17',text:'NEM show order.',author:'you',nextAction:'',nextDate:''}],outreach:[],lastOrder:null,lastContacted:'2026-03-17'},
   ];
 
   const PROSPECTS = [
@@ -9338,7 +9357,7 @@ function restoreMyData() {
 
   // Demo account/prospect names seeded by the bug — remove them
   const DEMO_AC = new Set(['whole foods market – oak park','mariano\'s – lincoln square','central gym & fitness','sunrise café']);
-  const DEMO_PR = new Set(['green earth market','fitzzone studios']);
+  const DEMO_PR = new Set(['green earth market','fitzone studios']);
 
   const realAcNames = new Set(ACCOUNTS.map(x=>x.name.toLowerCase().trim()));
   const realPrNames = new Set(PROSPECTS.map(x=>x.name.toLowerCase().trim()));
@@ -9353,7 +9372,7 @@ function restoreMyData() {
   DB.atomicUpdate(cache=>{
     cache.ac = newAc;
     cache.pr = newPr;
-    cache.settings = {...(cache.settings||{}), data_restored: true, seeded: true};
+    cache.settings = {...(cache.settings||{}), data_restored: true, seeded: true, nem_show_2026_imported: true};
     return cache;
   });
 
@@ -11762,13 +11781,13 @@ function _renderPoLinks() {
       <tbody>${rows.map(({a, token, url, subCount}) => `<tr>
         <td><strong>${escHtml(a.name)}</strong></td>
         <td style="font-size:11px;color:var(--muted)">
-          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
+          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
         </td>
         <td style="font-size:12px">${a.orderPortalTokenCreatedAt ? fmtD(a.orderPortalTokenCreatedAt) : '—'}</td>
         <td>${subCount > 0
           ? `<span class="badge green">Yes (${subCount})</span>`
           : '<span class="badge gray">No</span>'}</td>
-        <td><button class="btn xs" onclick="generateOrderLink('${a.id}','${a.name}','${a.email||''}')">🔗 Copy Link</button></td>
+        <td><button class="btn xs" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')">🔗 Copy Link</button></td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;

@@ -11,11 +11,11 @@ async function bootApp() {
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  // Connect to local emulators when running tests (localhost only)
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    db.useEmulator('localhost', 8080);
-    auth.useEmulator('http://localhost:9099');
-  }
+  // Emulator connection is handled ONLY by test infrastructure
+  // (global-setup.js sets FIRESTORE_EMULATOR_HOST for Node.js admin SDK).
+  // The browser app NEVER connects to emulators — it always talks to
+  // whichever project is in FIREBASE_CONFIG (prod or staging).
+  // This prevents any possibility of test code affecting production data.
 
   try {
     await enableIndexedDbPersistence(db);
@@ -35,7 +35,6 @@ async function bootApp() {
   const passwordInput = document.getElementById('auth-password');
   const signOutBtn    = document.getElementById('sign-out-btn');
 
-  // Google Sign-In
   googleBtn.addEventListener('click', async () => {
     authStatus.textContent = 'Opening Google sign-in…';
     try {
@@ -46,7 +45,6 @@ async function bootApp() {
     }
   });
 
-  // Email/password sign-in
   signInBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim();
     const password = passwordInput.value;
@@ -83,7 +81,6 @@ async function bootApp() {
       loadingScreen.style.display = 'flex';
       appShell.style.display = 'none';
 
-      // Timeout: if DB.init stalls (slow network, Firestore issue), still boot the app
       await Promise.race([
         DB.init(user.uid, db),
         new Promise(resolve => setTimeout(resolve, 10000))
@@ -162,5 +159,4 @@ function dismissMigration() {
   if (banner) banner.remove();
 }
 
-// Boot when DOM is ready
 document.addEventListener('DOMContentLoaded', bootApp);

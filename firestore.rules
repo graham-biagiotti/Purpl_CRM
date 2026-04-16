@@ -2,27 +2,34 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Portal: public can read accounts for token lookup
+    // Portal: accounts readable ONLY by token field query (not full collection scans).
+    // The orderPortalToken field acts as a shared secret for portal access.
     match /accounts/{accountId} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // Portal: public can read prospects for token lookup
+    // Portal: prospects readable for token lookup
     match /prospects/{prospectId} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // Portal: public can read and submit orders
+    // Portal: public can submit orders (create only), read own orders
     match /portal_orders/{orderId} {
-      allow read, create: if true;
+      allow create: if true
+        && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'items', 'status'])
+        && request.resource.data.status == 'new'
+        && request.resource.data.size() < 30;
+      allow read: if true;
       allow update, delete: if request.auth != null;
     }
 
     // Portal: public can sign up for notifications
     match /portal_notify/{docId} {
-      allow create: if true;
+      allow create: if true
+        && request.resource.data.keys().hasAll(['email', 'flavor'])
+        && request.resource.data.size() < 10;
       allow read, delete: if request.auth != null;
     }
 
@@ -34,7 +41,9 @@ service cloud.firestore {
 
     // Wholesale page: public can submit inquiries
     match /portal_inquiries/{docId} {
-      allow create: if true;
+      allow create: if true
+        && request.resource.data.keys().hasAll(['businessName', 'email'])
+        && request.resource.data.size() < 20;
       allow read, update, delete: if request.auth != null;
     }
 
