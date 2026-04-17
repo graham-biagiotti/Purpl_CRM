@@ -15,7 +15,8 @@
   "dependencies": {
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^7.0.0",
-    "resend": "^6.10.0"
+    "resend": "^6.10.0",
+    "svix": "^1.24.0"
   },
   "private": true
 }

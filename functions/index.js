@@ -5,46 +5,22 @@ const admin = require('firebase-admin');
 if (!admin.apps.length) admin.initializeApp();
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
+const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 
-// ── Allowed sender addresses ──────────────────────────────
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
 ];
 
-// ── In-memory rate limiter ────────────────────────────────
-const rateLimitMap = new Map();
-
-function checkRateLimit(ip, limit = 5, windowMs = 60000) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip) || {count: 0, start: now};
-  if (now - entry.start > windowMs) {
-    rateLimitMap.set(ip, {count: 1, start: now});
-    return true;
-  }
-  if (entry.count >= limit) return false;
-  entry.count++;
-  rateLimitMap.set(ip, entry);
-  return true;
-}
-
 // ── 1. Send Email ─────────────────────────────────────────
-// Generic transactional email via Resend.
-// data: { to, from, subject, html, accountId? }
 exports.sendEmail = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
     if (!data.to || !data.subject || !data.html) {
-      throw new HttpsError(
-        'invalid-argument',
-        'Missing required fields: to, subject, html'
-      );
+      throw new HttpsError('invalid-argument', 'Missing required fields: to, subject, html');
     }
     if (!ALLOWED_FROM.includes(data.from)) {
-      throw new HttpsError(
-        'invalid-argument',
-        'Invalid from address'
-      );
+      throw new HttpsError('invalid-argument', 'Invalid from address');
     }
 
     const {Resend} = require('resend');
@@ -57,7 +33,18 @@ exports.sendEmail = onCall(
         subject: data.subject,
         html: data.html,
       });
-      return {success: true, id: result.data?.id || result.id};
+      const messageId = result.data?.id || result.id;
+
+      // Log cadence entry if accountId provided
+      if (data.accountId && messageId) {
+        await _logCadenceEntry(data.accountId, {
+          stage: data.cadenceStage || 'email_sent',
+          sentMessageId: messageId,
+          subject: data.subject,
+        });
+      }
+
+      return {success: true, id: messageId};
     } catch (err) {
       throw new HttpsError('internal', err.message);
     }
@@ -65,17 +52,12 @@ exports.sendEmail = onCall(
 );
 
 // ── 2. Send Combined Invoice ──────────────────────────────
-// Sends a full combined invoice HTML email from the farm address.
-// data: { to, accountName, subject, html }
 exports.sendCombinedInvoice = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
     if (!data.to || !data.html) {
-      throw new HttpsError(
-        'invalid-argument',
-        'Missing required fields: to, html'
-      );
+      throw new HttpsError('invalid-argument', 'Missing required fields: to, html');
     }
 
     const {Resend} = require('resend');
@@ -89,7 +71,18 @@ exports.sendCombinedInvoice = onCall(
         subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
         html: data.html,
       });
-      return {success: true, id: result.data?.id || result.id};
+      const messageId = result.data?.id || result.id;
+
+      if (data.accountId && messageId) {
+        await _logCadenceEntry(data.accountId, {
+          stage: 'invoice_sent',
+          sentMessageId: messageId,
+          subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
+          invoiceNumber: data.invoiceNumber || null,
+        });
+      }
+
+      return {success: true, id: messageId};
     } catch (err) {
       throw new HttpsError('internal', err.message);
     }
@@ -97,23 +90,15 @@ exports.sendCombinedInvoice = onCall(
 );
 
 // ── 3. Send Order Confirmation ────────────────────────────
-// Sends a branded order confirmation to the customer.
-// data: { to, accountName, contactName, orderSummary, portalLink, isPbf }
 exports.sendOrderConfirmation = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
     if (!data.to || !data.accountName) {
-      throw new HttpsError(
-        'invalid-argument',
-        'Missing required fields: to, accountName'
-      );
+      throw new HttpsError('invalid-argument', 'Missing required fields: to, accountName');
     }
 
     const accentColor = data.isPbf ? '#4a7c59' : '#8B5FBF';
-    const brandName = data.isPbf
-      ? 'Lavender Fields at Pumpkin Blossom Farm'
-      : 'purpl';
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -177,79 +162,128 @@ exports.sendOrderConfirmation = onCall(
         subject: `Order received — ${data.accountName}`,
         html,
       });
-      return {success: true, id: result.data?.id || result.id};
+      const messageId = result.data?.id || result.id;
+
+      if (data.accountId && messageId) {
+        await _logCadenceEntry(data.accountId, {
+          stage: 'order_confirmation',
+          sentMessageId: messageId,
+          subject: `Order received — ${data.accountName}`,
+        });
+      }
+
+      return {success: true, id: messageId};
     } catch (err) {
       throw new HttpsError('internal', err.message);
     }
   }
 );
 
-// ── 4. Rate-limited wholesale form wrapper ────────────────
-// Wholesale form still writes directly to Firestore from the browser.
-// This callable is a rate-limited wrapper for future use.
-exports.submitWholesaleForm = onCall(
-  {secrets: [resendApiKey]},
-  async (request) => {
-    const ip = request.rawRequest?.ip || 'unknown';
-    if (!checkRateLimit(ip)) {
-      throw new HttpsError(
-        'resource-exhausted',
-        'Too many requests. Please try again later.'
-      );
+// ── 4. Resend Webhook ─────────────────────────────────────
+// Validates webhook signature via svix, then updates cadence entries.
+exports.resendWebhook = onRequest(
+  {secrets: [resendWebhookSecret]},
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+
+    // Validate webhook signature if secret is configured
+    const whSecret = process.env.RESEND_WEBHOOK_SECRET;
+    if (whSecret) {
+      try {
+        const {Webhook} = require('svix');
+        const wh = new Webhook(whSecret);
+        wh.verify(JSON.stringify(req.body), {
+          'svix-id': req.headers['svix-id'],
+          'svix-timestamp': req.headers['svix-timestamp'],
+          'svix-signature': req.headers['svix-signature'],
+        });
+      } catch (err) {
+        console.warn('Webhook signature verification failed:', err.message);
+        res.status(401).send('Invalid signature');
+        return;
+      }
     }
-    return {success: true};
+
+    const event = req.body;
+    const type    = event?.type;
+    const emailId = event?.data?.email_id;
+
+    if (!emailId || !['email.opened', 'email.clicked'].includes(type)) {
+      res.status(200).send('ignored');
+      return;
+    }
+
+    try {
+      const db  = admin.firestore();
+      const ref = db.doc('workspace/main/data/store');
+      const snap = await ref.get();
+      if (!snap.exists) { res.status(200).send('no data'); return; }
+
+      const data     = snap.data();
+      const accounts = data.ac || [];
+      const ts       = event.data.created_at || new Date().toISOString();
+      let updated    = false;
+
+      const updatedAccounts = accounts.map(account => {
+        const cadence = (account.cadence || []).map(entry => {
+          if (entry.sentMessageId !== emailId) return entry;
+          if (type === 'email.opened' && !entry.opened) {
+            updated = true;
+            return {...entry, opened: true, openedAt: ts};
+          }
+          if (type === 'email.clicked' && !entry.clicked) {
+            updated = true;
+            return {...entry, clicked: true, clickedAt: ts};
+          }
+          return entry;
+        });
+        return {...account, cadence};
+      });
+
+      if (updated) {
+        await ref.update({ac: updatedAccounts});
+      }
+      res.status(200).send('ok');
+    } catch (err) {
+      console.error('resendWebhook error:', err);
+      res.status(500).send('error');
+    }
   }
 );
 
-// ── 5. Resend Webhook ─────────────────────────────────────
-// Receives email.opened / email.clicked events from Resend.
-// Finds the matching cadence entry by sentMessageId and writes
-// opened/clicked status + timestamp back to Firestore.
-exports.resendWebhook = onRequest(async (req, res) => {
-  if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
-
-  const event = req.body;
-  const type    = event?.type;
-  const emailId = event?.data?.email_id;
-
-  if (!emailId || !['email.opened', 'email.clicked'].includes(type)) {
-    res.status(200).send('ignored');
-    return;
-  }
-
+// ── Helper: Log cadence entry on an account ───────────────
+async function _logCadenceEntry(accountId, entryData) {
   try {
-    const db  = admin.firestore();
+    const db = admin.firestore();
     const ref = db.doc('workspace/main/data/store');
     const snap = await ref.get();
-    if (!snap.exists) { res.status(200).send('no data'); return; }
+    if (!snap.exists) return;
 
-    const data     = snap.data();
+    const data = snap.data();
     const accounts = data.ac || [];
-    const ts       = event.data.created_at || new Date().toISOString();
-    let updated    = false;
+    let updated = false;
 
     const updatedAccounts = accounts.map(account => {
-      const cadence = (account.cadence || []).map(entry => {
-        if (entry.sentMessageId !== emailId) return entry;
-        if (type === 'email.opened' && !entry.opened) {
-          updated = true;
-          return {...entry, opened: true, openedAt: ts};
-        }
-        if (type === 'email.clicked' && !entry.clicked) {
-          updated = true;
-          return {...entry, clicked: true, clickedAt: ts};
-        }
-        return entry;
-      });
-      return {...account, cadence};
+      if (account.id !== accountId) return account;
+      updated = true;
+      const entry = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        sentAt: new Date().toISOString(),
+        sentBy: 'system',
+        method: 'resend',
+        ...entryData,
+      };
+      return {
+        ...account,
+        lastContacted: new Date().toISOString().slice(0, 10),
+        cadence: [...(account.cadence || []), entry],
+      };
     });
 
     if (updated) {
       await ref.update({ac: updatedAccounts});
     }
-    res.status(200).send('ok');
   } catch (err) {
-    console.error('resendWebhook error:', err);
-    res.status(500).send('error');
+    console.warn('_logCadenceEntry error:', err.message);
   }
-});
+}
