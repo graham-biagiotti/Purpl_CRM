@@ -157,6 +157,15 @@ const DB = {
     this._saveTimer = setTimeout(() => this._doSave(), 500);
   },
 
+  // Flush any pending debounced save immediately (used on tab close).
+  _flushPendingSave() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+      this._doSave();
+    }
+  },
+
   _doSave() {
     if (!this._db || !this._firestoreReady) return;
     const { setDoc } = window.FirestoreAPI;
@@ -169,11 +178,21 @@ const DB = {
       if (!(k in payload)) payload[k] = this._cache[k];
     });
     setDoc(ref, payload, { merge: true })
-      .then(() => this._updateSyncUI('synced'))
+      .then(() => {
+        this._saveRetries = 0;
+        this._updateSyncUI('synced');
+      })
       .catch(e => {
         console.error('Firestore save error:', e);
         this._updateSyncUI('error');
-        if (window.toast) toast('⚠️ Save failed — check your connection. Changes may be lost on reload.');
+        this._saveRetries = (this._saveRetries || 0) + 1;
+        if (this._saveRetries <= 3) {
+          const delay = Math.min(2000 * this._saveRetries, 8000);
+          if (window.toast) toast('⚠️ Save failed — retrying…');
+          setTimeout(() => this._doSave(), delay);
+        } else {
+          if (window.toast) toast('⚠️ Save failed after 3 retries. Changes may be lost on reload.');
+        }
       });
   },
 

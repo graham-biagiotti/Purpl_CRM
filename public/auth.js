@@ -101,6 +101,10 @@ async function bootApp() {
       signInBtn.disabled = false;
     }
   });
+
+  window.addEventListener('beforeunload', () => {
+    if (typeof DB !== 'undefined' && DB._flushPendingSave) DB._flushPendingSave();
+  });
 }
 
 function checkMigration() {

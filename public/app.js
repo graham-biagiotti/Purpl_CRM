@@ -4060,11 +4060,16 @@ function deleteAccount(id) {
   if (!confirm2('Delete this account? This cannot be undone.')) return;
   const acName = DB.a('ac').find(x=>x.id===id)?.name || id;
   DB.atomicUpdate(cache => {
-    cache['ac']              = (cache['ac']             ||[]).filter(r=>r.id!==id);
-    cache['iv']              = (cache['iv']             ||[]).filter(r=>r.accountId!==id);
-    cache['orders']          = (cache['orders']         ||[]).filter(r=>r.accountId!==id);
-    cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(r=>r.accountId!==id);
-    cache['returns']         = (cache['returns']        ||[]).filter(r=>r.accountId!==id);
+    cache['ac']                = (cache['ac']               ||[]).filter(r=>r.id!==id);
+    cache['iv']                = (cache['iv']               ||[]).filter(r=>r.accountId!==id);
+    cache['orders']            = (cache['orders']           ||[]).filter(r=>r.accountId!==id);
+    cache['retail_invoices']   = (cache['retail_invoices']  ||[]).filter(r=>r.accountId!==id);
+    cache['lf_invoices']       = (cache['lf_invoices']      ||[]).filter(r=>r.accountId!==id);
+    cache['combined_invoices'] = (cache['combined_invoices']||[]).filter(r=>r.accountId!==id);
+    cache['pending_invoices']  = (cache['pending_invoices'] ||[]).filter(r=>r.accountId!==id);
+    cache['returns']           = (cache['returns']          ||[]).filter(r=>r.accountId!==id);
+    const run = cache['today_run'];
+    if (run && run.stops) run.stops = run.stops.filter(s=>s.accountId!==id);
   });
   auditLog('delete', 'account', id, acName);
   closeModal('modal-edit-account');
@@ -5827,6 +5832,8 @@ async function saveDistributor(id, isNew) {
   } else if (!dcAddress) { dcLat = null; dcLng = null; }
 
   const rec = {
+    // Preserve ALL existing fields first — avoids data loss on save
+    ...(existing||{}),
     id, name,
     platformType:      qs('#edist-platform')?.value||'other',
     territory:         qs('#edist-territory')?.value?.trim()||'',

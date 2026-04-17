@@ -1032,13 +1032,13 @@ function showThankYou(data) {
     summaryHtml += '<div style="font-size:12px;font-weight:700;color:#166534;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🌿 Lavender Fields</div>';
     data.lfItems.forEach(function(it) {
       if (it.hasVariants && it.variantLines && it.variantLines.length) {
-        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + it.skuName + '</span>';
+        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + escHtml(it.skuName) + '</span>';
         it.variantLines.forEach(function(vl) {
-          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + vl.variantName + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
+          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + escHtml(vl.variantName) + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
         });
         summaryHtml += '<span style="align-self:flex-end;font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
       } else {
-        summaryHtml += '<div class="summary-row"><span>' + it.skuName + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
+        summaryHtml += '<div class="summary-row"><span>' + escHtml(it.skuName) + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
       }
     });
     summaryHtml += '<div class="summary-row"><span>LF Total</span><span>$' + (data.lfTotal||0).toFixed(2) + '</span></div>';
@@ -1160,6 +1160,11 @@ function submitOrder() {
   // Collect LF items if LF section is active
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
+
+  if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0) {
+    showError('Please add at least one item or select a flavor notification.');
+    return;
+  }
 
   // Write purpl order (unchanged logic — only if purpl brand selected and has items/notify)
   var purplPromise = (_brandPurpl && (cases > 0 || orderData.notifyMe.length > 0))
