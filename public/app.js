@@ -1201,7 +1201,7 @@ const INVOICE_STATUS = {
 
 function renderInvoiceStatus() {
   const delivered = DB.a('orders').filter(o=>o.status==='delivered');
-  const terms     = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const terms     = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
 
   let notInvoiced=0, invoiced=0, paid=0, overdueList=[];
 
@@ -2154,10 +2154,10 @@ function _acCardHTML(a, muted) {
       <div class="ac-loc-item">
         <div class="ac-loc-dot"></div>
         <div style="flex:1;min-width:0">
-          ${l.label?`<div class="ac-loc-label">${l.label}</div>`:''}
-          ${l.address?`<div class="ac-loc-addr">${l.address}</div>`:''}
-          ${l.contact||l.phone?`<div class="ac-loc-addr" style="margin-top:2px">${[l.contact,l.phone].filter(Boolean).join(' · ')}</div>`:''}
-          ${l.dropOffRules?`<div class="ac-loc-drop">🚚 ${l.dropOffRules}</div>`:''}
+          ${l.label?`<div class="ac-loc-label">${escHtml(l.label)}</div>`:''}
+          ${l.address?`<div class="ac-loc-addr">${escHtml(l.address)}</div>`:''}
+          ${l.contact||l.phone?`<div class="ac-loc-addr" style="margin-top:2px">${[l.contact,l.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
+          ${l.dropOffRules?`<div class="ac-loc-drop">🚚 ${escHtml(l.dropOffRules)}</div>`:''}
         </div>
       </div>`).join('')}</div>`:''}
     <div class="ac-card-metrics">
@@ -2168,7 +2168,7 @@ function _acCardHTML(a, muted) {
     </div>
     ${nfuHtml}
     ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
-    ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
+    ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${escHtml(lastNote.nextAction)}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
     ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${escHtml(lastOutreach.type||'')} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+escHtml(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
     ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(locs[0].dropOffRules)}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(a.dropOffRules)}</div></div>`:''}
     <div class="ac-card-actions">
@@ -4074,6 +4074,10 @@ function deleteAccount(id) {
     if (run && run.stops) run.stops = run.stops.filter(s=>s.accountId!==id);
   });
   auditLog('delete', 'account', id, acName);
+  // Clean up external Firestore collections (portal tokens, portal orders)
+  try {
+    firebase.firestore().collection('accounts').doc(id).delete().catch(() => {});
+  } catch(e) {}
   closeModal('modal-edit-account');
   renderAccounts();
   toast('Account deleted');
@@ -4189,7 +4193,7 @@ function renderProspects() {
       ${p.status==='lost'&&p.lostReason?`<div class="ac-card-section"><div class="ac-card-section-label" style="color:var(--red)">Lost — ${escHtml(p.lostReason)}</div>${p.lostNotes?`<div style="font-size:13px">${escHtml(p.lostNotes)}</div>`:''}</div>`:''}
       <div class="pr-card-nextsteps pr-card-nextsteps-tap" onclick="openLogOutreachModal('pr','${p.id}')">
         <div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps <span style="font-size:10px;color:#93c5fd">(tap to log)</span></div>
-        <div class="pr-card-nextsteps-text">${p.nextAction||'<span style="color:#93c5fd">No next steps set — tap to add</span>'}${p.nextDate?' &nbsp;·&nbsp; <strong>'+fmtD(p.nextDate)+'</strong>':''}</div>
+        <div class="pr-card-nextsteps-text">${p.nextAction?escHtml(p.nextAction):'<span style="color:#93c5fd">No next steps set — tap to add</span>'}${p.nextDate?' &nbsp;·&nbsp; <strong>'+fmtD(p.nextDate)+'</strong>':''}</div>
       </div>
       <div class="ac-card-actions">
         <button class="btn sm primary" onclick="openProspect('${p.id}')">View</button>
@@ -4802,7 +4806,11 @@ function confirmMarkLost() {
 function _deleteProspectPermanent() {
   if (!_markLostId) return;
   if (!confirm2('Permanently delete this prospect? This cannot be undone.')) return;
-  DB.remove('pr', _markLostId);
+  const prospectId = _markLostId;
+  DB.remove('pr', prospectId);
+  try {
+    firebase.firestore().collection('prospects').doc(prospectId).delete().catch(() => {});
+  } catch(e) {}
   closeModal('modal-mark-lost');
   renderProspects();
   toast('Prospect deleted');
@@ -5885,10 +5893,14 @@ function deleteDistributor(id) {
     ['dist_reps','dist_pricing','dist_pos','dist_invoices','dist_chains','dist_imports'].forEach(k=>{
       cache[k] = (cache[k]||[]).filter(r=>r.distId!==id);
     });
+    // Clear fulfilledBy on any accounts linked to this distributor
+    cache['ac'] = (cache['ac']||[]).map(a =>
+      a.fulfilledBy === id ? {...a, fulfilledBy: 'direct'} : a
+    );
   });
   closeModal('modal-edit-distributor');
   renderDistributors();
-  toast('Distributor deleted');
+  toast('Distributor deleted — linked accounts reverted to direct');
 }
 
 // ── Sales Reps ────────────────────────────────────────────
@@ -7606,8 +7618,21 @@ function toggleStop(i) {
     const allDone = updatedRun.stops.length > 0 && updatedRun.stops.every(s=>s.done);
     if (allDone) setTimeout(()=>openDeliveryCostModal(updatedRun.stops), 800);
 
+  } else if (wasDone && !stop.done) {
+    // Un-toggling from done → reverse the side-effects
+    DB.atomicUpdate(cache => {
+      cache['today_run'] = run;
+      // Remove the delivery order and its linked inventory entries
+      const deliveryOrd = (cache['orders']||[]).find(o =>
+        o.source === 'run' && o.accountId === (ac2?.id||stop.accountId) && o.created === today()
+      );
+      if (deliveryOrd) {
+        cache['orders'] = (cache['orders']||[]).filter(o => o.id !== deliveryOrd.id);
+        cache['iv'] = (cache['iv']||[]).filter(e => e.ordId !== deliveryOrd.id);
+      }
+    });
+    toast('Stop unmarked — delivery order and inventory reversed');
   } else {
-    // Just toggling undone — simple update, no side-effects
     DB.setObj('today_run', run);
   }
 
@@ -7624,7 +7649,7 @@ function offerDeliveryInvoice(stop, ac, ordId) {
   if (!items.length || !ac) return;
 
   const costs  = DB.obj('costs', {cogs:{}});
-  const terms  = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const terms  = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
   const banner = document.createElement('div');
@@ -7650,7 +7675,7 @@ function createDeliveryInvoice(accountId, ordId) {
   if (!ac || !ord) return;
 
   const costs   = DB.obj('costs', {cogs:{}});
-  const terms   = DB.obj('settings',{payment_terms:30}).payment_terms || 30;
+  const terms   = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
   // Auto-increment invoice number from the single invoice collection
@@ -12184,7 +12209,7 @@ async function confirmPortalOrder() {
     }, 0);
     const invoiceNumber = 'INV-' + String(lastInvNum + 1).padStart(4, '0');
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms
-                  || DB.obj('settings', { payment_terms: 30 }).payment_terms || 30;
+                  || DB.obj('settings', {}).default_payment_terms || DB.obj('settings', {}).payment_terms || 30;
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
 
     // Compute total — use account pricing for purpl, lineItem pricing for LF
