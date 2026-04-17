@@ -3,9 +3,11 @@ const { test, expect } = require('../fixtures.js');
 
 test.describe('Safety Audit — Data Loss Prevention', () => {
 
-  test('DB._firestoreReady is true after app boots', async ({ page }) => {
+  test('DB._firestoreReady is true after app boots and data loads', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#app-shell')).toBeVisible({ timeout: 30000 });
+    // Wait for Firestore snapshot to arrive
+    await page.waitForFunction(() => window.DB && DB._firestoreReady === true, { timeout: 15000 });
     const ready = await page.evaluate(() => DB._firestoreReady);
     expect(ready).toBe(true);
   });
@@ -13,6 +15,7 @@ test.describe('Safety Audit — Data Loss Prevention', () => {
   test('DB._save uses debounce — multiple rapid writes produce single save', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#app-shell')).toBeVisible({ timeout: 30000 });
+    await page.waitForFunction(() => window.DB && DB._firestoreReady === true, { timeout: 15000 });
 
     const saveCount = await page.evaluate(() => {
       let count = 0;
@@ -112,10 +115,12 @@ test.describe('Safety Audit — Portal Security', () => {
 
   test('Portal order with zero items is rejected by validation', async ({ unauthContext }) => {
     const page = await unauthContext.newPage();
-    await page.goto('/order');
-    await page.waitForTimeout(3000);
+    await page.goto('/order.html');
+    await page.waitForTimeout(5000);
 
-    const btnDisabled = await page.locator('#submit-btn').isDisabled();
+    const btn = page.locator('#submit-btn');
+    await expect(btn).toBeVisible({ timeout: 10000 });
+    const btnDisabled = await btn.isDisabled();
     expect(btnDisabled).toBe(true);
   });
 
