@@ -18,8 +18,8 @@ service cloud.firestore {
     // Portal: public can submit orders (create only), read own orders
     match /portal_orders/{orderId} {
       allow create: if true
-        && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'items', 'status'])
-        && request.resource.data.status == 'new'
+        && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'status'])
+        && request.resource.data.status in ['new', 'pending']
         && request.resource.data.size() < 30;
       allow read: if true;
       allow update, delete: if request.auth != null;

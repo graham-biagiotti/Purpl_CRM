@@ -8983,6 +8983,7 @@ function _parseLLCSV(text) {
 }
 
 function importLLOrders(orders) {
+  if (!DB._firestoreReady) { toast('⚠️ Database not ready yet — please wait a moment and try again.'); return; }
   let newAccounts=0, newOrders=0, skipped=0;
   const existingOrders = DB.a('orders');
 
@@ -9155,7 +9156,7 @@ function saveSettings() {
 
   const s = {
     company:               qs('#set-company')?.value?.trim()||'',
-    payment_terms:         parseInt(qs('#set-payment-terms')?.value)||30,
+    payment_terms:         DB.obj('settings',{}).payment_terms||30,
     production_lead_time:  parseInt(qs('#set-lead-time')?.value)||14,
     default_state:         qs('#set-default-state')?.value?.trim()||'',
     default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
@@ -13409,9 +13410,9 @@ async function renderApplications() {
             <div>📅 Submitted: ${dateStr}</div>
           </div>
           ${isActive ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-            <button class="btn sm primary" onclick="approveApplication('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Approve</button>
-            <button class="btn sm" onclick="convertApplicationToProspect('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Convert to Prospect</button>
-            <button class="btn sm" style="color:var(--red);border-color:var(--red)" onclick="rejectApplication('${app._docId}', ${JSON.stringify(app).replace(/"/g,'&quot;')})">Reject</button>
+            <button class="btn sm primary" onclick="approveApplication('${escHtml(app._docId)}')">Approve</button>
+            <button class="btn sm" onclick="convertApplicationToProspect('${escHtml(app._docId)}')">Convert to Prospect</button>
+            <button class="btn sm" style="color:var(--red);border-color:var(--red)" onclick="rejectApplication('${escHtml(app._docId)}')">Reject</button>
           </div>` : ''}
         </div>`;
       }).join('')}
@@ -13443,6 +13444,7 @@ function _updateApplicationsBadge(count) {
 }
 
 async function approveApplication(docId, app) {
+  if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
   if (!confirm2(`Approve ${app.businessName || 'this application'} and create an account?`)) return;
 
   const acId    = uid();
@@ -13504,6 +13506,7 @@ async function approveApplication(docId, app) {
 }
 
 async function rejectApplication(docId, app) {
+  if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
   if (!confirm2(`Reject application from ${app.businessName || 'this applicant'}?`)) return;
 
   if (app.email) {
@@ -13525,6 +13528,7 @@ async function rejectApplication(docId, app) {
 }
 
 async function convertApplicationToProspect(docId, app) {
+  if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
   const isPbf = (app.brandsInterested || []).some(b => b === 'lf' || b === 'lavender');
   const notes = [
     app.storeDescription ? 'Store: ' + app.storeDescription : '',
