@@ -136,7 +136,7 @@
       </a>
     </div>
     <div class="sb-bottom">
-      <div style="font-size:11px;color:#444;margin-bottom:6px">Pumpkin Blossom Farm LLC</div>
+      <div style="font-size:10px;color:#6b5f8a;letter-spacing:.03em">Pumpkin Blossom Farm LLC</div>
       <small>
         <span class="sync-dot synced" id="sync-dot"></span>
         <span id="sync-label">Saved</span>
@@ -168,51 +168,36 @@
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page" id="page-dashboard">
 
-      <!-- Notes Scratchpad -->
-      <div style="margin-bottom:20px">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
-          <span>📝 Notes</span>
-          <span id="dash-notes-saved" style="font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s;text-transform:none;letter-spacing:0;font-weight:400">Saved</span>
-        </div>
-        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fafaf8;min-height:160px">
-          <!-- Section sidebar -->
-          <div id="dash-notes-sidebar" style="width:140px;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f5f4f0"></div>
-          <!-- Section content -->
-          <div style="flex:1;display:flex;flex-direction:column;position:relative">
-            <textarea id="dash-notes-content" placeholder="Start typing…" oninput="debounceNoteSectionSave()" style="flex:1;width:100%;min-height:160px;padding:10px 12px;border:none;background:transparent;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;outline:none"></textarea>
-          </div>
-        </div>
-      </div>
-
       <!-- Low stock alert card (shown when inventory < threshold) -->
       <div id="dash-low-stock-alert" style="display:none"></div>
       <!-- New applications alert card -->
       <div id="dash-applications-card" style="display:none"></div>
 
-      <!-- Row 1: Combined 6-card KPI row -->
-      <div class="card-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:14px;margin-bottom:20px" id="dash-combined-kpis">
+      <!-- Row 1: Primary KPIs (large, 4 across) -->
+      <div class="card-grid kpi-primary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px" id="dash-combined-kpis">
         <div id="dash-kpi-total-ac"></div>
-        <div id="dash-kpi-purpl-ac"></div>
-        <div id="dash-kpi-lf-ac"></div>
         <div id="dash-kpi-combined-outstanding"></div>
-        <div id="dash-kpi-combined-overdue"></div>
-        <div id="dash-kpi-wix"></div>
         <div id="dash-kpi-inv-cans"></div>
+        <div id="dash-kpi-combined-overdue"></div>
       </div>
+
+      <!-- Row 2: Secondary KPIs (smaller, muted) -->
+      <div class="card-grid kpi-secondary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px" id="dash-prospect-kpis">
+        <div id="dash-kpi-pr-total"></div>
+        <div id="dash-kpi-pr-due"></div>
+        <div id="dash-kpi-purpl-ac" style="display:none"></div>
+        <div id="dash-kpi-lf-ac" style="display:none"></div>
+        <div id="dash-kpi-wix" style="display:none"></div>
+        <div id="dash-kpi-pr-purpl" style="display:none"></div>
+        <div id="dash-kpi-pr-lf" style="display:none"></div>
+      </div>
+
       <!-- Legacy KPI targets (kept for JS compatibility) -->
       <div style="display:none">
         <div id="dash-kpi-revenue"></div><div id="dash-kpi-accounts"></div>
         <div id="dash-kpi-pipeline"></div><div id="dash-kpi-alerts"></div>
         <div id="dash-kpi-lf-accounts"></div><div id="dash-kpi-lf-outstanding"></div>
         <div id="dash-kpi-lf-overdue"></div><div id="dash-kpi-lf-wix"></div>
-      </div>
-
-      <!-- Prospect KPI row -->
-      <div class="card-grid grid-4" id="dash-prospect-kpis" style="margin-bottom:20px">
-        <div id="dash-kpi-pr-total"></div>
-        <div id="dash-kpi-pr-purpl"></div>
-        <div id="dash-kpi-pr-lf"></div>
-        <div id="dash-kpi-pr-due"></div>
       </div>
 
       <!-- Row 2+3: Two-column layout — left 60% / right 40% -->
@@ -288,6 +273,19 @@
         <div id="dash-prod-plan"></div>
       </div>
 
+      <!-- Notes Scratchpad (moved below main content) -->
+      <details class="card" style="margin-bottom:20px" open>
+        <summary style="font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:2px 0;list-style:none">
+          <span>📝 Notes</span>
+          <span id="dash-notes-saved" style="font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s;text-transform:none;letter-spacing:0;font-weight:400">Saved</span>
+        </summary>
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fafaf8;min-height:140px;margin-top:12px">
+          <div id="dash-notes-sidebar" style="width:140px;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f5f4f0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;position:relative">
+            <textarea id="dash-notes-content" placeholder="Start typing…" oninput="debounceNoteSectionSave()" style="flex:1;width:100%;min-height:140px;padding:10px 12px;border:none;background:transparent;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;outline:none"></textarea>
+          </div>
+        </div>
+      </details>
 
     </div>
 
