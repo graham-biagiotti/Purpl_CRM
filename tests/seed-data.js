@@ -1657,6 +1657,10 @@ const settings = {
   farmName: 'Pumpkin Blossom Farm',
   farmPhone: '603-748-3038',
   farmAddress: '393 Pumpkin Hill Rd, Warner, NH 03278',
+  seeded: true,
+  data_restored: true,
+  nem_show_2026_imported: true,
+  tradeshow_2026_imported: true,
 };
 
 const invoice_settings = {
