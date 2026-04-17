@@ -871,19 +871,18 @@ function dashFilterFulfill(val) {
 }
 
 // Price an order. Items qty is in CASES.
-// Account pricing (ac.pricing[sku]) should be price-per-case.
-// Fallback: COGS per can × 2.2 markup × CANS_PER_CASE = price per case.
+// Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
 function calcOrderValue(o) {
   const costs = DB.obj('costs', {cogs:{}});
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
   const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
-  // Determine account-level price per case from the correct pricing tier
   const isDistFulfilled = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDistFulfilled ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
   return (o.items||[]).reduce((s,i)=>{
-    // pricePerCase: account-specific or default (COGS × markup × cans per case)
     const pricePerCase = acPrice
-      || (costs.cogs[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
-    return s + pricePerCase * i.qty; // i.qty = cases
+      || (costs.cogs[i.sku]||2.15) * markup * CANS_PER_CASE;
+    return s + pricePerCase * i.qty;
   }, 0);
 }
 
@@ -7659,11 +7658,12 @@ function createDeliveryInvoice(accountId, ordId) {
   const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
 
   // Build line items in CASES with pricing
-  // pricePerCase = account-specific rate OR (COGS per can × 2.2 markup × CANS_PER_CASE)
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
   const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : ac.pricePerCaseDirect) || 0;
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = acPrice || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+    const pricePerCase = acPrice || (costs.cogs?.[i.sku]||2.15) * markup * CANS_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -12097,25 +12097,56 @@ async function confirmPortalOrder() {
     const portalSnap = await portalRef.get();
     const d = portalSnap.data();
 
-    const casesEl = document.getElementById('confirm-cases');
-    const cases = parseInt(casesEl?.value || qs('#mcpo-classic-qty')?.value || 0);
-    if (cases < 1) { toast('Enter at least 1 case'); return; }
-
-    const cans = cases * CANS_PER_CASE;
-    const orderId = uid();
+    const isLf = d.brand === 'lf';
     const todayStr = today();
+    const orderId = uid();
+    const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
+    const isDistFulfilled = acct.fulfilledBy && acct.fulfilledBy !== 'direct';
+    const acPrice = parseFloat(isDistFulfilled ? acct.pricePerCaseDist : acct.pricePerCaseDirect) || 0;
 
-    // 1. Build order record (matches delivery run order format)
+    // Build items from either the confirmation modal inputs or the portal order data
+    let items = [];
+    let totalCases = 0;
+    let totalCans = 0;
+
+    if (isLf) {
+      // LF order — use lineItems from portal order
+      items = (d.lineItems || []).map(li => ({
+        sku: li.skuId || li.skuName || 'lf',
+        label: li.skuName || 'Lavender Fields',
+        qty: li.cases || 0,
+      }));
+      totalCases = items.reduce((s, i) => s + i.qty, 0);
+    } else {
+      // Purpl order — read from confirmation modal or portal order items
+      const casesEl = document.getElementById('confirm-cases');
+      const cases = parseInt(casesEl?.value || qs('#mcpo-classic-qty')?.value || 0);
+      if (cases < 1) { toast('Enter at least 1 case'); return; }
+      // Build items from portal order's items array if available, otherwise default to classic
+      const portalItems = (d.items || []).filter(i => i.cases > 0);
+      if (portalItems.length) {
+        items = portalItems.map(i => ({ sku: i.sku || 'classic', label: i.label || 'Classic Lavender Lemonade', qty: i.cases }));
+      } else {
+        items = [{ sku: 'classic', label: 'Classic Lavender Lemonade', qty: cases }];
+      }
+      totalCases = items.reduce((s, i) => s + i.qty, 0);
+      totalCans = totalCases * CANS_PER_CASE;
+    }
+
+    if (totalCases < 1) { toast('Order has no items'); return; }
+
     const orderData = {
       id: orderId,
       accountId: d.accountId || null,
       accountName: d.accountName,
       created: todayStr,
       dueDate: todayStr,
-      cases,
-      cans,
+      items,
+      cases: totalCases,
+      cans: totalCans,
       status: 'pending',
       source: 'portal',
+      brand: isLf ? 'lf' : 'purpl',
       linkedPortalOrderId: _portalOrderId,
       notes: d.notes || '',
       poNumber: d.poNumber || '',
@@ -12123,18 +12154,18 @@ async function confirmPortalOrder() {
       distributor: d.distributor || '',
     };
 
-    // 3. Build inventory deduction entry (matches toggleStop format — qty in cans, type 'out')
-    const ivEntry = {
+    // Build inventory deduction entries — one per SKU (purpl only, LF doesn't use iv)
+    const ivEntries = isLf ? [] : items.map(i => ({
       id: uid(),
       date: todayStr,
-      sku: 'classic',
+      sku: i.sku,
       type: 'out',
-      qty: cans,
+      qty: i.qty * CANS_PER_CASE,
       note: 'Portal order: ' + d.accountName,
       ordId: orderId,
-    };
+    }));
 
-    // 4. Build draft invoice using the single retail_invoices collection
+    // Build draft invoice
     const lastInvNum = DB.a('retail_invoices').reduce((max, inv) => {
       const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
       return Math.max(max, n);
@@ -12143,26 +12174,32 @@ async function confirmPortalOrder() {
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms
                   || DB.obj('settings', { payment_terms: 30 }).payment_terms || 30;
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
-    const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
-    const pricePerCase = acct.pricePerCaseDirect || null;
 
-    // 1–3: Write order, account lastOrder, inventory deduction in one Firestore write
+    // Compute total — use account pricing for purpl, lineItem pricing for LF
+    let invoiceTotal = null;
+    if (isLf) {
+      invoiceTotal = d.total || (d.lineItems || []).reduce((s, li) => s + (li.lineTotal || 0), 0) || null;
+    } else if (acPrice) {
+      invoiceTotal = totalCases * acPrice;
+    }
+
+    // Atomic write: order + lastOrder + inventory deduction
     DB.atomicUpdate(cache => {
-      // 1. Create order
       cache['orders'] = [...(cache['orders'] || []), orderData];
-      // 2. Update account (or prospect) lastOrder
       if (d.accountId) {
         const key = d.isProspect ? 'pr' : 'ac';
         cache[key] = (cache[key] || []).map(a =>
           a.id === d.accountId ? { ...a, lastOrder: todayStr } : a
         );
       }
-      // 3. Deduct inventory — 'iv' is the inventory log (same array used by renderInventory)
-      cache['iv'] = [...(cache['iv'] || []), ivEntry];
+      if (ivEntries.length) {
+        cache['iv'] = [...(cache['iv'] || []), ...ivEntries];
+      }
     });
 
-    // 4. Create single draft invoice in retail_invoices (the authoritative invoice collection)
-    DB.push('retail_invoices', {
+    // Create draft invoice in the appropriate collection
+    const invCollection = isLf ? 'lf_invoices' : 'retail_invoices';
+    DB.push(invCollection, {
       id: uid(),
       invoiceNumber,
       accountId: d.accountId || null,
@@ -12170,19 +12207,20 @@ async function confirmPortalOrder() {
       orderId: orderId,
       date: todayStr,
       dueDate: dueDateStr,
-      cases,
-      cans,
-      pricePerCase,
-      total: pricePerCase ? cases * pricePerCase : null,
-      priceType: 'direct',
+      cases: totalCases,
+      cans: totalCans,
+      pricePerCase: isLf ? null : (acPrice || null),
+      total: invoiceTotal,
+      priceType: isDistFulfilled ? 'dist' : 'direct',
       status: 'draft',
       source: 'portal',
+      brand: isLf ? 'lf' : 'purpl',
       billingEmail: d.billingEmail || acct.email || '',
       notes: 'Auto-drafted from portal order approval.',
       linkedPortalOrderId: _portalOrderId,
     });
 
-    // 5. Update portal_orders status — stays as direct Firestore (not in DB cache)
+    // Update portal_orders status
     await portalRef.update({
       status: 'confirmed',
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -12191,9 +12229,9 @@ async function confirmPortalOrder() {
 
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
-    toast('✓ Order confirmed · Invoice draft created · Inventory updated');
+    toast('✓ Order confirmed · Invoice draft created' + (ivEntries.length ? ' · Inventory updated' : ''));
 
-    // Send order confirmation email and log to cadence
+    // Send confirmation email and log cadence
     const emailTo = d.billingEmail || acct.email;
     if (emailTo && d.accountId && !d.isProspect) {
       const contacts = acct.contacts || [];
@@ -12202,8 +12240,9 @@ async function confirmPortalOrder() {
       const portalLink = acct.orderPortalToken
         ? `https://purpl-crm.web.app/order?t=${acct.orderPortalToken}`
         : null;
-      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order ref:</strong> ${d.poNumber || orderId}</p><p style="margin:4px 0"><strong>Cases:</strong> ${cases}</p>`;
-      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, false)
+      const summaryParts = items.map(i => `${escHtml(i.label||i.sku)}: ${i.qty} cases`).join(', ');
+      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order ref:</strong> ${escHtml(d.poNumber || orderId)}</p><p style="margin:4px 0">${summaryParts}</p>`;
+      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, isLf)
         .then(result => {
           const entry = {
             id: uid(),
