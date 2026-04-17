@@ -68,11 +68,14 @@ test.describe('Dashboard', () => {
   });
 
   test('Quick Notes scratchpad renders without error', async ({ page }) => {
-    // Verify the scratchpad textarea is present and interactive
-    await expect(page.locator('#dash-scratchpad')).toBeVisible({ timeout: 10000 });
-    // Type into it to confirm no crash
-    await page.fill('#dash-scratchpad', 'Playwright test note');
-    await expect(page.locator('#dash-scratchpad')).toHaveValue('Playwright test note');
+    // Notes section is in a collapsible <details> — open it if needed
+    const details = page.locator('details:has(#dash-notes-content)');
+    if (await details.count()) {
+      await details.evaluate(el => el.open = true);
+    }
+    await expect(page.locator('#dash-notes-content')).toBeVisible({ timeout: 10000 });
+    await page.fill('#dash-notes-content', 'Playwright test note');
+    await expect(page.locator('#dash-notes-content')).toHaveValue('Playwright test note');
   });
 
   test('Follow-ups section renders', async ({ page }) => {

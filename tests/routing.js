@@ -99,45 +99,6 @@ async function setupAppRoutes(context) {
     }
   });
 
-  // ── Firestore production API → emulator ───────────────────
-  // Since auth.js no longer calls db.useEmulator(), the Firebase SDK
-  // makes calls to the production Firestore REST/gRPC endpoint.
-  // Intercept these and redirect to the local emulator.
-  await context.route('https://firestore.googleapis.com/**', async (route) => {
-    const target = route.request().url()
-      .replace('https://firestore.googleapis.com', 'http://127.0.0.1:8080');
-    try {
-      const resp = await route.fetch({ url: target });
-      await route.fulfill({ response: resp });
-    } catch (e) {
-      await route.abort('failed').catch(() => {});
-    }
-  });
-
-  // ── Firebase Auth production API → emulator ──────────────
-  await context.route('https://identitytoolkit.googleapis.com/**', async (route) => {
-    const target = route.request().url()
-      .replace('https://identitytoolkit.googleapis.com', 'http://127.0.0.1:9099/identitytoolkit.googleapis.com');
-    try {
-      const resp = await route.fetch({ url: target });
-      await route.fulfill({ response: resp });
-    } catch (e) {
-      await route.abort('failed').catch(() => {});
-    }
-  });
-
-  // ── Firebase Auth token exchange → emulator ──────────────
-  await context.route('https://securetoken.googleapis.com/**', async (route) => {
-    const target = route.request().url()
-      .replace('https://securetoken.googleapis.com', 'http://127.0.0.1:9099/securetoken.googleapis.com');
-    try {
-      const resp = await route.fetch({ url: target });
-      await route.fulfill({ response: resp });
-    } catch (e) {
-      await route.abort('failed').catch(() => {});
-    }
-  });
-
   // ── Firebase SDK from node_modules (instead of CDN) ──────
   await context.route('https://www.gstatic.com/firebasejs/**', async (route) => {
     const filename = route.request().url().split('/').pop();
@@ -159,10 +120,31 @@ async function setupAppRoutes(context) {
       const pathname = new URL(route.request().url()).pathname;
       const filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        let body = fs.readFileSync(filePath);
+        const ct = getMime(filePath);
+
+        // Inject emulator connection into auth.js for testing only.
+        // Production auth.js has NO emulator code — this injection happens
+        // only in the Playwright test routing layer, never in production.
+        if (pathname === '/auth.js') {
+          const injection = [
+            '',
+            '  // [TEST ONLY] Connect to local emulators — injected by tests/routing.js',
+            '  try { db.useEmulator("localhost", 8080); } catch(e) {}',
+            '  try { auth.useEmulator("http://localhost:9099"); } catch(e) {}',
+            '',
+          ].join('\n');
+          const src = body.toString();
+          body = src.replace(
+            'const db = getFirestore(app);',
+            'const db = getFirestore(app);\n' + injection
+          );
+        }
+
         await route.fulfill({
           status:      200,
-          contentType: getMime(filePath),
-          body:        fs.readFileSync(filePath),
+          contentType: ct,
+          body,
         });
       } else {
         await route.fulfill({ status: 404, contentType: 'text/plain', body: `Not found: ${pathname}` });
