@@ -1,5 +1,5 @@
 // purpl CRM Service Worker — offline shell caching
-const CACHE = 'purpl-crm-v5';
+const CACHE = 'purpl-crm-v6';
 const SHELL = [
   '/',
   '/index.html',
@@ -23,6 +23,10 @@ self.addEventListener('activate', e => {
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+  // Notify all open tabs that a new version is active
+  self.clients.matchAll({type: 'window'}).then(clients => {
+    clients.forEach(c => c.postMessage({type: 'SW_UPDATED'}));
+  });
 });
 
 self.addEventListener('fetch', e => {

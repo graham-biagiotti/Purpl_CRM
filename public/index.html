@@ -3202,6 +3202,14 @@ document.addEventListener('DOMContentLoaded', () => {
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'SW_UPDATED') {
+      var banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#4B2082;color:#fff;padding:10px 16px;text-align:center;z-index:99999;font-size:14px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:12px';
+      banner.innerHTML = '<span>A new version of purpl CRM is available.</span><button onclick="location.reload()" style="background:#fff;color:#4B2082;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer">Reload</button>';
+      document.body.prepend(banner);
+    }
+  });
 }
 </script>
 

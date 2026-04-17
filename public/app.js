@@ -1289,8 +1289,8 @@ function renderInvoiceReminders() {
   DB.a('iv').forEach(inv => {
     if (inv.status === 'paid' || !inv.due || !inv.accountId || !inv.number) return;
     if (inv.reminderSentAt) return;
-    const days = daysAgo(inv.due); // negative = future, positive = past
-    if (days !== -7 && days <= 0) return;
+    const days = daysAgo(inv.due);
+    if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !ac.email) return;
     queue.push({ inv, ac, collection: 'iv', isOverdue: days > 0, amount: inv.amount });
@@ -1300,7 +1300,7 @@ function renderInvoiceReminders() {
     if (inv.status === 'paid' || !inv.due || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.due);
-    if (days !== -7 && days <= 0) return;
+    if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !ac.email) return;
     queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total });
@@ -4711,13 +4711,16 @@ function _runImportProspects() {
   const text = _importProspectsCsvText || qs('#imp-pr-paste')?.value?.trim() || '';
   if (!text) { toast('No CSV data to import'); return; }
   const rows = _parseCSV(text);
-  const prospects = rows.map(_csvMapProspect).filter(Boolean);
-  const skipped   = rows.length - prospects.length;
-  if (!prospects.length) { toast('No valid rows — ensure a "Business Name" column is present'); return; }
+  const parsed = rows.map(_csvMapProspect).filter(Boolean);
+  const existingNames = new Set(DB.a('pr').map(x => x.name.toLowerCase().trim()));
+  const prospects = parsed.filter(p => !existingNames.has(p.name.toLowerCase().trim()));
+  const dupes = parsed.length - prospects.length;
+  const skipped = rows.length - parsed.length;
+  if (!prospects.length) { toast(dupes > 0 ? `All ${parsed.length} rows already exist` : 'No valid rows — ensure a "Business Name" column is present'); return; }
   DB.atomicUpdate(cache => { cache['pr'] = [...(cache['pr'] || []), ...prospects]; });
   closeModal('modal-import-prospects');
   renderProspects();
-  toast(`${prospects.length} prospect${prospects.length !== 1 ? 's' : ''} imported, ${skipped} skipped`);
+  toast(`${prospects.length} imported${dupes ? ', ' + dupes + ' duplicates skipped' : ''}${skipped ? ', ' + skipped + ' invalid rows' : ''}`);
 }
 
 // ── Sample Tracking ─────────────────────────────────────────
@@ -9255,6 +9258,9 @@ function saveEmailSettings() {
 //  MODAL HELPERS
 // ══════════════════════════════════════════════════════════
 function openModal(id) {
+  document.querySelectorAll('.overlay.open').forEach(o => {
+    if (o.id !== id) o.classList.remove('open');
+  });
   const m = document.getElementById(id);
   if (m) m.classList.add('open');
 }

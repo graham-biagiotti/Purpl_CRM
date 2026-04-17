@@ -808,134 +808,121 @@ function init() {
   const token = params.get('t');
 
   if (token) {
-    // Check accounts collection
+    // Sequential lookup: check accounts first, then prospects if not found.
+    // Prevents race condition from parallel queries.
     db.collection('accounts')
       .where('orderPortalToken', '==', token)
       .get()
-      .then(snap => {
+      .then(function(snap) {
         if (!snap.empty) {
-          const data = snap.docs[0].data();
+          var data = snap.docs[0].data();
           accountId = snap.docs[0].id;
           accountName = data.name || '';
           accountEmail = data.email || '';
           isPbf = data.isPbf || false;
           isMatched = true;
           isProspect = false;
-          document.getElementById('locked-name').textContent = accountName;
-          document.getElementById('matched-section').style.display = 'block';
-          document.getElementById('unmatched-section').style.display = 'none';
-          if (accountEmail) document.getElementById('billing-email').value = accountEmail;
-          var banner = document.getElementById('returning-banner');
-          if (banner) banner.style.display = 'block';
-
-          // Set default brand selection based on isPbf
-          _brandPurpl = true;
-          _brandLf = isPbf;
-          updateBrandVisibility();
-          if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
-
-          // Load outstanding invoices
-          loadOutstandingInvoices(accountId);
-
-          var prefs = data.portalPrefs || {};
-          if (prefs.billingEmail) {
-            var be = document.getElementById('billing-email');
-            if (be) be.value = prefs.billingEmail;
-          }
-          if (prefs.distributors && prefs.distributors.length) {
-            var list = document.getElementById('distributor-list');
-            prefs.distributors.forEach(function(d, i) {
-              if (i === 0) {
-                var inputs = list.querySelectorAll('.distributor-input');
-                if (inputs[0]) inputs[0].value = d;
-              } else {
-                addDistributor();
-                var inputs = list.querySelectorAll('.distributor-input');
-                inputs[inputs.length-1].value = d;
-              }
-            });
-          }
-          if (prefs.distributorDirectOpen) {
-            var ddo = document.getElementById('distributor-direct-open');
-            if (ddo) ddo.value = prefs.distributorDirectOpen;
-          }
-          if (prefs.distributorContactOk) {
-            var dco = document.getElementById('distributor-contact-ok');
-            if (dco) dco.checked = true;
-          }
-          if (prefs.leadTimeNeeded) {
-            var lt = document.getElementById('lead-time-needed');
-            if (lt) lt.value = prefs.leadTimeNeeded;
-          }
-          if (prefs.socialHandle) {
-            var sh = document.getElementById('social-handle');
-            if (sh) sh.value = prefs.socialHandle;
-          }
-          if (prefs.deliveryNotes) {
-            var dw = document.getElementById('delivery-window');
-            if (dw) dw.value = prefs.deliveryNotes;
-          }
-          // Auto-fill purpl cases from last order
-          if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
-
-          firebase.firestore()
-            .collection('portal_orders')
-            .where('accountId', '==', accountId)
-            .orderBy('submittedAt', 'desc')
-            .limit(10)
-            .get()
-            .then(function(snap) {
-              var orders = snap.docs.map(function(d) {
-                return Object.assign({id: d.id}, d.data());
-              });
-              renderPastOrders(orders);
-            })
-            .catch(function(e) {
-              console.log('Past orders error:', e);
-              renderPastOrders([]);
-            });
+          _applyMatchedAccount(data);
+          return;
         }
+        // Not in accounts — check prospects
+        return db.collection('prospects')
+          .where('orderPortalToken', '==', token)
+          .get()
+          .then(function(proSnap) {
+            if (!proSnap.empty) {
+              var data = proSnap.docs[0].data();
+              accountId = proSnap.docs[0].id;
+              accountName = data.name || '';
+              accountEmail = data.email || '';
+              isMatched = true;
+              isProspect = true;
+              _applyMatchedAccount(data);
+              return;
+            }
+            // Neither found — show expired link message
+            var errEl = document.getElementById('error-msg');
+            if (errEl) {
+              errEl.textContent = 'This order link has expired or is invalid. Please contact us for a new link.';
+              errEl.style.display = 'block';
+            }
+          });
       })
-      .catch(e => console.error('Token lookup error:', e));
+      .catch(function(e) { console.error('Token lookup error:', e); });
+  }
 
-    // Also check prospects collection
-    db.collection('prospects')
-      .where('orderPortalToken', '==', token)
+  function _applyMatchedAccount(data) {
+    document.getElementById('locked-name').textContent = accountName;
+    document.getElementById('matched-section').style.display = 'block';
+    document.getElementById('unmatched-section').style.display = 'none';
+    if (accountEmail) document.getElementById('billing-email').value = accountEmail;
+    var banner = document.getElementById('returning-banner');
+    if (banner) banner.style.display = 'block';
+
+    if (!isProspect) {
+      _brandPurpl = true;
+      _brandLf = isPbf;
+      updateBrandVisibility();
+      if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
+      loadOutstandingInvoices(accountId);
+    }
+
+    var prefs = data.portalPrefs || {};
+    if (prefs.billingEmail) {
+      var be = document.getElementById('billing-email');
+      if (be) be.value = prefs.billingEmail;
+    }
+    if (prefs.distributors && prefs.distributors.length) {
+      var list = document.getElementById('distributor-list');
+      prefs.distributors.forEach(function(d, i) {
+        if (i === 0) {
+          var inputs = list.querySelectorAll('.distributor-input');
+          if (inputs[0]) inputs[0].value = d;
+        } else {
+          addDistributor();
+          var inputs = list.querySelectorAll('.distributor-input');
+          inputs[inputs.length-1].value = d;
+        }
+      });
+    }
+    if (prefs.distributorDirectOpen) {
+      var ddo = document.getElementById('distributor-direct-open');
+      if (ddo) ddo.value = prefs.distributorDirectOpen;
+    }
+    if (prefs.distributorContactOk) {
+      var dco = document.getElementById('distributor-contact-ok');
+      if (dco) dco.checked = true;
+    }
+    if (prefs.leadTimeNeeded) {
+      var lt = document.getElementById('lead-time-needed');
+      if (lt) lt.value = prefs.leadTimeNeeded;
+    }
+    if (prefs.socialHandle) {
+      var sh = document.getElementById('social-handle');
+      if (sh) sh.value = prefs.socialHandle;
+    }
+    if (prefs.deliveryNotes) {
+      var dw = document.getElementById('delivery-window');
+      if (dw) dw.value = prefs.deliveryNotes;
+    }
+    if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
+
+    firebase.firestore()
+      .collection('portal_orders')
+      .where('accountId', '==', accountId)
+      .orderBy('submittedAt', 'desc')
+      .limit(10)
       .get()
-      .then(snap => {
-        if (!snap.empty && !isMatched) {
-          const data = snap.docs[0].data();
-          accountId = snap.docs[0].id;
-          accountName = data.name || '';
-          accountEmail = data.email || '';
-          isMatched = true;
-          isProspect = true;
-          document.getElementById('locked-name').textContent = accountName;
-          document.getElementById('matched-section').style.display = 'block';
-          document.getElementById('unmatched-section').style.display = 'none';
-          if (accountEmail) document.getElementById('billing-email').value = accountEmail;
-          var banner = document.getElementById('returning-banner');
-          if (banner) banner.style.display = 'block';
-
-          firebase.firestore()
-            .collection('portal_orders')
-            .where('accountId', '==', accountId)
-            .orderBy('submittedAt', 'desc')
-            .limit(10)
-            .get()
-            .then(function(snap) {
-              var orders = snap.docs.map(function(d) {
-                return Object.assign({id: d.id}, d.data());
-              });
-              renderPastOrders(orders);
-            })
-            .catch(function(e) {
-              console.log('Past orders error:', e);
-              renderPastOrders([]);
-            });
-        }
+      .then(function(snap) {
+        var orders = snap.docs.map(function(d) {
+          return Object.assign({id: d.id}, d.data());
+        });
+        renderPastOrders(orders);
       })
-      .catch(e => console.error('Prospect token lookup error:', e));
+      .catch(function(e) {
+        console.log('Past orders error:', e);
+        renderPastOrders([]);
+      });
   }
 
   // Load LF SKUs for anonymous visitors (matched accounts load them after isPbf check)
