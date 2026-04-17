@@ -8304,14 +8304,17 @@ function repWinLoss() {
 function repRevenue() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
 
   const bySkuRev={}, bySkuCases={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; pricePerCase = account pricing or COGS × markup × CANS_PER_CASE
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
@@ -8345,16 +8348,19 @@ function repRevenue() {
 function repAccounts() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
   const acMap  = {};
   DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
 
   orders.forEach(o=>{
     if (!acMap[o.accountId]) return;
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; price per case
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
       acMap[o.accountId].rev += pricePerCase * i.qty;
       acMap[o.accountId].qty += i.qty; // cases
     });
@@ -8552,14 +8558,17 @@ function repDistributor() {
 function repProfit() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
 
   const bySkuRev={}, bySkuCases={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     (o.items||[]).forEach(i=>{
-      // i.qty = cases; price per case
-      const pricePerCase = ac2?.pricing?.[i.sku]||(costs.cogs[i.sku]||2.15)*2.2*CANS_PER_CASE;
+      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
