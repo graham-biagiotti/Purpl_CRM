@@ -11,10 +11,15 @@ const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
 ];
 
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── 1. Send Email ─────────────────────────────────────────
 exports.sendEmail = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
     if (!data.to || !data.subject || !data.html) {
       throw new HttpsError('invalid-argument', 'Missing required fields: to, subject, html');
@@ -55,6 +60,7 @@ exports.sendEmail = onCall(
 exports.sendCombinedInvoice = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
     if (!data.to || !data.html) {
       throw new HttpsError('invalid-argument', 'Missing required fields: to, html');
@@ -133,8 +139,8 @@ exports.sendOrderConfirmation = onCall(
   </td></tr>
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
-    <p>Hi ${data.contactName || 'there'},</p>
-    <p>We received your order for <strong>${data.accountName}</strong> and we're on it. You'll hear from us with delivery details shortly.</p>
+    <p>Hi ${escHtml(data.contactName || 'there')},</p>
+    <p>We received your order for <strong>${escHtml(data.accountName)}</strong> and we're on it. You'll hear from us with delivery details shortly.</p>
     ${data.orderSummary || ''}
     <p style="margin-top:20px">Questions? Reply to this email or call 603-748-3038.</p>
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>

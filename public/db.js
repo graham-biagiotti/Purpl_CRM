@@ -131,11 +131,11 @@ const DB = {
           this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
         });
         OBJ_KEYS.forEach(k => {
-          this._cache[k] = data[k] || null;
+          this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
         });
         const payload = {};
         ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-        OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
+        OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
         await setDoc(this._ref(), payload, { merge: true });
       } else {
         ARRAY_KEYS.forEach(k => this._cache[k] = []);
@@ -172,8 +172,7 @@ const DB = {
     const ref = this._ref();
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
-    // Preserve unknown keys from cache (loaded by _applyData)
+    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
     Object.keys(this._cache).forEach(k => {
       if (!(k in payload)) payload[k] = this._cache[k];
     });
@@ -235,8 +234,11 @@ const DB = {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length) {
-            this._cache[k] = parsed;
-            imported += parsed.length;
+            const existing = this._cache[k] || [];
+            const existingIds = new Set(existing.map(x => x.id).filter(Boolean));
+            const newItems = parsed.filter(x => !x.id || !existingIds.has(x.id));
+            this._cache[k] = [...existing, ...newItems];
+            imported += newItems.length;
           }
         }
       } catch(e) {}
@@ -260,7 +262,7 @@ const DB = {
     const { setDoc } = window.FirestoreAPI;
     const payload = {};
     ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = this._cache[k] || null);
+    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
     Object.keys(this._cache).forEach(k => {
       if (!(k in payload)) payload[k] = this._cache[k];
     });

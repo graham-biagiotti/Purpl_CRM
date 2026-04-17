@@ -59,7 +59,7 @@ function _getFulfillBadge(a) {
     return `<span class="badge purple" style="font-size:10px">Direct</span>`;
   }
   const dist = DB.a('dist_profiles').find(d=>d.id===fb);
-  return `<span class="badge amber" style="font-size:10px">via ${dist?.name||'Distributor'}</span>`;
+  return `<span class="badge amber" style="font-size:10px">via ${escHtml(dist?.name||'Distributor')}</span>`;
 }
 
 function _populateFulfillFilter() {
@@ -68,7 +68,7 @@ function _populateFulfillFilter() {
   const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
   const current = sel.value;
   sel.innerHTML = '<option value="">All Fulfillment</option><option value="direct">Direct</option>' +
-    dists.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+    dists.map(d=>`<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
   if (current) sel.value = current;
 }
 
@@ -3927,7 +3927,7 @@ function editAccount(id) {
   if (ffSel) {
     const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
     ffSel.innerHTML = '<option value="direct">Direct (self-deliver)</option>' +
-      dists.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+      dists.map(d=>`<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
     ffSel.value = a.fulfilledBy || 'direct';
   }
 
@@ -4381,11 +4381,13 @@ function convertProspect(id) {
     nextDate:   p.nextDate||'',
     skus:       [],
     par:        {},
-    // Carry over all notes and outreach history
+    // Carry over all history
     notes:      p.notes||[],
     outreach:   p.outreach||[],
+    samples:    p.samples||[],
+    cadence:    p.cadence||[],
+    contacts:   p.contacts||[],
     lastOrder:  null,
-    // Record conversion
     convertedFrom: 'prospect',
     convertedDate: today(),
     isPbf:      p.isPbf || false,
@@ -4707,6 +4709,7 @@ function _onImportProspectsFile(e) {
 }
 
 function _runImportProspects() {
+  if (!DB._firestoreReady) { toast('⚠️ Database not ready yet — please wait a moment and try again.'); return; }
   const text = _importProspectsCsvText || qs('#imp-pr-paste')?.value?.trim() || '';
   if (!text) { toast('No CSV data to import'); return; }
   const rows = _parseCSV(text);
@@ -7147,7 +7150,7 @@ function cycleOrderStatus(id) {
   const newStatus = seq[Math.min(seq.indexOf(o.status)+1, seq.length-1)];
   DB.update('orders', id, x=>({...x, status:newStatus}));
   // If just reached 'delivered' on a non-run order, deduct stock now
-  if (newStatus==='delivered' && o.status!=='delivered' && o.source!=='run') {
+  if (newStatus==='delivered' && o.status!=='delivered' && o.source!=='run' && o.source!=='portal') {
     (o.items||[]).forEach(item=>{
       DB.push('iv', {id:uid(), date:today(), sku:item.sku, type:'out',
         qty: item.qty * CANS_PER_CASE, note:'Order delivered', ordId:id});
@@ -7661,7 +7664,7 @@ function createDeliveryInvoice(accountId, ordId) {
   const margin = costs.target_margin || 0.60;
   const markup = 1 / Math.max(0.01, 1 - margin);
   const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
-  const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : ac.pricePerCaseDirect) || 0;
+  const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
   const lineItems = (ord.items||[]).map(i=>{
     const pricePerCase = acPrice || (costs.cogs?.[i.sku]||2.15) * markup * CANS_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
@@ -12185,11 +12188,19 @@ async function confirmPortalOrder() {
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
 
     // Compute total — use account pricing for purpl, lineItem pricing for LF
+    // Fallback to COGS-based pricing if no account-level price is set
+    const costs = DB.obj('costs', {cogs:{}});
+    const margin = costs.target_margin || 0.60;
+    const fallbackMarkup = 1 / Math.max(0.01, 1 - margin);
     let invoiceTotal = null;
+    let effectivePrice = acPrice;
     if (isLf) {
       invoiceTotal = d.total || (d.lineItems || []).reduce((s, li) => s + (li.lineTotal || 0), 0) || null;
-    } else if (acPrice) {
-      invoiceTotal = totalCases * acPrice;
+    } else {
+      if (!effectivePrice) {
+        effectivePrice = (costs.cogs?.classic || 2.15) * fallbackMarkup * CANS_PER_CASE;
+      }
+      invoiceTotal = totalCases * effectivePrice;
     }
 
     // Atomic write: order + lastOrder + inventory deduction
@@ -12218,7 +12229,7 @@ async function confirmPortalOrder() {
       dueDate: dueDateStr,
       cases: totalCases,
       cans: totalCans,
-      pricePerCase: isLf ? null : (acPrice || null),
+      pricePerCase: isLf ? null : (effectivePrice || null),
       total: invoiceTotal,
       priceType: isDistFulfilled ? 'dist' : 'direct',
       status: 'draft',
