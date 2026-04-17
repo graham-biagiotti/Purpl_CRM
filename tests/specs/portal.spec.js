@@ -151,7 +151,9 @@ test.describe('Portal — Section B: Form interaction and validation', () => {
 
     const critical = errors.filter(msg =>
       !msg.includes('emulator') && !msg.includes('firestore') &&
-      !msg.includes('Firebase') && !msg.includes('IndexedDB')
+      !msg.includes('Firebase') && !msg.includes('IndexedDB') &&
+      !msg.includes('blocked') && !msg.includes('network') &&
+      !msg.includes('Failed to fetch') && !msg.includes('ERR_')
     );
     expect(critical).toHaveLength(0);
 

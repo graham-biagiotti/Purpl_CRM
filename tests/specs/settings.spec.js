@@ -38,8 +38,8 @@ test.describe('Settings — Section A: Page load', () => {
 
   test('Invoice settings section renders', async ({ page }) => {
     // Invoice settings fields (from-name, terms, etc.)
-    // Navigate to invoice settings tab/section if it's separate
-    const invTab = page.locator('#page-settings [data-tab="invoices"], #page-settings [data-settings-tab="invoices"]').first();
+    // Navigate to invoice settings tab
+    const invTab = page.locator('#page-settings [data-stab="invoicing"]').first();
     if (await invTab.count() > 0) {
       await invTab.click();
       await page.waitForTimeout(300);
@@ -58,12 +58,18 @@ test.describe('Settings — Section A: Page load', () => {
   });
 
   test('API settings section renders with anthropic key field', async ({ page }) => {
+    // Click the Integrations tab to reveal API settings
+    const intTab = page.locator('#page-settings [data-stab="integrations"]').first();
+    if (await intTab.count() > 0) {
+      await intTab.click();
+      await page.waitForTimeout(300);
+    }
+
     const apiKeyInput = page.locator('#set-anthropic-key');
     if (await apiKeyInput.count() > 0) {
       await expect(apiKeyInput).toBeVisible({ timeout: 5000 });
     }
 
-    // Page renders without crash regardless
     await expect(page.locator('#page-settings')).toBeVisible();
   });
 });
@@ -85,7 +91,7 @@ test.describe('Settings — Section B: Company settings save', () => {
     await companyInput.fill('Playwright Farm Co');
 
     // Fill payment terms
-    const termsInput = page.locator('#set-payment-terms');
+    const termsInput = page.locator('#set-default-terms');
     if (await termsInput.count() > 0) {
       await termsInput.fill('30');
     }
@@ -152,7 +158,7 @@ test.describe('Settings — Section C: Invoice settings', () => {
 
   test('Invoice settings save — updates invoice_settings in Firestore', async ({ page }) => {
     // Navigate to invoice settings section if it's on a separate tab
-    const invTab = page.locator('#page-settings [data-tab="invoices"], #page-settings [data-settings-tab="invoices"]').first();
+    const invTab = page.locator('#page-settings [data-stab="invoicing"]').first();
     if (await invTab.count() > 0) {
       await invTab.click();
       await page.waitForTimeout(300);
@@ -235,7 +241,7 @@ test.describe('Settings — Section D: API key', () => {
     const apiKeyInput = page.locator('#set-anthropic-key');
     if (await apiKeyInput.count() === 0) {
       // Might be on a different tab
-      const apiTab = page.locator('[data-tab="api"], [data-settings-tab="api"]').first();
+      const apiTab = page.locator('[data-stab="integrations"]').first();
       if (await apiTab.count() > 0) {
         await apiTab.click();
         await page.waitForTimeout(300);
