@@ -1349,8 +1349,8 @@ const dist_profiles = [
 ];
 
 const dist_reps = [
-  { id:'rep001', distributorId:'dist001', name:'Mark Bouchard', email:'mark@nenf.com', phone:'603-555-9011', territory:'NH/VT' },
-  { id:'rep002', distributorId:'dist002', name:'Donna Pierce',  email:'donna@nebev.com', phone:'617-555-9021', territory:'MA/ME' },
+  { id:'rep001', distId:'dist001', name:'Mark Bouchard', email:'mark@nenf.com', phone:'603-555-9011', territory:'NH/VT' },
+  { id:'rep002', distId:'dist002', name:'Donna Pierce',  email:'donna@nebev.com', phone:'617-555-9021', territory:'MA/ME' },
 ];
 
 // =============================================================

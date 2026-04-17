@@ -541,7 +541,7 @@ function renderDash() {
   const pipeline  = pr.filter(x=>!['won','lost'].includes(x.status)).length;
   const overdue   = ord.filter(o=>o.status==='pending'&&o.dueDate<today()).length;
   const lowStock  = SKUS.filter(s=>{
-    const oh = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
+    const oh = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0)
              - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
     return oh < 48;
   }).length;
@@ -572,7 +572,7 @@ function renderDash() {
 
   // Low inventory KPI
   const totalCans = SKUS.reduce((sum, sk) => {
-    const oh = inv.filter(i => i.sku === sk.id && i.type === 'in').reduce((t, i) => t + i.qty, 0)
+    const oh = inv.filter(i => i.sku === sk.id && (i.type === 'in' || i.type === 'return')).reduce((t, i) => t + i.qty, 0)
              - inv.filter(i => i.sku === sk.id && i.type === 'out').reduce((t, i) => t + i.qty, 0);
     return sum + Math.max(0, oh);
   }, 0);
@@ -876,9 +876,12 @@ function dashFilterFulfill(val) {
 function calcOrderValue(o) {
   const costs = DB.obj('costs', {cogs:{}});
   const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
+  // Determine account-level price per case from the correct pricing tier
+  const isDistFulfilled = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
+  const acPrice = parseFloat(isDistFulfilled ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
   return (o.items||[]).reduce((s,i)=>{
     // pricePerCase: account-specific or default (COGS × markup × cans per case)
-    const pricePerCase = ac2?.pricing?.[i.sku]
+    const pricePerCase = acPrice
       || (costs.cogs[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
     return s + pricePerCase * i.qty; // i.qty = cases
   }, 0);
@@ -908,7 +911,7 @@ function renderAttention() {
 
   SKUS.forEach(s=>{
     const inv = DB.a('iv');
-    const oh = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0)
+    const oh = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0)
              - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
     if (oh < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${oh} units on hand`, action:`nav('inventory')`, borderColor:'#d97706'});
   });
@@ -1892,7 +1895,7 @@ function renderProjectionsPage() {
 
   const inv = DB.a('iv');
   function stockFor(skuId) {
-    const ins  = inv.filter(i=>i.sku===skuId&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const ins  = inv.filter(i=>i.sku===skuId&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
     const outs = inv.filter(i=>i.sku===skuId&&i.type==='out').reduce((t,i)=>t+i.qty,0);
     return Math.max(0, ins-outs);
   }
@@ -6345,14 +6348,14 @@ function _invSummary() {
   const cards = qs('#inv-stock-cards');
   if (cards) {
     const totalPacks = SKUS.reduce((s,sk)=>{
-      const ins  = iv.filter(i=>i.sku===sk.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const ins  = iv.filter(i=>i.sku===sk.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
       const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
       return s + Math.max(0, ins-outs);
     },0);
     const totalLoose = SKUS.reduce((s,sk)=>s+loose.filter(l=>l.sku===sk.id).reduce((t,l)=>t+l.qty,0),0);
     const activePallets = pallets.filter(p=>p.status==='ready').length;
     const totalVal = SKUS.reduce((s,sk)=>{
-      const ins  = iv.filter(i=>i.sku===sk.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const ins  = iv.filter(i=>i.sku===sk.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
       const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
       return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15);
     },0);
@@ -6366,7 +6369,7 @@ function _invSummary() {
   const el = qs('#inv-table-body');
   if (!el) return;
   el.innerHTML = SKUS.map(s=>{
-    const ins      = iv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const ins      = iv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
     const outs     = iv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
     const packs    = Math.max(0, ins-outs);
     const looseCt  = loose.filter(l=>l.sku===s.id).reduce((t,l)=>t+l.qty,0);
@@ -6800,7 +6803,7 @@ function _renderLocationsTable() {
   const warehouseLoc = locs.find(l=>l.name==='Warehouse');
   if (warehouseLoc) {
     SKUS.forEach(s=>{
-      const ins  = iv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+      const ins  = iv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
       const outs = iv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
       stockAt[warehouseLoc.id][s.id] = Math.max(0, Math.floor((ins-outs)/CANS_PER_CASE));
     });
@@ -7654,8 +7657,10 @@ function createDeliveryInvoice(accountId, ordId) {
 
   // Build line items in CASES with pricing
   // pricePerCase = account-specific rate OR (COGS per can × 2.2 markup × CANS_PER_CASE)
+  const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
+  const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : ac.pricePerCaseDirect) || 0;
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = ac.pricing?.[i.sku] || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
+    const pricePerCase = acPrice || (costs.cogs?.[i.sku]||2.15) * 2.2 * CANS_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -8430,15 +8435,15 @@ function repInventory() {
   const costs = DB.obj('costs', {cogs:{}});
 
   const rows = SKUS.map(s=>{
-    const ins  = inv.filter(i=>i.sku===s.id&&i.type==='in').reduce((t,i)=>t+i.qty,0);
+    const ins  = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
     const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
     const oh   = Math.max(0, ins-outs);
     const val  = oh*(costs.cogs[s.id]||2.15);
     const status = oh<24?'Critical':oh<48?'Low':'OK';
     return [s.label, fmt(ins), fmt(outs), fmt(oh), fmtC(val), status];
   });
-  const totalOH = SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs); },0);
-  const totalVal= SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15); },0);
+  const totalOH = SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in'||x.type==='return').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs); },0);
+  const totalVal= SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in'||x.type==='return').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15); },0);
 
   _setKPIs(fmt(totalOH)+' units', fmtC(totalVal), rows.filter(r=>r[5]==='Low').length+' low', rows.filter(r=>r[5]==='Critical').length+' critical');
 

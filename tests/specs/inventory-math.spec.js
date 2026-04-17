@@ -27,7 +27,7 @@ test('CANS_PER_CASE constant equals 12', async ({ page }) => {
 });
 
 // ── Test 2: Finished Packs KPI matches in minus out from iv array ────────────
-test('Inventory Finished Packs KPI matches sum(in) - sum(out) from iv', async ({ page }) => {
+test('Inventory Finished Packs KPI matches sum(in+return) - sum(out) from iv', async ({ page }) => {
   await waitForApp(page);
   await gotoInventory(page);
 
@@ -36,7 +36,7 @@ test('Inventory Finished Packs KPI matches sum(in) - sum(out) from iv', async ({
     const SKUS_LIST = SKUS.map(s => s.id);
     let expected = 0;
     for (const sku of SKUS_LIST) {
-      const ins  = iv.filter(e => e.sku === sku && e.type === 'in').reduce((t, e) => t + e.qty, 0);
+      const ins  = iv.filter(e => e.sku === sku && (e.type === 'in' || e.type === 'return')).reduce((t, e) => t + e.qty, 0);
       const outs = iv.filter(e => e.sku === sku && e.type === 'out').reduce((t, e) => t + e.qty, 0);
       expected += Math.max(0, ins - outs);
     }
@@ -102,7 +102,7 @@ test('Order canCount equals items.qty sum × CANS_PER_CASE for all orders', asyn
 });
 
 // ── Test 5: Dashboard "Total Inventory" KPI matches computed total ───────────
-test('Dashboard Total Inventory KPI matches iv sum(in) - sum(out)', async ({ page }) => {
+test('Dashboard Total Inventory KPI matches iv sum(in+return) - sum(out)', async ({ page }) => {
   await waitForApp(page);
 
   const { expected, kpiText } = await page.evaluate(() => {
@@ -110,7 +110,7 @@ test('Dashboard Total Inventory KPI matches iv sum(in) - sum(out)', async ({ pag
     const SKUS_LIST = SKUS.map(s => s.id);
     let expected = 0;
     for (const sku of SKUS_LIST) {
-      const ins  = iv.filter(e => e.sku === sku && e.type === 'in').reduce((t, e) => t + e.qty, 0);
+      const ins  = iv.filter(e => e.sku === sku && (e.type === 'in' || e.type === 'return')).reduce((t, e) => t + e.qty, 0);
       const outs = iv.filter(e => e.sku === sku && e.type === 'out').reduce((t, e) => t + e.qty, 0);
       expected += Math.max(0, ins - outs);
     }
