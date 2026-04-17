@@ -2170,8 +2170,8 @@ function _acCardHTML(a, muted) {
     ${nfuHtml}
     ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
     ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${lastNote.nextAction}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
-    ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${lastOutreach.type} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
-    ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${locs[0].dropOffRules}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${a.dropOffRules}</div></div>`:''}
+    ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${escHtml(lastOutreach.type||'')} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+escHtml(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
+    ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(locs[0].dropOffRules)}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(a.dropOffRules)}</div></div>`:''}
     <div class="ac-card-actions">
       <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
       <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
@@ -7180,7 +7180,7 @@ function renderProduction() {
           <button class="btn xs red" onclick="delShipment('${s.id}')">✕</button>
         </div>
         <div style="margin-top:8px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]}`:'').filter(Boolean).join(' ')}</div>
-        ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${s.notes}</div>`:''}
+        ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${escHtml(s.notes)}</div>`:''}
       </div>`).join('') : '<div class="empty">No upcoming shipments scheduled</div>';
   }
 
@@ -7443,12 +7443,12 @@ function renderDelivery() {
           ${isDistFulfilled&&!s.done?`<div style="font-size:11px;color:#d97706;background:#fef3c7;padding:3px 8px;border-radius:4px;margin-bottom:4px">⚠ Fulfilled via ${distName||'distributor'} — confirm direct delivery is intentional</div>`:''}
           ${rules && !s.done ? `<div class="delivery-rules-box">
             <div class="delivery-rules-label">⚠ Delivery Instructions:</div>
-            <div class="delivery-rules-text">${rules}</div>
+            <div class="delivery-rules-text">${escHtml(rules)}</div>
           </div>` : ''}
-          <div style="font-size:12px;color:var(--muted)">${s.address||''}</div>
+          <div style="font-size:12px;color:var(--muted)">${escHtml(s.address||'')}</div>
           <div style="margin-top:6px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]} cs`:'').filter(Boolean).join(' ')}</div>
           ${(s.lfItems||[]).length?`<div style="margin-top:4px;font-size:12px;color:#15803d">🌿 ${(s.lfItems).map(it=>`${escHtml(it.skuName)} ×${it.cases} cs`).join(' · ')}</div>`:''}
-          ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${s.notes}</div>`:''}
+          ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${escHtml(s.notes)}</div>`:''}
         </div>
         <button class="btn xs red no-print" onclick="removeStop(${i})">✕</button>
       </div>

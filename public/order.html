@@ -1632,15 +1632,17 @@ function toggleOrderHistory() {
 
 // ── Outstanding invoices ──────────────────────────────────
 function loadOutstandingInvoices(acId) {
-  // Read from the CRM store doc to get unpaid invoices for this account
   db.collection('workspace').doc('main').collection('data').doc('store')
     .get()
     .then(function(doc) {
       if (!doc.exists) return;
       var data = doc.data();
-      var invoices = (data.iv || []).filter(function(i) {
-        return i.accountId === acId && i.status !== 'paid';
-      });
+      // Check ALL invoice collections — iv (legacy), retail_invoices, lf_invoices, combined_invoices
+      var invoices = []
+        .concat((data.iv || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid' && (i.number || i.invoiceNumber); }))
+        .concat((data.retail_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }))
+        .concat((data.lf_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }))
+        .concat((data.combined_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }));
       var settings = data.invoice_settings || {};
       renderOutstandingInvoices(invoices, settings);
     })
@@ -1660,20 +1662,21 @@ function renderOutstandingInvoices(invoices, settings) {
     var status = inv.status || 'unpaid';
     var isOver = due && due < today;
     var color  = isOver ? '#dc2626' : '#d97706';
+    var safeLink = stripeLink && /^https?:\/\//.test(stripeLink) ? escHtml(stripeLink) : '';
     return '<div style="display:flex;justify-content:space-between;align-items:center;' +
       'padding:8px 0;border-bottom:1px solid #ede9fe;font-size:13px">' +
       '<div>' +
-      '<span style="font-weight:600">Invoice ' + num + '</span>' +
+      '<span style="font-weight:600">Invoice ' + escHtml(num) + '</span>' +
       (due ? '<div style="font-size:11px;color:#6b7280">Due ' + new Date(due+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:10px">' +
-      '<span style="font-size:11px;font-weight:600;color:'+color+';">' + status.toUpperCase() + '</span>' +
+      '<span style="font-size:11px;font-weight:600;color:'+color+';">' + escHtml(status.toUpperCase()) + '</span>' +
       '<span style="font-weight:700">$' + amt.toFixed(2) + '</span>' +
-      (stripeLink ? '<a href="'+stripeLink+'" target="_blank" style="background:#7B4FA0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500">Pay Now</a>' : '') +
+      (safeLink ? '<a href="'+safeLink+'" target="_blank" style="background:#7B4FA0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500">Pay Now</a>' : '') +
       '</div></div>';
   }).join('');
 
-  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || 0); }, 0);
+  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || 0); }, 0);
   el.innerHTML = '<div class="card" style="border-left:3px solid #7B4FA0;padding:16px 20px;margin-bottom:16px">' +
     '<div style="font-size:14px;font-weight:600;color:#4B2082;margin-bottom:12px">' +
     '💜 Outstanding Invoices' +
