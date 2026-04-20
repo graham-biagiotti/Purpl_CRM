@@ -116,7 +116,7 @@ function nav(page) {
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
-    'pre-orders':'Forms & Submissions', invoices:'Invoices', emails:'Emails'
+    'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) {
@@ -377,6 +377,11 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>Payment terms: Net 30. Invoices from lavender@pbfwholesale.com.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0">
+          <tr><td align="center" style="padding:16px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <a href="https://purpl-crm.web.app/images/wholesale-catalog.pdf" style="color:${accentColor};font-size:13px;font-weight:500;text-decoration:none">📄 View Wholesale Catalog (PDF)</a>
+          </td></tr>
+        </table>
         <p>Warmly,</p>`)
     },
     'rejected': {
@@ -13592,6 +13597,33 @@ async function approveApplication(docId, app) {
 
   DB.push('ac', rec);
   auditLog('create', 'account', acId, rec.name);
+
+  // Write token to external accounts collection so lookupPortalToken Cloud Function can find it
+  try {
+    await firebase.firestore().collection('accounts').doc(acId).set({
+      orderPortalToken: token,
+      name: rec.name,
+      email: rec.email,
+      isPbf: rec.isPbf,
+      orderPortalTokenCreatedAt: today(),
+    }, { merge: true });
+  } catch(e) { console.error('Token write to accounts collection failed', e); }
+
+  // Preserve application context as first note on the new account
+  const contextParts = [
+    app.message ? 'Message: ' + app.message : '',
+    app.howHeard ? 'How they heard: ' + app.howHeard : '',
+    app.monthlyVolume ? 'Monthly volume: ' + app.monthlyVolume : '',
+    app.storeDescription ? 'Store: ' + app.storeDescription : '',
+    app.distributorName ? 'Distributor: ' + app.distributorName : '',
+    'Brands interested: ' + (app.brandsInterested || []).join(', '),
+  ].filter(Boolean).join('\n');
+  if (contextParts) {
+    DB.update('ac', acId, a => ({
+      ...a,
+      notes: [{ id: uid(), date: today(), text: 'Wholesale application:\n' + contextParts, author: 'system' }],
+    }));
+  }
 
   // Send approved cadence email and log to cadence
   if (app.email) {
