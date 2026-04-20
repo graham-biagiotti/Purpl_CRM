@@ -2790,31 +2790,55 @@ const CADENCE_STAGES = [
   },
   {
     id: 'approved_welcome',
-    label: 'Approved — Welcome + Login',
-    desc: 'Welcome + portal access',
+    label: 'Approved — Welcome + Portal',
+    desc: 'Welcome + portal access + password',
     from: 'lavender@pbfwholesale.com',
-    subject: () => 'Welcome to the purpl wholesale program — your retailer portal is ready',
+    subject: () => 'Welcome to the wholesale program — your retailer portal is ready',
     body: (a) => {
       const token = a.orderPortalToken || '';
-      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '[portal link not yet generated — use the Emails page to generate before sending]';
-      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYou can access your retailer order portal here:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms are Net 30. Invoices will be sent from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
+      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '[portal link not yet generated — use Copy Link on the account first]';
+      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYour retailer order portal:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms: Net 30. Invoices from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
     }
   },
   {
     id: 'rejected_decline',
     label: 'Rejected — Polite Decline',
-    desc: 'Polite decline',
+    desc: 'Polite decline of application',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Re: Your wholesale application — Pumpkin Blossom Farm',
     body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${SIGNATURE}`
   },
   {
+    id: 'order_confirmation',
+    label: 'Order Confirmation',
+    desc: 'Confirm order received, delivery coming',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Order received — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe received your order for ${a.name} and we're on it. You'll hear from us with delivery details shortly.\n\nQuestions? Reply to this email or call 603-748-3038.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
     id: 'invoice_sent',
-    label: 'Invoice Sent Notification',
+    label: 'Invoice Sent',
     desc: 'Invoice notification to retailer',
     from: 'lavender@pbfwholesale.com',
-    subject: (inv) => `Invoice ${inv?.number||''} from Pumpkin Blossom Farm`,
-    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||''} for ${fmtC(inv?.amount||inv?.total||0)} attached. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+    subject: (inv) => `Invoice ${inv?.number||inv?.invoiceNumber||''} from Pumpkin Blossom Farm`,
+    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||inv?.invoiceNumber||''} for ${fmtC(inv?.amount||inv?.total||0)}. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'invoice_reminder',
+    label: 'Invoice Reminder',
+    desc: 'Payment due soon or overdue',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Friendly reminder — invoice from Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust a friendly reminder that you have an outstanding invoice from Pumpkin Blossom Farm. We'd appreciate payment at your earliest convenience.\n\nIf you've already sent payment, please disregard this message.\n\nQuestions about your invoice? Reply to this email or call 603-748-3038.\n\nThank you,\n${SIGNATURE}`
+  },
+  {
+    id: 'payment_overdue',
+    label: 'Payment Overdue',
+    desc: 'Past-due invoice follow-up',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Payment overdue — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe're reaching out regarding an overdue invoice for ${a.name}. Our records show payment is past the Net 30 terms.\n\nPlease arrange payment at your earliest convenience, or let us know if there's an issue we can help with.\n\nThank you for your attention to this.\n\n${SIGNATURE}`
   },
   {
     id: 'first_order_followup',
@@ -2822,8 +2846,52 @@ const CADENCE_STAGES = [
     desc: 'Thank you for your first order',
     from: 'lavender@pbfwholesale.com',
     subject: () => "Thanks for your order — we're on it",
-    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with purpl on your shelves.\n\nWarmly,\n${SIGNATURE}`
-  }
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with our products on your shelves.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'reorder_reminder',
+    label: 'Reorder Reminder',
+    desc: 'Time to restock?',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Time to restock? — Pumpkin Blossom Farm',
+    body: (a) => {
+      const token = a.orderPortalToken || '';
+      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '';
+      return `Hi ${a.contact||a.name},\n\nHope things are going well at ${a.name}! It's been a little while since your last order and we wanted to check in.\n\nRunning low on anything? ${portalLink ? `You can reorder anytime through your portal:\n${portalLink}\n\n` : '\n'}Let us know if there's anything we can do — happy to help.\n\nWarmly,\n${SIGNATURE}`;
+    }
+  },
+  {
+    id: 'delivery_followup',
+    label: 'Post-Delivery Check-In',
+    desc: 'How did the delivery go?',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Quick check-in — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to check in after your recent delivery. Everything look good? Products shelved and selling well?\n\nIf you need anything — signage, marketing materials, or just want to chat about what's selling — don't hesitate to reach out.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'new_product',
+    label: 'New Product Announcement',
+    desc: 'Announce a new product or flavor',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Something new from Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe're excited to share something new with you!\n\n[PRODUCT NAME / DESCRIPTION]\n\nWe think this would be a great fit for ${a.name}. Want to add it to your next order?\n\nLet us know if you'd like samples or more information.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'thank_you',
+    label: 'General Thank You',
+    desc: 'Thank a retailer for their support',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => 'Thank you — Pumpkin Blossom Farm',
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to take a moment to say thank you for your partnership with Pumpkin Blossom Farm. We really appreciate ${a.name}'s support.\n\nLooking forward to continued growth together.\n\nWarmly,\n${SIGNATURE}`
+  },
+  {
+    id: 'custom',
+    label: 'Custom Email',
+    desc: 'Write your own message',
+    from: 'lavender@pbfwholesale.com',
+    subject: () => '',
+    body: () => ''
+  },
 ];
 
 async function _callAnthropicApi(userPrompt) {
