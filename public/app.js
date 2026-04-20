@@ -556,10 +556,11 @@ function renderDash() {
   loadScratchpad();
   const purplAcCount = allAc.filter(a => !a.isPbf).length;
   const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
-  const purplOutstanding = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid').reduce((s,x) => s + parseFloat(x.amount||0), 0);
+  const allPurplInv = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
+  const purplOutstanding = allPurplInv.filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
   const lfOutstanding    = DB.a('lf_invoices').filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
-  const purplOverdueCount    = DB.a('iv').filter(x => (x.accountId || x.number) && x.status !== 'paid' && x.due && x.due < today()).length;
+  const purplOverdueCount    = allPurplInv.filter(x => x.status !== 'paid' && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
   const lfOverdueCount       = DB.a('lf_invoices').filter(i => i.status !== 'paid' && i.due && i.due < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
@@ -1285,14 +1286,16 @@ function renderInvoiceStatus() {
 function renderInvoiceReminders() {
   const queue = [];
 
-  DB.a('iv').forEach(inv => {
-    if (inv.status === 'paid' || !inv.due || !inv.accountId || !inv.number) return;
+  // Check both retail_invoices and legacy iv for purpl invoices
+  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)].forEach(inv => {
+    if (inv.status === 'paid' || !(inv.dueDate||inv.due) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
-    const days = daysAgo(inv.due);
+    const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !ac.email) return;
-    queue.push({ inv, ac, collection: 'iv', isOverdue: days > 0, amount: inv.amount });
+    const coll = DB.a('retail_invoices').find(x => x.id === inv.id) ? 'retail_invoices' : 'iv';
+    queue.push({ inv, ac, collection: coll, isOverdue: days > 0, amount: inv.total||inv.amount });
   });
 
   DB.a('lf_invoices').forEach(inv => {
@@ -1457,7 +1460,7 @@ function openAddInv(accountId=null, priceType='direct', cases=null, notesText=''
 
 function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNotes='') {
   const isNew = !id;
-  const inv   = id ? DB.a('iv').find(x => x.id === id) : null;
+  const inv   = id ? (DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id)) : null;
 
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
@@ -7981,7 +7984,7 @@ function renderGoingColdReport() {
 
   const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
   const accounts = DB.a('ac').filter(a => a.status === 'active');
-  const invoices = DB.a('iv');
+  const allPurplInv = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
 
   const rows = [];
   accounts.forEach(ac => {
@@ -7993,7 +7996,7 @@ function renderGoingColdReport() {
     if (daysSince < 45) return;
 
     const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
-    const outstanding = invoices.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const outstanding = allPurplInv.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total || i.amount || 0), 0);
     rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding, tier });
   });
 
@@ -13335,14 +13338,17 @@ function saveInv(id, isNew) {
   const rec = {
     ...(existing||{}),
     id:           saveId,
-    number:       number || existing?.number || ('INV-' + String(DB.a('iv').filter(x=>x.number).length+1).padStart(3,'0')),
+    invoiceNumber: number || existing?.invoiceNumber || existing?.number || ('INV-' + String(DB.a('retail_invoices').length+1).padStart(3,'0')),
+    number:       number || existing?.invoiceNumber || existing?.number || null,
     accountId,
     accountName:  ac.name || '',
     date,
+    dueDate:      due,
     due,
     cases:        totalCases,
     cans:         totalCans,
     pricePerCase: lineItems[0]?.pricePerCase || null,
+    total:        totalAmt,
     amount:       totalAmt,
     priceType:    tier,
     status,
@@ -13354,8 +13360,13 @@ function saveInv(id, isNew) {
     fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };
 
-  if (_isNew) DB.push('iv', rec);
-  else DB.update('iv', id, () => rec);
+  if (_isNew) DB.push('retail_invoices', rec);
+  else {
+    // Try retail_invoices first, fall back to iv for legacy records
+    const inRetail = DB.a('retail_invoices').find(x => x.id === id);
+    if (inRetail) DB.update('retail_invoices', id, () => rec);
+    else DB.update('iv', id, () => rec);
+  }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
 
   closeModal('modal-add-inv');
@@ -13366,8 +13377,11 @@ function saveInv(id, isNew) {
 
 function deleteInvRecord(id) {
   if (!confirm2('Delete this invoice?')) return;
-  const invNum = DB.a('iv').find(x=>x.id===id)?.number || id;
-  DB.remove('iv', id);
+  const fromRetail = DB.a('retail_invoices').find(x=>x.id===id);
+  const fromIv = DB.a('iv').find(x=>x.id===id);
+  const invNum = (fromRetail||fromIv)?.invoiceNumber || (fromRetail||fromIv)?.number || id;
+  if (fromRetail) DB.remove('retail_invoices', id);
+  else DB.remove('iv', id);
   auditLog('delete', 'invoice', id, invNum);
   closeModal('modal-add-inv');
   if (currentPage === 'invoices') renderInvoicesPage();
