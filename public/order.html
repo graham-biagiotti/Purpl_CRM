@@ -1097,24 +1097,6 @@ function submitOrder() {
       var purplRef = results[0];
       var lfRef    = results[1];
 
-      // Notify CRM of combined invoice needed when isPbf account orders both brands
-      if (isPbf && isMatched && accountId && purplRef && lfRef) {
-        var notif = {
-          id: (Date.now().toString(36) + Math.random().toString(36).slice(2)),
-          type: 'combined_needed',
-          accountId: accountId,
-          accountName: finalAccountName,
-          portalOrderId: purplRef.id,
-          lfPortalOrderId: lfRef.id,
-          submittedAt: new Date().toISOString(),
-          status: 'pending',
-          brands: ['purpl', 'lf']
-        };
-        firebase.firestore().doc('workspace/main/data/store').update({
-          pending_invoices: firebase.firestore.FieldValue.arrayUnion(notif)
-        }).catch(function(e) { console.error('pending_invoices write error:', e); });
-      }
-
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
         var lfLastOrder = {};
@@ -1242,9 +1224,9 @@ function renderPastOrders(orders) {
     reviewed:'#dbeafe',declined:'#fee2e2'
   };
   list.innerHTML = orders.map(function(o) {
-    var cases = (o.items||[])[0] ?
-      (o.items[0].cases||0) : 0;
+    var cases = (o.items||[]).reduce(function(s,i){return s+(i.cases||0);},0);
     var cans = cases * CANS_PER_CASE;
+    var lfItems = o.lineItems || [];
     var status = o.status || 'new';
     var dt = o.submittedAt && o.submittedAt.toDate ?
       o.submittedAt.toDate().toLocaleDateString(
@@ -1252,6 +1234,13 @@ function renderPastOrders(orders) {
         year:'numeric'}) : 'Unknown date';
     var color = statusColor[status] || '#374151';
     var bg = statusBg[status] || '#f3f4f6';
+    var details = '';
+    if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
+    if (lfItems.length) {
+      if (details) details += ' · ';
+      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+    }
+    if (o.deliveryWindow) details += ' · ' + escHtml(o.deliveryWindow);
     return '<div style="display:flex;' +
       'justify-content:space-between;' +
       'align-items:center;padding:12px 0;' +
@@ -1261,10 +1250,7 @@ function renderPastOrders(orders) {
         dt + '</div>' +
       '<div style="font-size:12px;color:#6b7280;' +
         'margin-top:2px">' +
-        cases + ' case' + (cases!==1?'s':'') +
-        ' · ' + cans + ' cans' +
-        (o.poNumber?' · PO: '+escHtml(o.poNumber):'') +
-        (o.deliveryWindow?' · '+escHtml(o.deliveryWindow):'') +
+        (details || 'Order') +
       '</div></div>' +
       '<div style="display:flex;gap:8px;' +
         'align-items:center;flex-shrink:0">' +
@@ -1591,20 +1577,24 @@ function renderOrderHistory(orders) {
   var html = '<div style="margin-bottom:24px">';
   html += '<h3 style="font-size:14px;font-weight:600;color:#7B4FA0;margin-bottom:12px">Your Previous Orders</h3>';
   orders.forEach(function(o) {
-    var cases = (o.items||[])[0]?.cases || 0;
+    var cases = (o.items||[]).reduce(function(s,i){return s+(i.cases||0);},0);
+    var lfItems = o.lineItems || [];
     var dt = o.submittedAt?.toDate ?
       o.submittedAt.toDate().toLocaleDateString() : 'Unknown date';
     var status = o.status || 'new';
     var statusColor = status === 'confirmed' ? '#22c55e' :
       status === 'declined' ? '#ef4444' : '#f59e0b';
+    var details = '';
+    if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
+    if (lfItems.length > 0) {
+      if (details) details += ' · ';
+      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+    }
     html += '<div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + '">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center">';
     html += '<div>';
     html += '<div style="font-size:13px;font-weight:600">' + dt + '</div>';
-    html += '<div style="font-size:12px;color:#6b7280">' + cases + ' cases · ' + (cases * CANS_PER_CASE) + ' cans</div>';
-    if (o.poNumber) {
-      html += '<div style="font-size:11px;color:#9ca3af">PO: ' + escHtml(o.poNumber) + '</div>';
-    }
+    html += '<div style="font-size:12px;color:#6b7280">' + (details || 'Order') + '</div>';
     html += '</div>';
     html += '<span style="font-size:11px;font-weight:600;color:' + statusColor + '">' + status.toUpperCase() + '</span>';
     html += '</div>';

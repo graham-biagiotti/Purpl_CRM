@@ -10364,8 +10364,11 @@ function markCombinedPaid(combinedId) {
 function getNextInvoiceNumber(type) {
   const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
   const collection = { purpl: 'retail_invoices', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
-  const nums = DB.a(collection).map(x => {
-    const n = parseInt((x.number||'').replace(/[^0-9]/g,''));
+  const items = type === 'purpl'
+    ? [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)]
+    : DB.a(collection);
+  const nums = items.map(x => {
+    const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
   });
   const next = nums.length ? Math.max(...nums) + 1 : 1;
@@ -11038,7 +11041,8 @@ function renderMacInvoicesTab(accountId) {
   const el      = qs('#mac-invoices-content');
   if (!el || !a) return;
 
-  const purplInvs = DB.a('iv').filter(x => x.accountId === accountId);
+  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
+  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !retailIds.has(x.id))].filter(x => x.accountId === accountId);
   const lfInvs    = DB.a('lf_invoices').filter(x => x.accountId === accountId);
   const combined  = DB.a('combined_invoices').filter(x => x.accountId === accountId);
 
@@ -11838,10 +11842,14 @@ function _renderPoKpis() {
   const total   = orders.length;
   const matched = orders.filter(o => o.isMatched).length;
   const unmatched = orders.filter(o => !o.isMatched).length;
-  const totalCases = orders.reduce((s,o) => {
+  const purplCasesTotal = orders.reduce((s,o) => {
     return s + (o.items||[]).reduce((ss,i) => ss + (i.cases||0), 0);
   }, 0);
-  const totalCans = totalCases * CANS_PER_CASE;
+  const lfCasesTotal = orders.reduce((s,o) => {
+    return s + (o.lineItems||[]).reduce((ss,i) => ss + (i.cases||0), 0);
+  }, 0);
+  const totalCases = purplCasesTotal + lfCasesTotal;
+  const totalCans = purplCasesTotal * CANS_PER_CASE;
   const multiFlag = orders.filter(o => o.hasMultipleSubmissions).length;
 
   const kpiHtml = (label, val, sub, cls) => `<div class="kpi-card kpi-${cls||'gray'}">
@@ -11938,8 +11946,10 @@ function _renderPoAll() {
     </tr></thead>
     <tbody>${grouped.map(g => {
       const o = g.purpl || g.lf;
-      const cases = g.purpl ? (g.purpl.items||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
-      const cans  = cases * CANS_PER_CASE;
+      const purplCases = g.purpl ? (g.purpl.items||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
+      const lfCases = g.lf ? (g.lf.lineItems||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
+      const cases = purplCases + lfCases;
+      const cans  = purplCases * CANS_PER_CASE;
       const brandBadges = [
         g.purpl ? '<span class="badge purple" style="font-size:10px">💜 purpl</span>' : '',
         g.lf ? '<span class="badge green" style="font-size:10px">🌿 LF</span>' : '',
@@ -12544,7 +12554,28 @@ async function confirmPortalOrder() {
     const purplOrderId = hasPurpl ? uid() : null;
     const lfOrderId = hasLf ? uid() : null;
 
+    // Pre-compute invoice numbers BEFORE mutating cache
+    let purplNum, lfNum, combNum, purplInvId, lfInvId, combId;
+    let singleInvNum, singleInvId;
+    if (isDual) {
+      purplNum = getNextInvoiceNumber('purpl');
+      lfNum    = getNextInvoiceNumber('lf');
+      combNum  = getNextInvoiceNumber('combined');
+      purplInvId = uid();
+      lfInvId    = uid();
+      combId     = uid();
+    } else if (hasPurpl) {
+      singleInvNum = getNextInvoiceNumber('purpl');
+      singleInvId = uid();
+    } else if (hasLf) {
+      singleInvNum = getNextInvoiceNumber('lf');
+      singleInvId = uid();
+    }
+
+    // Single atomicUpdate for all writes — orders + invoices together
+    DB.markDirty();
     DB.atomicUpdate(cache => {
+      // Orders
       if (hasPurpl) {
         cache['orders'] = [...(cache['orders'] || []), {
           id: purplOrderId, accountId: d.accountId, accountName: d.accountName,
@@ -12569,87 +12600,73 @@ async function confirmPortalOrder() {
           a.id === d.accountId ? { ...a, lastOrder: todayStr } : a
         );
       }
+
+      // Invoices — combined if dual-brand, single otherwise
+      if (isDual) {
+        cache.retail_invoices = [...(cache.retail_invoices||[]), {
+          id: purplInvId, number: purplNum, invoiceNumber: purplNum,
+          accountId: d.accountId, accountName: d.accountName,
+          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          total: purplTotal, amount: purplTotal, status: 'draft',
+          lineItems: purplItems.map(i => ({
+            skuId: i.sku, sku: i.label, description: i.label,
+            qty: i.qty, cases: i.qty, units: i.qty * CANS_PER_CASE,
+            unitPrice: effectivePrice, pricePerCase: effectivePrice,
+            total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
+          })),
+          billingEmail: d.billingEmail || acct.email || '',
+          notes: 'Auto-drafted from portal order.',
+          combinedInvoiceId: combId, source: 'portal',
+          linkedPortalOrderId: purplDoc.id || _portalOrderId,
+        }];
+        cache.lf_invoices = [...(cache.lf_invoices||[]), {
+          id: lfInvId, number: lfNum, invoiceNumber: lfNum,
+          accountId: d.accountId, accountName: d.accountName,
+          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          total: lfTotal, amount: lfTotal, status: 'draft',
+          lineItems: lfItems,
+          billingEmail: d.billingEmail || acct.email || '',
+          notes: 'Auto-drafted from portal order.',
+          combinedInvoiceId: combId, source: 'portal',
+          linkedPortalOrderId: lfDoc.id || _portalOrderId,
+        }];
+        cache.combined_invoices = [...(cache.combined_invoices||[]), {
+          id: combId, number: combNum, invoiceNumber: combNum,
+          purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
+          accountId: d.accountId, accountName: d.accountName, status: 'draft',
+          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
+          purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
+          notes: 'Auto-drafted from portal order.', source: 'portal',
+          portalOrderId: _portalOrderId,
+        }];
+      } else if (hasPurpl) {
+        cache.retail_invoices = [...(cache.retail_invoices||[]), {
+          id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
+          accountId: d.accountId, accountName: d.accountName,
+          orderId: purplOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          cases: purplCases, cans: purplCans,
+          pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
+          priceType: isDistFulfilled ? 'dist' : 'direct',
+          status: 'draft', source: 'portal', brand: 'purpl',
+          billingEmail: d.billingEmail || acct.email || '',
+          notes: 'Auto-drafted from portal order.',
+          linkedPortalOrderId: _portalOrderId,
+        }];
+      } else if (hasLf) {
+        cache.lf_invoices = [...(cache.lf_invoices||[]), {
+          id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
+          accountId: d.accountId, accountName: d.accountName,
+          orderId: lfOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal',
+          lineItems: lfItems,
+          billingEmail: d.billingEmail || acct.email || '',
+          notes: 'Auto-drafted from portal order.',
+          linkedPortalOrderId: lfDoc.id || _portalOrderId,
+        }];
+      }
     });
-
-    // Create invoices — combined if dual-brand, single otherwise
-    if (isDual) {
-      const purplNum = getNextInvoiceNumber('purpl');
-      const lfNum    = getNextInvoiceNumber('lf');
-      const combNum  = getNextInvoiceNumber('combined');
-      const purplInvId = uid();
-      const lfInvId    = uid();
-      const combId     = uid();
-
-      const purplInv = {
-        id: purplInvId, number: purplNum, invoiceNumber: purplNum,
-        accountId: d.accountId, accountName: d.accountName,
-        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
-        total: purplTotal, amount: purplTotal, status: 'draft',
-        lineItems: purplItems.map(i => ({
-          skuId: i.sku, sku: i.label, description: i.label,
-          qty: i.qty, cases: i.qty, units: i.qty * CANS_PER_CASE,
-          unitPrice: effectivePrice, pricePerCase: effectivePrice,
-          total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
-        })),
-        billingEmail: d.billingEmail || acct.email || '',
-        notes: 'Auto-drafted from portal order.',
-        combinedInvoiceId: combId, source: 'portal',
-        linkedPortalOrderId: purplDoc.id || _portalOrderId,
-      };
-      const lfInv = {
-        id: lfInvId, number: lfNum, invoiceNumber: lfNum,
-        accountId: d.accountId, accountName: d.accountName,
-        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
-        total: lfTotal, status: 'draft',
-        lineItems: lfItems,
-        billingEmail: d.billingEmail || acct.email || '',
-        notes: 'Auto-drafted from portal order.',
-        combinedInvoiceId: combId, source: 'portal',
-        linkedPortalOrderId: lfDoc.id || _portalOrderId,
-      };
-      const combInv = {
-        id: combId, number: combNum, invoiceNumber: combNum,
-        purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
-        accountId: d.accountId, accountName: d.accountName, status: 'draft',
-        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
-        createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
-        purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
-        notes: 'Auto-drafted from portal order.', source: 'portal',
-        portalOrderId: _portalOrderId,
-      };
-
-      DB.atomicUpdate(cache => {
-        cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
-        cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
-        cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
-      });
-    } else if (hasPurpl) {
-      const invNum = getNextInvoiceNumber('purpl');
-      DB.push('retail_invoices', {
-        id: uid(), number: invNum, invoiceNumber: invNum,
-        accountId: d.accountId, accountName: d.accountName,
-        orderId: purplOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
-        cases: purplCases, cans: purplCans,
-        pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
-        priceType: isDistFulfilled ? 'dist' : 'direct',
-        status: 'draft', source: 'portal', brand: 'purpl',
-        billingEmail: d.billingEmail || acct.email || '',
-        notes: 'Auto-drafted from portal order.',
-        linkedPortalOrderId: _portalOrderId,
-      });
-    } else if (hasLf) {
-      const invNum = getNextInvoiceNumber('lf');
-      DB.push('lf_invoices', {
-        id: uid(), number: invNum, invoiceNumber: invNum,
-        accountId: d.accountId, accountName: d.accountName,
-        orderId: lfOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
-        total: lfTotal, status: 'draft', source: 'portal',
-        lineItems: lfItems,
-        billingEmail: d.billingEmail || acct.email || '',
-        notes: 'Auto-drafted from portal order.',
-        linkedPortalOrderId: lfDoc.id || _portalOrderId,
-      });
-    }
+    DB.markClean();
 
     // Update portal_orders status for both orders
     await portalRef.update({
@@ -12852,7 +12869,9 @@ const esc       = (s) => escHtml(String(s||''));
 
 // markPaid alias (iv collection invoice records)
 function markPaid(id) {
-  DB.update('iv', id, x => ({...x, status:'paid', paidDate:today()}));
+  const inRetail = DB.a('retail_invoices').find(x => x.id === id);
+  if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today()}));
+  else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today()}));
   renderInvoicesPage();
   toast('Marked as paid ✓');
 }
@@ -13282,14 +13301,29 @@ function _sendDistInvoiceReminder(invId) {
 }
 
 function markInvoiceSent(id) {
-  DB.update('iv', id, x => ({...x, status:'sent', sentAt: today()}));
+  const inRetail = DB.a('retail_invoices').find(x => x.id === id);
+  const inv = inRetail || DB.a('iv').find(x => x.id === id);
+  const col = inRetail ? 'retail_invoices' : 'iv';
+  DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
+  if (inv && inv.status === 'draft') {
+    const invNum = inv.number || inv.invoiceNumber || '';
+    const lines = inv.lineItems || inv.items || [];
+    lines.forEach(li => {
+      const cases = li.cases || li.qty || 0;
+      if (cases > 0) {
+        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, note: 'Invoice ' + invNum, invoiceId: id });
+      }
+    });
+  }
   renderInvoicesPage();
   toast('Marked as sent ✓');
 }
 
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice?')) return;
-  DB.remove('iv', id);
+  const inRetail = DB.a('retail_invoices').find(x => x.id === id);
+  if (inRetail) DB.remove('retail_invoices', id);
+  else DB.remove('iv', id);
   renderInvoicesPage();
   toast('Deleted');
 }
