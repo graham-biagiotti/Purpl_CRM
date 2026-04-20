@@ -11871,7 +11871,7 @@ function _renderPoTabs() {
 }
 
 function _switchPoTab(tab) {
-  ['all','unmatched','confirmed','notify','links','lf'].forEach(id => {
+  ['all','unmatched','confirmed','notify','links'].forEach(id => {
     const el = qs(`#po-pane-${id}`);
     if (el) el.style.display = id === tab ? '' : 'none';
   });
@@ -11880,7 +11880,6 @@ function _switchPoTab(tab) {
   if (tab === 'confirmed') _renderPoConfirmed();
   if (tab === 'notify')    _renderPoNotify();
   if (tab === 'links')     _renderPoLinks();
-  if (tab === 'lf')        _renderPoLf();
 }
 
 const PO_STATUS_LABELS = {
@@ -12235,24 +12234,61 @@ async function reviewPortalOrder(id) {
     await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
   }
 
-  const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-  const cans  = cases * CANS_PER_CASE;
-  const notifySkus = (o.notifyMe||[]).map(n => n.sku).join(', ');
+  // Find paired LF/purpl order from same submission
+  const oTime = o.submittedAt ? (typeof o.submittedAt.getTime === 'function' ? o.submittedAt.getTime() : new Date(o.submittedAt).getTime()) : 0;
+  const paired = PortalDB.getOrders().find(p =>
+    p.id !== o.id && p.accountId === o.accountId && p.brand !== o.brand &&
+    Math.abs((p.submittedAt ? (typeof p.submittedAt.getTime === 'function' ? p.submittedAt.getTime() : new Date(p.submittedAt).getTime()) : 0) - oTime) < 60000
+  );
+  const purplOrd = o.brand === 'lf' ? paired : o;
+  const lfOrd = o.brand === 'lf' ? o : paired;
+
+  const cases = purplOrd ? (purplOrd.items||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
+  const cans = cases * CANS_PER_CASE;
+  const notifySkus = (o.notifyMe||[]).join(', ');
+
+  // Build LF line items display
+  let lfHtml = '';
+  if (lfOrd) {
+    const lfItems = lfOrd.lineItems || [];
+    if (lfItems.length) {
+      lfHtml = `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:#4a7c59;margin-bottom:8px">🌿 Lavender Fields Items</div>
+        ${lfItems.map(li => {
+          if (li.hasVariants && li.variantLines) {
+            return `<div style="margin-bottom:6px"><strong>${escHtml(li.skuName||'')}</strong>
+              ${li.variantLines.map(vl => `<div style="font-size:12px;color:var(--muted);padding-left:12px">— ${escHtml(vl.variantName||'')}${vl.units ? ': '+vl.units+' units' : ''}</div>`).join('')}
+              <div style="font-size:12px;font-weight:600;color:#4a7c59;padding-left:12px">$${(li.lineTotal||0).toFixed(2)}</div>
+            </div>`;
+          }
+          return `<div style="margin-bottom:4px"><strong>${escHtml(li.skuName||'')}</strong> — ${li.cases||0} cases · $${(li.lineTotal||0).toFixed(2)}</div>`;
+        }).join('')}
+        <div style="font-weight:700;color:#4a7c59;margin-top:6px">LF Total: $${(lfOrd.total||lfItems.reduce((s,l)=>s+(l.lineTotal||0),0)).toFixed(2)}</div>
+      </div>`;
+    }
+  }
 
   qs('#mpr-body').innerHTML = `
     <div class="card-grid grid-2" style="gap:12px;margin-bottom:12px">
       <div><div style="font-size:11px;color:var(--muted)">Business</div><div style="font-weight:600">${escHtml(o.accountName||'—')}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Billing Email</div><div>${escHtml(o.billingEmail||'—')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Billing Email</div><div>${escHtml(o.billingEmail||o.contactEmail||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted)">Submitted</div><div style="font-size:13px">${_fmtPoDate(o.submittedAt)}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Mode</div><div>${o.mode==='liveorder'?'<span class="badge green">Live Order</span>':'<span class="badge amber">Pre-Order</span>'}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Classic Lavender Lemonade</div><div style="font-weight:600">${cases} case${cases!==1?'s':''} <span style="color:var(--muted);font-size:12px">(${cans} cans)</span></div></div>
-      <div><div style="font-size:11px;color:var(--muted)">PO Number</div><div>${escHtml(o.poNumber||'—')}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Delivery Window</div><div>${escHtml(o.deliveryWindow||'—')}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Notes</div><div style="font-size:13px">${escHtml(o.notes||'—')}</div></div>
-      ${notifySkus?`<div><div style="font-size:11px;color:var(--muted)">Notify Me</div><div style="font-size:13px">${escHtml(notifySkus)}</div></div>`:''}
-      <div><div style="font-size:11px;color:var(--muted)">Status</div><div>${_poStatusBadge(o.status||'new')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Brands</div><div>${purplOrd ? '<span class="badge purple" style="font-size:10px">💜 purpl</span> ' : ''}${lfOrd ? '<span class="badge green" style="font-size:10px">🌿 LF</span>' : ''}</div></div>
     </div>
-    ${o.hasMultipleSubmissions ? `<div style="background:#fef3c7;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:8px">⚠ This account/email has multiple submissions.</div>` : ''}
+    ${purplOrd && cases > 0 ? `<div style="padding:10px 0;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:700;color:#8B5FBF;margin-bottom:6px">💜 purpl Lemonade</div>
+      <div style="font-weight:600">${cases} case${cases!==1?'s':''} <span style="color:var(--muted);font-size:12px">(${cans} cans)</span></div>
+    </div>` : ''}
+    ${lfHtml}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="card-grid grid-2" style="gap:10px">
+        <div><div style="font-size:11px;color:var(--muted)">PO Number</div><div>${escHtml(o.poNumber||(paired?.poNumber)||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Delivery Window</div><div>${escHtml(o.deliveryWindow||(paired?.deliveryWindow)||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Notes</div><div style="font-size:13px">${escHtml(o.notes||(paired?.notes)||'—')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Status</div><div>${_poStatusBadge(o.status||'new')}</div></div>
+        ${notifySkus?`<div><div style="font-size:11px;color:var(--muted)">Notify Me</div><div style="font-size:13px">${escHtml(notifySkus)}</div></div>`:''}
+      </div>
+    </div>
   `;
 
   // Show link-to-account for unmatched
