@@ -3067,7 +3067,7 @@ window.FirestoreAPI = {
   enableIndexedDbPersistence: (db)       => db.enablePersistence(),
   doc:                        (db,...p)  => db.doc(p.join('/')),
   getDoc:                     (ref)      => ref.get(),
-  setDoc:                     (ref, d)   => ref.set(d),
+  setDoc:                     (ref, d, opts) => ref.set(d, opts||{}),
   onSnapshot:                 (ref, ...args) => ref.onSnapshot(...args),
 };
 </script>

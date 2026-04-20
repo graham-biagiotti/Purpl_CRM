@@ -1,55 +1,36 @@
 // ═══════════════════════════════════════════════════════
 //  db.js  —  Firebase-backed data layer for purpl CRM
 //
-//  Strategy: load-all-on-start cache
-//  • On startup, all Firestore collections are loaded into
-//    memory (_cache). Reads are instant (synchronous).
-//  • Writes update _cache immediately and persist to
-//    Firestore in the background (fire-and-forget).
-//  • Firebase's IndexedDB layer handles offline — data is
-//    available even with no signal.
+//  Architecture: multi-collection with in-memory cache
+//  • Each data type gets its own Firestore collection
+//  • On startup, all collections are loaded into _cache
+//  • Reads are instant (synchronous from cache)
+//  • Writes update cache immediately, persist via debounce
+//  • Real-time listeners on each collection for multi-user
+//  • API is identical to single-doc version (DB.a, DB.push, etc.)
 // ═══════════════════════════════════════════════════════
 
-// Superset of all array keys across every branch/version.
-// Keys not yet populated in Firestore will default to [].
-// Using {merge:true} on saves ensures we never delete keys
-// that exist in Firestore but aren't in this list.
-const ARRAY_KEYS = [
+// Collections that get their own Firestore collection (one doc per record)
+const COLLECTION_KEYS = [
   'ac','pr','iv','orders',
-  'prod_hist','shipments','runs',
-  // Phase 4 — Distributors
-  'dist_profiles',
-  'dist_reps',
-  'dist_pricing',
-  'dist_pos',
-  'dist_invoices',
-  'dist_chains',
-  'dist_imports',
-  // Phase 6 — Reports
-  'saved_reports',
-  // Phase 7 — Inventory
-  'loose_cans',
-  'repack_jobs',
-  'pallets',
-  'pack_supply',
-  // UX Phase 2 — Dashboard Quick Notes
-  'quick_notes',
-  // UX Phase 5 — Inventory Locations
-  'stock_locations',
-  'stock_transfers',
-  // Lavender Fields
-  'lf_skus',
-  'lf_invoices',
-  'lf_wix_deductions',
-  'retail_invoices',
-  'combined_invoices',
-  'pending_invoices',
-  'returns',
-  // Audit
+  'retail_invoices','lf_invoices','combined_invoices',
+  'dist_profiles','dist_reps','dist_pricing','dist_pos',
+  'dist_invoices','dist_chains','dist_imports',
   'audit_log',
 ];
 
-// Superset of all object keys across every branch/version.
+// Collections that stay in a single config document (small/rarely changing)
+const CONFIG_ARRAY_KEYS = [
+  'prod_hist','shipments','runs',
+  'saved_reports','loose_cans','repack_jobs','pallets','pack_supply',
+  'quick_notes','stock_locations','stock_transfers',
+  'lf_skus','lf_wix_deductions','pending_invoices','returns',
+];
+
+// All array keys (union — used for cache initialization and API compatibility)
+const ARRAY_KEYS = [...COLLECTION_KEYS, ...CONFIG_ARRAY_KEYS];
+
+// Object keys stored in the config document
 const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];
 
 const DB = {
@@ -58,11 +39,29 @@ const DB = {
   _db: null,
   _syncStatus: 'synced',
   _firestoreReady: false,
-  _saveTimer: null,
+  _saveTimers: {},
   _dirty: false,
-  _pendingRemoteData: null,
+  _pendingRemoteChanges: false,
+  _unsubscribers: [],
+  _initCount: 0,
+  _initTarget: 0,
 
-  _ref() {
+  // Base path for all CRM data
+  _basePath() { return 'workspace/main'; },
+
+  // Collection reference for a given key
+  _collRef(key) {
+    return this._db.collection(this._basePath() + '/' + key);
+  },
+
+  // Config document reference
+  _configRef() {
+    const { doc } = window.FirestoreAPI;
+    return doc(this._db, 'workspace', 'main', 'config', 'main');
+  },
+
+  // Legacy single-doc reference (for migration check)
+  _legacyRef() {
     const { doc } = window.FirestoreAPI;
     return doc(this._db, 'workspace', 'main', 'data', 'store');
   },
@@ -70,134 +69,266 @@ const DB = {
   async init(uid, firestoreDb) {
     this._uid = uid;
     this._db = firestoreDb;
-    await this._subscribe();
+    await this._loadAll();
     this._updateSyncUI('synced');
   },
 
-  _subscribe() {
-    return new Promise((resolve) => {
-      const { onSnapshot } = window.FirestoreAPI;
-      const ref = this._ref();
-      let initialized = false;
-      this._unsubscribe = onSnapshot(ref, async (snap) => {
-        if (!initialized) {
-          initialized = true;
-          if (snap.exists) {
-            this._applyData(snap.data());
-          } else {
-            await this._migrateFromLegacyPath(this._uid);
-          }
-          this._firestoreReady = true;
-          if (window.refreshCurrentPage) window.refreshCurrentPage();
-          resolve();
-        } else if (snap.exists && !snap.metadata.hasPendingWrites) {
-          if (this._dirty) {
-            this._pendingRemoteData = snap.data();
-            this._showRemoteChangeWarning();
-          } else {
-            this._applyData(snap.data());
-            if (window.refreshCurrentPage) window.refreshCurrentPage();
-          }
-        }
-      }, (err) => {
-        console.warn('Firestore snapshot error:', err);
-        this._updateSyncUI('error');
-        if (window.toast) toast('⚠️ Could not connect to database: ' + (err.code || err.message));
-        ARRAY_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = []; });
-        OBJ_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = null; });
-        if (!initialized) { initialized = true; resolve(); }
+  async _loadAll() {
+    // Initialize cache
+    ARRAY_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = []; });
+    OBJ_KEYS.forEach(k => { if (!this._cache[k]) this._cache[k] = null; });
+
+    // Check if we need to migrate from single-doc
+    const { getDoc } = window.FirestoreAPI;
+    const configSnap = await getDoc(this._configRef()).catch(() => null);
+
+    if (!configSnap || !configSnap.exists || !configSnap.data()?._dbVersion) {
+      // No multi-collection data yet — check for legacy single doc
+      const legacySnap = await getDoc(this._legacyRef()).catch(() => null);
+      if (legacySnap && legacySnap.exists) {
+        console.log('[db] Found legacy single-doc data — running migration...');
+        await this._migrateFromSingleDoc(legacySnap.data());
+        console.log('[db] Migration complete.');
+      } else {
+        // Try legacy user path
+        await this._migrateFromLegacyPath(this._uid);
+      }
+    } else {
+      // Load from multi-collection
+      await this._loadFromCollections();
+      // Load config doc
+      const configData = configSnap.data();
+      CONFIG_ARRAY_KEYS.forEach(k => {
+        this._cache[k] = Array.isArray(configData[k]) ? configData[k] : [];
       });
-    });
+      OBJ_KEYS.forEach(k => {
+        this._cache[k] = (configData[k] !== undefined && configData[k] !== null) ? configData[k] : null;
+      });
+    }
+
+    this._firestoreReady = true;
+
+    // Set up real-time listeners
+    this._subscribeAll();
+
+    if (window.refreshCurrentPage) window.refreshCurrentPage();
   },
 
-  _applyData(data) {
-    if (!data) return;
-    ARRAY_KEYS.forEach(k => {
-      this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
-    });
-    OBJ_KEYS.forEach(k => {
-      this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
-    });
-    // Preserve any keys in Firestore that we don't track yet
-    Object.keys(data).forEach(k => {
-      if (!ARRAY_KEYS.includes(k) && !OBJ_KEYS.includes(k)) {
-        this._cache[k] = data[k];
+  async _loadFromCollections() {
+    // Load all collection-based data in parallel
+    const loads = COLLECTION_KEYS.map(async (key) => {
+      try {
+        const snap = await this._collRef(key).get();
+        this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      } catch(e) {
+        console.warn(`[db] Failed to load collection ${key}:`, e);
+        this._cache[key] = [];
       }
     });
+    await Promise.all(loads);
   },
 
-  async _migrateFromLegacyPath(oldUid) {
-    const { doc, getDoc, setDoc } = window.FirestoreAPI;
-    try {
-      const oldRef = doc(this._db, 'users', oldUid, 'data', 'store');
-      const snap = await getDoc(oldRef);
-      if (snap.exists) {
+  _subscribeAll() {
+    // Clean up existing listeners
+    this._unsubscribers.forEach(fn => fn());
+    this._unsubscribers = [];
+
+    const { onSnapshot } = window.FirestoreAPI;
+
+    // Listen to each collection
+    COLLECTION_KEYS.forEach(key => {
+      const unsub = this._collRef(key).onSnapshot(snap => {
+        if (!this._firestoreReady) return;
+        // Only process remote changes (not local echoes)
+        const hasLocalChanges = snap.docChanges().some(c => c.doc.metadata.hasPendingWrites);
+        if (hasLocalChanges) return;
+
+        const remoteChanges = snap.docChanges().filter(c => !c.doc.metadata.hasPendingWrites);
+        if (!remoteChanges.length) return;
+
+        if (this._dirty) {
+          this._pendingRemoteChanges = true;
+          this._showRemoteChangeWarning();
+        } else {
+          this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          if (window.refreshCurrentPage) window.refreshCurrentPage();
+        }
+      }, err => {
+        console.warn(`[db] Snapshot error on ${key}:`, err);
+      });
+      this._unsubscribers.push(unsub);
+    });
+
+    // Listen to config document
+    const configUnsub = onSnapshot(this._configRef(), snap => {
+      if (!this._firestoreReady) return;
+      if (snap.metadata.hasPendingWrites) return;
+      if (!snap.exists) return;
+
+      if (this._dirty) {
+        this._pendingRemoteChanges = true;
+        this._showRemoteChangeWarning();
+      } else {
         const data = snap.data();
-        ARRAY_KEYS.forEach(k => {
+        CONFIG_ARRAY_KEYS.forEach(k => {
           this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
         });
         OBJ_KEYS.forEach(k => {
           this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
         });
-        const payload = {};
-        ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-        OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
-        await setDoc(this._ref(), payload, { merge: true });
-      } else {
-        ARRAY_KEYS.forEach(k => this._cache[k] = []);
-        OBJ_KEYS.forEach(k => this._cache[k] = null);
+        if (window.refreshCurrentPage) window.refreshCurrentPage();
+      }
+    }, err => {
+      console.warn('[db] Config snapshot error:', err);
+    });
+    this._unsubscribers.push(configUnsub);
+  },
+
+  // ── Migration from single-doc to multi-collection ──
+  async _migrateFromSingleDoc(data) {
+    const { setDoc } = window.FirestoreAPI;
+
+    // Write each collection-based array as individual documents
+    for (const key of COLLECTION_KEYS) {
+      const items = Array.isArray(data[key]) ? data[key] : [];
+      this._cache[key] = items;
+      for (const item of items) {
+        if (!item.id) continue;
+        try {
+          await this._collRef(key).doc(item.id).set(item);
+        } catch(e) {
+          console.error(`[db] Migration failed for ${key}/${item.id}:`, e);
+        }
+      }
+    }
+
+    // Build config document with remaining data
+    const configPayload = { _dbVersion: 2 };
+    CONFIG_ARRAY_KEYS.forEach(k => {
+      configPayload[k] = Array.isArray(data[k]) ? data[k] : [];
+      this._cache[k] = configPayload[k];
+    });
+    OBJ_KEYS.forEach(k => {
+      configPayload[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
+      this._cache[k] = configPayload[k];
+    });
+
+    await setDoc(this._configRef(), configPayload, { merge: true });
+    console.log(`[db] Migrated: ${COLLECTION_KEYS.map(k => `${k}(${this._cache[k].length})`).join(', ')}`);
+  },
+
+  async _migrateFromLegacyPath(oldUid) {
+    const { doc, getDoc } = window.FirestoreAPI;
+    try {
+      const oldRef = doc(this._db, 'users', oldUid, 'data', 'store');
+      const snap = await getDoc(oldRef);
+      if (snap.exists) {
+        await this._migrateFromSingleDoc(snap.data());
       }
     } catch(e) {
-      console.warn('Migration failed:', e);
-      ARRAY_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = []; });
-      OBJ_KEYS.forEach(k => { if(!this._cache[k]) this._cache[k] = null; });
+      console.warn('Legacy migration failed:', e);
     }
   },
 
-  // Debounced save — coalesces rapid writes into a single Firestore write.
-  // Waits 500ms after the last write before persisting.
-  _save() {
+  // ── Debounced save per collection ──
+  // Each collection has its own debounce timer so writing to 'ac'
+  // doesn't delay a save to 'orders'
+  _save(key) {
     if (!this._db || !this._firestoreReady) return;
     this._updateSyncUI('syncing');
-    if (this._saveTimer) clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => this._doSave(), 500);
+
+    if (!key) {
+      // No specific key — save everything that's dirty
+      this._saveDirtyKeys.forEach(k => this._scheduleSave(k));
+      return;
+    }
+    this._scheduleSave(key);
   },
 
-  // Flush any pending debounced save immediately (used on tab close).
+  _saveDirtyKeys: new Set(),
+
+  _scheduleSave(key) {
+    this._saveDirtyKeys.add(key);
+    if (this._saveTimers[key]) clearTimeout(this._saveTimers[key]);
+    this._saveTimers[key] = setTimeout(() => this._doSave(key), 500);
+  },
+
   _flushPendingSave() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-      this._doSave();
+    this._saveDirtyKeys.forEach(key => {
+      if (this._saveTimers[key]) {
+        clearTimeout(this._saveTimers[key]);
+        this._saveTimers[key] = null;
+        this._doSave(key);
+      }
+    });
+  },
+
+  _doSave(key) {
+    if (!this._db || !this._firestoreReady) return;
+    this._saveDirtyKeys.delete(key);
+
+    if (COLLECTION_KEYS.includes(key)) {
+      this._saveCollection(key);
+    } else if (CONFIG_ARRAY_KEYS.includes(key) || OBJ_KEYS.includes(key)) {
+      this._saveConfig();
     }
   },
 
-  _doSave() {
-    if (!this._db || !this._firestoreReady) return;
-    const { setDoc } = window.FirestoreAPI;
-    const ref = this._ref();
-    const payload = {};
-    ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
-    Object.keys(this._cache).forEach(k => {
-      if (!(k in payload)) payload[k] = this._cache[k];
-    });
-    setDoc(ref, payload, { merge: true })
-      .then(() => {
-        this._saveRetries = 0;
-        this._updateSyncUI('synced');
-      })
-      .catch(e => {
-        console.error('Firestore save error:', e);
-        this._updateSyncUI('error');
-        this._saveRetries = (this._saveRetries || 0) + 1;
-        if (this._saveRetries <= 3) {
-          const delay = Math.min(2000 * this._saveRetries, 8000);
-          if (window.toast) toast('⚠️ Save failed — retrying…');
-          setTimeout(() => this._doSave(), delay);
-        } else {
-          if (window.toast) toast('⚠️ Save failed after 3 retries. Changes may be lost on reload.');
+  _saveCollection(key) {
+    const items = this._cache[key] || [];
+    const batch = this._db.batch();
+    const colRef = this._collRef(key);
+
+    // Get current docs to find deletions
+    colRef.get().then(snap => {
+      const existingIds = new Set(snap.docs.map(d => d.id));
+      const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
+
+      // Set/update all current items
+      items.forEach(item => {
+        if (!item.id) return;
+        batch.set(colRef.doc(item.id), item, { merge: true });
+      });
+
+      // Delete removed items
+      existingIds.forEach(id => {
+        if (!cacheIds.has(id)) {
+          batch.delete(colRef.doc(id));
         }
+      });
+
+      return batch.commit();
+    }).then(() => {
+      this._saveRetries = {};
+      this._updateSyncUI('synced');
+    }).catch(e => {
+      console.error(`[db] Save error for ${key}:`, e);
+      this._updateSyncUI('error');
+      const retries = (this._saveRetries?.[key] || 0) + 1;
+      if (!this._saveRetries) this._saveRetries = {};
+      this._saveRetries[key] = retries;
+      if (retries <= 3) {
+        if (window.toast) toast('⚠️ Save failed — retrying…');
+        setTimeout(() => this._doSave(key), 2000 * retries);
+      } else {
+        if (window.toast) toast('⚠️ Save failed after 3 retries.');
+      }
+    });
+  },
+
+  _saveConfig() {
+    const { setDoc } = window.FirestoreAPI;
+    const payload = { _dbVersion: 2 };
+    CONFIG_ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
+    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+
+    setDoc(this._configRef(), payload, { merge: true })
+      .then(() => this._updateSyncUI('synced'))
+      .catch(e => {
+        console.error('[db] Config save error:', e);
+        this._updateSyncUI('error');
+        if (window.toast) toast('⚠️ Settings save failed — retrying…');
+        setTimeout(() => this._saveConfig(), 2000);
       });
   },
 
@@ -210,25 +341,27 @@ const DB = {
     label.textContent = status === 'synced' ? 'Saved' : status === 'syncing' ? 'Saving…' : 'Sync error';
   },
 
+  // ── Dirty flag for multi-user ──
   markDirty() { this._dirty = true; },
   markClean() {
     this._dirty = false;
-    if (this._pendingRemoteData) {
-      this._applyData(this._pendingRemoteData);
-      this._pendingRemoteData = null;
-      if (window.refreshCurrentPage) window.refreshCurrentPage();
+    if (this._pendingRemoteChanges) {
+      this._pendingRemoteChanges = false;
+      // Reload all collections
+      this._loadFromCollections().then(() => {
+        if (window.refreshCurrentPage) window.refreshCurrentPage();
+      });
     }
     this._dismissRemoteWarning();
   },
 
   applyPendingRemote() {
-    if (this._pendingRemoteData) {
-      this._applyData(this._pendingRemoteData);
-      this._pendingRemoteData = null;
-      this._dirty = false;
-      this._dismissRemoteWarning();
+    this._pendingRemoteChanges = false;
+    this._dirty = false;
+    this._dismissRemoteWarning();
+    this._loadFromCollections().then(() => {
       if (window.refreshCurrentPage) window.refreshCurrentPage();
-    }
+    });
   },
 
   _showRemoteChangeWarning() {
@@ -247,10 +380,11 @@ const DB = {
     if (el) el.remove();
   },
 
+  // ── Public API (identical to single-doc version) ──
   get(k) { return this._cache[k] || []; },
-  set(k, v) { this._cache[k] = v; this._save(); },
+  set(k, v) { this._cache[k] = v; this._save(k); },
   obj(k, def = {}) { return this._cache[k] || def; },
-  setObj(k, v) { this._cache[k] = v; this._save(); },
+  setObj(k, v) { this._cache[k] = v; this._save(k); },
   a(k) { return this.get(k); },
   push(k, v) { const a = this.a(k); a.push(v); this.set(k, a); },
   update(k, id, fn) {
@@ -262,7 +396,21 @@ const DB = {
 
   atomicUpdate(fn) {
     fn(this._cache);
-    this._save();
+    // Find which keys were likely modified and save them all
+    const allKeys = [...ARRAY_KEYS, ...OBJ_KEYS];
+    allKeys.forEach(k => this._scheduleSave(k));
+    // Flush immediately for atomicity
+    setTimeout(() => {
+      allKeys.forEach(k => {
+        if (this._saveTimers[k]) {
+          clearTimeout(this._saveTimers[k]);
+          this._saveTimers[k] = null;
+        }
+      });
+      // Save collections that have data
+      COLLECTION_KEYS.forEach(k => this._saveCollection(k));
+      this._saveConfig();
+    }, 50);
   },
 
   async importFromLocalStorage() {
@@ -302,20 +450,35 @@ const DB = {
     if (!this._firestoreReady) {
       throw new Error('Cannot save: Firestore has not confirmed document state yet.');
     }
-    const { setDoc } = window.FirestoreAPI;
-    const payload = {};
-    ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
-    Object.keys(this._cache).forEach(k => {
-      if (!(k in payload)) payload[k] = this._cache[k];
-    });
-    try {
-      await setDoc(this._ref(), payload, { merge: true });
-    } catch(e) {
-      console.error('Firestore _forceSave error:', e);
-      this._updateSyncUI('error');
-      if (window.toast) toast('⚠️ Save failed — check your connection. Changes may be lost on reload.');
-      throw e;
+    // Save all collections
+    for (const key of COLLECTION_KEYS) {
+      await this._saveCollectionSync(key);
     }
-  }
+    await this._saveConfigSync();
+  },
+
+  async _saveCollectionSync(key) {
+    const items = this._cache[key] || [];
+    const colRef = this._collRef(key);
+    const snap = await colRef.get();
+    const existingIds = new Set(snap.docs.map(d => d.id));
+    const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
+    const batch = this._db.batch();
+    items.forEach(item => {
+      if (!item.id) return;
+      batch.set(colRef.doc(item.id), item, { merge: true });
+    });
+    existingIds.forEach(id => {
+      if (!cacheIds.has(id)) batch.delete(colRef.doc(id));
+    });
+    await batch.commit();
+  },
+
+  async _saveConfigSync() {
+    const { setDoc } = window.FirestoreAPI;
+    const payload = { _dbVersion: 2 };
+    CONFIG_ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
+    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+    await setDoc(this._configRef(), payload, { merge: true });
+  },
 };
