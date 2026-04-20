@@ -9,7 +9,7 @@ test.describe('Stress Test — Account CRUD Integrity', () => {
   test('Create 20 accounts with locations and notes, verify all data persists', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const created = [];
@@ -72,7 +72,7 @@ test.describe('Stress Test — Account CRUD Integrity', () => {
   test('Edit each of 5 accounts — verify all arrays survive the edit', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const results = [];
@@ -133,7 +133,7 @@ test.describe('Stress Test — Invoice Collections', () => {
   test('Create invoices across all 3 collections, verify they persist', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const ts = Date.now();
@@ -160,7 +160,7 @@ test.describe('Stress Test — Inventory Math', () => {
   test('Production + delivery — inventory math is exact', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const sku = 'classic';
@@ -197,7 +197,7 @@ test.describe('Stress Test — Delete Cascade & Orphan Check', () => {
   test('Delete account — no orphaned records, no page crash', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const id = 'stress-del-' + Date.now();
@@ -253,7 +253,7 @@ test.describe('Stress Test — Rapid Sequential Writes', () => {
   test('Add 3 notes rapidly — all 3 survive the debounce', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       const ac = DB.a('ac')[0];
@@ -293,7 +293,7 @@ test.describe('Stress Test — Settings Preservation', () => {
   test('Save settings does not reset data_restored or payment_terms', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => window.DB && DB._firestoreReady, { timeout: 15000 });
+    await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
       // Set known values
