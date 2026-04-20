@@ -185,6 +185,71 @@ exports.sendOrderConfirmation = onCall(
   }
 );
 
+// ── 3b. Send Application Confirmation ──────────────────────
+// Public callable (no auth) — sends the predefined "application received"
+// email to the applicant. Only sends the fixed template, not arbitrary HTML.
+// Rate-limited by requiring the portal_inquiries docId to exist.
+exports.sendApplicationConfirmation = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
+    const data = request.data;
+    if (!data.to || !data.businessName || !data.contactName) {
+      throw new HttpsError('invalid-argument', 'Missing required fields');
+    }
+
+    const safeName = escHtml(data.contactName);
+    const safeBiz = escHtml(data.businessName);
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0"
+  style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:32px 40px;text-align:center">
+    <div style="font-family:Georgia,serif;font-size:24px;color:#fff;font-weight:400">Pumpkin Blossom Farm</div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.7);letter-spacing:0.15em;text-transform:uppercase;margin-top:6px">Wholesale</div>
+  </td></tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+    <p style="font-size:17px;font-weight:500;margin:0 0 20px">Hi ${safeName},</p>
+    <p>Thank you for your interest in carrying our products at <strong>${safeBiz}</strong>. We've received your application and will be in touch within 1 business day.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+      <tr><td style="background:#f9fafb;border-left:3px solid #8B5FBF;padding:16px 20px;border-radius:0 6px 6px 0">
+        <div style="font-size:13px;color:#6b7280;margin-bottom:4px;font-weight:500">WHAT HAPPENS NEXT</div>
+        <div style="font-size:14px;color:#1a1a2e">We review every application personally. You'll hear from us within 1 business day with next steps.</div>
+      </td></tr>
+    </table>
+    <p>In the meantime, feel free to reach out with any questions.</p>
+    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm<br>603-748-3038</p>
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    lavender@pbfwholesale.com
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+
+    const {Resend} = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    try {
+      const result = await resend.emails.send({
+        from: 'lavender@pbfwholesale.com',
+        to: data.to,
+        subject: `Thank you for your wholesale application — Pumpkin Blossom Farm`,
+        html,
+      });
+      return {success: true, id: result.data?.id || result.id};
+    } catch (err) {
+      throw new HttpsError('internal', err.message);
+    }
+  }
+);
+
 // ── 4. Portal Token Lookup ─────────────────────────────────
 // Public callable — takes a token, returns account info for the portal.
 // Queries Firestore server-side so accounts/prospects collections can

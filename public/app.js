@@ -29,6 +29,13 @@ function toast(msg, dur=3000) {
 
 function confirm2(msg) { return window.confirm(msg); }
 
+function generateSecureToken(prefix) {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const rand = Array.from(bytes).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 32);
+  return btoa((prefix || '') + ':' + rand).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 // ── DB loading placeholder ───────────────────────────────
 // Shows a shimmer skeleton while Firestore hasn't yet delivered its first snapshot.
 function _dbLoadingHTML(rows = 3) {
@@ -3248,8 +3255,7 @@ async function _emailsApprovedGenerateToken() {
   if (!_emailsSelectedAccountId) return;
   const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
   if (!account) return;
-  const token = btoa(account.id + ':' + Math.random().toString(36).slice(2))
-    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const token = generateSecureToken(account.id);
   try {
     await firebase.firestore().collection('accounts').doc(account.id).set({
       orderPortalToken: token,
@@ -11573,8 +11579,7 @@ const PortalDB = {
 async function generateOrderLink(entityId, entityName, entityEmail, entityType) {
   entityType = entityType || 'accounts';
   try {
-    const token = btoa(entityId + ':' + Math.random().toString(36).slice(2))
-      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    const token = generateSecureToken(entityId);
     await firebase.firestore().collection(entityType).doc(entityId).set({
       orderPortalToken: token,
       name: entityName,
@@ -13568,7 +13573,7 @@ async function approveApplication(docId, app) {
   if (!confirm2(`Approve ${app.businessName || 'this application'} and create an account?`)) return;
 
   const acId    = uid();
-  const token   = btoa(acId + ':' + Math.random().toString(36).slice(2)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const token   = generateSecureToken(acId);
   const isPbf   = (app.brandsInterested || []).some(b => b === 'lf' || b === 'lavender');
 
   const rec = {
@@ -13637,7 +13642,7 @@ async function approveApplication(docId, app) {
       };
       if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', acId, a => ({ ...a, cadence: [...(a.cadence || []), entry] }));
-    } catch(e) { console.error('Approve email failed', e); }
+    } catch(e) { console.error('Approve email failed', e); toast('⚠️ Account created but welcome email failed — resend from Emails page'); }
   }
 
   // Mark application approved in Firestore
