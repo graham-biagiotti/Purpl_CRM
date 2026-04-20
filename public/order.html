@@ -860,34 +860,10 @@ function init() {
       var be = document.getElementById('billing-email');
       if (be) be.value = prefs.billingEmail;
     }
-    if (prefs.distributors && prefs.distributors.length) {
-      var list = document.getElementById('distributor-list');
-      prefs.distributors.forEach(function(d, i) {
-        if (i === 0) {
-          var inputs = list.querySelectorAll('.distributor-input');
-          if (inputs[0]) inputs[0].value = d;
-        } else {
-          addDistributor();
-          var inputs = list.querySelectorAll('.distributor-input');
-          inputs[inputs.length-1].value = d;
-        }
-      });
-    }
-    if (prefs.distributorDirectOpen) {
-      var ddo = document.getElementById('distributor-direct-open');
-      if (ddo) ddo.value = prefs.distributorDirectOpen;
-    }
-    if (prefs.distributorContactOk) {
-      var dco = document.getElementById('distributor-contact-ok');
-      if (dco) dco.checked = true;
-    }
+    // Distributor/social fields moved to wholesale.html — skip prefill for removed fields
     if (prefs.leadTimeNeeded) {
       var lt = document.getElementById('lead-time-needed');
       if (lt) lt.value = prefs.leadTimeNeeded;
-    }
-    if (prefs.socialHandle) {
-      var sh = document.getElementById('social-handle');
-      if (sh) sh.value = prefs.socialHandle;
     }
     if (prefs.deliveryNotes) {
       var dw = document.getElementById('delivery-window');
@@ -951,11 +927,9 @@ function checkSubmitEnabled() {
   document.getElementById('submit-btn').disabled = (!hasPurpl && !hasLf) || variantsMismatched;
 }
 
-function toggleDistributorOther() {
-  const val = document.getElementById('distributor-select').value;
-  document.getElementById('distributor-other-group').style.display =
-    val === 'other' ? 'block' : 'none';
-}
+// Distributor fields moved to wholesale.html — stubs for backward compatibility
+function toggleDistributorOther() {}
+function getDistributors() { return []; }
 
 function showError(msg) {
   const el = document.getElementById('error-msg');
@@ -1549,38 +1523,8 @@ function printCurrentOrder() {
   w.document.close();
 }
 
-function addDistributor() {
-  var list = document.getElementById('distributor-list');
-  var div = document.createElement('div');
-  div.className = 'distributor-entry';
-  div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
-  div.innerHTML =
-    '<input type="text" class="distributor-input" '+
-    'placeholder="Another distributor..." style="flex:1">'+
-    '<button type="button" onclick="removeDistributor(this)" '+
-    'style="background:#fee2e2;border:1px solid #fca5a5;'+
-    'color:#991b1b;border-radius:8px;padding:0 14px;'+
-    'cursor:pointer;font-size:20px;line-height:1;'+
-    'flex-shrink:0">×</button>';
-  list.appendChild(div);
-  div.querySelector('input').focus();
-}
-
-function removeDistributor(btn) {
-  var entries = document.querySelectorAll('.distributor-entry');
-  if (entries.length <= 1) {
-    btn.previousElementSibling.value = ''; return;
-  }
-  btn.parentElement.remove();
-}
-
-function getDistributors() {
-  return Array.from(
-    document.querySelectorAll('.distributor-input')
-  ).map(function(i) {
-    return i.value.trim();
-  }).filter(function(v) { return v.length > 0; });
-}
+function addDistributor() {}
+function removeDistributor() {}
 
 // ── Order History toggle ──────────────────────────────────
 function toggleOrderHistory() {
