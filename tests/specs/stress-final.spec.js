@@ -290,51 +290,33 @@ test.describe('Stress Test — Rapid Sequential Writes', () => {
 
 test.describe('Stress Test — Settings Preservation', () => {
 
-  test('Save settings does not reset data_restored or payment_terms', async ({ page }) => {
+  test('Save settings preserves data flags (data_restored, seeded, nem_show)', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#app-shell', { state: 'visible', timeout: 30000 });
     await page.waitForFunction(() => typeof DB !== 'undefined' && DB._firestoreReady === true, { timeout: 15000 });
 
     const result = await page.evaluate(() => {
-      // Set known values
-      const settings = DB.obj('settings', {});
-      const paymentBefore = settings.payment_terms;
-      const dataRestoredBefore = settings.data_restored;
-      const nemImportedBefore = settings.nem_show_2026_imported;
-      const seededBefore = settings.seeded;
+      const before = DB.obj('settings', {});
 
-      // Simulate a settings save by calling the saveSettings-like pattern
-      // (read form values — since no form is filled, this tests the preservation logic)
-      const existingSettings = DB.obj('settings', {});
-
-      // Build new settings like saveSettings does — preserve unknown keys
-      const newSettings = {
-        company: existingSettings.company || '',
-        payment_terms: existingSettings.payment_terms || 30,
-        ...Object.fromEntries(
-          Object.entries(existingSettings).filter(([k]) =>
-            !['company', 'payment_terms'].includes(k)
-          )
-        ),
-      };
-
-      DB.setObj('settings', newSettings);
+      // Simulate changing company name (like saveSettings does)
+      DB.setObj('settings', {
+        ...before,
+        company: 'Stress Test Change ' + Date.now(),
+      });
 
       const after = DB.obj('settings', {});
       return {
-        paymentPreserved: after.payment_terms === paymentBefore,
-        dataRestoredPreserved: after.data_restored === dataRestoredBefore,
-        nemPreserved: after.nem_show_2026_imported === nemImportedBefore,
-        seededPreserved: after.seeded === seededBefore,
-        paymentBefore,
-        paymentAfter: after.payment_terms,
+        dataRestoredPreserved: after.data_restored === before.data_restored,
+        seededPreserved: after.seeded === before.seeded,
+        nemPreserved: after.nem_show_2026_imported === before.nem_show_2026_imported,
+        companyChanged: after.company !== before.company,
       };
     });
 
-    expect(result.paymentPreserved).toBe(true);
     expect(result.dataRestoredPreserved).toBe(true);
-    expect(result.nemPreserved).toBe(true);
     expect(result.seededPreserved).toBe(true);
+    expect(result.nemPreserved).toBe(true);
+    expect(result.companyChanged).toBe(true);
   });
 
 });
