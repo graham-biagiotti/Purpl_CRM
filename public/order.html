@@ -988,40 +988,7 @@ function showThankYou(data) {
   document.getElementById('ty-summary').innerHTML = summaryHtml;
   _lastOrderData = data;
 
-  // Trigger mailto: confirmation to buyer
-  var emailTo = data.billingEmail || '';
-  if (emailTo) {
-    var subject = 'Order received — Pumpkin Blossom Farm';
-    var body = 'Hi ' + data.accountName + ',\n\nYour order has been received. Here\'s your summary:\n\n';
-    if (data.cases > 0) {
-      body += 'purpl Lemonade\n  · Classic Lavender Lemonade: ' + data.cases + ' case' + (data.cases !== 1 ? 's' : '') + ' (' + (data.cases * CANS_PER_CASE) + ' cans)\n\n';
-    }
-    if (data.lfItems && data.lfItems.length) {
-      body += 'Lavender Fields\n';
-      data.lfItems.forEach(function(it) {
-        if (it.hasVariants && it.variantLines) {
-          it.variantLines.forEach(function(vl) {
-            body += '  · ' + it.skuName + ' (' + vl.variantName + (_isRefillable(vl.variantName) ? ', Refillable' : '') + '): ' + vl.units + ' units\n';
-          });
-        } else {
-          body += '  · ' + it.skuName + ': ' + it.cases + ' case' + (it.cases !== 1 ? 's' : '') + '\n';
-        }
-      });
-      body += '  Total: $' + (data.lfTotal || 0).toFixed(2) + '\n\n';
-    }
-    if (data.poNumber) body += 'PO Number: ' + data.poNumber + '\n';
-    body += 'Payment Terms: Net 30 from delivery\n';
-    if (data.bothBrands) body += '\nNote: You\'ll receive separate invoices for purpl and Lavender Fields.\n';
-    body += '\nNext steps: We\'ll be in touch to confirm your delivery window within 1–2 business days.\n\n';
-    body += 'Graham Biagiotti\nPumpkin Blossom Farm\n603-748-3038 · lavender@pbfwholesale.com';
-    // Open mailto — non-blocking, best-effort
-    setTimeout(function() {
-      var link = 'mailto:' + encodeURIComponent(emailTo) +
-        '?subject=' + encodeURIComponent(subject) +
-        '&body=' + encodeURIComponent(body);
-      window.location.href = link;
-    }, 800);
-  }
+  // Confirmation email handled by sendOrderConfirmation Cloud Function
 }
 
 function submitOrder() {

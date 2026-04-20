@@ -11834,7 +11834,8 @@ async function renderPreOrders(forceReload) {
 }
 
 function _renderPoKpis() {
-  const orders = PortalDB.getOrders();
+  const allOrders = PortalDB.getOrders();
+  const orders = allOrders.filter(o => o.brand !== 'lf');
   const total   = orders.length;
   const matched = orders.filter(o => o.isMatched).length;
   const unmatched = orders.filter(o => !o.isMatched).length;
@@ -11904,7 +11905,7 @@ function _fmtPoDate(d) {
 function _renderPoAll() {
   const el = qs('#po-pane-all');
   if (!el) return;
-  const orders = PortalDB.getOrders();
+  const orders = PortalDB.getOrders().filter(o => o.brand !== 'lf');
   if (!orders.length) {
     el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No portal submissions yet.</div></div>';
     return;
