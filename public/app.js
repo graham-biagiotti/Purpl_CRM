@@ -8,6 +8,8 @@
 // Inventory (iv collection) is tracked in individual CANS.
 // Always use CANS_PER_CASE when converting between them.
 const CANS_PER_CASE = 12;
+const PURPL_MSRP = 3.39;
+const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE; // $26.44
 
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -894,7 +896,7 @@ function calcOrderValue(o) {
   const acPrice = parseFloat(isDistFulfilled ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
   return (o.items||[]).reduce((s,i)=>{
     const pricePerCase = acPrice
-      || (costs.cogs[i.sku]||2.15) * markup * CANS_PER_CASE;
+      || PURPL_DIRECT_PER_CASE;
     return s + pricePerCase * i.qty;
   }, 0);
 }
@@ -7704,7 +7706,7 @@ function createDeliveryInvoice(accountId, ordId) {
   const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = acPrice || (costs.cogs?.[i.sku]||2.15) * markup * CANS_PER_CASE;
+    const pricePerCase = acPrice || PURPL_DIRECT_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
