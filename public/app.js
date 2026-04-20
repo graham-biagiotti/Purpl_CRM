@@ -4118,6 +4118,7 @@ function renderProspects() {
     p.contact?.toLowerCase().includes(search) ||
     p.address?.toLowerCase().includes(search));
   if (stageFilter) list = list.filter(p=>p.status===stageFilter);
+  else list = list.filter(p => !['won','lost'].includes(p.status));
   if (brandFilter === 'lf')    list = list.filter(p=>!!p.isPbf);
   if (brandFilter === 'purpl') list = list.filter(p=>!p.isPbf);
 
@@ -4402,7 +4403,7 @@ function convertProspect(id) {
 
   // Atomic: mark prospect won + create account in one Firestore write
   DB.atomicUpdate(cache => {
-    cache['pr'] = (cache['pr']||[]).map(x => x.id===id ? {...x, status:'won'} : x);
+    cache['pr'] = (cache['pr']||[]).filter(x => x.id !== id);
     cache['ac'] = [...(cache['ac']||[]), newAc];
   });
 
@@ -4978,7 +4979,6 @@ function _distCardHTML(d) {
       <div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
           <span class="ac-card-name">${escHtml(d.name)}</span>
-          ${d.platformType?`<span class="badge gray" style="font-size:10px">${escHtml(d.platformType)}</span>`:''}
           ${brandBadges}
         </div>
         <div class="ac-card-sub">${d.territory||'No territory set'}</div>
@@ -5175,7 +5175,6 @@ function renderDistOverviewHTML(d) {
 
   return `
   <div class="card-grid grid-2" style="margin-bottom:14px">
-    <div><span style="font-size:11px;color:var(--muted)">Platform Type</span><div>${escHtml(d.platformType||'—')}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Payment Terms</span><div>${escHtml(terms)}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Contract Start</span><div>${d.contractStart?fmtD(d.contractStart):'—'}</div></div>
     <div><span style="font-size:11px;color:var(--muted)">Brands Carried</span><div>${escHtml(brandsStr)}</div></div>

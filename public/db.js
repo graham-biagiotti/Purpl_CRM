@@ -15,9 +15,8 @@
 // Using {merge:true} on saves ensures we never delete keys
 // that exist in Firestore but aren't in this list.
 const ARRAY_KEYS = [
-  'ac','pr','iv','ord','orders','inv_log_v2',
-  'prod_hist','prod_sched','shipments','dist',
-  'rem','pack_types','runs',
+  'ac','pr','iv','orders',
+  'prod_hist','shipments','runs',
   // Phase 4 — Distributors
   'dist_profiles',
   'dist_reps',
