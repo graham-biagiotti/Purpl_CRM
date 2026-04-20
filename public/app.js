@@ -4995,7 +4995,7 @@ function _distCardHTML(d) {
           <span class="ac-card-name">${escHtml(d.name)}</span>
           ${brandBadges}
         </div>
-        <div class="ac-card-sub">${d.territory||'No territory set'}</div>
+        <div class="ac-card-sub">${(d.statesCovered||[]).length ? d.statesCovered.join(', ') + ' · ' : ''}${d.territory||'No territory set'}</div>
       </div>
       <div class="ac-card-badges" style="align-items:flex-start;gap:4px">
         ${statusBadge(DIST_STATUS, d.status)}
@@ -5204,7 +5204,7 @@ function renderDistOverviewHTML(d) {
     <div><span style="font-size:11px;color:var(--muted)">Linked Accounts</span><div><strong style="cursor:pointer;color:var(--lavblue)" onclick="_switchDistTab('accounts')">${linkedCount}</strong></div></div>
   </div>
   ${staleAccounts.length>0?`<div style="background:#fef3c7;border:1px solid #d97706;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">⚠ ${staleAccounts.length} linked account${staleAccounts.length!==1?'s have':' has'} not ordered in 30+ days: ${staleAccounts.map(a=>`<strong>${escHtml(a.name)}</strong>`).join(', ')}</div>`:''}
-  <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${escHtml(d.territory||'—')}</div></div>
+  <div style="margin-bottom:12px"><span style="font-size:11px;color:var(--muted)">Territory</span><div style="margin-top:4px">${escHtml(d.territory||'—')}</div>${(d.statesCovered||[]).length ? `<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${d.statesCovered.map(s=>`<span class="badge gray" style="font-size:10px">${escHtml(s)}</span>`).join('')}</div>` : ''}${d.radiusType ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${d.territoryRadiusMiles||0} mi ${d.radiusType==='driving'?'driving':'straight-line'} from DC</div>` : ''}</div>
   ${d.nextSteps?`<div class="highlight-box" style="margin-bottom:12px"><div class="ac-card-section-label">Next Steps</div><div style="font-size:13px;margin-top:4px">${escHtml(d.nextSteps)}</div></div>`:''}
   ${d.notes?`<div class="highlight-box" style="margin-bottom:12px"><div class="ac-card-section-label">Internal Notes</div><div style="font-size:13px;margin-top:4px">${escHtml(d.notes)}</div></div>`:''}
   <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
@@ -5818,6 +5818,12 @@ function editDistributor(id) {
   qs('#edist-territory').value     = d.territory||'';
   qs('#edist-dc-address').value    = d.dcAddress||'';
   if (qs('#edist-territory-radius')) qs('#edist-territory-radius').value = d.territoryRadiusMiles||'';
+  if (qs('#edist-radius-type')) qs('#edist-radius-type').value = d.radiusType||'straight';
+  // States checkboxes
+  const coveredStates = d.statesCovered || [];
+  document.querySelectorAll('.edist-state-cb').forEach(cb => {
+    cb.checked = coveredStates.includes(cb.value);
+  });
   qs('#edist-doors').value         = d.doorCount||'';
   qs('#edist-target-doors').value  = d.targetDoorCount||'';
   qs('#edist-contract').value      = d.contractStart||'';
@@ -5872,6 +5878,8 @@ async function saveDistributor(id, isNew) {
     dcAddress,
     dcLat, dcLng,
     territoryRadiusMiles: (v=>isNaN(v)||v<=0?0:v)(parseInt(qs('#edist-territory-radius')?.value)),
+    radiusType:          qs('#edist-radius-type')?.value||'straight',
+    statesCovered:       Array.from(document.querySelectorAll('.edist-state-cb:checked')).map(cb=>cb.value),
     doorCount:         (v=>isNaN(v)?0:v)(parseInt(qs('#edist-doors')?.value)),
     targetDoorCount:   (v=>isNaN(v)?0:v)(parseInt(qs('#edist-target-doors')?.value)),
     contractStart:     qs('#edist-contract')?.value||'',
@@ -9132,6 +9140,9 @@ function renderSettings() {
   // Tab 1: Business Info
   if(qs('#set-company'))              qs('#set-company').value              = s.company||'';
   if(qs('#set-address'))              qs('#set-address').value              = s.address||'';
+  if(qs('#set-warehouse-radius'))    qs('#set-warehouse-radius').value    = s.warehouseRadiusMiles||'';
+  if(qs('#set-warehouse-lat'))       qs('#set-warehouse-lat').value       = s.warehouseLat||'';
+  if(qs('#set-warehouse-lng'))       qs('#set-warehouse-lng').value       = s.warehouseLng||'';
   if(qs('#set-phone'))                qs('#set-phone').value                = s.phone||'';
   if(qs('#set-website'))              qs('#set-website').value              = s.website||'';
   if(qs('#set-ein'))                  qs('#set-ein').value                  = s.ein||'';
@@ -9269,6 +9280,9 @@ function saveBusinessSettings() {
     default_state:         qs('#set-default-state')?.value?.trim()||'',
     default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
     default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
+    warehouseRadiusMiles:  parseFloat(qs('#set-warehouse-radius')?.value)||0,
+    warehouseLat:          parseFloat(qs('#set-warehouse-lat')?.value)||null,
+    warehouseLng:          parseFloat(qs('#set-warehouse-lng')?.value)||null,
   });
   toast('Business info saved ✓');
 }
@@ -11495,6 +11509,33 @@ function _renderMapPins() {
       }
     }
   });
+
+  // Warehouse pin from settings
+  const settings = DB.obj('settings', {});
+  const whLat = parseFloat(settings.warehouseLat);
+  const whLng = parseFloat(settings.warehouseLng);
+  const whRadius = parseFloat(settings.warehouseRadiusMiles) || 0;
+  if (whLat && whLng && !isNaN(whLat) && !isNaN(whLng)) {
+    const whMarker = new google.maps.Marker({
+      position: {lat: whLat, lng: whLng},
+      map: _mapInstance,
+      title: 'Pumpkin Blossom Farm (Warehouse)',
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#4B2082', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+    });
+    const whIw = new google.maps.InfoWindow({ content: `<div style="font-family:sans-serif"><div style="font-weight:700;font-size:14px;color:#4B2082">🏠 Warehouse</div><div style="font-size:12px;color:#666;margin-top:4px">${escHtml(settings.address||'Pumpkin Blossom Farm')}</div>${whRadius ? `<div style="font-size:12px;color:#4B2082;margin-top:4px">${whRadius} mile delivery radius</div>` : ''}</div>` });
+    whMarker.addListener('click', () => whIw.open(_mapInstance, whMarker));
+    _mapMarkers.push(whMarker);
+    bounds.extend({lat: whLat, lng: whLng});
+    hasPoints = true;
+    if (whRadius > 0) {
+      const whCircle = new google.maps.Circle({
+        map: _mapInstance, center: {lat: whLat, lng: whLng},
+        radius: whRadius * 1609.34, fillColor: '#4B2082', fillOpacity: 0.05,
+        strokeColor: '#4B2082', strokeOpacity: 0.3, strokeWeight: 2,
+      });
+      _mapCoverageOverlays.push(whCircle);
+    }
+  }
 
   if (hasPoints) _mapInstance.fitBounds(bounds);
   _updateRunModeBar();

@@ -1245,6 +1245,21 @@
               <label>Address</label>
               <textarea id="set-address" rows="2" placeholder="393 Pumpkin Hill Rd&#10;Warner, NH 03278" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
             </div>
+            <div class="form-row col2" style="margin-bottom:12px">
+              <div class="form-group">
+                <label>Warehouse delivery radius (miles)</label>
+                <input id="set-warehouse-radius" type="number" min="0" placeholder="e.g. 100">
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">Shown on Territory Map as your direct delivery zone</div>
+              </div>
+              <div class="form-group">
+                <label>Warehouse coordinates</label>
+                <div style="display:flex;gap:6px">
+                  <input id="set-warehouse-lat" type="number" step="any" placeholder="Lat" style="flex:1">
+                  <input id="set-warehouse-lng" type="number" step="any" placeholder="Lng" style="flex:1">
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:2px">Auto-filled from address if Google Places is enabled</div>
+              </div>
+            </div>
             <div class="form-row col2">
               <div class="form-group" style="margin-bottom:12px">
                 <label>Phone</label>
@@ -2538,15 +2553,36 @@
       <div class="form-group"><label>Contract start date</label><input id="edist-contract" type="date"></div>
       <div></div>
     </div>
-    <div class="form-group" style="margin-bottom:10px"><label>Territory description</label>
-      <textarea id="edist-territory" placeholder="e.g. Northeast — Price Chopper/Market 32 and Tops Markets" style="min-height:44px"></textarea>
-    </div>
-    <div class="form-group" style="margin-bottom:10px"><label>DC / Warehouse address</label>
-      <input id="edist-dc-address" placeholder="e.g. 123 Logistics Dr, Albany, NY 12201">
-    </div>
-    <div class="form-row col2" style="margin-bottom:10px">
-      <div class="form-group"><label>Territory coverage radius (miles)</label><input id="edist-territory-radius" type="number" placeholder="50" min="0"></div>
-      <div class="form-group"><label style="font-size:12px;color:var(--muted)">Shown as coverage circle on map</label></div>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;background:#fafafa">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Territory Coverage</div>
+      <div class="form-group" style="margin-bottom:10px"><label>States covered</label>
+        <div id="edist-states" style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="CT">CT</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="MA">MA</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="ME">ME</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="NH">NH</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="NY">NY</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="NJ">NJ</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="PA">PA</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="RI">RI</label>
+          <label style="font-size:12px;display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;color:var(--text)"><input type="checkbox" class="edist-state-cb" value="VT">VT</label>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px"><label>DC / Warehouse address</label>
+        <input id="edist-dc-address" placeholder="e.g. 123 Logistics Dr, Albany, NY 12201">
+      </div>
+      <div class="form-row col2" style="margin-bottom:10px">
+        <div class="form-group"><label>Radius from DC (miles)</label><input id="edist-territory-radius" type="number" placeholder="e.g. 150" min="0"></div>
+        <div class="form-group"><label>Radius type</label>
+          <select id="edist-radius-type">
+            <option value="straight">Straight-line miles</option>
+            <option value="driving">Driving distance</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0"><label>Territory notes</label>
+        <textarea id="edist-territory" placeholder="Additional coverage details, exceptions, seasonal routes..." style="min-height:44px"></textarea>
+      </div>
     </div>
     <div class="form-row col3">
       <div class="form-group"><label>Current doors</label><input id="edist-doors" type="number" placeholder="280" min="0"></div>
