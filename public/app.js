@@ -2537,8 +2537,16 @@ const _STAGE_TEMPLATE_IDS = {
   application_received:  'application-received',
   approved_welcome:      'approved',
   rejected_decline:      'rejected',
+  order_confirmation:    'order-confirmation',
   invoice_sent:          'invoice-sent',
+  invoice_reminder:      'invoice-reminder',
+  payment_overdue:       'payment-overdue',
   first_order_followup:  'first-order',
+  reorder_reminder:      'reorder-reminder',
+  delivery_followup:     'delivery-followup',
+  new_product:           'new-product',
+  thank_you:             'thank-you',
+  custom:                'custom',
 };
 const _TEMPLATE_STAGE_IDS = Object.fromEntries(
   Object.entries(_STAGE_TEMPLATE_IDS).map(([k,v])=>[v,k])
@@ -3153,11 +3161,19 @@ function _renderEmailsTemplatesCol() {
   const el = document.getElementById('emails-templates-col');
   if (!el) return;
   const TEMPLATES = [
-    {id:'application-received', name:'Application Received',  desc:'Auto-sent on form submit',     from:'lavender@pbfwholesale.com'},
-    {id:'approved',             name:'Approved — Welcome',    desc:'Portal link + next steps',      from:'lavender@pbfwholesale.com'},
-    {id:'rejected',             name:'Rejected — Decline',    desc:'Polite decline email',          from:'lavender@pbfwholesale.com'},
-    {id:'invoice-sent',         name:'Invoice Sent',          desc:'Sends latest invoice details',  from:'lavender@pbfwholesale.com'},
-    {id:'first-order',          name:'First Order Follow-up', desc:'Post-first-order check-in',     from:'lavender@pbfwholesale.com'},
+    {id:'application-received', name:'Application Received',    desc:'Thank you for applying'},
+    {id:'approved',             name:'Approved — Welcome',      desc:'Portal link + password + catalog'},
+    {id:'rejected',             name:'Rejected — Decline',      desc:'Polite decline email'},
+    {id:'order-confirmation',   name:'Order Confirmation',      desc:'Order received, delivery coming'},
+    {id:'invoice-sent',         name:'Invoice Sent',            desc:'Invoice notification'},
+    {id:'invoice-reminder',     name:'Invoice Reminder',        desc:'Payment due soon'},
+    {id:'payment-overdue',      name:'Payment Overdue',         desc:'Past-due follow-up'},
+    {id:'first-order',          name:'First Order Follow-Up',   desc:'Thanks for first order'},
+    {id:'reorder-reminder',     name:'Reorder Reminder',        desc:'Time to restock?'},
+    {id:'delivery-followup',    name:'Post-Delivery Check-In',  desc:'How did delivery go?'},
+    {id:'new-product',          name:'New Product Announcement', desc:'Announce new product'},
+    {id:'thank-you',            name:'General Thank You',       desc:'Thank a retailer'},
+    {id:'custom',               name:'Custom Email',            desc:'Write your own'},
   ];
   const cards = TEMPLATES.map(t => `
     <div class="email-template-card${_emailsSelectedTemplate === t.id ? ' active' : ''}"
