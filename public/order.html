@@ -809,47 +809,30 @@ function init() {
   const token = params.get('t');
 
   if (token) {
-    // Sequential lookup: check accounts first, then prospects if not found.
-    // Prevents race condition from parallel queries.
-    db.collection('accounts')
-      .where('orderPortalToken', '==', token)
-      .get()
-      .then(function(snap) {
-        if (!snap.empty) {
-          var data = snap.docs[0].data();
-          accountId = snap.docs[0].id;
-          accountName = data.name || '';
-          accountEmail = data.email || '';
-          isPbf = data.isPbf || false;
+    // Token lookup via Cloud Function — keeps accounts/prospects collections locked down
+    firebase.functions().httpsCallable('lookupPortalToken')({ token: token })
+      .then(function(result) {
+        var d = result.data;
+        if (d.found) {
+          accountId = d.accountId;
+          accountName = d.accountName;
+          accountEmail = d.accountEmail;
+          isPbf = d.isPbf || false;
           isMatched = true;
-          isProspect = false;
-          _applyMatchedAccount(data);
-          return;
+          isProspect = d.isProspect || false;
+          _applyMatchedAccount(d);
+        } else {
+          var errEl = document.getElementById('error-msg');
+          if (errEl) {
+            errEl.textContent = 'This order link has expired or is invalid. Please contact us for a new link.';
+            errEl.style.display = 'block';
+          }
         }
-        // Not in accounts — check prospects
-        return db.collection('prospects')
-          .where('orderPortalToken', '==', token)
-          .get()
-          .then(function(proSnap) {
-            if (!proSnap.empty) {
-              var data = proSnap.docs[0].data();
-              accountId = proSnap.docs[0].id;
-              accountName = data.name || '';
-              accountEmail = data.email || '';
-              isMatched = true;
-              isProspect = true;
-              _applyMatchedAccount(data);
-              return;
-            }
-            // Neither found — show expired link message
-            var errEl = document.getElementById('error-msg');
-            if (errEl) {
-              errEl.textContent = 'This order link has expired or is invalid. Please contact us for a new link.';
-              errEl.style.display = 'block';
-            }
-          });
       })
-      .catch(function(e) { console.error('Token lookup error:', e); });
+      .catch(function(e) {
+        console.error('Token lookup error:', e);
+        // Fallback: show form without matching (anonymous submission)
+      });
   }
 
   function _applyMatchedAccount(data) {

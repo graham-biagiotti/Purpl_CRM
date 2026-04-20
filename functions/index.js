@@ -185,7 +185,54 @@ exports.sendOrderConfirmation = onCall(
   }
 );
 
-// ── 4. Resend Webhook ─────────────────────────────────────
+// ── 4. Portal Token Lookup ─────────────────────────────────
+// Public callable — takes a token, returns account info for the portal.
+// Queries Firestore server-side so accounts/prospects collections can
+// have restricted read rules (no PII exposed to unauthenticated clients).
+exports.lookupPortalToken = onCall(async (request) => {
+  const token = request.data?.token;
+  if (!token || typeof token !== 'string' || token.length < 5) {
+    throw new HttpsError('invalid-argument', 'Invalid token');
+  }
+
+  const db = admin.firestore();
+
+  // Check accounts first
+  const acSnap = await db.collection('accounts')
+    .where('orderPortalToken', '==', token).limit(1).get();
+  if (!acSnap.empty) {
+    const d = acSnap.docs[0].data();
+    return {
+      found: true,
+      isProspect: false,
+      accountId: acSnap.docs[0].id,
+      accountName: d.name || '',
+      accountEmail: d.email || '',
+      isPbf: d.isPbf || false,
+      portalPrefs: d.portalPrefs || {},
+    };
+  }
+
+  // Check prospects
+  const prSnap = await db.collection('prospects')
+    .where('orderPortalToken', '==', token).limit(1).get();
+  if (!prSnap.empty) {
+    const d = prSnap.docs[0].data();
+    return {
+      found: true,
+      isProspect: true,
+      accountId: prSnap.docs[0].id,
+      accountName: d.name || '',
+      accountEmail: d.email || '',
+      isPbf: false,
+      portalPrefs: {},
+    };
+  }
+
+  return { found: false };
+});
+
+// ── 5. Resend Webhook ─────────────────────────────────────
 // Validates webhook signature via svix, then updates cadence entries.
 exports.resendWebhook = onRequest(
   {secrets: [resendWebhookSecret]},
