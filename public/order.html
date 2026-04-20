@@ -381,10 +381,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         </select>
       </div>
 
-      <div class="form-group">
-        <label>PO Number <span class="opt">(optional)</span></label>
-        <input type="text" id="po-number" placeholder="Your PO # if applicable">
-      </div>
+      <input type="hidden" id="po-number" value="">
     </div>
 
     <!-- Notes -->
@@ -423,8 +420,13 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
   <!-- Thank You state -->
   <div class="thankyou" id="thankyou">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      alt="purpl" style="height:44px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+        alt="purpl" style="height:40px">
+      <div style="width:1px;height:36px;background:#e5e7eb"></div>
+      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+        alt="Lavender Fields" style="height:36px">
+    </div>
     <h2 id="ty-heading">Order received!</h2>
     <p style="margin-bottom:20px">We'll be in touch shortly to confirm your delivery window.</p>
     <div class="summary-card" id="ty-summary"></div>
@@ -1079,11 +1081,14 @@ function submitOrder() {
         contactName: contactName || null,
         contactEmail: billingEmail,
         billingEmail: billingEmail,
+        deliveryWindow: deliveryWindow,
+        poNumber: poNumber,
         notes: notes,
-        status: 'pending',
+        status: 'new',
         source: 'portal',
         isMatched: isMatched,
         isProspect: isProspect,
+        isUnmatched: !isMatched,
       })
     : Promise.resolve(null);
 

@@ -12235,10 +12235,11 @@ async function reviewPortalOrder(id) {
   }
 
   // Find paired LF/purpl order from same submission
-  const oTime = o.submittedAt ? (typeof o.submittedAt.getTime === 'function' ? o.submittedAt.getTime() : new Date(o.submittedAt).getTime()) : 0;
+  const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
+  const oTime = _tsMs(o.submittedAt);
   const paired = PortalDB.getOrders().find(p =>
-    p.id !== o.id && p.accountId === o.accountId && p.brand !== o.brand &&
-    Math.abs((p.submittedAt ? (typeof p.submittedAt.getTime === 'function' ? p.submittedAt.getTime() : new Date(p.submittedAt).getTime()) : 0) - oTime) < 60000
+    p.id !== o.id && (p.accountId === o.accountId || p.accountName === o.accountName) && p.brand !== o.brand &&
+    Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
   );
   const purplOrd = o.brand === 'lf' ? paired : o;
   const lfOrd = o.brand === 'lf' ? o : paired;
@@ -12374,8 +12375,19 @@ function openConfirmPortalOrder(id) {
   const o = PortalDB.getOrders().find(x => x.id === id);
   if (!o) return;
   const isUnmatched = !o.accountId;
-  const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-  const a = isUnmatched ? null : DB.a('ac').find(x => x.id === o.accountId);
+
+  // Find paired order from same submission
+  const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
+  const oTime = _tsMs(o.submittedAt);
+  const paired = PortalDB.getOrders().find(p =>
+    p.id !== o.id && (p.accountId === o.accountId || p.accountName === o.accountName) &&
+    p.brand !== o.brand && Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
+  );
+  const purplDoc = o.brand === 'lf' ? paired : o;
+  const lfDoc    = o.brand === 'lf' ? o : paired;
+  const hasPurpl = purplDoc && (purplDoc.items||[]).some(i => (i.cases||0) > 0);
+  const hasLf    = lfDoc && (lfDoc.lineItems||[]).length > 0;
+  const purplCases = hasPurpl ? (purplDoc.items||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
 
   // Show/hide account picker for unmatched orders
   const pickerEl = qs('#mcpo-account-picker');
@@ -12391,18 +12403,38 @@ function openConfirmPortalOrder(id) {
     }
   }
 
+  let brandSummary = '';
+  if (hasPurpl) {
+    brandSummary += `<div style="margin-top:8px;padding:8px 10px;background:#fdf9ff;border-radius:6px;border:1px solid #e9d5ff">
+      <div style="font-size:11px;font-weight:700;color:#8B5FBF;margin-bottom:4px">💜 purpl Lemonade</div>
+      <div style="font-size:14px;font-weight:600">${purplCases} case${purplCases!==1?'s':''} <span style="color:var(--muted);font-size:12px">(${purplCases*CANS_PER_CASE} cans)</span></div>
+    </div>`;
+  }
+  if (hasLf) {
+    const lfItems = lfDoc.lineItems || [];
+    const lfTotal = lfDoc.total || lfItems.reduce((s,li)=>s+(li.lineTotal||0),0);
+    brandSummary += `<div style="margin-top:8px;padding:8px 10px;background:#f0f7f1;border-radius:6px;border:1px solid #b8d4c0">
+      <div style="font-size:11px;font-weight:700;color:#4a7c59;margin-bottom:4px">🌿 Lavender Fields</div>
+      ${lfItems.map(li => `<div style="font-size:13px">${escHtml(li.skuName||'')} — ${li.cases||0} case${(li.cases||0)!==1?'s':''} · $${(li.lineTotal||0).toFixed(2)}</div>`).join('')}
+      <div style="font-size:13px;font-weight:600;color:#4a7c59;margin-top:4px">LF Total: $${lfTotal.toFixed(2)}</div>
+    </div>`;
+  }
+  if (hasPurpl && hasLf) {
+    brandSummary += `<div style="margin-top:8px;padding:6px 10px;background:#eff6ff;border-radius:6px;font-size:12px;color:#1e40af">This will create a <strong>combined invoice</strong> for both brands.</div>`;
+  }
+
   qs('#mcpo-body').innerHTML = `
     <div style="font-size:14px;margin-bottom:12px">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${escHtml(o.accountName)}</div>
       <div style="font-size:12px;color:var(--muted)">Portal submission · ${_fmtPoDate(o.submittedAt)}</div>
-      ${o.poNumber?`<div style="font-size:12px;margin-top:4px">PO# ${escHtml(o.poNumber)}</div>`:''}
-      ${o.distributor?`<div style="font-size:12px;margin-top:4px"><strong>Distributor:</strong> ${escHtml(o.distributor)}</div>`:''}
+      ${o.deliveryWindow?`<div style="font-size:12px;margin-top:4px"><strong>Delivery:</strong> ${escHtml(o.deliveryWindow)}</div>`:''}
     </div>
+    ${brandSummary}
   `;
 
   const qtyInput = qs('#mcpo-classic-qty');
   if (qtyInput) {
-    qtyInput.value = cases;
+    qtyInput.value = purplCases;
     qtyInput.oninput = () => {
       const q = parseInt(qtyInput.value)||0;
       const cc = qs('#mcpo-can-count');
@@ -12437,98 +12469,100 @@ async function confirmPortalOrder() {
       if (!selectedAcId) { toast('Select an account to match this order'); return; }
       d.accountId = selectedAcId;
       d.accountName = DB.a('ac').find(x => x.id === selectedAcId)?.name || d.accountName;
-      // Update the portal order with the matched account
       await portalRef.update({ accountId: selectedAcId, accountName: d.accountName, isUnmatched: false });
     }
 
-    const isLf = d.brand === 'lf';
     const todayStr = today();
-    const orderId = uid();
     const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
     const isDistFulfilled = acct.fulfilledBy && acct.fulfilledBy !== 'direct';
-    const acPrice = parseFloat(isDistFulfilled ? acct.pricePerCaseDist : acct.pricePerCaseDirect) || 0;
 
-    // Build items from either the confirmation modal inputs or the portal order data
-    let items = [];
-    let totalCases = 0;
-    let totalCans = 0;
+    // Find paired order from same submission (other brand, within 60s)
+    const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
+    const oTime = _tsMs(d.submittedAt);
+    const allPortal = PortalDB.getOrders();
+    const paired = allPortal.find(p =>
+      p.id !== _portalOrderId && (p.accountId === d.accountId || p.accountName === d.accountName) &&
+      p.brand !== d.brand && Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
+    );
 
-    if (isLf) {
-      // LF order — use lineItems from portal order
-      items = (d.lineItems || []).map(li => ({
-        sku: li.skuId || li.skuName || 'lf',
-        label: li.skuName || 'Lavender Fields',
-        qty: li.cases || 0,
-      }));
-      totalCases = items.reduce((s, i) => s + i.qty, 0);
-    } else {
-      // Purpl order — read from confirmation modal or portal order items
-      const casesEl = document.getElementById('confirm-cases');
-      const cases = parseInt(casesEl?.value || qs('#mcpo-classic-qty')?.value || 0);
-      if (cases < 1) { toast('Enter at least 1 case'); return; }
-      // Build items from portal order's items array if available, otherwise default to classic
-      const portalItems = (d.items || []).filter(i => i.cases > 0);
+    const purplDoc = d.brand === 'lf' ? paired : d;
+    const lfDoc    = d.brand === 'lf' ? d : paired;
+    const hasPurpl = purplDoc && (purplDoc.items||[]).some(i => (i.cases||0) > 0);
+    const hasLf    = lfDoc && (lfDoc.lineItems||[]).length > 0;
+    const isDual   = hasPurpl && hasLf;
+
+    // Build purpl items
+    let purplItems = [], purplCases = 0, purplCans = 0;
+    if (hasPurpl) {
+      const casesFromModal = parseInt(qs('#mcpo-classic-qty')?.value || 0);
+      const portalItems = (purplDoc.items || []).filter(i => i.cases > 0);
       if (portalItems.length) {
-        items = portalItems.map(i => ({ sku: i.sku || 'classic', label: i.label || 'Classic Lavender Lemonade', qty: i.cases }));
-      } else {
-        items = [{ sku: 'classic', label: 'Classic Lavender Lemonade', qty: cases }];
+        purplItems = portalItems.map(i => ({ sku: i.sku || 'classic', label: i.label || 'Classic Lavender Lemonade', qty: i.cases }));
+      } else if (casesFromModal > 0) {
+        purplItems = [{ sku: 'classic', label: 'Classic Lavender Lemonade', qty: casesFromModal }];
       }
-      totalCases = items.reduce((s, i) => s + i.qty, 0);
-      totalCans = totalCases * CANS_PER_CASE;
+      purplCases = purplItems.reduce((s, i) => s + i.qty, 0);
+      purplCans = purplCases * CANS_PER_CASE;
     }
 
-    if (totalCases < 1) { toast('Order has no items'); return; }
+    // Build LF items
+    let lfItems = [];
+    let lfTotal = 0;
+    if (hasLf) {
+      lfItems = (lfDoc.lineItems || []).map(li => ({
+        skuId: li.skuId || li.skuName || 'lf',
+        skuName: li.skuName || 'Lavender Fields',
+        description: li.skuName || 'Lavender Fields',
+        cases: li.cases || 0,
+        units: li.units || (li.cases || 0) * (li.caseSize || 1),
+        caseSize: li.caseSize || 1,
+        unitPrice: li.unitPrice || li.wholesalePrice || 0,
+        pricePerUnit: li.unitPrice || li.wholesalePrice || 0,
+        lineTotal: li.lineTotal || 0,
+        total: li.lineTotal || 0,
+        hasVariants: !!li.hasVariants,
+        variantLines: li.variantLines || [],
+      }));
+      lfTotal = lfDoc.total || lfItems.reduce((s, li) => s + (li.lineTotal || 0), 0);
+    }
 
-    const orderData = {
-      id: orderId,
-      accountId: d.accountId || null,
-      accountName: d.accountName,
-      created: todayStr,
-      dueDate: todayStr,
-      items,
-      cases: totalCases,
-      cans: totalCans,
-      status: 'pending',
-      source: 'portal',
-      brand: isLf ? 'lf' : 'purpl',
-      linkedPortalOrderId: _portalOrderId,
-      notes: d.notes || '',
-      poNumber: d.poNumber || '',
-      deliveryWindow: d.deliveryWindow || '',
-      distributor: d.distributor || '',
-    };
+    if (purplCases < 1 && lfItems.length < 1) { toast('Order has no items'); return; }
 
-    // Inventory deduction happens at invoice creation, not order confirmation
+    // Pricing
+    const costs = DB.obj('costs', {cogs:{}});
+    const margin = costs.target_margin || 0.60;
+    const fallbackMarkup = 1 / Math.max(0.01, 1 - margin);
+    const acPrice = parseFloat(isDistFulfilled ? acct.pricePerCaseDist : acct.pricePerCaseDirect) || 0;
+    const effectivePrice = acPrice || ((costs.cogs?.classic || 2.15) * fallbackMarkup * CANS_PER_CASE);
+    const purplTotal = purplCases * effectivePrice;
 
-    // Build draft invoice
-    const lastInvNum = DB.a('retail_invoices').reduce((max, inv) => {
-      const n = parseInt((inv.invoiceNumber || '').replace(/\D/g, '')) || 0;
-      return Math.max(max, n);
-    }, 0);
-    const invoiceNumber = 'INV-' + String(lastInvNum + 1).padStart(4, '0');
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms
                   || DB.obj('settings', {}).default_payment_terms || DB.obj('settings', {}).payment_terms || 30;
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
 
-    // Compute total — use account pricing for purpl, lineItem pricing for LF
-    // Fallback to COGS-based pricing if no account-level price is set
-    const costs = DB.obj('costs', {cogs:{}});
-    const margin = costs.target_margin || 0.60;
-    const fallbackMarkup = 1 / Math.max(0.01, 1 - margin);
-    let invoiceTotal = null;
-    let effectivePrice = acPrice;
-    if (isLf) {
-      invoiceTotal = d.total || (d.lineItems || []).reduce((s, li) => s + (li.lineTotal || 0), 0) || null;
-    } else {
-      if (!effectivePrice) {
-        effectivePrice = (costs.cogs?.classic || 2.15) * fallbackMarkup * CANS_PER_CASE;
-      }
-      invoiceTotal = totalCases * effectivePrice;
-    }
+    // Create order record(s)
+    const purplOrderId = hasPurpl ? uid() : null;
+    const lfOrderId = hasLf ? uid() : null;
 
-    // Atomic write: order + lastOrder (inventory deduction at invoice creation)
     DB.atomicUpdate(cache => {
-      cache['orders'] = [...(cache['orders'] || []), orderData];
+      if (hasPurpl) {
+        cache['orders'] = [...(cache['orders'] || []), {
+          id: purplOrderId, accountId: d.accountId, accountName: d.accountName,
+          created: todayStr, dueDate: todayStr, items: purplItems,
+          cases: purplCases, cans: purplCans, status: 'pending', source: 'portal', brand: 'purpl',
+          linkedPortalOrderId: purplDoc.id || _portalOrderId,
+          notes: d.notes || '', deliveryWindow: d.deliveryWindow || purplDoc.deliveryWindow || '',
+        }];
+      }
+      if (hasLf) {
+        cache['orders'] = [...(cache['orders'] || []), {
+          id: lfOrderId, accountId: d.accountId, accountName: d.accountName,
+          created: todayStr, dueDate: todayStr, items: lfItems.map(li => ({ sku: li.skuId, label: li.skuName, qty: li.cases })),
+          cases: lfItems.reduce((s,li)=>s+(li.cases||0),0), cans: 0, status: 'pending', source: 'portal', brand: 'lf',
+          linkedPortalOrderId: lfDoc.id || _portalOrderId,
+          notes: d.notes || '', deliveryWindow: d.deliveryWindow || lfDoc?.deliveryWindow || '',
+        }];
+      }
       if (d.accountId) {
         const key = d.isProspect ? 'pr' : 'ac';
         cache[key] = (cache[key] || []).map(a =>
@@ -12537,48 +12571,108 @@ async function confirmPortalOrder() {
       }
     });
 
-    // Create draft invoice in the appropriate collection
-    const invCollection = isLf ? 'lf_invoices' : 'retail_invoices';
-    DB.push(invCollection, {
-      id: uid(),
-      invoiceNumber,
-      accountId: d.accountId || null,
-      accountName: d.accountName,
-      orderId: orderId,
-      date: todayStr,
-      dueDate: dueDateStr,
-      cases: totalCases,
-      cans: totalCans,
-      pricePerCase: isLf ? null : (effectivePrice || null),
-      total: invoiceTotal,
-      priceType: isDistFulfilled ? 'dist' : 'direct',
-      status: 'draft',
-      source: 'portal',
-      brand: isLf ? 'lf' : 'purpl',
-      billingEmail: d.billingEmail || acct.email || '',
-      notes: 'Auto-drafted from portal order approval.',
-      linkedPortalOrderId: _portalOrderId,
-    });
+    // Create invoices — combined if dual-brand, single otherwise
+    if (isDual) {
+      const purplNum = getNextInvoiceNumber('purpl');
+      const lfNum    = getNextInvoiceNumber('lf');
+      const combNum  = getNextInvoiceNumber('combined');
+      const purplInvId = uid();
+      const lfInvId    = uid();
+      const combId     = uid();
 
-    // Deduct purpl inventory on invoice creation (LF managed on Wix)
-    if (!isLf) {
-      items.forEach(i => {
-        if (i.qty > 0) {
-          DB.push('iv', { id: uid(), date: todayStr, sku: i.sku, type: 'out', qty: i.qty * CANS_PER_CASE, note: 'Invoice ' + invoiceNumber, invoiceId: invoiceNumber });
-        }
+      const purplInv = {
+        id: purplInvId, number: purplNum, invoiceNumber: purplNum,
+        accountId: d.accountId, accountName: d.accountName,
+        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+        total: purplTotal, amount: purplTotal, status: 'draft',
+        lineItems: purplItems.map(i => ({
+          skuId: i.sku, sku: i.label, description: i.label,
+          qty: i.qty, cases: i.qty, units: i.qty * CANS_PER_CASE,
+          unitPrice: effectivePrice, pricePerCase: effectivePrice,
+          total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
+        })),
+        billingEmail: d.billingEmail || acct.email || '',
+        notes: 'Auto-drafted from portal order.',
+        combinedInvoiceId: combId, source: 'portal',
+        linkedPortalOrderId: purplDoc.id || _portalOrderId,
+      };
+      const lfInv = {
+        id: lfInvId, number: lfNum, invoiceNumber: lfNum,
+        accountId: d.accountId, accountName: d.accountName,
+        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+        total: lfTotal, status: 'draft',
+        lineItems: lfItems,
+        billingEmail: d.billingEmail || acct.email || '',
+        notes: 'Auto-drafted from portal order.',
+        combinedInvoiceId: combId, source: 'portal',
+        linkedPortalOrderId: lfDoc.id || _portalOrderId,
+      };
+      const combInv = {
+        id: combId, number: combNum, invoiceNumber: combNum,
+        purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
+        accountId: d.accountId, accountName: d.accountName, status: 'draft',
+        date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+        createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
+        purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
+        notes: 'Auto-drafted from portal order.', source: 'portal',
+        portalOrderId: _portalOrderId,
+      };
+
+      DB.atomicUpdate(cache => {
+        cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
+        cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
+        cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
+      });
+    } else if (hasPurpl) {
+      const invNum = getNextInvoiceNumber('purpl');
+      DB.push('retail_invoices', {
+        id: uid(), number: invNum, invoiceNumber: invNum,
+        accountId: d.accountId, accountName: d.accountName,
+        orderId: purplOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+        cases: purplCases, cans: purplCans,
+        pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
+        priceType: isDistFulfilled ? 'dist' : 'direct',
+        status: 'draft', source: 'portal', brand: 'purpl',
+        billingEmail: d.billingEmail || acct.email || '',
+        notes: 'Auto-drafted from portal order.',
+        linkedPortalOrderId: _portalOrderId,
+      });
+    } else if (hasLf) {
+      const invNum = getNextInvoiceNumber('lf');
+      DB.push('lf_invoices', {
+        id: uid(), number: invNum, invoiceNumber: invNum,
+        accountId: d.accountId, accountName: d.accountName,
+        orderId: lfOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+        total: lfTotal, status: 'draft', source: 'portal',
+        lineItems: lfItems,
+        billingEmail: d.billingEmail || acct.email || '',
+        notes: 'Auto-drafted from portal order.',
+        linkedPortalOrderId: lfDoc.id || _portalOrderId,
       });
     }
 
-    // Update portal_orders status
+    // Update portal_orders status for both orders
     await portalRef.update({
       status: 'confirmed',
       confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      convertedOrderId: orderId,
+      convertedOrderId: purplOrderId || lfOrderId,
     });
+    if (paired) {
+      const pairedRef = firebase.firestore().collection('portal_orders').doc(paired.id);
+      await pairedRef.update({
+        status: 'confirmed',
+        confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        convertedOrderId: paired.brand === 'lf' ? lfOrderId : purplOrderId,
+      }).catch(e => console.warn('Paired order status update failed:', e));
+    }
 
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
-    toast('✓ Order confirmed · Invoice draft created' + (ivEntries.length ? ' · Inventory updated' : ''));
+    if (isDual) {
+      toast('✓ Order confirmed · Combined invoice draft created');
+    } else {
+      toast('✓ Order confirmed · Invoice draft created');
+    }
 
     // Send confirmation email and log cadence
     const emailTo = d.billingEmail || acct.email;
@@ -12589,9 +12683,14 @@ async function confirmPortalOrder() {
       const portalLink = acct.orderPortalToken
         ? `https://purpl-crm.web.app/order?t=${acct.orderPortalToken}`
         : null;
-      const summaryParts = items.map(i => `${escHtml(i.label||i.sku)}: ${i.qty} cases`).join(', ');
-      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order ref:</strong> ${escHtml(d.poNumber || orderId)}</p><p style="margin:4px 0">${summaryParts}</p>`;
-      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, isLf)
+      let summaryParts = '';
+      if (hasPurpl) summaryParts += purplItems.map(i => `${escHtml(i.label||i.sku)}: ${i.qty} cases`).join(', ');
+      if (hasLf) {
+        if (summaryParts) summaryParts += '<br>';
+        summaryParts += lfItems.map(i => `${escHtml(i.skuName)}: ${i.cases} cases`).join(', ');
+      }
+      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order confirmed</strong></p><p style="margin:4px 0">${summaryParts}</p>`;
+      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, !!hasLf)
         .then(result => {
           const entry = {
             id: uid(),
@@ -12599,7 +12698,6 @@ async function confirmPortalOrder() {
             sentAt: new Date().toISOString(),
             sentBy: 'graham',
             method: 'resend',
-            orderRef: d.poNumber || orderId,
           };
           if (result?.id) entry.sentMessageId = result.id;
           DB.update('ac', d.accountId, a => ({
@@ -12830,9 +12928,11 @@ function renderInvKpis() {
 
 function renderInvColPurpl() {
   const todayStr = today();
-  // Exclude iv records that are part of a combined invoice
-  const invs = DB.a('iv')
-    .filter(x => (x.accountId || x.number || x.invoiceNumber) && !x.combinedInvoiceId);
+  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
+  const invs = [
+    ...DB.a('retail_invoices'),
+    ...DB.a('iv').filter(x => (x.accountId || x.number || x.invoiceNumber) && !retailIds.has(x.id)),
+  ].filter(x => !x.combinedInvoiceId);
 
   function effectiveStatus(inv) {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
