@@ -168,6 +168,20 @@
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page" id="page-dashboard">
 
+      <!-- Notes Scratchpad -->
+      <details class="card" style="margin-bottom:16px" open>
+        <summary style="font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:2px 0;list-style:none">
+          <span>📝 Notes</span>
+          <span id="dash-notes-saved" style="font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s;text-transform:none;letter-spacing:0;font-weight:400">Saved</span>
+        </summary>
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fafaf8;min-height:140px;margin-top:12px">
+          <div id="dash-notes-sidebar" style="width:140px;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f5f4f0"></div>
+          <div style="flex:1;display:flex;flex-direction:column;position:relative">
+            <textarea id="dash-notes-content" placeholder="Start typing…" oninput="debounceNoteSectionSave()" style="flex:1;width:100%;min-height:140px;padding:10px 12px;border:none;background:transparent;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;outline:none"></textarea>
+          </div>
+        </div>
+      </details>
+
       <!-- Low stock alert card (shown when inventory < threshold) -->
       <div id="dash-low-stock-alert" style="display:none"></div>
       <!-- New applications alert card -->
@@ -272,20 +286,6 @@
         </div>
         <div id="dash-prod-plan"></div>
       </div>
-
-      <!-- Notes Scratchpad (moved below main content) -->
-      <details class="card" style="margin-bottom:20px" open>
-        <summary style="font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:2px 0;list-style:none">
-          <span>📝 Notes</span>
-          <span id="dash-notes-saved" style="font-size:11px;color:var(--muted);opacity:0;transition:opacity .4s;text-transform:none;letter-spacing:0;font-weight:400">Saved</span>
-        </summary>
-        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fafaf8;min-height:140px;margin-top:12px">
-          <div id="dash-notes-sidebar" style="width:140px;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f5f4f0"></div>
-          <div style="flex:1;display:flex;flex-direction:column;position:relative">
-            <textarea id="dash-notes-content" placeholder="Start typing…" oninput="debounceNoteSectionSave()" style="flex:1;width:100%;min-height:140px;padding:10px 12px;border:none;background:transparent;font-size:13px;font-family:inherit;line-height:1.5;resize:vertical;box-sizing:border-box;outline:none"></textarea>
-          </div>
-        </div>
-      </details>
 
     </div>
 

@@ -10311,17 +10311,19 @@ function _ncivRenderSkuRows() {
     }).join('');
   }
 
-  // LF SKU rows
+  // LF SKU rows — priced per unit, sold in cases
   const lfSkus = DB.a('lf_skus').filter(s => !s.archived);
   const lfEl = document.getElementById('nciv-lf-skus');
   if (lfEl) {
     lfEl.innerHTML = lfSkus.map(sku => {
-      const ppc = sku.wholesalePrice || 0;
-      return `<div class="lfi-item-row" data-sku="${sku.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
+      const unitPrice = sku.wholesalePrice || 0;
+      const cs = sku.caseSize || 1;
+      return `<div class="lfi-item-row" data-sku="${sku.id}" data-casesize="${cs}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)} <span style="font-size:11px;color:var(--muted)">(${cs}/case)</span></span>
         <input class="nciv-lf-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
         <span style="font-size:11px;color:var(--muted)">cases</span>
-        <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${ppc.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
+        <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
+        <span style="font-size:11px;color:var(--muted)">/unit</span>
         <span class="nciv-lf-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#4a7c59">$0.00</span>
       </div>`;
     }).join('');
@@ -10345,8 +10347,9 @@ function _ncivCalcTotals() {
   document.querySelectorAll('.nciv-lf-cases').forEach(el => {
     const sku = el.dataset.sku;
     const cases = parseInt(el.value) || 0;
-    const ppc = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
-    const line = cases * ppc;
+    const unitPrice = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
+    const caseSize = parseInt(el.closest('.lfi-item-row')?.dataset.casesize) || 1;
+    const line = cases * caseSize * unitPrice;
     lfSub += line;
     const lineEl = document.querySelector(`.nciv-lf-line[data-sku="${sku}"]`);
     if (lineEl) lineEl.textContent = '$' + line.toFixed(2);
@@ -10372,15 +10375,18 @@ function saveNewCombinedInvoice() {
     purplLines.push({ skuId, sku: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units: cases * CANS_PER_CASE, unitPrice: ppc, pricePerCase: ppc, total: cases * ppc, lineTotal: cases * ppc });
   });
 
-  // Collect LF lines from SKU rows
+  // Collect LF lines from SKU rows — LF is priced per unit, sold in cases
   const lfLines = [];
   document.querySelectorAll('.nciv-lf-cases').forEach(el => {
     const skuId = el.dataset.sku;
     const cases = parseInt(el.value) || 0;
     if (!cases) return;
-    const ppc = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
+    const unitPrice = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
     const skuObj = DB.a('lf_skus').find(s => s.id === skuId);
-    lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, unitPrice: ppc, pricePerCase: ppc, total: cases * ppc, lineTotal: cases * ppc, hasVariants: false });
+    const caseSize = skuObj?.caseSize || 1;
+    const units = cases * caseSize;
+    const lineTotal = units * unitPrice;
+    lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: false });
   });
 
   if (!purplLines.length && !lfLines.length) { toast('Add at least one case quantity'); return; }
