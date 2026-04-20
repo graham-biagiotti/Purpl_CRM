@@ -197,8 +197,22 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
   </div>
 
-  <!-- Main form -->
-  <div id="order-form">
+  <!-- Password gate (hidden when token is present or password entered) -->
+  <div id="password-gate" style="display:none">
+    <div class="card" style="max-width:400px;margin:40px auto;text-align:center">
+      <h2 style="font-family:'Playfair Display',serif;font-size:22px;font-weight:400;margin-bottom:8px">Retailer Access</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Enter the wholesale portal password to place an order.</p>
+      <div class="form-group" style="margin-bottom:16px">
+        <input type="password" id="portal-password" placeholder="Enter password" style="text-align:center;font-size:16px;padding:12px" onkeydown="if(event.key==='Enter')checkPortalPassword()">
+      </div>
+      <div id="pw-error" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none">Incorrect password. Please try again.</div>
+      <button onclick="checkPortalPassword()" style="background:var(--purpl);color:#fff;border:none;padding:12px 32px;border-radius:6px;font-size:15px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif">Enter</button>
+      <p style="font-size:12px;color:var(--muted);margin-top:20px">Don't have the password? <a href="/wholesale.html" style="color:var(--purpl)">Apply for a wholesale account</a></p>
+    </div>
+  </div>
+
+  <!-- Main form (hidden until password or token) -->
+  <div id="order-form" style="display:none">
 
     <!-- Brand selector -->
     <div id="brand-selector" style="margin-bottom:20px">
@@ -804,12 +818,37 @@ function loadLfSkus(prevOrder) {
     });
 }
 
+let _portalPassword = '';
+
 function init() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('t');
 
+  // Load portal settings (password, mode, pricing)
+  db.collection('portal_settings').doc('config').get().then(function(doc) {
+    if (doc.exists) {
+      _portalPassword = doc.data().portalPassword || '';
+      portalMode = doc.data().mode || 'preorder';
+      pricePerCase = doc.data().pricePerCase || null;
+      if (portalMode === 'preorder') {
+        document.getElementById('preorder-banner').style.display = 'block';
+        if (document.getElementById('preorder-note')) document.getElementById('preorder-note').style.display = 'block';
+        document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
+      } else {
+        document.getElementById('submit-btn').textContent = 'Place Order';
+        if (pricePerCase) {
+          document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
+          document.getElementById('price-display').style.display = 'block';
+        }
+      }
+    }
+  }).catch(function() {});
+
   if (token) {
-    // Token lookup via Cloud Function — keeps accounts/prospects collections locked down
+    // Token present — bypass password gate, show form directly
+    document.getElementById('order-form').style.display = '';
+    document.getElementById('password-gate').style.display = 'none';
+
     firebase.functions().httpsCallable('lookupPortalToken')({ token: token })
       .then(function(result) {
         var d = result.data;
@@ -831,8 +870,11 @@ function init() {
       })
       .catch(function(e) {
         console.error('Token lookup error:', e);
-        // Fallback: show form without matching (anonymous submission)
       });
+  } else {
+    // No token — show password gate
+    document.getElementById('password-gate').style.display = '';
+    document.getElementById('order-form').style.display = 'none';
   }
 
   function _applyMatchedAccount(data) {
@@ -917,27 +959,6 @@ function init() {
     loadLfSkus(null); // pre-load so it's ready if user clicks LF card
   }
 
-  // Load portal settings
-  db.collection('portal_settings').doc('config').get()
-    .then(doc => {
-      if (doc.exists) {
-        portalMode = doc.data().mode || 'preorder';
-        pricePerCase = doc.data().pricePerCase || null;
-        if (portalMode === 'preorder') {
-          document.getElementById('preorder-banner').style.display = 'block';
-          document.getElementById('preorder-note').style.display = 'block';
-          document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
-        } else {
-          document.getElementById('submit-btn').textContent = 'Place Order';
-          if (pricePerCase) {
-            document.getElementById('price-display').textContent =
-              '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
-            document.getElementById('price-display').style.display = 'block';
-          }
-        }
-      }
-    })
-    .catch(e => console.error('Settings load error:', e));
 }
 
 function updateCans() {
@@ -1712,6 +1733,25 @@ function renderOrderHistory(orders) {
   html += '</div>';
   el.innerHTML = html;
   el.style.display = 'block';
+}
+
+function checkPortalPassword() {
+  const input = document.getElementById('portal-password').value.trim();
+  if (!input) return;
+  if (!_portalPassword) {
+    // No password configured — let anyone through
+    document.getElementById('password-gate').style.display = 'none';
+    document.getElementById('order-form').style.display = '';
+    _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
+    return;
+  }
+  if (input === _portalPassword) {
+    document.getElementById('password-gate').style.display = 'none';
+    document.getElementById('order-form').style.display = '';
+    _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
+  } else {
+    document.getElementById('pw-error').style.display = '';
+  }
 }
 
 init();

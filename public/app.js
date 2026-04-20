@@ -383,6 +383,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR RETAILER PORTAL</div>
             <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Access Your Portal →</a>
             <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link for easy access</div>
+            ${extra.portalPassword ? `<div style="font-size:12px;color:#374151;margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb">You can also order directly at <a href="https://purpl-crm.web.app/order" style="color:${accentColor}">purpl-crm.web.app/order</a><br>Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
           </td></tr>
         </table>
         <p>Payment terms: Net 30. Invoices from lavender@pbfwholesale.com.</p>
@@ -10269,10 +10270,14 @@ function openNewCombinedModal() {
   sel.innerHTML = '<option value="">Select account...</option>' +
     accts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
 
+  const combNum = getNextInvoiceNumber('combined');
+  if (qs('#nciv-number')) qs('#nciv-number').value = combNum;
+  if (qs('#nciv-date')) qs('#nciv-date').value = today();
   const terms = DB.obj('invoice_settings',{}).terms || DB.obj('settings',{}).default_payment_terms || 30;
   const d = new Date(Date.now() + terms * 86400000);
-  document.getElementById('nciv-due').value = d.toISOString().slice(0,10);
-  document.getElementById('nciv-notes').value = '';
+  if (qs('#nciv-due')) qs('#nciv-due').value = d.toISOString().slice(0,10);
+  if (qs('#nciv-status')) qs('#nciv-status').value = 'unpaid';
+  if (qs('#nciv-notes')) qs('#nciv-notes').value = '';
 
   _ncivRenderSkuRows();
   openModal('modal-new-combined');
@@ -10381,36 +10386,40 @@ function saveNewCombinedInvoice() {
   if (!purplLines.length && !lfLines.length) { toast('Add at least one case quantity'); return; }
 
   const account  = DB.a('ac').find(x => x.id === accountId) || {};
-  const due      = document.getElementById('nciv-due').value;
-  const notes    = document.getElementById('nciv-notes').value;
-  const issued   = new Date().toISOString().slice(0,10);
+  const due      = qs('#nciv-due')?.value || '';
+  const issued   = qs('#nciv-date')?.value || today();
+  const status   = qs('#nciv-status')?.value || 'unpaid';
+  const notes    = qs('#nciv-notes')?.value || '';
+  const userNum  = qs('#nciv-number')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
   const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
 
   // Read next numbers before any write so they're accurate
   const purplNum = getNextInvoiceNumber('purpl');
   const lfNum    = getNextInvoiceNumber('lf');
-  const combNum  = getNextInvoiceNumber('combined');
+  const combNum  = userNum || getNextInvoiceNumber('combined');
   const purplId  = uid();
   const lfId     = uid();
   const combId   = uid();
 
   const purplInv = {
-    id: purplId, number: purplNum, accountId, accountName: account.name||'',
-    issued, due, amount: purplSub, status: 'unpaid', lineItems: purplLines,
+    id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
+    date: issued, dueDate: due, due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
     notes, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
-    id: lfId, number: lfNum, accountId, accountName: account.name||'',
-    issued, due, total: lfSub, status: 'unpaid',
+    id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
+    date: issued, dueDate: due, due, total: lfSub, status,
     lineItems: lfLines.map(l => ({
       ...l, skuName: l.description, units: l.qty, lineTotal: l.total, hasVariants: false,
     })),
     notes, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   const combInv = {
-    id: combId, number: combNum, purplInvoiceId: purplId, lfInvoiceId: lfId,
-    accountId, accountName: account.name||'', status: 'unpaid',
+    id: combId, number: combNum, invoiceNumber: combNum,
+    purplInvoiceId: purplId, lfInvoiceId: lfId,
+    accountId, accountName: account.name||'', status,
+    date: issued, dueDate: due, due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
     notes, source: 'manual',
@@ -12389,6 +12398,8 @@ async function renderPortalSettings() {
   if (modeEl) modeEl.value = config.mode || 'preorder';
   const priceEl = qs('#portal-price-per-case');
   if (priceEl) priceEl.value = config.pricePerCase || '';
+  const pwEl = qs('#portal-password-setting');
+  if (pwEl) pwEl.value = config.portalPassword || '';
   const dlEnabled = qs('#portal-deadline-enabled');
   if (dlEnabled) { dlEnabled.checked = !!config.deadlineEnabled; togglePortalDeadline(); }
   const dlDate = qs('#portal-deadline');
@@ -12422,7 +12433,8 @@ async function savePortalSettings() {
   const price     = parseFloat(qs('#portal-price-per-case')?.value)||null;
   const dlEnabled = qs('#portal-deadline-enabled')?.checked || false;
   const deadline  = qs('#portal-deadline')?.value || null;
-  const config    = { mode, pricePerCase: price, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null };
+  const portalPassword = qs('#portal-password-setting')?.value?.trim() || '';
+  const config    = { mode, pricePerCase: price, portalPassword, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null };
   try {
     await PortalDB.saveConfig(config);
     toast('Portal settings saved ✓');
@@ -13674,7 +13686,9 @@ async function approveApplication(docId, app) {
   // Send approved cadence email and log to cadence
   if (app.email) {
     try {
-      const tpl = getCadenceEmailTemplate('approved', rec);
+      let _pw = '';
+      try { const _cfg = await firebase.firestore().collection('portal_settings').doc('config').get(); _pw = _cfg.exists ? (_cfg.data().portalPassword||'') : ''; } catch(e) {}
+      const tpl = getCadenceEmailTemplate('approved', rec, { portalPassword: _pw });
       const result = await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
       const entry = {
         id: uid(), stage: 'approved_welcome',

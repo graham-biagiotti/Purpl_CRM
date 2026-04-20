@@ -1381,6 +1381,11 @@
                 <label>Classic — Price per case ($)</label>
                 <input type="number" id="portal-price-per-case" step="0.01" min="0" placeholder="Leave blank to hide price">
               </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Portal Password</label>
+                <input type="text" id="portal-password-setting" placeholder="Leave blank for no password">
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">Customers without a personalized link need this password to access the order form.</div>
+              </div>
               <div class="form-group" style="margin-bottom:8px">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
                   <input type="checkbox" id="portal-deadline-enabled" onchange="togglePortalDeadline()">
@@ -3099,8 +3104,27 @@ document.addEventListener('DOMContentLoaded', () => {
         <select id="nciv-account" onchange="ncivAccountChanged()"><option value="">Select account...</option></select>
       </div>
       <div class="form-group">
+        <label>Invoice Number</label>
+        <input type="text" id="nciv-number" placeholder="Auto-generated">
+      </div>
+    </div>
+
+    <div class="form-row col3">
+      <div class="form-group">
+        <label>Invoice Date</label>
+        <input type="date" id="nciv-date">
+      </div>
+      <div class="form-group">
         <label>Due Date</label>
         <input type="date" id="nciv-due">
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="nciv-status">
+          <option value="draft">Draft</option>
+          <option value="unpaid" selected>Unpaid</option>
+          <option value="paid">Paid</option>
+        </select>
       </div>
     </div>
 
