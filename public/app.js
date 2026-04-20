@@ -1154,7 +1154,7 @@ function renderCadenceOverdue() {
   // Invoices without a sent notification
   DB.a('ac').forEach(a=>{
     const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
-    DB.a('iv').filter(x=>x.accountId===a.id&&x.number&&!sentIds.has(x.id)).forEach(inv=>{
+    [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
       flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
     });
     DB.a('lf_invoices').filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
@@ -1477,7 +1477,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
   if (isNew) {
-    const existing = DB.a('iv').filter(x => x.number);
+    const existing = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
     const num = existing.length + 1;
     if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
@@ -1536,7 +1536,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   if (ivSendBtn) {
     ivSendBtn.style.display = isNew ? 'none' : '';
     ivSendBtn.onclick = () => {
-      const inv = DB.a('iv').find(x => x.id === id);
+      const inv = DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id);
       if (!inv) { toast('Save the invoice before sending'); return; }
       const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
       const to = ac.email || '';
@@ -2557,7 +2557,7 @@ function openEmailPreview(stage, accountId, extra={}) {
 function _openInvEmailPreview(accountId) {
   const invId = _latestAccountInvoiceId(accountId);
   const inv = invId
-    ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId))
+    ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId))
     : null;
   openEmailPreview('invoice-sent', accountId, {
     invoiceNumber: inv?.number || '',
@@ -2738,7 +2738,7 @@ function renderMacEmailsTab(id) {
 }
 
 function _latestAccountInvoiceId(accountId) {
-  const purpl = DB.a('iv').filter(x=>x.accountId===accountId&&x.number).sort((a,b)=>b.created>a.created?1:-1)[0];
+  const purpl = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].filter(x=>x.accountId===accountId).sort((a,b)=>(b.created||b.date||'')>(a.created||a.date||'')?1:-1)[0];
   const lf    = DB.a('lf_invoices').filter(x=>x.accountId===accountId).sort((a,b)=>b.created>a.created?1:-1)[0];
   if (!purpl && !lf) return '';
   if (!purpl) return lf.id;
@@ -3130,7 +3130,7 @@ function _renderEmailsRightCol() {
     const extra = {};
     if (_emailsSelectedTemplate === 'invoice-sent') {
       const invId = _latestAccountInvoiceId(account.id);
-      const inv = invId ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+      const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
       if (inv) {
         extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
         extra.invoiceTotal = inv.total || inv.grandTotal || 0;
@@ -3204,7 +3204,7 @@ function emailsPageSendEmail() {
   const extra = {};
   if (_emailsSelectedTemplate === 'invoice-sent') {
     const invId = _latestAccountInvoiceId(account.id);
-    const inv = invId ? (DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+    const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
     if (inv) {
       extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
       extra.invoiceTotal = inv.total || inv.grandTotal || 0;
@@ -7878,7 +7878,7 @@ function renderReports() {
       combinedEl.style.marginBottom = '12px';
       kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
     }
-    const purplInvoiced = DB.a('iv').reduce((s,x) => s + parseFloat(x.amount||0), 0);
+    const purplInvoiced = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
     const lfInvoiced    = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
     combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
       `<div class="num">${fmtC(purplInvoiced + lfInvoiced)}</div>` +
@@ -8682,7 +8682,7 @@ function exportYearEnd() {
   const rows = [];
 
   // purpl invoices (exclude those that are part of a combined invoice to avoid double-counting)
-  DB.a('iv').filter(x => x.number && x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
+  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)].filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
     const pd = x.paidDate || '';
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || x.accountId || '—';
@@ -12519,7 +12519,7 @@ function renderInvoicesPage() {
 
 function renderInvKpis() {
   const todayStr = today();
-  const purplInvs = DB.a('iv').filter(x => x.accountId || x.number || x.invoiceNumber);
+  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
   const lfInvs    = DB.a('lf_invoices');
   const distInvs  = DB.a('dist_invoices');
 
@@ -12985,8 +12985,8 @@ function loadApiSettings() {
 
 function generateInvoicePrint(invoiceId) {
   // Search both iv and retail_invoices collections
-  const iv = DB.a('iv').find(x => x.id === invoiceId)
-          || DB.a('retail_invoices').find(x => x.id === invoiceId);
+  const iv = DB.a('retail_invoices').find(x => x.id === invoiceId)
+          || DB.a('iv').find(x => x.id === invoiceId);
   if (!iv) { toast('Invoice not found'); return; }
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
