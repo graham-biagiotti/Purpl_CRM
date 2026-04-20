@@ -1269,14 +1269,16 @@ function renderInvoiceStatus() {
       if (!rInvs.length) return '';
       const rows = rInvs.map(inv=>{
         const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
-        const statusCls = inv.status==='paid'?'green': daysAgo(inv.dueDate)>0?'red':'blue';
+        const isDraft = inv.status === 'draft';
+        const statusCls = inv.status==='paid'?'green': isDraft?'gray': (inv.dueDate && daysAgo(inv.dueDate)>0)?'red':'blue';
+        const statusLabel = inv.status==='paid'?'Paid': isDraft?'Draft': (inv.dueDate && daysAgo(inv.dueDate)>0)?'Overdue':'Unpaid';
         return `<tr>
           <td>${inv.invoiceNumber||'—'}</td>
           <td>${fmtD(inv.date)}</td>
           <td>${acName}</td>
           <td>${fmtD(inv.dueDate)}</td>
           <td>${fmtC(inv.total||0)}</td>
-          <td><span class="badge ${statusCls}">${inv.status==='paid'?'Paid':daysAgo(inv.dueDate)>0?'Overdue':'Unpaid'}</span></td>
+          <td><span class="badge ${statusCls}">${statusLabel}</span></td>
           <td style="white-space:nowrap">
             <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
             ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">Mark Paid</button>`:''}
