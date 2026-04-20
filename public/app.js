@@ -1418,8 +1418,17 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="${headerGrad};padding:24px 40px">
-    <div style="color:rgba(255,255,255,0.75);font-size:11px;text-transform:uppercase;letter-spacing:0.15em;margin-bottom:4px">Pumpkin Blossom Farm · Wholesale</div>
-    <div style="color:#fff;font-size:22px;font-weight:700">${isOverdue ? 'Payment Overdue' : 'Invoice Due Soon'}</div>
+    <table width="100%"><tr>
+      <td>
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
+          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+        </tr></table>
+        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
+      </td>
+      <td align="right"><div style="color:#fff;font-size:22px;font-weight:700">${isOverdue ? 'Payment Overdue' : 'Invoice Due Soon'}</div></td>
+    </tr></table>
   </td></tr>
   <tr><td style="background:${accentColor};height:4px"></td></tr>
   <tr><td style="padding:28px 40px">
@@ -10634,7 +10643,14 @@ function buildPurplInvoiceEmailHTML(inv) {
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:24px 40px">
     <table width="100%"><tr>
-      <td><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="100" height="40" style="display:block"></td>
+      <td>
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
+          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+        </tr></table>
+        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
+      </td>
       <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
     </tr></table>
   </td></tr>
@@ -10712,8 +10728,13 @@ function buildLfInvoiceEmailHTML(inv) {
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:linear-gradient(135deg,#2a5c3f 0%,#4a7c59 100%);padding:24px 40px">
     <table width="100%"><tr>
-      <td><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="44" height="44" style="display:block;filter:brightness(0) invert(1)">
-        <div style="font-size:13px;color:rgba(255,255,255,0.9);margin-top:8px;font-weight:600">Lavender Fields at Pumpkin Blossom Farm</div>
+      <td>
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
+          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+        </tr></table>
+        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
       </td>
       <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
     </tr></table>
