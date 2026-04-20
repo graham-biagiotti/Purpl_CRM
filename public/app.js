@@ -11834,8 +11834,7 @@ async function renderPreOrders(forceReload) {
 }
 
 function _renderPoKpis() {
-  const allOrders = PortalDB.getOrders();
-  const orders = allOrders.filter(o => o.brand !== 'lf');
+  const orders = PortalDB.getOrders();
   const total   = orders.length;
   const matched = orders.filter(o => o.isMatched).length;
   const unmatched = orders.filter(o => !o.isMatched).length;
@@ -11905,36 +11904,60 @@ function _fmtPoDate(d) {
 function _renderPoAll() {
   const el = qs('#po-pane-all');
   if (!el) return;
-  const orders = PortalDB.getOrders().filter(o => o.brand !== 'lf');
+  const orders = PortalDB.getOrders();
   if (!orders.length) {
     el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No portal submissions yet.</div></div>';
     return;
   }
+  // Group orders by account + timestamp (purpl + LF from same submission)
+  const grouped = [];
+  const used = new Set();
+  orders.forEach(o => {
+    if (used.has(o.id)) return;
+    used.add(o.id);
+    const group = { purpl: null, lf: null };
+    if (o.brand === 'lf') group.lf = o; else group.purpl = o;
+    // Find matching pair (same account, within 60 seconds)
+    const oTime = o.submittedAt?.toDate ? o.submittedAt.toDate().getTime() : (o.submittedAt ? new Date(o.submittedAt).getTime() : 0);
+    orders.forEach(p => {
+      if (used.has(p.id) || p.id === o.id) return;
+      if (p.accountId !== o.accountId && p.accountName !== o.accountName) return;
+      const pTime = p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0);
+      if (Math.abs(oTime - pTime) < 60000) {
+        used.add(p.id);
+        if (p.brand === 'lf') group.lf = p; else group.purpl = p;
+      }
+    });
+    grouped.push(group);
+  });
+
   el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
     <thead><tr>
-      <th>Submitted</th><th>Account</th><th>Match</th>
+      <th>Submitted</th><th>Account</th><th>Brand</th><th>Match</th>
       <th>Cases</th><th>Cans</th><th>Delivery Window</th><th>PO#</th>
-      <th>Distributor</th><th>Status</th><th>Flags</th><th>Actions</th>
+      <th>Status</th><th>Actions</th>
     </tr></thead>
-    <tbody>${orders.map(o => {
-      const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+    <tbody>${grouped.map(g => {
+      const o = g.purpl || g.lf;
+      const cases = g.purpl ? (g.purpl.items||[]).reduce((s,i)=>s+(i.cases||0),0) : 0;
       const cans  = cases * CANS_PER_CASE;
+      const brandBadges = [
+        g.purpl ? '<span class="badge purple" style="font-size:10px">💜 purpl</span>' : '',
+        g.lf ? '<span class="badge green" style="font-size:10px">🌿 LF</span>' : '',
+      ].filter(Boolean).join(' ');
       const acLink = o.isMatched && o.accountId
         ? `<strong style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</strong>`
         : escHtml(o.accountName||'');
-      const multiFlag = o.hasMultipleSubmissions
-        ? `<span class="badge amber">↻ Updated</span>` : '';
       return `<tr>
         <td style="white-space:nowrap;font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
         <td>${acLink}</td>
+        <td>${brandBadges}</td>
         <td>${o.isMatched ? '<span class="badge green">✓ Matched</span>' : '<span class="badge red">? Unmatched</span>'}</td>
         <td>${cases||'—'}</td>
         <td>${cans||'—'}</td>
         <td style="font-size:12px">${escHtml(o.deliveryWindow||'—')}</td>
         <td style="font-size:12px">${escHtml(o.poNumber||'—')}</td>
-        <td style="font-size:12px">${escHtml(o.distributor||'—')}</td>
         <td>${_poStatusBadge(o.status||'new')}</td>
-        <td>${multiFlag}</td>
         <td style="white-space:nowrap">
           <button class="btn xs" onclick="reviewPortalOrder('${o.id}')">Review</button>
           ${o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
