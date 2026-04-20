@@ -56,9 +56,11 @@ const DB = {
   _cache: {},
   _uid: null,
   _db: null,
-  _syncStatus: 'synced', // 'synced' | 'syncing' | 'error'
+  _syncStatus: 'synced',
   _firestoreReady: false,
   _saveTimer: null,
+  _dirty: false,
+  _pendingRemoteData: null,
 
   _ref() {
     const { doc } = window.FirestoreAPI;
@@ -89,8 +91,13 @@ const DB = {
           if (window.refreshCurrentPage) window.refreshCurrentPage();
           resolve();
         } else if (snap.exists && !snap.metadata.hasPendingWrites) {
-          this._applyData(snap.data());
-          if (window.refreshCurrentPage) window.refreshCurrentPage();
+          if (this._dirty) {
+            this._pendingRemoteData = snap.data();
+            this._showRemoteChangeWarning();
+          } else {
+            this._applyData(snap.data());
+            if (window.refreshCurrentPage) window.refreshCurrentPage();
+          }
         }
       }, (err) => {
         console.warn('Firestore snapshot error:', err);
@@ -201,6 +208,43 @@ const DB = {
     if (!dot || !label) return;
     dot.className = 'sync-dot ' + status;
     label.textContent = status === 'synced' ? 'Saved' : status === 'syncing' ? 'Saving…' : 'Sync error';
+  },
+
+  markDirty() { this._dirty = true; },
+  markClean() {
+    this._dirty = false;
+    if (this._pendingRemoteData) {
+      this._applyData(this._pendingRemoteData);
+      this._pendingRemoteData = null;
+      if (window.refreshCurrentPage) window.refreshCurrentPage();
+    }
+    this._dismissRemoteWarning();
+  },
+
+  applyPendingRemote() {
+    if (this._pendingRemoteData) {
+      this._applyData(this._pendingRemoteData);
+      this._pendingRemoteData = null;
+      this._dirty = false;
+      this._dismissRemoteWarning();
+      if (window.refreshCurrentPage) window.refreshCurrentPage();
+    }
+  },
+
+  _showRemoteChangeWarning() {
+    if (document.getElementById('remote-change-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'remote-change-banner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#fef3c7;border-top:2px solid #f59e0b;padding:12px 20px;z-index:9999;display:flex;align-items:center;justify-content:center;gap:12px;font-size:14px;color:#92400e;font-family:sans-serif';
+    banner.innerHTML = '<span>⚠️ Another user made changes. Save your work first, or reload to get the latest.</span>' +
+      '<button onclick="DB.applyPendingRemote()" style="background:#f59e0b;color:#fff;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Load Changes</button>' +
+      '<button onclick="DB._dismissRemoteWarning()" style="background:transparent;border:1px solid #f59e0b;color:#92400e;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">Dismiss</button>';
+    document.body.appendChild(banner);
+  },
+
+  _dismissRemoteWarning() {
+    const el = document.getElementById('remote-change-banner');
+    if (el) el.remove();
   },
 
   get(k) { return this._cache[k] || []; },

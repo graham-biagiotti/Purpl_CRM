@@ -9313,11 +9313,15 @@ function openModal(id) {
   });
   const m = document.getElementById(id);
   if (m) m.classList.add('open');
+  // Mark dirty when opening an edit modal (forms with save buttons)
+  if (id && (id.includes('edit') || id.includes('add') || id.includes('new') || id.includes('log'))) {
+    DB.markDirty();
+  }
 }
 function closeModal(id) {
+  DB.markClean();
   const m = id ? document.getElementById(id) : null;
   if (m) { m.classList.remove('open'); return; }
-  // Close all modals
   document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('open'));
 }
 
@@ -10197,7 +10201,7 @@ function deleteLfInvoice(id) {
 // ── Combined invoices (purpl + LF cross-brand) ────────────
 
 function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=null) {
-  const purplInv = DB.a('iv').find(x => x.id === purplInvId);
+  const purplInv = DB.a('retail_invoices').find(x => x.id === purplInvId) || DB.a('iv').find(x => x.id === purplInvId);
   const lfInv    = DB.a('lf_invoices').find(x => x.id === lfInvId);
   if (!purplInv || !lfInv) {
     toast('Could not find invoices to combine');
@@ -10234,7 +10238,9 @@ function markCombinedPaid(combinedId) {
   if (!rec) return;
   const now = new Date().toISOString();
   DB.update('combined_invoices', combinedId, x => ({...x, status: 'paid', paidAt: now}));
-  DB.update('iv',          rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
+  const inRetail = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
+  if (inRetail) DB.update('retail_invoices', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
+  else DB.update('iv', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
   DB.update('lf_invoices', rec.lfInvoiceId,    x => ({...x, status: 'paid', paidAt: now}));
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
@@ -10244,7 +10250,7 @@ function markCombinedPaid(combinedId) {
 
 function getNextInvoiceNumber(type) {
   const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
-  const collection = { purpl: 'iv', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
+  const collection = { purpl: 'retail_invoices', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
   const nums = DB.a(collection).map(x => {
     const n = parseInt((x.number||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
@@ -10308,20 +10314,29 @@ function ncivCalcTotals() {
 }
 
 function ncivRender() {
+  const purplSkuOpts = SKUS.map(s => `<option value="${s.label}">${s.label}</option>`).join('');
+  const lfSkus = DB.a('lf_skus').filter(s => !s.archived);
+  const lfSkuOpts = lfSkus.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
+
   const renderLines = (lines, brand, containerId) => {
+    const skuOpts = brand === 'purpl' ? purplSkuOpts : lfSkuOpts;
     document.getElementById(containerId).innerHTML = lines.map(l => `
       <div style="display:grid;grid-template-columns:1fr 60px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
-        <input placeholder="Description..." value="${escHtml(l.description)}"
-          style="font-size:12px;padding:5px 8px"
-          oninput="ncivUpdateLine('${brand}','${l.id}','description',this.value)">
+        <select style="font-size:12px;padding:5px 8px"
+          onchange="ncivUpdateLine('${brand}','${l.id}','description',this.value); ncivAutoPrice('${brand}','${l.id}',this.value)">
+          <option value="">Select product...</option>
+          ${skuOpts}
+          <option value="_custom">Custom...</option>
+        </select>
         <input type="number" placeholder="Qty" value="${l.qty||''}"
           style="font-size:12px;padding:5px 8px"
           oninput="ncivUpdateLine('${brand}','${l.id}','qty',this.value)">
         <input type="number" placeholder="Price" value="${l.unitPrice||''}" step="0.01"
-          style="font-size:12px;padding:5px 8px"
+          style="font-size:12px;padding:5px 8px" id="nciv-price-${l.id}"
           oninput="ncivUpdateLine('${brand}','${l.id}','unitPrice',this.value)">
         <button class="btn xs red" onclick="ncivRemoveLine('${brand}','${l.id}')">✕</button>
       </div>
+      ${l.description === '_custom' ? `<input placeholder="Custom description..." value="${escHtml(l.customDesc||'')}" style="font-size:12px;padding:5px 8px;width:100%;margin-bottom:4px" oninput="ncivUpdateLine('${brand}','${l.id}','customDesc',this.value)">` : ''}
       <div style="text-align:right;font-size:11px;color:var(--muted);margin-bottom:4px">
         $${(l.total||0).toFixed(2)}
       </div>`).join('');
@@ -10329,6 +10344,18 @@ function ncivRender() {
   renderLines(_ncivPurplLines, 'purpl', 'nciv-purpl-lines');
   renderLines(_ncivLfLines,    'lf',    'nciv-lf-lines');
   ncivCalcTotals();
+}
+
+function ncivAutoPrice(brand, lineId, skuName) {
+  if (brand === 'lf') {
+    const sku = DB.a('lf_skus').find(s => s.name === skuName);
+    if (sku?.wholesalePrice) {
+      ncivUpdateLine(brand, lineId, 'unitPrice', sku.wholesalePrice);
+      const el = document.getElementById('nciv-price-' + lineId);
+      if (el) el.value = sku.wholesalePrice;
+    }
+  }
+  ncivRender();
 }
 
 function saveNewCombinedInvoice() {
