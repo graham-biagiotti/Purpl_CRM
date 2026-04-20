@@ -10017,7 +10017,7 @@ function _lfInvBuildVariantArea(rowId, item) {
     }).join('');
     area.innerHTML = `
       <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
-        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/case · ${skuObj.caseSize} units/case
+        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/unit · ${skuObj.caseSize} units/case · $${(parseFloat(skuObj.wholesalePrice) * skuObj.caseSize).toFixed(2)}/case
       </div>
       <div class="lfi-variants-container">${varRows}</div>`;
   } else {
@@ -13120,9 +13120,14 @@ function generateInvoicePrint(invoiceId) {
 
 <div class="header">
   <div>
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      class="logo" alt="purpl">
-    <div style="margin-top:8px;font-size:12px;color:#6b7280">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+        style="height:40px" alt="purpl">
+      <div style="width:1px;height:36px;background:#e5e7eb"></div>
+      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+        style="height:36px" alt="Lavender Fields">
+    </div>
+    <div style="font-size:12px;color:#6b7280">
       ${fromName}<br>${fromAddr}<br>${fromEmail} · 603-748-3038
     </div>
   </div>
@@ -13311,15 +13316,19 @@ function generateLfInvoicePrint(invoiceId) {
 
 <div class="header">
   <div>
-    <div style="font-size:16px;font-weight:700;color:#2a5c3f">
-      Lavender Fields at Pumpkin Blossom Farm
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+        style="height:40px" alt="purpl">
+      <div style="width:1px;height:36px;background:#e5e7eb"></div>
+      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+        style="height:36px" alt="Lavender Fields">
     </div>
-    <div style="margin-top:8px;font-size:12px;color:#6b7280">
+    <div style="font-size:12px;color:#6b7280">
       ${fromName}<br>${fromAddr}<br>lavender@pbfwholesale.com · 603-748-3038
     </div>
   </div>
   <div style="text-align:right">
-    <div class="inv-label">INVOICE</div>
+    <div class="inv-label" style="color:#2a5c3f">INVOICE</div>
     <div class="inv-meta" style="margin-top:8px">
       <div><strong>#${invNum}</strong></div>
       <div>Date: ${fmtDate(inv.issued || inv.date || '')}</div>
