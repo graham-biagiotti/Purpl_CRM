@@ -12148,13 +12148,23 @@ function openConfirmPortalOrder(id) {
   _portalOrderId = id;
   const o = PortalDB.getOrders().find(x => x.id === id);
   if (!o) return;
-  if (!o.accountId) {
-    toast('Link this submission to an account before confirming');
-    reviewPortalOrder(id);
-    return;
-  }
+  const isUnmatched = !o.accountId;
   const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
-  const a = DB.a('ac').find(x => x.id === o.accountId);
+  const a = isUnmatched ? null : DB.a('ac').find(x => x.id === o.accountId);
+
+  // Show/hide account picker for unmatched orders
+  const pickerEl = qs('#mcpo-account-picker');
+  if (pickerEl) {
+    pickerEl.style.display = isUnmatched ? '' : 'none';
+    if (isUnmatched) {
+      const sel = qs('#mcpo-account-select');
+      if (sel) {
+        const accounts = DB.a('ac').filter(a => a.status === 'active').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+        sel.innerHTML = '<option value="">Select account...</option>' +
+          accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+      }
+    }
+  }
 
   qs('#mcpo-body').innerHTML = `
     <div style="font-size:14px;margin-bottom:12px">
@@ -12195,6 +12205,16 @@ async function confirmPortalOrder() {
       .collection('portal_orders').doc(_portalOrderId);
     const portalSnap = await portalRef.get();
     const d = portalSnap.data();
+
+    // If unmatched, use the selected account from the picker
+    if (!d.accountId) {
+      const selectedAcId = qs('#mcpo-account-select')?.value;
+      if (!selectedAcId) { toast('Select an account to match this order'); return; }
+      d.accountId = selectedAcId;
+      d.accountName = DB.a('ac').find(x => x.id === selectedAcId)?.name || d.accountName;
+      // Update the portal order with the matched account
+      await portalRef.update({ accountId: selectedAcId, accountName: d.accountName, isUnmatched: false });
+    }
 
     const isLf = d.brand === 'lf';
     const todayStr = today();

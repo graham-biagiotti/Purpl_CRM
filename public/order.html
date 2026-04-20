@@ -355,39 +355,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
     </div>
 
-    <!-- Section 3: Distributor -->
-    <div class="card sm" style="margin-bottom:16px">
-      <h2>Distribution</h2>
-
-      <div class="form-group" style="margin-bottom:12px">
-        <label>Distributor(s) <span class="opt">(optional)</span></label>
-        <div id="distributor-list">
-          <div class="distributor-entry" style="display:flex;gap:8px;margin-bottom:8px">
-            <input type="text" class="distributor-input" placeholder="e.g. UNFI, KeHE, local distributor…" style="flex:1">
-            <button type="button" onclick="removeDistributor(this)" class="remove-btn">×</button>
-          </div>
-        </div>
-        <button type="button" onclick="addDistributor()" class="add-btn">+ Add distributor</button>
-      </div>
-
-      <div class="form-group" style="margin-bottom:12px">
-        <label>Open to ordering direct?</label>
-        <select id="distributor-direct-open">
-          <option value="">Select…</option>
-          <option value="yes">Yes — happy to order direct</option>
-          <option value="maybe">Maybe — let's discuss</option>
-          <option value="distributor_only">No — distributor only</option>
-          <option value="no_distributor">We don't use a distributor</option>
-        </select>
-      </div>
-
-      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">
-        <input type="checkbox" id="distributor-contact-ok" style="width:auto;margin-top:2px;flex-shrink:0;accent-color:var(--purpl)">
-        I'll mention purpl to my distributor rep
-      </label>
-    </div>
-
-    <!-- Section 4: Delivery & Notes -->
+    <!-- Section 3: Delivery & Notes -->
     <div class="card sm" style="margin-bottom:16px">
       <h2>Delivery &amp; Timing</h2>
 
@@ -421,15 +389,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- Notes -->
     <div class="card sm" style="margin-bottom:16px">
-      <h2>Notes &amp; Info</h2>
-
-      <div class="form-group" style="margin-bottom:12px">
-        <label>Social handle <span class="opt">(optional)</span></label>
-        <input type="text" id="social-handle" placeholder="@yourstorename">
-      </div>
-
+      <h2>Notes</h2>
       <div class="form-group">
-        <label>Notes <span class="opt">(optional)</span></label>
+        <label>Order Notes <span class="opt">(optional)</span></label>
         <textarea id="order-notes" rows="3" placeholder="Delivery instructions, on-site contact, or anything we should know"></textarea>
       </div>
     </div>

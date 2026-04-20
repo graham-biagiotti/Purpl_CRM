@@ -2827,6 +2827,14 @@
       <button class="modal-close btn sm">✕</button>
     </div>
     <div id="mcpo-body"></div>
+    <!-- Account picker for unmatched orders -->
+    <div id="mcpo-account-picker" style="display:none;margin-top:12px">
+      <div class="form-group">
+        <label>Match to Account *</label>
+        <select id="mcpo-account-select"><option value="">Select account...</option></select>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">This order was submitted without a portal link. Select the account to associate it with.</div>
+      </div>
+    </div>
     <div style="margin-top:16px">
       <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">EDIT QUANTITIES BEFORE CONFIRMING</div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
