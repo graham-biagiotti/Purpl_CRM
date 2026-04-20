@@ -3087,7 +3087,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <!-- New combined invoice (from scratch) modal -->
 <div class="overlay" id="modal-new-combined">
-  <div class="modal" style="max-width:720px">
+  <div class="modal" style="max-width:760px">
     <div class="modal-hdr">
       <h2>New Combined Invoice</h2>
       <button class="btn xs" onclick="closeModal('modal-new-combined')">✕</button>
@@ -3096,7 +3096,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="form-row col2">
       <div class="form-group">
         <label>Account *</label>
-        <select id="nciv-account"><option value="">Select account...</option></select>
+        <select id="nciv-account" onchange="ncivAccountChanged()"><option value="">Select account...</option></select>
       </div>
       <div class="form-group">
         <label>Due Date</label>
@@ -3104,30 +3104,26 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     </div>
 
-    <div class="form-row col2" style="margin-bottom:4px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#8B5FBF;padding:8px 0 4px;border-bottom:2px solid #8B5FBF">💜 purpl Line Items</div>
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#4a7c59;padding:8px 0 4px;border-bottom:2px solid #4a7c59">🌿 LF Line Items</div>
-    </div>
-
-    <div class="form-row col2">
-      <div>
-        <div id="nciv-purpl-lines"></div>
-        <button class="btn xs" onclick="ncivAddLine('purpl')" style="margin-top:6px">+ Add Item</button>
-        <div style="text-align:right;font-size:13px;font-weight:600;color:#8B5FBF;margin-top:8px">
-          Subtotal: <span id="nciv-purpl-sub">$0.00</span>
-        </div>
-      </div>
-      <div>
-        <div id="nciv-lf-lines"></div>
-        <button class="btn xs" onclick="ncivAddLine('lf')" style="margin-top:6px">+ Add Item</button>
-        <div style="text-align:right;font-size:13px;font-weight:600;color:#4a7c59;margin-top:8px">
-          Subtotal: <span id="nciv-lf-sub">$0.00</span>
-        </div>
+    <!-- purpl section — same pattern as separate purpl invoice -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#8B5FBF;padding:8px 0 6px;border-bottom:2px solid #8B5FBF;margin-bottom:10px">💜 purpl Lemonade</div>
+      <div id="nciv-purpl-skus"></div>
+      <div style="text-align:right;font-size:14px;font-weight:700;color:#8B5FBF;margin-top:8px">
+        purpl Subtotal: <span id="nciv-purpl-sub">$0.00</span>
       </div>
     </div>
 
-    <div style="text-align:right;font-size:16px;font-weight:700;padding:12px 0;border-top:2px solid var(--border);margin-top:8px">
-      Grand Total: <span id="nciv-grand-total">$0.00</span>
+    <!-- LF section — same pattern but with LF SKUs -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#4a7c59;padding:8px 0 6px;border-bottom:2px solid #4a7c59;margin-bottom:10px">🌿 Lavender Fields</div>
+      <div id="nciv-lf-skus"></div>
+      <div style="text-align:right;font-size:14px;font-weight:700;color:#4a7c59;margin-top:8px">
+        LF Subtotal: <span id="nciv-lf-sub">$0.00</span>
+      </div>
+    </div>
+
+    <div style="text-align:right;font-size:18px;font-weight:700;padding:14px 0;border-top:2px solid var(--purple);margin-top:4px;color:var(--purple)">
+      Combined Total: <span id="nciv-grand-total">$0.00</span>
     </div>
 
     <div class="form-row">

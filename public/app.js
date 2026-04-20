@@ -10261,110 +10261,122 @@ function getNextInvoiceNumber(type) {
 
 // ── New combined invoice modal ────────────────────────────
 
-let _ncivPurplLines = [];
-let _ncivLfLines    = [];
-
 function openNewCombinedModal() {
-  _ncivPurplLines = [];
-  _ncivLfLines    = [];
-
   const accts = DB.a('ac').filter(a => a.isPbf);
   const sel = document.getElementById('nciv-account');
   sel.innerHTML = '<option value="">Select account...</option>' +
     accts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
 
-  const d30 = new Date(Date.now() + 30*86400000);
-  document.getElementById('nciv-due').value   = d30.toISOString().slice(0,10);
+  const terms = DB.obj('invoice_settings',{}).terms || DB.obj('settings',{}).default_payment_terms || 30;
+  const d = new Date(Date.now() + terms * 86400000);
+  document.getElementById('nciv-due').value = d.toISOString().slice(0,10);
   document.getElementById('nciv-notes').value = '';
 
-  ncivAddLine('purpl');
-  ncivAddLine('lf');
-  ncivRender();
+  _ncivRenderSkuRows();
   openModal('modal-new-combined');
 }
 
-function ncivAddLine(brand) {
-  const line = { id: uid(), description: '', qty: 0, unitPrice: 0, total: 0 };
-  if (brand === 'purpl') _ncivPurplLines.push(line);
-  else                   _ncivLfLines.push(line);
-  ncivRender();
+function ncivAccountChanged() {
+  _ncivRenderSkuRows();
 }
 
-function ncivRemoveLine(brand, id) {
-  if (brand === 'purpl') _ncivPurplLines = _ncivPurplLines.filter(l => l.id !== id);
-  else                   _ncivLfLines    = _ncivLfLines.filter(l => l.id !== id);
-  ncivRender();
-}
+function _ncivRenderSkuRows() {
+  const acId = qs('#nciv-account')?.value;
+  const ac = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  const isDist = ac?.fulfilledBy && ac.fulfilledBy !== 'direct';
+  const purplPrice = parseFloat(isDist ? ac?.pricePerCaseDist : (ac?.pricePerCaseDirect || ac?.pricePerCaseCustom)) || 0;
+  const costs = DB.obj('costs', {cogs:{}});
+  const margin = costs.target_margin || 0.60;
+  const markup = 1 / Math.max(0.01, 1 - margin);
 
-function ncivUpdateLine(brand, id, field, val) {
-  const lines = brand === 'purpl' ? _ncivPurplLines : _ncivLfLines;
-  const line = lines.find(l => l.id === id);
-  if (!line) return;
-  line[field] = val;
-  line.total = (parseFloat(line.qty)||0) * (parseFloat(line.unitPrice)||0);
-  ncivCalcTotals();
-}
-
-function ncivCalcTotals() {
-  const purplSub = _ncivPurplLines.reduce((s,l) => s + (l.total||0), 0);
-  const lfSub    = _ncivLfLines.reduce((s,l) => s + (l.total||0), 0);
-  document.getElementById('nciv-purpl-sub').textContent   = '$' + purplSub.toFixed(2);
-  document.getElementById('nciv-lf-sub').textContent      = '$' + lfSub.toFixed(2);
-  document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
-}
-
-function ncivRender() {
-  const purplSkuOpts = SKUS.map(s => `<option value="${s.label}">${s.label}</option>`).join('');
-  const lfSkus = DB.a('lf_skus').filter(s => !s.archived);
-  const lfSkuOpts = lfSkus.map(s => `<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('');
-
-  const renderLines = (lines, brand, containerId) => {
-    const skuOpts = brand === 'purpl' ? purplSkuOpts : lfSkuOpts;
-    document.getElementById(containerId).innerHTML = lines.map(l => `
-      <div style="display:grid;grid-template-columns:1fr 60px 80px 24px;gap:6px;margin-bottom:6px;align-items:center">
-        <select style="font-size:12px;padding:5px 8px"
-          onchange="ncivUpdateLine('${brand}','${l.id}','description',this.value); ncivAutoPrice('${brand}','${l.id}',this.value)">
-          <option value="">Select product...</option>
-          ${skuOpts}
-          <option value="_custom">Custom...</option>
-        </select>
-        <input type="number" placeholder="Qty" value="${l.qty||''}"
-          style="font-size:12px;padding:5px 8px"
-          oninput="ncivUpdateLine('${brand}','${l.id}','qty',this.value)">
-        <input type="number" placeholder="Price" value="${l.unitPrice||''}" step="0.01"
-          style="font-size:12px;padding:5px 8px" id="nciv-price-${l.id}"
-          oninput="ncivUpdateLine('${brand}','${l.id}','unitPrice',this.value)">
-        <button class="btn xs red" onclick="ncivRemoveLine('${brand}','${l.id}')">✕</button>
-      </div>
-      ${l.description === '_custom' ? `<input placeholder="Custom description..." value="${escHtml(l.customDesc||'')}" style="font-size:12px;padding:5px 8px;width:100%;margin-bottom:4px" oninput="ncivUpdateLine('${brand}','${l.id}','customDesc',this.value)">` : ''}
-      <div style="text-align:right;font-size:11px;color:var(--muted);margin-bottom:4px">
-        $${(l.total||0).toFixed(2)}
-      </div>`).join('');
-  };
-  renderLines(_ncivPurplLines, 'purpl', 'nciv-purpl-lines');
-  renderLines(_ncivLfLines,    'lf',    'nciv-lf-lines');
-  ncivCalcTotals();
-}
-
-function ncivAutoPrice(brand, lineId, skuName) {
-  if (brand === 'lf') {
-    const sku = DB.a('lf_skus').find(s => s.name === skuName);
-    if (sku?.wholesalePrice) {
-      ncivUpdateLine(brand, lineId, 'unitPrice', sku.wholesalePrice);
-      const el = document.getElementById('nciv-price-' + lineId);
-      if (el) el.value = sku.wholesalePrice;
-    }
+  // purpl SKU rows
+  const purplEl = document.getElementById('nciv-purpl-skus');
+  if (purplEl) {
+    purplEl.innerHTML = IV_SKUS.map(sku => {
+      const ppc = purplPrice || (costs.cogs[sku.id]||2.15) * markup * CANS_PER_CASE;
+      return `<div class="lfi-item-row" data-sku="${sku.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
+        <input class="nciv-p-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
+        <span style="font-size:11px;color:var(--muted)">cases</span>
+        <input class="nciv-p-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${ppc.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
+        <span class="nciv-p-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#8B5FBF">$0.00</span>
+      </div>`;
+    }).join('');
   }
-  ncivRender();
+
+  // LF SKU rows
+  const lfSkus = DB.a('lf_skus').filter(s => !s.archived);
+  const lfEl = document.getElementById('nciv-lf-skus');
+  if (lfEl) {
+    lfEl.innerHTML = lfSkus.map(sku => {
+      const ppc = sku.wholesalePrice || 0;
+      return `<div class="lfi-item-row" data-sku="${sku.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
+        <input class="nciv-lf-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
+        <span style="font-size:11px;color:var(--muted)">cases</span>
+        <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${ppc.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
+        <span class="nciv-lf-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#4a7c59">$0.00</span>
+      </div>`;
+    }).join('');
+  }
+  _ncivCalcTotals();
+}
+
+function _ncivCalcTotals() {
+  let purplSub = 0;
+  document.querySelectorAll('.nciv-p-cases').forEach(el => {
+    const sku = el.dataset.sku;
+    const cases = parseInt(el.value) || 0;
+    const ppc = parseFloat(document.querySelector(`.nciv-p-ppc[data-sku="${sku}"]`)?.value) || 0;
+    const line = cases * ppc;
+    purplSub += line;
+    const lineEl = document.querySelector(`.nciv-p-line[data-sku="${sku}"]`);
+    if (lineEl) lineEl.textContent = '$' + line.toFixed(2);
+  });
+
+  let lfSub = 0;
+  document.querySelectorAll('.nciv-lf-cases').forEach(el => {
+    const sku = el.dataset.sku;
+    const cases = parseInt(el.value) || 0;
+    const ppc = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
+    const line = cases * ppc;
+    lfSub += line;
+    const lineEl = document.querySelector(`.nciv-lf-line[data-sku="${sku}"]`);
+    if (lineEl) lineEl.textContent = '$' + line.toFixed(2);
+  });
+
+  document.getElementById('nciv-purpl-sub').textContent = '$' + purplSub.toFixed(2);
+  document.getElementById('nciv-lf-sub').textContent = '$' + lfSub.toFixed(2);
+  document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
 }
 
 function saveNewCombinedInvoice() {
   const accountId = document.getElementById('nciv-account').value;
   if (!accountId) { toast('Select an account'); return; }
 
-  const purplLines = _ncivPurplLines.filter(l => l.description || l.total > 0);
-  const lfLines    = _ncivLfLines.filter(l => l.description || l.total > 0);
-  if (!purplLines.length && !lfLines.length) { toast('Add at least one line item'); return; }
+  // Collect purpl lines from SKU rows
+  const purplLines = [];
+  document.querySelectorAll('.nciv-p-cases').forEach(el => {
+    const skuId = el.dataset.sku;
+    const cases = parseInt(el.value) || 0;
+    if (!cases) return;
+    const ppc = parseFloat(document.querySelector(`.nciv-p-ppc[data-sku="${skuId}"]`)?.value) || 0;
+    const skuObj = IV_SKUS.find(s => s.id === skuId);
+    purplLines.push({ skuId, sku: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units: cases * CANS_PER_CASE, unitPrice: ppc, pricePerCase: ppc, total: cases * ppc, lineTotal: cases * ppc });
+  });
+
+  // Collect LF lines from SKU rows
+  const lfLines = [];
+  document.querySelectorAll('.nciv-lf-cases').forEach(el => {
+    const skuId = el.dataset.sku;
+    const cases = parseInt(el.value) || 0;
+    if (!cases) return;
+    const ppc = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
+    const skuObj = DB.a('lf_skus').find(s => s.id === skuId);
+    lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, unitPrice: ppc, pricePerCase: ppc, total: cases * ppc, lineTotal: cases * ppc, hasVariants: false });
+  });
+
+  if (!purplLines.length && !lfLines.length) { toast('Add at least one case quantity'); return; }
 
   const account  = DB.a('ac').find(x => x.id === accountId) || {};
   const due      = document.getElementById('nciv-due').value;
@@ -10403,8 +10415,8 @@ function saveNewCombinedInvoice() {
   };
 
   DB.atomicUpdate(cache => {
-    cache.iv               = [...(cache.iv||[]),               purplInv];
-    cache.lf_invoices      = [...(cache.lf_invoices||[]),      lfInv];
+    cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
+    cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
     cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
   });
 
@@ -10420,7 +10432,7 @@ function buildCombinedInvoiceHTML(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
 
-  const purplInv   = DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv   = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
   const lfInv      = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
   const account    = DB.a('ac').find(x => x.id === rec.accountId) || {};
   const invSettings = DB.obj('invoice_settings') || {};
