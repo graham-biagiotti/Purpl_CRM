@@ -6068,6 +6068,15 @@ function deleteDistPO(poId, distId) {
 }
 
 // ── Invoices ──────────────────────────────────────────────
+function pickDistForInvoice() {
+  const dists = DB.a('dist_profiles').filter(d => d.status === 'active');
+  if (!dists.length) { toast('No active distributors'); return; }
+  if (dists.length === 1) { addDistInvoice(dists[0].id); return; }
+  const names = dists.map((d, i) => `${i + 1}. ${d.name}`).join('\n');
+  const pick = prompt('Select distributor:\n' + names);
+  const idx = parseInt(pick) - 1;
+  if (idx >= 0 && idx < dists.length) addDistInvoice(dists[idx].id);
+}
 function addDistInvoice(distId) { _openDistInvModal(distId); }
 function addDistInvoiceInModal(distId) { closeModal('modal-distributor'); _openDistInvModal(distId); }
 
@@ -12560,11 +12569,7 @@ function renderInvoicesPage() {
     return;
   }
   const actionsEl = qs('#inv-page-actions');
-  if (actionsEl) {
-    actionsEl.innerHTML = DB.a('ac').some(a => a.isPbf)
-      ? `<button class="btn primary" onclick="openNewCombinedModal()">+ New Combined Invoice</button>`
-      : '';
-  }
+  if (actionsEl) actionsEl.innerHTML = '';
   renderInvKpis();
   renderInvColPurpl();
   renderInvColLf();

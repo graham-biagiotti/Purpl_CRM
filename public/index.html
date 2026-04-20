@@ -245,7 +245,7 @@
           <div class="card">
             <div class="section-hdr">
               <h2>Invoice Status</h2>
-              <button class="btn sm primary" onclick="openAddInv()">+ Add Invoice</button>
+              <button class="btn sm primary" onclick="openAddInv()" style="font-weight:600">+ New Invoice</button>
             </div>
             <div id="dash-invoice-status"></div>
           </div>
@@ -1605,7 +1605,7 @@
               <div class="inv-col-summary" id="inv-col-purpl-summary"></div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs" onclick="event.stopPropagation();openInvModal()">+ New</button>
+              <button class="btn xs primary" onclick="event.stopPropagation();openInvModal()" style="font-weight:600">+ New Invoice</button>
               <span class="inv-col-toggle">▼</span>
             </div>
           </div>
@@ -1621,7 +1621,7 @@
               <div class="inv-col-summary" id="inv-col-lf-summary"></div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs" onclick="event.stopPropagation();openLfInvoiceModal(null)">+ New</button>
+              <button class="btn xs primary" onclick="event.stopPropagation();openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">+ New Invoice</button>
               <span class="inv-col-toggle">▼</span>
             </div>
           </div>
@@ -1636,7 +1636,10 @@
               <div class="inv-col-title">🤝 Combined Invoices</div>
               <div class="inv-col-summary" id="inv-col-combined-summary"></div>
             </div>
-            <span class="inv-col-toggle">▼</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
           </div>
           <div class="inv-col-compact" id="inv-col-combined-compact"></div>
           <div class="inv-col-expanded" id="inv-col-combined-expanded"></div>
@@ -1649,7 +1652,10 @@
               <div class="inv-col-title">🚚 Distributor Invoices</div>
               <div class="inv-col-summary" id="inv-col-dist-summary"></div>
             </div>
-            <span class="inv-col-toggle">▼</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();pickDistForInvoice()" style="font-weight:600;background:#6b7280;border-color:#6b7280">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
           </div>
           <div class="inv-col-compact" id="inv-col-dist-compact"></div>
           <div class="inv-col-expanded" id="inv-col-dist-expanded"></div>
