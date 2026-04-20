@@ -7177,14 +7177,7 @@ function cycleOrderStatus(id) {
   if (!o) return;
   const newStatus = seq[Math.min(seq.indexOf(o.status)+1, seq.length-1)];
   DB.update('orders', id, x=>({...x, status:newStatus}));
-  // If just reached 'delivered' on a non-run order, deduct stock now
-  if (newStatus==='delivered' && o.status!=='delivered' && o.source!=='run' && o.source!=='portal') {
-    (o.items||[]).forEach(item=>{
-      DB.push('iv', {id:uid(), date:today(), sku:item.sku, type:'out',
-        qty: item.qty * CANS_PER_CASE, note:'Order delivered', ordId:id});
-    });
-    renderInventory();
-  }
+  // Inventory deduction now happens at invoice creation, not status change
   renderOrders();
   renderDash();
   toast('Status updated');
@@ -7593,13 +7586,7 @@ function toggleStop(i) {
       status: 'delivered', source: 'run', items: ordItems, canCount,
       notes: stop.notes||'',
     };
-    const newIvEntries = ordItems.map(i=>({
-      id: uid(), date: today(), sku: i.sku, type: 'out',
-      // inventory is in CANS — multiply cases × CANS_PER_CASE
-      qty: i.qty * CANS_PER_CASE,
-      note: 'Delivery: ' + stop.name,
-      ordId: newOrd.id,
-    }));
+    // Inventory deduction now happens at invoice creation, not delivery
 
     // Build LF wix deduction record for this stop (if any LF items)
     const stopLfItems = stop.lfItems || [];
@@ -7614,7 +7601,6 @@ function toggleStop(i) {
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
       cache['ac'] = (cache['ac']||[]).map(a => a.id===ac2.id ? {...a, lastOrder:today()} : a);
-      cache['iv'] = [...(cache['iv']||[]), ...newIvEntries];
       cache['orders'] = [...(cache['orders']||[]), newOrd];
       if (newWixDeduction) {
         cache['lf_wix_deductions'] = [...(cache['lf_wix_deductions']||[]), newWixDeduction];
@@ -7644,10 +7630,9 @@ function toggleStop(i) {
       );
       if (deliveryOrd) {
         cache['orders'] = (cache['orders']||[]).filter(o => o.id !== deliveryOrd.id);
-        cache['iv'] = (cache['iv']||[]).filter(e => e.ordId !== deliveryOrd.id);
       }
     });
-    toast('Stop unmarked — delivery order and inventory reversed');
+    toast('Stop unmarked — delivery order reversed');
   } else {
     DB.setObj('today_run', run);
   }
@@ -7723,9 +7708,21 @@ function createDeliveryInvoice(accountId, ordId) {
     accountName: ac.name,
   };
 
-  DB.push('retail_invoices', invoice);
-  // Mark the order as invoiced
-  DB.update('orders', ordId, o=>({...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber}));
+  // Create invoice + deduct inventory in one batch
+  DB.atomicUpdate(cache => {
+    cache['retail_invoices'] = [...(cache['retail_invoices']||[]), invoice];
+    // Deduct inventory for each line item
+    const ivEntries = lineItems.map(li => ({
+      id: uid(), date: today(), sku: li.sku, type: 'out',
+      qty: li.cases * CANS_PER_CASE,
+      note: 'Invoice ' + invoiceNumber, invoiceId: invoice.id,
+    }));
+    cache['iv'] = [...(cache['iv']||[]), ...ivEntries];
+    // Mark order as invoiced
+    cache['orders'] = (cache['orders']||[]).map(o =>
+      o.id === ordId ? {...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber} : o
+    );
+  });
 
   document.getElementById('del-invoice-offer')?.remove();
   toast(`Invoice ${invoiceNumber} created for ${ac.name}`);
@@ -10435,6 +10432,15 @@ function saveNewCombinedInvoice() {
     cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
     cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
     cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
+    // Deduct purpl inventory on invoice creation (LF inventory managed on Wix)
+    const purplIvEntries = purplLines.map(li => ({
+      id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
+      qty: (li.cases || 0) * CANS_PER_CASE,
+      note: 'Invoice ' + combNum, invoiceId: combId,
+    })).filter(e => e.qty > 0);
+    if (purplIvEntries.length) {
+      cache.iv = [...(cache.iv||[]), ...purplIvEntries];
+    }
   });
 
   closeModal('modal-new-combined');
@@ -12279,16 +12285,7 @@ async function confirmPortalOrder() {
       distributor: d.distributor || '',
     };
 
-    // Build inventory deduction entries — one per SKU (purpl only, LF doesn't use iv)
-    const ivEntries = isLf ? [] : items.map(i => ({
-      id: uid(),
-      date: todayStr,
-      sku: i.sku,
-      type: 'out',
-      qty: i.qty * CANS_PER_CASE,
-      note: 'Portal order: ' + d.accountName,
-      ordId: orderId,
-    }));
+    // Inventory deduction happens at invoice creation, not order confirmation
 
     // Build draft invoice
     const lastInvNum = DB.a('retail_invoices').reduce((max, inv) => {
@@ -12316,7 +12313,7 @@ async function confirmPortalOrder() {
       invoiceTotal = totalCases * effectivePrice;
     }
 
-    // Atomic write: order + lastOrder + inventory deduction
+    // Atomic write: order + lastOrder (inventory deduction at invoice creation)
     DB.atomicUpdate(cache => {
       cache['orders'] = [...(cache['orders'] || []), orderData];
       if (d.accountId) {
@@ -12324,9 +12321,6 @@ async function confirmPortalOrder() {
         cache[key] = (cache[key] || []).map(a =>
           a.id === d.accountId ? { ...a, lastOrder: todayStr } : a
         );
-      }
-      if (ivEntries.length) {
-        cache['iv'] = [...(cache['iv'] || []), ...ivEntries];
       }
     });
 
@@ -12352,6 +12346,15 @@ async function confirmPortalOrder() {
       notes: 'Auto-drafted from portal order approval.',
       linkedPortalOrderId: _portalOrderId,
     });
+
+    // Deduct purpl inventory on invoice creation (LF managed on Wix)
+    if (!isLf) {
+      items.forEach(i => {
+        if (i.qty > 0) {
+          DB.push('iv', { id: uid(), date: todayStr, sku: i.sku, type: 'out', qty: i.qty * CANS_PER_CASE, note: 'Invoice ' + invoiceNumber, invoiceId: invoiceNumber });
+        }
+      });
+    }
 
     // Update portal_orders status
     await portalRef.update({
@@ -13448,9 +13451,15 @@ function saveInv(id, isNew) {
     fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };
 
-  if (_isNew) DB.push('retail_invoices', rec);
-  else {
-    // Try retail_invoices first, fall back to iv for legacy records
+  if (_isNew) {
+    DB.push('retail_invoices', rec);
+    // Deduct inventory on new invoice creation (purpl only)
+    lineItems.forEach(li => {
+      if (li.cases > 0) {
+        DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
+      }
+    });
+  } else {
     const inRetail = DB.a('retail_invoices').find(x => x.id === id);
     if (inRetail) DB.update('retail_invoices', id, () => rec);
     else DB.update('iv', id, () => rec);
