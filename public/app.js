@@ -110,6 +110,7 @@ function toggleDistGroup(distId) {
 let _repBrand = 'purpl';   // 'purpl' | 'lf'
 let _lfRepPeriod = 30;     // days; 0 = all time
 function nav(page) {
+  document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.sb-nav a').forEach(a => a.classList.remove('active'));
   const pg = document.getElementById('page-'+page);
@@ -546,6 +547,7 @@ function migrateLfSkuPrices() {
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
 function renderDash() {
+  if (!DB._firestoreReady) return;
   const ac  = DB.a('ac').filter(x=>x.status==='active');
   const pr  = DB.a('pr');
   const ord = DB.a('orders');
@@ -572,11 +574,11 @@ function renderDash() {
   const purplAcCount = allAc.filter(a => !a.isPbf).length;
   const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
   const allPurplInv = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
-  const purplOutstanding = allPurplInv.filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
-  const lfOutstanding    = DB.a('lf_invoices').filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
+  const purplOutstanding = allPurplInv.filter(x => !['paid','draft'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
+  const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
-  const purplOverdueCount    = allPurplInv.filter(x => x.status !== 'paid' && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
-  const lfOverdueCount       = DB.a('lf_invoices').filter(i => i.status !== 'paid' && i.due && i.due < today()).length;
+  const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
+  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft'].includes(i.status) && i.due && i.due < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
@@ -1303,7 +1305,7 @@ function renderInvoiceReminders() {
 
   // Check both retail_invoices and legacy iv for purpl invoices
   [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)].forEach(inv => {
-    if (inv.status === 'paid' || !(inv.dueDate||inv.due) || !inv.accountId) return;
+    if (['paid','draft'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
@@ -1314,7 +1316,7 @@ function renderInvoiceReminders() {
   });
 
   DB.a('lf_invoices').forEach(inv => {
-    if (inv.status === 'paid' || !inv.due || !inv.accountId) return;
+    if (['paid','draft'].includes(inv.status) || !inv.due || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.due);
     if (days < -7) return;
@@ -4185,9 +4187,11 @@ function deleteAccount(id) {
   });
   auditLog('delete', 'account', id, acName);
   // Clean up external Firestore collections (portal tokens, portal orders)
-  try {
-    firebase.firestore().collection('accounts').doc(id).delete().catch(() => {});
-  } catch(e) {}
+  firebase.firestore().collection('accounts').doc(id).delete()
+    .catch(e => console.warn('External account doc delete failed:', e));
+  firebase.firestore().collection('portal_orders').where('accountId', '==', id).get()
+    .then(snap => snap.docs.forEach(doc => doc.ref.delete()))
+    .catch(e => console.warn('Portal orders cleanup failed:', e));
   closeModal('modal-edit-account');
   renderAccounts();
   toast('Account deleted');
@@ -4509,7 +4513,32 @@ function convertProspect(id) {
   DB.atomicUpdate(cache => {
     cache['pr'] = (cache['pr']||[]).filter(x => x.id !== id);
     cache['ac'] = [...(cache['ac']||[]), newAc];
+    // Update orders that referenced the old prospect ID
+    cache['orders'] = (cache['orders']||[]).map(o =>
+      o.accountId === id ? {...o, accountId: newAc.id, accountName: newAc.name} : o
+    );
   });
+
+  // Update portal orders in Firestore to reference the new account ID
+  firebase.firestore().collection('portal_orders')
+    .where('accountId', '==', id).get()
+    .then(snap => snap.docs.forEach(doc =>
+      doc.ref.update({ accountId: newAc.id, accountName: newAc.name, isProspect: false })
+    ))
+    .catch(e => console.warn('Portal orders migration on convert failed:', e));
+
+  // Update external accounts doc if one exists for the prospect
+  firebase.firestore().collection('accounts').doc(id).get()
+    .then(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        firebase.firestore().collection('accounts').doc(newAc.id).set({
+          ...data, accountId: newAc.id, accountName: newAc.name,
+        });
+        doc.ref.delete().catch(() => {});
+      }
+    })
+    .catch(() => {});
 
   closeModal('modal-prospect');
   renderProspects();
@@ -7786,12 +7815,7 @@ function createDeliveryInvoice(accountId, ordId) {
   const terms   = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
-  // Auto-increment invoice number from the single invoice collection
-  const lastNum = DB.a('retail_invoices').reduce((max,inv)=>{
-    const n = parseInt((inv.invoiceNumber||'').replace(/\D/g,'')) || 0;
-    return Math.max(max, n);
-  }, 0);
-  const invoiceNumber = 'INV-' + String(lastNum + 1).padStart(4, '0');
+  const invoiceNumber = getNextInvoiceNumber('purpl');
 
   // Build line items in CASES with pricing
   const margin = costs.target_margin || 0.60;
@@ -10548,14 +10572,17 @@ function saveNewCombinedInvoice() {
     cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
     cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
     cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
-    // Deduct purpl inventory on invoice creation (LF inventory managed on Wix)
-    const purplIvEntries = purplLines.map(li => ({
-      id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
-      qty: (li.cases || 0) * CANS_PER_CASE,
-      note: 'Invoice ' + combNum, invoiceId: combId,
-    })).filter(e => e.qty > 0);
-    if (purplIvEntries.length) {
-      cache.iv = [...(cache.iv||[]), ...purplIvEntries];
+    // Deduct purpl inventory for non-draft invoices (LF inventory managed on Wix)
+    // Draft invoices get deducted when marked as sent via markInvoiceSent()
+    if (status !== 'draft') {
+      const purplIvEntries = purplLines.map(li => ({
+        id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
+        qty: (li.cases || 0) * CANS_PER_CASE,
+        note: 'Invoice ' + combNum, invoiceId: combId,
+      })).filter(e => e.qty > 0);
+      if (purplIvEntries.length) {
+        cache.iv = [...(cache.iv||[]), ...purplIvEntries];
+      }
     }
   });
 
@@ -13305,7 +13332,9 @@ function markInvoiceSent(id) {
   const inv = inRetail || DB.a('iv').find(x => x.id === id);
   const col = inRetail ? 'retail_invoices' : 'iv';
   DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
-  if (inv && inv.status === 'draft') {
+  // Deduct purpl inventory when a draft is first sent — skip if already deducted
+  const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
+  if (inv && inv.status === 'draft' && !alreadyDeducted) {
     const invNum = inv.number || inv.invoiceNumber || '';
     const lines = inv.lineItems || inv.items || [];
     lines.forEach(li => {
@@ -13805,12 +13834,15 @@ function saveInv(id, isNew) {
 
   if (_isNew) {
     DB.push('retail_invoices', rec);
-    // Deduct inventory on new invoice creation (purpl only)
-    lineItems.forEach(li => {
-      if (li.cases > 0) {
-        DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
-      }
-    });
+    // Deduct inventory on new non-draft invoice creation (purpl only)
+    // Draft invoices get deducted when marked as sent via markInvoiceSent()
+    if (status !== 'draft') {
+      lineItems.forEach(li => {
+        if (li.cases > 0) {
+          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
+        }
+      });
+    }
   } else {
     const inRetail = DB.a('retail_invoices').find(x => x.id === id);
     if (inRetail) DB.update('retail_invoices', id, () => rec);
