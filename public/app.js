@@ -8,8 +8,8 @@
 // Inventory (iv collection) is tracked in individual CANS.
 // Always use CANS_PER_CASE when converting between them.
 const CANS_PER_CASE = 12;
-const PURPL_MSRP = 3.39;
-const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE; // $26.44
+const PURPL_MSRP = 3.29;
+const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE; // $25.66
 
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
