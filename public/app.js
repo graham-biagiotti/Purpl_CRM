@@ -5814,7 +5814,7 @@ function editDistributor(id) {
 
   qs('#edist-title').textContent = isNew?'Add Distributor':'Edit Distributor';
   qs('#edist-name').value          = d.name||'';
-  qs('#edist-platform').value      = d.platformType||'Local Line';
+  if (qs('#edist-platform')) qs('#edist-platform').value = d.platformType||'other';
   qs('#edist-territory').value     = d.territory||'';
   qs('#edist-dc-address').value    = d.dcAddress||'';
   if (qs('#edist-territory-radius')) qs('#edist-territory-radius').value = d.territoryRadiusMiles||'';
