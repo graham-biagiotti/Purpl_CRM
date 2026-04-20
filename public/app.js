@@ -4151,9 +4151,6 @@ function renderProspects() {
     return;
   }
 
-  // Load applications asynchronously (non-blocking)
-  renderApplications();
-
   el.classList.toggle('pr-compact', _prCompact);
   const btn = qs('#pr-compact-btn');
   if (btn) btn.classList.toggle('active', _prCompact);
@@ -11725,6 +11722,7 @@ async function renderPreOrders(forceReload) {
     qs('#po-kpis').innerHTML = '<div style="color:var(--muted);font-size:13px;grid-column:1/-1">Loading portal orders…</div>';
     await PortalDB.load();
   }
+  renderApplications();
   _renderPoKpis();
   _renderPoTabs();
   _switchPoTab(_poCurrentTab);
@@ -13638,14 +13636,18 @@ async function renderApplications() {
     }
   }
 
-  // Update sidebar badge and dashboard card with new count
+  // Only show actionable applications (new + reviewed)
+  const activeDocs = docs.filter(d => !d.status || d.status === 'new' || d.status === 'reviewed');
   const newCount = docs.filter(d => !d.status || d.status === 'new').length;
   _updateApplicationsBadge(newCount);
 
-  if (!docs.length) {
+  if (!activeDocs.length) {
     el.innerHTML = '';
     return;
   }
+
+  // Use activeDocs for rendering
+  docs = activeDocs;
 
   const statusLabel = { new:'New', reviewed:'Reviewed', approved:'Approved', rejected:'Rejected', imported:'Imported', duplicate:'Duplicate' };
   const statusColor = { new:'#dc2626', reviewed:'#d97706', approved:'#16a34a', rejected:'#6b7280', imported:'#6b7280', duplicate:'#6b7280' };

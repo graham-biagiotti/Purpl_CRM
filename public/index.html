@@ -326,8 +326,6 @@
 
     <!-- ═══════ PROSPECTS ═══════ -->
     <div class="page" id="page-prospects">
-      <!-- Applications section (live from portal_inquiries) -->
-      <div id="pr-applications-section" style="margin-bottom:20px"></div>
       <div class="page-filter-bar">
         <input id="pr-search" type="search" placeholder="Search prospects...">
         <select id="pr-stage-filter">
@@ -348,9 +346,8 @@
         </select>
         <div class="spacer"></div>
         <span id="pr-count" style="font-size:13px;color:var(--muted)"></span>
-        <button class="btn no-print" onclick="importWholesaleInquiries()">Import Wholesale Inquiries</button>
-        <button class="btn no-print" onclick="openImportProspects()">Import Prospects</button>
         <button class="btn" id="pr-compact-btn" onclick="togglePrCompact()">Compact</button>
+        <button class="btn no-print" onclick="openImportProspects()" style="font-size:12px">📋 Import CSV</button>
         <button class="btn primary" onclick="editProspect(uid())">+ Add Prospect</button>
       </div>
       <div id="pr-cards"></div>
@@ -791,6 +788,8 @@
 
     <!-- ═══════ PRE-ORDERS ═══════ -->
     <div class="page" id="page-pre-orders">
+      <!-- Wholesale Applications -->
+      <div id="pr-applications-section" style="margin-bottom:16px"></div>
       <!-- KPI cards row -->
       <div class="card-grid grid-4" id="po-kpis" style="margin-bottom:16px"></div>
       <!-- Tab bar -->
