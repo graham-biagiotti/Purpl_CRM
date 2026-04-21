@@ -146,7 +146,7 @@ exports.sendOrderConfirmation = onCall(
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
     ${data.portalLink ? `
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center">
-      <a href="${data.portalLink}" style="color:${accentColor};font-size:13px;text-decoration:none">Place another order →</a>
+      <a href="${escHtml(data.portalLink)}" style="color:${accentColor};font-size:13px;text-decoration:none">Place another order →</a>
     </div>` : ''}
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">

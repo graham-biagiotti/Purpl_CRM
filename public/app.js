@@ -10364,8 +10364,13 @@ function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=nul
   };
   DB.atomicUpdate(cache => {
     cache.combined_invoices = [...(cache.combined_invoices||[]), rec];
-    const pi = (cache.iv||[]).findIndex(x => x.id === purplInvId);
-    if (pi >= 0) cache.iv[pi] = {...cache.iv[pi], combinedInvoiceId: id};
+    // Link purpl invoice — check retail_invoices first, then iv
+    const ri = (cache.retail_invoices||[]).findIndex(x => x.id === purplInvId);
+    if (ri >= 0) cache.retail_invoices[ri] = {...cache.retail_invoices[ri], combinedInvoiceId: id};
+    else {
+      const pi = (cache.iv||[]).findIndex(x => x.id === purplInvId);
+      if (pi >= 0) cache.iv[pi] = {...cache.iv[pi], combinedInvoiceId: id};
+    }
     const li = (cache.lf_invoices||[]).findIndex(x => x.id === lfInvId);
     if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], combinedInvoiceId: id};
   });
@@ -10907,7 +10912,7 @@ function openCombinedInvoicePreview(combinedId) {
 
   const html     = buildCombinedInvoiceHTML(combinedId);
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
-  const purplInv = DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
 
   qs('#civ-account-name').textContent = rec.accountName;
@@ -10973,7 +10978,8 @@ function printAccountStatement(accountId) {
   const a = DB.a('ac').find(x => x.id === accountId);
   if (!a) return;
 
-  const purplInvs = DB.a('iv').filter(x => x.accountId === accountId);
+  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
+  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !retailIds.has(x.id))].filter(x => x.accountId === accountId);
   const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid' };
 
   let totalOutstanding = 0;
@@ -13806,7 +13812,7 @@ function saveInv(id, isNew) {
 
   // isNew may be undefined if called from old code paths — treat missing id as new
   const _isNew   = isNew !== false && !id;
-  const existing = _isNew ? null : DB.a('iv').find(x => x.id === id);
+  const existing = _isNew ? null : (DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id));
   const saveId   = _isNew ? uid() : id;
 
   const rec = {
