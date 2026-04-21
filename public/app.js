@@ -10900,8 +10900,15 @@ function buildCombinedInvoiceHTML(combinedId) {
     ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
     : null;
 
-  const issueDate = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
-  const dueDate   = new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  const _fmtLongDate = (s) => {
+    if (!s) return '';
+    try { return new Date(s+'T12:00:00').toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}); }
+    catch(e) { return s; }
+  };
+  const issueDate = rec.date ? _fmtLongDate(rec.date) : new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
+  const dueDate   = rec.dueDate ? _fmtLongDate(rec.dueDate) : (rec.due ? _fmtLongDate(rec.due) : new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}));
+  const paymentTerms = rec.paymentTerms || 'Net 30';
+  const invoiceNotes = rec.notes || '';
 
   const itemCellStyle = 'padding:10px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
   const purplRows = (purplInv.lineItems||[]).map(li => {
@@ -11003,7 +11010,7 @@ function buildCombinedInvoiceHTML(combinedId) {
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
         <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
         <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>
-        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>Net 30</strong></div>
+        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(paymentTerms)}</strong></div>
       </td>
     </tr></table>
   </td></tr>
@@ -11031,9 +11038,14 @@ function buildCombinedInvoiceHTML(combinedId) {
       <div style="font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">Amount Due</div>
       <div style="font-size:26px;font-weight:700;color:#1a1a2e">$${rec.grandTotal.toFixed(2)}</div>
     </div>
-    <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">Payment due within 30 days</div>
+    <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(paymentTerms)} · Due ${dueDate}</div>
     ${invSettings.stripeLink ? `<div style="margin-top:20px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#1a1a2e;color:#fff;padding:12px 36px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:500;letter-spacing:0.04em">PAY ONLINE</a></div>` : ''}
   </td></tr>
+
+  ${invoiceNotes ? `<tr><td style="padding:0 48px 24px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Notes</div>
+    <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(invoiceNotes)}</div>
+  </td></tr>` : ''}
 
   <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#6b7280;line-height:1.8">
     <strong style="color:#1a1a2e">Pumpkin Blossom Farm LLC</strong> · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
@@ -11218,6 +11230,34 @@ function openCombinedInvoicePreview(combinedId) {
   qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
   qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
   qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
+
+  // Populate editable fields
+  qs('#civ-edit-date').value = rec.date || today();
+  qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
+  qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
+  qs('#civ-edit-notes').value = rec.notes || '';
+
+  const saveBtn = qs('#civ-btn-save');
+  if (saveBtn) saveBtn.onclick = () => {
+    const newDate = qs('#civ-edit-date').value;
+    const newDue = qs('#civ-edit-due').value;
+    const newTerms = qs('#civ-edit-terms').value;
+    const newNotes = qs('#civ-edit-notes').value;
+    DB.atomicUpdate(cache => {
+      const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+      if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
+      if (rec.purplInvoiceId) {
+        const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
+      }
+      if (rec.lfInvoiceId) {
+        const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], date: newDate, dueDate: newDue, due: newDue, paymentTerms: newTerms, notes: newNotes };
+      }
+    });
+    toast('Invoice updated ✓');
+    setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
+  };
 
   qs('#civ-preview-frame').srcdoc = html;
 
