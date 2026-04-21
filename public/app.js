@@ -12635,7 +12635,7 @@ async function createProspectFromPortalOrder() {
   const pr = {
     id: uid(), name: o.accountName||'', contact: o.contactName||'',
     email: o.billingEmail||'', status:'lead', source:'Portal',
-    priority:'medium', notes:[], outreach:[],
+    priority:'medium', notes:[], outreach:[], lastContacted: null,
   };
   DB.push('pr', pr);
   await PortalDB.updateOrder(o.id, { status:'reviewed', reviewedAt: new Date() });
