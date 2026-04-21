@@ -10674,18 +10674,22 @@ function deleteCombinedInvoice(combinedId) {
 }
 
 function getNextInvoiceNumber(type) {
-  const prefix = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
-  const items = type === 'purpl' ? _allPurplInvoices() : DB.a({ purpl:'retail_invoices', lf:'lf_invoices', combined:'combined_invoices' }[type]);
-  const nums = items.map(x => {
+  // Unified sequential numbering — all invoice types share one INV-XXX counter.
+  // 'type' parameter kept for backward compatibility but no longer changes the prefix.
+  const allNums = [
+    ..._allPurplInvoices(),
+    ...DB.a('lf_invoices'),
+    ...DB.a('combined_invoices'),
+  ].map(x => {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
   });
   const invSettings = DB.obj('invoice_settings', {});
-  const settingsNext = invSettings[`next${type.charAt(0).toUpperCase()+type.slice(1)}Num`] || 0;
-  const cacheMax = nums.length ? Math.max(...nums) : 0;
+  const settingsNext = invSettings.nextInvoiceNum || 0;
+  const cacheMax = allNums.length ? Math.max(...allNums) : 0;
   const next = Math.max(cacheMax, settingsNext) + 1;
-  DB.setObj('invoice_settings', { ...invSettings, [`next${type.charAt(0).toUpperCase()+type.slice(1)}Num`]: next });
-  return `${prefix}-${String(next).padStart(3,'0')}`;
+  DB.setObj('invoice_settings', { ...invSettings, nextInvoiceNum: next });
+  return `INV-${String(next).padStart(3,'0')}`;
 }
 
 // ── New combined invoice modal ────────────────────────────
@@ -10947,10 +10951,17 @@ function buildCombinedInvoiceHTML(combinedId) {
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<style>@media print { body { background:#fff !important; } .invoice-card { box-shadow:none !important; border:1px solid #e5e7eb !important; } }</style>
+<style>
+  @page { size: letter; margin: 0.5in; }
+  @media print {
+    body { background:#fff !important; padding:0 !important; }
+    .invoice-wrap { padding:0 !important; }
+    .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
+  }
+</style>
 </head>
 <body style="margin:0;padding:0;background:#f5f5f7;font-family:Inter,Arial,sans-serif;color:#1a1a2e">
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+<table class="invoice-wrap" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
 <tr><td align="center">
 <table class="invoice-card" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px">
 
@@ -10959,23 +10970,23 @@ function buildCombinedInvoiceHTML(combinedId) {
       <td style="vertical-align:middle">
         <table cellpadding="0" cellspacing="0">
           <tr>
-            <td style="vertical-align:middle;padding-right:14px">
+            <td style="vertical-align:middle;padding-right:18px">
               <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                alt="purpl" width="90" height="36" style="display:block">
+                alt="purpl" width="140" height="56" style="display:block">
             </td>
-            <td style="vertical-align:middle;padding:0 2px">
-              <div style="width:1px;height:32px;background:#d1d5db"></div>
+            <td style="vertical-align:middle;padding:0 4px">
+              <div style="width:1px;height:48px;background:#d1d5db"></div>
             </td>
-            <td style="vertical-align:middle;padding-left:14px">
+            <td style="vertical-align:middle;padding-left:18px">
               <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="36" height="36" style="display:block">
+                alt="Lavender Fields" width="56" height="56" style="display:block">
             </td>
           </tr>
         </table>
       </td>
       <td align="right" style="vertical-align:middle">
         <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">INVOICE</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(purplInv.number||'')}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(rec.number||rec.invoiceNumber||'')}</div>
       </td>
     </tr></table>
   </td></tr>
@@ -11203,7 +11214,7 @@ function openCombinedInvoicePreview(combinedId) {
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
 
   qs('#civ-account-name').textContent = rec.accountName;
-  qs('#civ-invoice-nums').textContent = [purplInv.number, lfInv.number].filter(Boolean).join(' · ');
+  qs('#civ-invoice-nums').textContent = rec.number || rec.invoiceNumber || '';
   qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
   qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
   qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
@@ -11227,7 +11238,7 @@ function openCombinedInvoicePreview(combinedId) {
     callSendCombinedInvoice(to, rec.accountName, subject, html)
       .then((result) => {
         toast('Invoice sent ✓');
-        const invoiceRef = [purplInv.number, lfInv.number].filter(Boolean).join(' · ');
+        const invoiceRef = rec.number || rec.invoiceNumber || '';
         const entry = {
           id: uid(), stage: 'invoice_sent',
           sentAt: new Date().toISOString(),
