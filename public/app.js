@@ -10907,12 +10907,16 @@ function buildCombinedInvoiceHTML(combinedId) {
   </tr></thead>`;
 
   const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
-  const purplRows = (purplInv.lineItems||[]).map(li => `<tr>
+  const purplRows = (purplInv.lineItems||[]).map(li => {
+    const cases = li.qty || li.cases || 0;
+    const cans = cases * CANS_PER_CASE;
+    return `<tr>
     <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Item')}</td>
-    <td style="${itemCellStyle};text-align:right">${li.qty||li.cases||0}</td>
-    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
+    <td style="${itemCellStyle};text-align:right">${cases} case${cases!==1?'s':''} <span style="color:#9ca3af;font-size:11px">(${cans} cans)</span></td>
+    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}/case</td>
     <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.total||li.lineTotal||0).toFixed(2)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   const lfRows = (lfInv.lineItems||[]).map(li => {
     if (li.hasVariants && li.variantLines) {
@@ -11209,7 +11213,8 @@ function openCombinedInvoicePreview(combinedId) {
     const blob = new Blob([html], {type:'text/html'});
     window.open(URL.createObjectURL(blob), '_blank');
   };
-  qs('#civ-btn-copy').onclick = () => {
+  const copyBtn = qs('#civ-btn-copy');
+  if (copyBtn) copyBtn.onclick = () => {
     navigator.clipboard.writeText(html)
       .then(() => toast('HTML copied'))
       .catch(() => toast('Copy failed'));
