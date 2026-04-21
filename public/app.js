@@ -473,21 +473,31 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p>We're thrilled to welcome <strong>${businessName}</strong> as a retail partner. Your wholesale account has been approved.</p>
+        <p>We're thrilled to welcome <strong>${businessName}</strong> as a retail partner. Your wholesale account has been approved!</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR RETAILER PORTAL</div>
-            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Access Your Portal →</a>
-            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link for easy access</div>
-            ${extra.portalPassword ? `<div style="font-size:12px;color:#374151;margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb">You can also order directly at <a href="https://purpl-crm.web.app/order" style="color:${accentColor}">purpl-crm.web.app/order</a><br>Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
+            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR RETAILER ORDER PORTAL</div>
+            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Place Your First Order →</a>
+            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link — it's your personalized portal</div>
+            <div style="font-size:12px;color:#374151;margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb">
+              You can also order at <a href="https://purpl-crm.web.app/order" style="color:${accentColor}">purpl-crm.web.app/order</a>
+              ${extra.portalPassword ? `<br>Portal password: <strong>${extra.portalPassword}</strong>` : ''}
+            </div>
           </td></tr>
         </table>
-        <p>Payment terms: Net 30. Invoices from lavender@pbfwholesale.com.</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0 0">
-          <tr><td align="center" style="padding:16px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <a href="https://purpl-crm.web.app/images/wholesale-catalog.pdf" style="color:${accentColor};font-size:13px;font-weight:500;text-decoration:none">📄 View Wholesale Catalog (PDF)</a>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
+          <tr><td style="padding:16px 20px;background:#f0f7f1;border-radius:8px;border:1px solid #b8d4c0">
+            <div style="font-size:13px;font-weight:600;color:#166534;margin-bottom:8px">How to order:</div>
+            <div style="font-size:13px;color:#374151;line-height:1.7">
+              1. Click the portal link above<br>
+              2. Select your products and quantities<br>
+              3. Submit — we'll confirm and schedule delivery<br><br>
+              Or just reply to this email with what you need and we'll take care of it!
+            </div>
           </td></tr>
         </table>
+        <p style="font-size:14px">Payment terms: <strong>Net 30</strong> from delivery. Invoices from <strong>lavender@pbfwholesale.com</strong>.</p>
+        <p>Questions? Reply to this email or call 603-748-3038 anytime.</p>
         <p>Warmly,</p>`)
     },
     'rejected': {
