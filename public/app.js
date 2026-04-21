@@ -2536,9 +2536,19 @@ function openAccount(id) {
   }
 
   // Overview tab
-  qs('#mac-contact').textContent = a.contact||'—';
-  qs('#mac-phone').textContent = a.phone||'—';
-  qs('#mac-email').textContent = a.email||'—';
+  const _contacts = a.contacts || [];
+  if (_contacts.length > 1) {
+    qs('#mac-contact').innerHTML = _contacts.map(c =>
+      `<div style="font-size:13px${c.isPrimary?' ;font-weight:600':''}">` +
+      `${escHtml(c.name||'')}${c.role?' <span style="color:var(--muted);font-size:11px">('+escHtml(c.role)+')</span>':''}` +
+      `${c.isPrimary?' <span style="font-size:10px;color:var(--purpl)">★ Primary</span>':''}` +
+      `</div>`
+    ).join('');
+  } else {
+    qs('#mac-contact').textContent = a.contact||'—';
+  }
+  qs('#mac-phone').textContent = (_contacts.find(c=>c.isPrimary)||_contacts[0]||{}).phone || a.phone || '—';
+  qs('#mac-email').textContent = (_contacts.find(c=>c.isPrimary)||_contacts[0]||{}).email || a.email || '—';
   qs('#mac-type').textContent = a.type||'—';
   qs('#mac-territory').textContent = a.territory||'—';
   qs('#mac-since').textContent = fmtD(a.since);
@@ -9704,21 +9714,13 @@ function qs(sel) { return document.querySelector(sel); }
 
 // ── Wire filter/search controls ──────────────────────────
 function setupFilters() {
-  // Accounts
-  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-fulfill-filter','#ac-sort'].forEach(sel=>{
+  function _bindOnce(sel, fn) {
     const el = qs(sel);
-    if (el) el.addEventListener('input', renderAccounts);
-  });
-  // Prospects
-  ['#pr-search','#pr-stage-filter','#pr-brand-filter','#pr-sort'].forEach(sel=>{
-    const el = qs(sel);
-    if (el) el.addEventListener('input', renderProspects);
-  });
-  // Distributors
-  ['#dist-search','#dist-status-filter'].forEach(sel=>{
-    const el = qs(sel);
-    if (el) el.addEventListener('input', renderDistributors);
-  });
+    if (el && !el.dataset.filterBound) { el.addEventListener('input', fn); el.dataset.filterBound = '1'; }
+  }
+  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-fulfill-filter','#ac-sort'].forEach(sel => _bindOnce(sel, renderAccounts));
+  ['#pr-search','#pr-stage-filter','#pr-brand-filter','#pr-sort'].forEach(sel => _bindOnce(sel, renderProspects));
+  ['#dist-search','#dist-status-filter'].forEach(sel => _bindOnce(sel, renderDistributors));
   // Projections velocity window
   const projVelSrc = qs('#proj-velocity-source');
   if (projVelSrc) projVelSrc.addEventListener('change', renderProjectionsPage);
