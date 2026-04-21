@@ -18,6 +18,31 @@ function _payTerms() { return DB?.obj?.('settings',{})?.default_payment_terms ||
 function _gasPrice() { return DB?.obj?.('settings',{})?.gasPrice || 3.50; }
 function _lowStock() { return DB?.obj?.('settings',{})?.lowStockThreshold || 500; }
 
+// ── Pricing helper — single fallback chain ──────────────
+function _calcPricePerCase(account, sku) {
+  const ac = account || {};
+  const isDist = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
+  const acPrice = parseFloat(isDist ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
+  if (acPrice) return acPrice;
+  const markup = 1 / Math.max(0.01, 1 - _margin());
+  const cogsPrice = _cogs(sku || 'classic') * markup * CANS_PER_CASE;
+  return cogsPrice || PURPL_DIRECT_PER_CASE;
+}
+
+// ── Account lookup helper ───────────────────────────────
+function _findAccount(accountId, fallbackName) {
+  if (accountId) { const a = DB.a('ac').find(x => x.id === accountId); if (a) return a; }
+  if (fallbackName) return DB.a('ac').find(a => (a.name||'').toLowerCase() === (fallbackName||'').toLowerCase());
+  return null;
+}
+
+// ── Overdue helper ──────────────────────────────────────
+function _isOverdue(inv) {
+  if (['paid','draft'].includes(inv.status)) return false;
+  const due = inv.dueDate || inv.due;
+  return !!due && due < today();
+}
+
 // ── Invoice helpers — single source of truth ────────────
 function _allPurplInvoices() {
   const ids = new Set(DB.a('retail_invoices').map(x => x.id));
@@ -51,6 +76,7 @@ const today = () => new Date().toISOString().slice(0,10);
 const fmt   = (n, d=0) => (+n||0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
 const fmtC  = (n) => '$' + fmt(n,2);
 const fmtD  = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+const fmtDLong = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—';
 const daysAgo = (s) => s ? Math.floor((Date.now()-new Date(s+'T12:00:00'))/(864e5)) : 999;
 const weeksAgo = (s) => Math.floor(daysAgo(s)/7);
 
@@ -331,6 +357,30 @@ async function callSendOrderConfirmation(to, accountName, contactName, orderSumm
     console.error('Send order confirmation error:', err);
     throw err;
   }
+}
+
+function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn}) {
+  const fn = sendFn || ((t,s,h) => callSendEmail(t, 'lavender@pbfwholesale.com', s, h));
+  return fn(to, subject, html)
+    .then(result => {
+      if (accountId && stage) {
+        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend', ...extra};
+        if (result?.id) entry.sentMessageId = result.id;
+        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
+      }
+      toast('Email sent ✓');
+      return result;
+    })
+    .catch(err => {
+      console.warn('Resend failed, opening Gmail:', err);
+      toast('Resend unavailable — opening Gmail');
+      window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+      if (accountId && stage) {
+        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'gmail', ...extra};
+        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
+      }
+      return null;
+    });
 }
 
 function buildEmailHTML(headerHTML, accentColor, bodyHTML, unsubscribeAccountId) {
@@ -1043,17 +1093,8 @@ function dashFilterFulfill(val) {
 // Price an order. Items qty is in CASES.
 // Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
 function calcOrderValue(o) {
-  const costs = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || _margin();
-  const markup = 1 / Math.max(0.01, 1 - margin);
-  const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
-  const isDistFulfilled = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
-  const acPrice = parseFloat(isDistFulfilled ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
-  return (o.items||[]).reduce((s,i)=>{
-    const pricePerCase = acPrice
-      || PURPL_DIRECT_PER_CASE;
-    return s + pricePerCase * i.qty;
-  }, 0);
+  const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+  return (o.items||[]).reduce((s,i) => s + _calcPricePerCase(ac2, i.sku) * i.qty, 0);
 }
 
 // ── Needs Attention (30+ days no contact) ────────────────
@@ -1424,8 +1465,8 @@ function renderInvoiceStatus() {
       const rows = rInvs.map(inv=>{
         const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
         const isDraft = inv.status === 'draft';
-        const statusCls = inv.status==='paid'?'green': isDraft?'gray': (inv.dueDate && daysAgo(inv.dueDate)>0)?'red':'blue';
-        const statusLabel = inv.status==='paid'?'Paid': isDraft?'Draft': (inv.dueDate && daysAgo(inv.dueDate)>0)?'Overdue':'Unpaid';
+        const statusCls = inv.status==='paid'?'green': isDraft?'gray': _isOverdue(inv)?'red':'blue';
+        const statusLabel = inv.status==='paid'?'Paid': isDraft?'Draft': _isOverdue(inv)?'Overdue':'Unpaid';
         return `<tr>
           <td>${inv.invoiceNumber||'—'}</td>
           <td>${fmtD(inv.date)}</td>
@@ -1527,32 +1568,21 @@ async function sendInvoiceReminder(invId, collection) {
     : `Invoice due soon — ${inv.number || ''} (${ac.name})`;
   const html = buildInvoiceReminderHTML(inv, collection, isOverdue);
 
-  try {
-    const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
-    toast('Reminder sent ✓');
-    DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString() }));
-    const entry = {
-      id: uid(), stage: 'invoice_reminder',
-      sentAt: new Date().toISOString(),
-      sentBy: 'graham', method: 'resend',
-      invoiceId: invId, invoiceRef: inv.number || '',
-    };
-    if (result?.id) entry.sentMessageId = result.id;
-    DB.update('ac', ac.id, a => ({
-      ...a,
-      lastContacted: today(),
-      cadence: [...(a.cadence || []), entry],
-    }));
-    // Remove row without full re-render
-    const row = document.getElementById('dir-' + invId);
-    if (row) row.remove();
-    const list = document.getElementById('dash-inv-reminders-list');
-    if (list && !list.children.length) {
-      document.getElementById('dash-invoice-reminders').style.display = 'none';
+  _sendWithCadence({
+    to: ac.email, subject, html, accountId: ac.id,
+    stage: 'invoice_reminder',
+    extra: { invoiceId: invId, invoiceRef: inv.number || '' },
+  }).then(result => {
+    if (result) {
+      DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString() }));
+      const row = document.getElementById('dir-' + invId);
+      if (row) row.remove();
+      const list = document.getElementById('dash-inv-reminders-list');
+      if (list && !list.children.length) {
+        document.getElementById('dash-invoice-reminders').style.display = 'none';
+      }
     }
-  } catch (err) {
-    toast('Failed to send reminder — ' + (err.message || 'unknown error'));
-  }
+  });
 }
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
@@ -7687,8 +7717,7 @@ function _showInvoiceSuggestion(ship) {
     yesBtn.onclick = () => {
       dismiss();
       // Try to match customer name to an account
-      const ac = DB.a('ac').find(a=>(a.name||'').toLowerCase()===(ship.customer||'').toLowerCase())
-              || DB.a('ac').find(a=>(a.name||'').toLowerCase().includes((ship.customer||'').toLowerCase()));
+      const ac = _findAccount(null, ship.customer);
       openAddInv(
         ac?.id || null,
         'dist',
@@ -7762,7 +7791,7 @@ function renderDelivery() {
   el.innerHTML = stops.length ? stops.map((s,i)=>{
     // Look up account for dropOffRules (by stored accountId, then by name fallback)
     const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
-             || DB.a('ac').find(a=>a.name===s.name);
+             || _findAccount(null, s.name);
     const rules = ac?.dropOffRules || '';
     const isDistFulfilled = ac?.fulfilledBy && ac.fulfilledBy !== 'direct';
     const distName = isDistFulfilled ? DB.a('dist_profiles').find(d=>d.id===ac.fulfilledBy)?.name : null;
@@ -7879,7 +7908,7 @@ function toggleStop(i) {
 
   // Look up account (prefer stored accountId, fallback to name match)
   const ac2 = (stop.accountId ? DB.a('ac').find(a=>a.id===stop.accountId) : null)
-            || DB.a('ac').find(a=>a.name===stop.name);
+            || _findAccount(null, stop.name);
 
   if (!wasDone && stop.done && ac2) {
     // ── Atomic delivery confirmation ──────────────────────
@@ -7992,20 +8021,12 @@ function createDeliveryInvoice(accountId, ordId) {
   const ord     = DB.a('orders').find(o=>o.id===ordId);
   if (!ac || !ord) return;
 
-  const costs   = DB.obj('costs', {cogs:{}});
   const terms   = _payTerms();
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
-
   const invoiceNumber = getNextInvoiceNumber('purpl');
 
-  // Build line items in CASES with pricing
-  const margin = costs.target_margin || _margin();
-  const markup = 1 / Math.max(0.01, 1 - margin);
-  const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
-  const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
   const lineItems = (ord.items||[]).map(i=>{
-    const cogsMarkup = _cogs(i.sku) * markup * CANS_PER_CASE;
-    const pricePerCase = acPrice || cogsMarkup || PURPL_DIRECT_PER_CASE;
+    const pricePerCase = _calcPricePerCase(ac, i.sku);
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -8050,7 +8071,7 @@ function offerBatchInvoice(stops) {
   const uninvoiced = stops.filter(s=>{
     if (!s.done) return false;
     const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
-             || DB.a('ac').find(a=>a.name===s.name);
+             || _findAccount(null, s.name);
     if (!ac) return false;
     const ord = DB.a('orders').find(o=>o.accountId===ac.id&&o.source==='run'&&o.created===today());
     return ord && ord.invoiceStatus !== 'invoiced' && ord.invoiceStatus !== 'paid';
@@ -8081,7 +8102,7 @@ function createBatchDeliveryInvoices() {
   let created = 0;
   stops.forEach(s=>{
     const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
-             || DB.a('ac').find(a=>a.name===s.name);
+             || _findAccount(null, s.name);
     if (!ac) return;
     // Find the delivery order for this stop (most recent run order for this account today)
     const ord = DB.a('orders').filter(o=>o.accountId===ac.id&&o.source==='run'&&o.created===today())
@@ -8100,7 +8121,7 @@ function removeStop(i) {
   const run = DB.obj('today_run', {date:today(), stops:[]});
   const stop = run.stops[i];
   if (stop && stop.done) {
-    const acId = stop.accountId || DB.a('ac').find(a=>a.name===stop.name)?.id;
+    const acId = stop.accountId || _findAccount(null, stop.name)?.id;
     if (acId) {
       DB.atomicUpdate(cache => {
         const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===today());
@@ -8126,7 +8147,7 @@ function clearRoute() {
   if (completedStops.length) {
     DB.atomicUpdate(cache => {
       completedStops.forEach(stop => {
-        const acId = stop.accountId || DB.a('ac').find(a=>a.name===stop.name)?.id;
+        const acId = stop.accountId || _findAccount(null, stop.name)?.id;
         if (!acId) return;
         const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===(run.date||today()));
         if (ord) {
@@ -8304,7 +8325,7 @@ function renderTopAccountsReport() {
     const e = byAc[o.accountId];
     (o.items || []).forEach(i => { e.cases += (i.qty || 0); });
     e.revenue  += calcOrderValue(o);
-    if (!e.lastOrder || (o.dueDate || '') > e.lastOrder) e.lastOrder = o.dueDate || '';
+    if (!e.lastOrder || (o.created || o.date || '') > e.lastOrder) e.lastOrder = o.created || o.date || '';
   });
 
   const rows = Object.entries(byAc)
@@ -8356,7 +8377,7 @@ function renderGoingColdReport() {
 
     const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
     const outstanding = allPurplInv.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total || i.amount || 0), 0);
-    rows.push({ name: ac.name, lastOrder: lastOrd?.dueDate || '', daysSince, outstanding, tier });
+    rows.push({ name: ac.name, lastOrder: lastOrd?.created || lastOrd?.date || '', daysSince, outstanding, tier });
   });
 
   rows.sort((a, b) => b.daysSince - a.daysSince);
@@ -9403,7 +9424,7 @@ function importLLOrders(orders) {
 
   orders.forEach(o=>{
     // Find or create account
-    let acct = DB.a('ac').find(a=>a.name.toLowerCase()===o.buyer.toLowerCase());
+    let acct = _findAccount(null, o.buyer);
     if (!acct) {
       acct = {id:uid(), name:o.buyer, status:'active', type:'retail', source:'Local Line Import', created:today(), notes:[], outreach:[], pricing:{}};
       DB.push('ac', acct);
@@ -12812,11 +12833,7 @@ async function confirmPortalOrder() {
     if (purplCases < 1 && lfItems.length < 1) { toast('Order has no items'); return; }
 
     // Pricing
-    const costs = DB.obj('costs', {cogs:{}});
-    const margin = costs.target_margin || _margin();
-    const fallbackMarkup = 1 / Math.max(0.01, 1 - margin);
-    const acPrice = parseFloat(isDistFulfilled ? acct.pricePerCaseDist : acct.pricePerCaseDirect) || 0;
-    const effectivePrice = acPrice || ((costs.cogs?.classic || 2.15) * fallbackMarkup * CANS_PER_CASE);
+    const effectivePrice = _calcPricePerCase(acct, 'classic');
     const purplTotal = purplCases * effectivePrice;
 
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
@@ -14055,7 +14072,7 @@ function saveInv(id, isNew) {
   const rec = {
     ...(existing||{}),
     id:           saveId,
-    invoiceNumber: number || existing?.invoiceNumber || existing?.number || ('INV-' + String(DB.a('retail_invoices').length+1).padStart(3,'0')),
+    invoiceNumber: number || existing?.invoiceNumber || existing?.number || getNextInvoiceNumber('purpl'),
     number:       number || existing?.invoiceNumber || existing?.number || null,
     accountId,
     accountName:  ac.name || '',
