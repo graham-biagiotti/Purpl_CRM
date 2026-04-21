@@ -12411,11 +12411,9 @@ async function deletePortalOrder(orderId) {
 
 // ── Confirm portal order flow ─────────────────────────────
 
-let _confirmPortalOrderId = null;
 let _portalOrderId = null;
 
 function openConfirmPortalOrder(id) {
-  _confirmPortalOrderId = id;
   _portalOrderId = id;
   const o = PortalDB.getOrders().find(x => x.id === id);
   if (!o) return;
