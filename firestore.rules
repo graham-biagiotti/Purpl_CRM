@@ -13,11 +13,19 @@ service cloud.firestore {
     }
 
     // Portal: public can submit orders (create only)
+    // Field-level validation prevents oversized payloads and junk data.
     match /portal_orders/{orderId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'status'])
+        && request.resource.data.accountName is string
+        && request.resource.data.accountName.size() < 200
+        && request.resource.data.billingEmail is string
+        && request.resource.data.billingEmail.size() < 200
         && request.resource.data.status in ['new', 'pending']
-        && request.resource.data.size() < 30;
+        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 2000))
+        && (!('items' in request.resource.data) || request.resource.data.items.size() < 50)
+        && (!('lineItems' in request.resource.data) || request.resource.data.lineItems.size() < 50)
+        && request.resource.data.size() < 50;
       allow read: if true;
       allow update, delete: if request.auth != null;
     }
@@ -26,6 +34,10 @@ service cloud.firestore {
     match /portal_notify/{docId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['email', 'flavor'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() < 200
+        && request.resource.data.flavor is string
+        && request.resource.data.flavor.size() < 100
         && request.resource.data.size() < 10;
       allow read, delete: if request.auth != null;
     }
@@ -40,11 +52,16 @@ service cloud.firestore {
     match /portal_inquiries/{docId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['businessName', 'email'])
+        && request.resource.data.businessName is string
+        && request.resource.data.businessName.size() < 200
+        && request.resource.data.email is string
+        && request.resource.data.email.size() < 200
+        && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() < 5000))
         && request.resource.data.size() < 20;
       allow read, update, delete: if request.auth != null;
     }
 
-    // Everything else requires auth
+    // Everything else requires auth (workspace collections, invoices, etc.)
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
