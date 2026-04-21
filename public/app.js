@@ -167,6 +167,7 @@ const renders = {
 
 // ── Audit Log ────────────────────────────────────────────
 function auditLog(action, entityType, entityId, entityName) {
+  if (!DB._firestoreReady) return;
   DB.push('audit_log', {
     id:         uid(),
     timestamp:  new Date().toISOString(),
@@ -351,8 +352,8 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const accentColor = '#8B5FBF';
   const contacts = account.contacts||[];
   const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
-  const contactName = primary.name||account.contact||'there';
-  const businessName = account.name||'your store';
+  const contactName = escHtml(primary.name||account.contact||'there');
+  const businessName = escHtml(account.name||'your store');
   const portalLink = account.orderPortalToken
     ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
     : 'https://purpl-crm.web.app/order';
@@ -837,6 +838,7 @@ function deleteNoteSection(id) {
 function debounceSaveScratchpad() { debounceNoteSectionSave(); }
 
 function addQuickNote() {
+  if (!DB._firestoreReady) return;
   const inp = qs('#qn-input');
   const text = (inp?.value||'').trim();
   if (!text) return;
@@ -847,6 +849,7 @@ function addQuickNote() {
 }
 
 function deleteQuickNote(id) {
+  if (!DB._firestoreReady) return;
   DB.remove('quick_notes', id);
   renderQuickNotes();
 }
@@ -867,9 +870,9 @@ function kpiHtml(label, val, color) {
 }
 
 function dashFilterBrand(val) {
+  _acBrandFilter = val;
   nav('accounts');
-  const el = qs('#ac-brand-filter');
-  if (el) { el.value = val; renderAccounts(); }
+  renderAccounts();
 }
 
 function dashFilterFulfill(val) {
@@ -1076,6 +1079,7 @@ function renderFollowUps() {
 }
 
 function dashMarkFollowUpDone(id, type) {
+  if (!DB._firestoreReady) return;
   if (type === 'account') {
     const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
     DB.update('ac', id, x => ({...x, nextFollowUp: null, outreach: [...(x.outreach||[]), entry]}));
@@ -1200,6 +1204,7 @@ function renderPendingOrders() {
 }
 
 function rescheduleOrder(id) {
+  if (!DB._firestoreReady) return;
   const o = DB.a('orders').find(x=>x.id===id);
   if (!o) return;
   const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
@@ -1715,12 +1720,14 @@ function calcInvTotal() { _ivCalcTotal(); }
 
 
 function markRetailInvPaid(id) {
+  if (!DB._firestoreReady) return;
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
   renderInvoiceStatus();
   toast('Marked as paid');
 }
 
 function deleteRetailInv(id) {
+  if (!DB._firestoreReady) return;
   if (!confirm2('Delete this invoice?')) return;
   DB.remove('retail_invoices', id);
   renderInvoiceStatus();
@@ -2648,6 +2655,7 @@ function sendEmailViaResend() {
     .catch(() => {
       toast('Resend unavailable — opening Gmail');
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
+      markCadenceEmailSent(null);
     })
     .finally(() => {
       if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
@@ -3336,6 +3344,12 @@ function emailsPageSendEmail() {
     .catch(() => {
       toast('Resend unavailable — opening Gmail');
       window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+      const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+      DB.update('ac', account.id, a => ({
+        ...a,
+        lastContacted: today(),
+        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'gmail'}]
+      }));
       if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
     });
 }
@@ -4153,7 +4167,7 @@ async function saveAccount(id, isNew) {
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
-    isPbf:        qs('#eac-ispbf')?.checked || false,
+    isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
     pricePerCaseDirect: (v=>isNaN(v)?null:v)(parseFloat(qs('#ac-price-direct')?.value)),
@@ -4591,8 +4605,8 @@ async function saveProspect(id, isNew) {
     const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
     if (coords) { lat = coords.lat; lng = coords.lng; }
   } else if (addrEl?.dataset?.lat) {
-    lat = parseFloat(addrEl.dataset.lat);
-    lng = parseFloat(addrEl.dataset.lng);
+    lat = parseFloat(addrEl.dataset.lat) || null;
+    lng = parseFloat(addrEl.dataset.lng) || null;
   }
 
   const existing = DB.a('pr').find(x=>x.id===id);
@@ -5575,13 +5589,13 @@ function renderDistRepsHTML(d) {
         <div class="attn-name">${escHtml(r.name)}</div>
         <div class="attn-reason">${[r.title, r.territory].filter(Boolean).map(escHtml).join(' · ')}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:3px">
-          ${r.phone?`📞 ${r.phone} &nbsp;`:''}
-          ${r.email?`✉ ${r.email}`:''}
+          ${r.phone?`📞 ${escHtml(r.phone)} &nbsp;`:''}
+          ${r.email?`✉ ${escHtml(r.email)}`:''}
         </div>
         ${r.lastContacted?`<div style="font-size:11px;color:var(--muted);margin-top:2px">Last contacted: ${fmtD(r.lastContacted)}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        ${r.email?`<a href="mailto:${r.email}?subject=purpl%20Beverages" class="btn xs">✉ Gmail</a>`:''}
+        ${r.email?`<a href="mailto:${escHtml(r.email)}?subject=purpl%20Beverages" class="btn xs">✉ Gmail</a>`:''}
         <button class="btn xs" onclick="editDistRep('${r.id}','${d.id}')">Edit</button>
       </div>
     </div>`).join('');
@@ -5701,7 +5715,7 @@ function renderDistStoresHTML(d) {
       <div class="attn-info" style="flex:1">
         <div class="attn-name">${escHtml(c.chainName)}</div>
         <div class="attn-reason">${c.doorCount||0} doors &nbsp;·&nbsp; ${(c.authorizedSkus||[]).map(s=>skuBadge(s)).join(' ')}</div>
-        ${c.notes?`<div style="font-size:12px;color:var(--muted)">${c.notes}</div>`:''}
+        ${c.notes?`<div style="font-size:12px;color:var(--muted)">${escHtml(c.notes)}</div>`:''}
       </div>
       <button class="btn xs" onclick="editDistChain('${c.id}','${d.id}')">Edit</button>
     </div>`).join('');
@@ -6581,6 +6595,7 @@ function _invReceive() {
 }
 
 function receiveLooseCans() {
+  if (!DB._firestoreReady) return;
   const sku = qs('#recv-loose-sku')?.value;
   const qty = parseInt(qs('#recv-loose-qty')?.value);
   if (!sku) { toast('Select a SKU'); return; }
@@ -6592,6 +6607,7 @@ function receiveLooseCans() {
 }
 
 function receiveFinishedPacks() {
+  if (!DB._firestoreReady) return;
   const sku = qs('#recv-pack-sku')?.value;
   const qty = parseInt(qs('#recv-pack-qty')?.value);
   const packType = qs('#recv-pack-type')?.value||'6pack';
@@ -6604,6 +6620,7 @@ function receiveFinishedPacks() {
 }
 
 function delLooseCan(id, form) {
+  if (!DB._firestoreReady) return;
   if (!confirm2('Remove this receipt?')) return;
   if (form==='Loose Cans') DB.remove('loose_cans', id);
   else DB.remove('iv', id);
@@ -6745,11 +6762,11 @@ function savePallet(palletId, isNew) {
 }
 
 function shipPallet(palletId) {
+  const p = DB.a('pallets').find(x=>x.id===palletId);
+  if (!p || p.status === 'shipped') { toast('Already shipped'); return; }
   const dest = prompt('Ship to (distributor / account):') || '';
   const shipDate = prompt('Ship date (YYYY-MM-DD):', today()) || today();
   DB.update('pallets', palletId, p=>({...p, status:'shipped', shipTo:dest||p.shipTo, shipDate}));
-  // Deduct from inventory
-  const p = DB.a('pallets').find(x=>x.id===palletId);
   Object.entries(p?.contents||{}).forEach(([sku,qty])=>{
     DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
   });
@@ -6928,6 +6945,7 @@ function toggleReturnCredit() {
 }
 
 function invAdjust(sku, type) {
+  if (!DB._firestoreReady) return;
   const skuVal = sku || prompt('SKU (classic/blueberry/peach/raspberry/variety):');
   if (!skuVal || !SKU_MAP[skuVal]) { if(skuVal) toast('Unknown SKU'); return; }
   const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
@@ -7838,6 +7856,7 @@ function createDeliveryInvoice(accountId, ordId) {
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
   const total      = lineItems.reduce((s,l)=>s+l.amount, 0);
+  if (totalCases < 1) { toast('No items to invoice'); return; }
   const pricePerCase = totalCases > 0 ? total / totalCases : 0;
 
   const invoice = {
@@ -7922,6 +7941,21 @@ function createBatchDeliveryInvoices() {
 
 function removeStop(i) {
   const run = DB.obj('today_run', {date:today(), stops:[]});
+  const stop = run.stops[i];
+  if (stop && stop.done) {
+    const acId = stop.accountId || DB.a('ac').find(a=>a.name===stop.name)?.id;
+    if (acId) {
+      DB.atomicUpdate(cache => {
+        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===today());
+        if (ord) {
+          cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
+          cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
+            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
+          );
+        }
+      });
+    }
+  }
   run.stops = run.stops.filter((_,idx)=>idx!==i);
   DB.setObj('today_run', run);
   renderDelivery();
@@ -9366,7 +9400,7 @@ function saveSettings() {
 
   const s = {
     company:               qs('#set-company')?.value?.trim()||'',
-    payment_terms:         DB.obj('settings',{}).payment_terms||30,
+    payment_terms:         parseInt(qs('#set-default-terms')?.value)||DB.obj('settings',{}).payment_terms||30,
     production_lead_time:  parseInt(qs('#set-lead-time')?.value)||14,
     default_state:         qs('#set-default-state')?.value?.trim()||'',
     default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
@@ -14126,7 +14160,7 @@ async function approveApplication(docId, app) {
   if (app.email) {
     try {
       let _pw = '';
-      try { const _cfg = await firebase.firestore().collection('portal_settings').doc('config').get(); _pw = _cfg.exists ? (_cfg.data().portalPassword||'') : ''; } catch(e) {}
+      try { const _cfg = await firebase.firestore().collection('portal_settings').doc('config').get(); _pw = _cfg.exists ? (_cfg.data().portalPassword||'') : ''; } catch(e) { console.warn('Portal password fetch failed, email sent without password:', e); }
       const tpl = getCadenceEmailTemplate('approved', rec, { portalPassword: _pw });
       const result = await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
       const entry = {
