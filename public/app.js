@@ -4388,6 +4388,7 @@ function deleteAccount(id) {
     cache['returns']           = (cache['returns']          ||[]).filter(r=>r.accountId!==id);
     cache['dist_invoices']     = (cache['dist_invoices']    ||[]).filter(r=>r.accountId!==id);
     cache['dist_pos']          = (cache['dist_pos']         ||[]).filter(r=>r.accountId!==id);
+    cache['lf_wix_deductions'] = (cache['lf_wix_deductions']||[]).filter(r=>r.accountId!==id);
     const run = cache['today_run'];
     if (run && run.stops) run.stops = run.stops.filter(s=>s.accountId!==id);
   });

@@ -445,6 +445,10 @@ const DB = {
 
   atomicUpdate(fn) {
     fn(this._cache);
+    const now = new Date().toISOString();
+    COLLECTION_KEYS.forEach(k => {
+      (this._cache[k]||[]).forEach(item => { if (item && typeof item === 'object') item._updatedAt = now; });
+    });
     // Find which keys were likely modified and save them all
     const allKeys = [...ARRAY_KEYS, ...OBJ_KEYS];
     allKeys.forEach(k => this._scheduleSave(k));
