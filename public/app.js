@@ -11226,7 +11226,19 @@ function openCombinedInvoicePreview(combinedId) {
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
 
   qs('#civ-account-name').textContent = rec.accountName;
-  qs('#civ-invoice-nums').textContent = rec.number || rec.invoiceNumber || '';
+  // Build status + tracking badges
+  let statusHtml = '';
+  const st = rec.status || 'draft';
+  const stColor = { draft:'gray', sent:'blue', paid:'green', overdue:'red' };
+  statusHtml = `<span class="badge ${stColor[st]||'gray'}" style="margin-left:8px;text-transform:uppercase;font-size:10px">${st}</span>`;
+  // Find cadence entry that matches this invoice to pull open/click tracking
+  const trackEntry = (account.cadence||[]).find(c => c.invoiceId === rec.id && c.stage === 'invoice_sent');
+  if (trackEntry) {
+    if (trackEntry.opened) statusHtml += ` <span class="badge green" style="margin-left:4px;font-size:10px" title="Opened ${fmtD(trackEntry.openedAt)}">👁 Opened</span>`;
+    if (trackEntry.clicked) statusHtml += ` <span class="badge blue" style="margin-left:4px;font-size:10px" title="Clicked ${fmtD(trackEntry.clickedAt)}">🔗 Clicked</span>`;
+    if (!trackEntry.opened && !trackEntry.clicked && rec.status === 'sent') statusHtml += ` <span style="margin-left:6px;font-size:11px;color:var(--muted)">Not yet opened</span>`;
+  }
+  qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') + statusHtml;
   qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
   qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
   qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
@@ -11279,27 +11291,55 @@ function openCombinedInvoicePreview(combinedId) {
       .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = rec.number || rec.invoiceNumber || '';
-        const entry = {
-          id: uid(), stage: 'invoice_sent',
-          sentAt: new Date().toISOString(),
-          sentBy: _currentUserName(), method: 'resend',
-          invoiceId: rec.id, invoiceRef,
-        };
-        if (result?.id) entry.sentMessageId = result.id;
+        const sentAt = new Date().toISOString();
+        const sentMessageId = result?.id || null;
+        // Update status to 'sent' on all 3 invoice records atomically + deduct purpl inventory
+        const wasDraft = rec.status === 'draft' || !rec.status;
+        const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
+        DB.atomicUpdate(cache => {
+          const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+          if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], status: 'sent', sentAt, sentMessageId };
+          if (rec.purplInvoiceId) {
+            const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+            if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'sent', sentAt, sentMessageId };
+            // Deduct purpl inventory if transitioning from draft and not already deducted
+            if (wasDraft && !alreadyDeducted && ri >= 0) {
+              const purplInv = cache.retail_invoices[ri];
+              const invNum = purplInv.number || purplInv.invoiceNumber || '';
+              (purplInv.lineItems || []).forEach(li => {
+                const cases = li.cases || li.qty || 0;
+                if (cases > 0) {
+                  cache.iv = cache.iv || [];
+                  cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
+                }
+              });
+            }
+          }
+          if (rec.lfInvoiceId) {
+            const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+            if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'sent', sentAt, sentMessageId };
+          }
+        });
+        if (wasDraft && !alreadyDeducted) toast('Inventory deducted ✓', 2000);
+        // Log to account cadence
+        const entry = { id: uid(), stage: 'invoice_sent', sentAt, sentBy: _currentUserName(), method: 'resend', invoiceId: rec.id, invoiceRef };
+        if (sentMessageId) entry.sentMessageId = sentMessageId;
         DB.update('ac', rec.accountId, a => ({
           ...a,
           lastContacted: today(),
           cadence: [...(a.cadence||[]), entry],
         }));
         renderAccounts();
+        renderInvoicesPage();
         const updatedAc = DB.a('ac').find(x => x.id === rec.accountId);
         if (updatedAc) {
           renderAccountOutreach(updatedAc);
           renderMacEmailsTab(rec.accountId);
         }
+        // Refresh modal to show updated status
+        setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
       })
       .catch(() => {
-        // Fall back to mailto
         window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       });
   };
