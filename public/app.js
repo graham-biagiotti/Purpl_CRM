@@ -678,8 +678,8 @@ function seedIfEmpty() {
     {id:uid(),name:'Sunrise Café',contact:'Marco Soto',phone:'773-555-0160',email:'marco@sunrisecafe.com',type:'Café',status:'paused',skus:['variety'],par:{variety:12},territory:'South',since:'2023-09-01',notes:[],lastOrder:'2024-11-15'},
   ];
   const prs = [
-    {id:uid(),name:'Green Earth Market',contact:'Amy Chen',phone:'312-555-0200',email:'amy@greenearthmarket.com',type:'Grocery',status:'sampling',territory:'North',source:'Trade Show',notes:[],lastContact:today(),nextAction:'Follow up on sample order',nextDate:today()},
-    {id:uid(),name:'FitZone Studios',contact:'Jake Monroe',phone:'708-555-0210',email:'jake@fitzonefit.com',type:'Gym',status:'contacted',territory:'West',source:'Cold Call',notes:[],lastContact:today(),nextAction:'Send product info packet',nextDate:today()},
+    {id:uid(),name:'Green Earth Market',contact:'Amy Chen',phone:'312-555-0200',email:'amy@greenearthmarket.com',type:'Grocery',status:'sampling',territory:'North',source:'Trade Show',notes:[],lastContacted:today(),nextAction:'Follow up on sample order',nextDate:today()},
+    {id:uid(),name:'FitZone Studios',contact:'Jake Monroe',phone:'708-555-0210',email:'jake@fitzonefit.com',type:'Gym',status:'contacted',territory:'West',source:'Cold Call',notes:[],lastContacted:today(),nextAction:'Send product info packet',nextDate:today()},
   ];
   DB.set('ac', accs);
   DB.set('pr', prs);
@@ -4463,8 +4463,9 @@ function renderProspects() {
             : '')
       : '';
     const lastOutreach  = p.outreach?.length ? p.outreach[p.outreach.length-1] : null;
-    const lastContactStr= p.lastContact
-      ? `${fmtD(p.lastContact)} (${daysAgo(p.lastContact)}d)`
+    const _plc = p.lastContacted || p.lastContact;
+    const lastContactStr= _plc
+      ? `${fmtD(_plc)} (${daysAgo(_plc)}d)`
       : (lastOutreach ? `${fmtD(lastOutreach.date)} (${daysAgo(lastOutreach.date)}d)` : '—');
     const nextFollowHtml= p.nextDate
       ? `<span style="color:${p.nextDate<today()?'var(--red)':'var(--blue)'}">${fmtD(p.nextDate)}</span>`
@@ -4537,8 +4538,9 @@ function openProspect(id) {
   qs('#mpr-type').textContent = p.type||'—';
   qs('#mpr-territory').textContent = p.territory||'—';
   qs('#mpr-source').textContent = p.source||'—';
-  qs('#mpr-last-contact').textContent = p.lastContact
-    ? `${fmtD(p.lastContact)} (${daysAgo(p.lastContact)}d ago)` : '—';
+  const _plc2 = p.lastContacted || p.lastContact;
+  qs('#mpr-last-contact').textContent = _plc2
+    ? `${fmtD(_plc2)} (${daysAgo(_plc2)}d ago)` : '—';
   const nextDateEl = qs('#mpr-next-date');
   if (nextDateEl) {
     if (p.nextDate) {
@@ -4656,7 +4658,7 @@ function addProspectNote(id) {
   DB.update('pr', id, p=>({
     ...p,
     notes: [...(p.notes||[]), note],
-    lastContact: today(),
+    lastContacted: today(),
     ...(next     ? {nextAction: next}     : {}),
     ...(nextDate ? {nextDate}             : {}),
   }));
@@ -4808,7 +4810,7 @@ async function saveProspect(id, isNew) {
     isPbf:      qs('#epr-ispbf')?.checked || false,
     notes:      existing?.notes||[],
     outreach:   existing?.outreach||[],
-    lastContact: existing?.lastContact||'',
+    lastContacted: existing?.lastContacted || existing?.lastContact || '',
   };
   if (isNew) DB.push('pr', rec);
   else DB.update('pr', id, ()=>rec);
@@ -10827,7 +10829,7 @@ function saveNewCombinedInvoice() {
     id: combId, number: combNum, invoiceNumber: combNum,
     purplInvoiceId: purplId, lfInvoiceId: lfId,
     accountId, accountName: account.name||'', status,
-    date: issued, dueDate: due, due,
+    date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
     notes, source: 'manual',
@@ -12897,7 +12899,7 @@ async function confirmPortalOrder() {
         cache.retail_invoices = [...(cache.retail_invoices||[]), {
           id: purplInvId, number: purplNum, invoiceNumber: purplNum,
           accountId: d.accountId, accountName: d.accountName,
-          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          date: todayStr, dueDate: dueDateStr,
           total: purplTotal, amount: purplTotal, status: 'draft',
           lineItems: purplItems.map(i => ({
             skuId: i.sku, sku: i.label, description: i.label,
@@ -12913,7 +12915,7 @@ async function confirmPortalOrder() {
         cache.lf_invoices = [...(cache.lf_invoices||[]), {
           id: lfInvId, number: lfNum, invoiceNumber: lfNum,
           accountId: d.accountId, accountName: d.accountName,
-          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          date: todayStr, dueDate: dueDateStr,
           total: lfTotal, amount: lfTotal, status: 'draft',
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
@@ -12925,7 +12927,7 @@ async function confirmPortalOrder() {
           id: combId, number: combNum, invoiceNumber: combNum,
           purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
           accountId: d.accountId, accountName: d.accountName, status: 'draft',
-          date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          date: todayStr, dueDate: dueDateStr,
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
           notes: 'Auto-drafted from portal order.', source: 'portal',
@@ -12935,7 +12937,7 @@ async function confirmPortalOrder() {
         cache.retail_invoices = [...(cache.retail_invoices||[]), {
           id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
           accountId: d.accountId, accountName: d.accountName,
-          orderId: purplOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          orderId: purplOrderId, date: todayStr, dueDate: dueDateStr,
           cases: purplCases, cans: purplCans,
           pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
           priceType: isDistFulfilled ? 'dist' : 'direct',
@@ -12948,7 +12950,7 @@ async function confirmPortalOrder() {
         cache.lf_invoices = [...(cache.lf_invoices||[]), {
           id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
           accountId: d.accountId, accountName: d.accountName,
-          orderId: lfOrderId, date: todayStr, dueDate: dueDateStr, due: dueDateStr,
+          orderId: lfOrderId, date: todayStr, dueDate: dueDateStr,
           total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal',
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
@@ -14076,7 +14078,6 @@ function saveInv(id, isNew) {
     accountName:  ac.name || '',
     date,
     dueDate:      due,
-    due,
     cases:        totalCases,
     cans:         totalCans,
     pricePerCase: lineItems[0]?.pricePerCase || null,
