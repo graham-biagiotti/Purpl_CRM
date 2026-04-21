@@ -13852,9 +13852,19 @@ function saveApiSettings() {
 }
 
 function loadApiSettings() {
-  const s = DB.obj('api_settings', {});
-  const el = document.getElementById('set-anthropic-key');
-  if (el && s.anthropicKey) el.value = s.anthropicKey;
+  // Gate the integrations section: only admins see the API key input
+  const adminCard = document.getElementById('integrations-admin-only');
+  const lockedCard = document.getElementById('integrations-locked');
+  if (_isAdmin()) {
+    if (adminCard) adminCard.style.display = '';
+    if (lockedCard) lockedCard.style.display = 'none';
+    const s = DB.obj('api_settings', {});
+    const el = document.getElementById('set-anthropic-key');
+    if (el && s.anthropicKey) el.value = s.anthropicKey;
+  } else {
+    if (adminCard) adminCard.style.display = 'none';
+    if (lockedCard) lockedCard.style.display = '';
+  }
 }
 
 function generateInvoicePrint(invoiceId) {
@@ -14514,6 +14524,9 @@ async function approveApplication(docId, app) {
     email:      app.email        || '',
     phone:      app.phone        || '',
     address:    app.address      || '',
+    lat:        typeof app.lat === 'number' ? app.lat : null,
+    lng:        typeof app.lng === 'number' ? app.lng : null,
+    locations:  app.address ? [{ id: uid(), label: 'Primary', address: app.address, lat: app.lat||null, lng: app.lng||null, dropOffRules: '' }] : [],
     type:       app.storeType    || 'Retail',
     status:     'active',
     isPbf,

@@ -8,6 +8,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
+<script src="/firebase-config.js"></script>
+<script src="/places.js"></script>
 <style>
 :root{
   --purpl:#8B5FBF; --purpl-dark:#2D1B4E;
@@ -736,6 +738,11 @@ var firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 
+// Initialize Google Places autocomplete on address field
+if (window.PlacesAC) {
+  window.addEventListener('DOMContentLoaded', () => PlacesAC.initAll());
+}
+
 // ── Brand selection ────────────────────────────────────
 var selectedBrands = [];
 
@@ -804,13 +811,19 @@ function wsSubmitApplication() {
   btn.disabled = true;
   btn.textContent = 'Submitting...';
 
+  var addrEl = document.getElementById('ws-address');
+  var addrLat = addrEl?.dataset?.lat ? parseFloat(addrEl.dataset.lat) : null;
+  var addrLng = addrEl?.dataset?.lng ? parseFloat(addrEl.dataset.lng) : null;
+
   firebase.firestore().collection('portal_inquiries').add({
     submittedAt:     firebase.firestore.FieldValue.serverTimestamp(),
     businessName:    businessName,
     contactName:     contactName,
     email:           email,
     phone:           document.getElementById('ws-phone').value.trim(),
-    address:         document.getElementById('ws-address').value.trim(),
+    address:         addrEl.value.trim(),
+    lat:             addrLat,
+    lng:             addrLng,
     storeType:       document.getElementById('ws-type').value,
     message:         document.getElementById('ws-message').value.trim(),
     howHeard:        document.getElementById('ws-how-heard').value.trim(),

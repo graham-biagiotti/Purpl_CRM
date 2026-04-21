@@ -146,6 +146,7 @@
     'epr-address',     // Edit Prospect form
     'del-stop-addr',   // Orders & Delivery — Route Builder add stop
     'loc-address',     // Inventory Locations — add location form
+    'ws-address',      // Wholesale application form (public-facing)
   ];
 
   // ── Attach to all known address fields ───────────────
