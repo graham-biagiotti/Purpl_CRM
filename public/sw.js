@@ -1,5 +1,5 @@
 // purpl CRM Service Worker — offline shell caching
-const CACHE = 'purpl-crm-v8'; // bump on every deploy
+const CACHE = 'purpl-crm-v9'; // bump on every deploy
 const SHELL = [
   '/',
   '/index.html',
@@ -31,7 +31,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Network-first for everything: always get fresh files, fall back to cache offline
+  // Only intercept same-origin GET requests; POST/PUT and cross-origin go straight to network.
+  if (e.request.method !== 'GET') return;
+  // Network-first for everything: always get fresh files, fall back to cache offline.
   e.respondWith(
     fetch(e.request).then(res => {
       if (res && res.status === 200 && res.type === 'basic') {
