@@ -11,6 +11,13 @@ const CANS_PER_CASE = 12;
 const PURPL_MSRP = 3.29;
 const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE; // $25.66
 
+function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
+function _cogs(sku) { return _costs().cogs?.[sku] || 2.15; }
+function _margin() { return _costs().target_margin || 0.60; }
+function _payTerms() { return DB?.obj?.('settings',{})?.default_payment_terms || DB?.obj?.('settings',{})?.payment_terms || 30; }
+function _gasPrice() { return DB?.obj?.('settings',{})?.gasPrice || 3.50; }
+function _lowStock() { return DB?.obj?.('settings',{})?.lowStockThreshold || 500; }
+
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -1010,7 +1017,7 @@ function dashFilterFulfill(val) {
 // Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
 function calcOrderValue(o) {
   const costs = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
   const ac2   = DB.a('ac').find(a=>a.id===o.accountId);
   const isDistFulfilled = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
@@ -1339,7 +1346,7 @@ const INVOICE_STATUS = {
 
 function renderInvoiceStatus() {
   const delivered = DB.a('orders').filter(o=>o.status==='delivered');
-  const terms     = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
+  const terms     = _payTerms();
 
   let notInvoiced=0, invoiced=0, paid=0, overdueList=[];
 
@@ -1617,7 +1624,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     const num = existing.length + 1;
     if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
-    const settingsTerms = DB.obj('invoice_settings',{}).terms || 30;
+    const settingsTerms = DB.obj('invoice_settings',{}).terms || _payTerms();
     const defaultTermsKey = Object.entries(_TERMS_DAYS).find(([,d]) => d === settingsTerms)?.[0] || 'net30';
     if (qs('#iv-terms')) { qs('#iv-terms').value = defaultTermsKey; }
     if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = 'none';
@@ -7957,13 +7964,13 @@ function createDeliveryInvoice(accountId, ordId) {
   if (!ac || !ord) return;
 
   const costs   = DB.obj('costs', {cogs:{}});
-  const terms   = DB.obj('settings',{}).default_payment_terms || DB.obj('settings',{}).payment_terms || 30;
+  const terms   = _payTerms();
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
 
   const invoiceNumber = getNextInvoiceNumber('purpl');
 
   // Build line items in CASES with pricing
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
   const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
@@ -8654,7 +8661,7 @@ function repWinLoss() {
 function repRevenue() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
 
   const bySkuRev={}, bySkuCases={};
@@ -8698,7 +8705,7 @@ function repRevenue() {
 function repAccounts() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
   const acMap  = {};
   DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
@@ -8908,7 +8915,7 @@ function repDistributor() {
 function repProfit() {
   const orders = _repFilterOrders(DB.a('orders'));
   const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
 
   const bySkuRev={}, bySkuCases={};
@@ -10176,7 +10183,7 @@ function openLfInvoiceModal(id) {
     const num = DB.a('lf_invoices').length + 1;
     if (qs('#lfi-number')) qs('#lfi-number').value = 'LF-' + String(num).padStart(3,'0');
     if (qs('#lfi-issued')) qs('#lfi-issued').value  = today();
-    const terms  = DB.obj('invoice_settings',{}).terms || 30;
+    const terms  = DB.obj('invoice_settings',{}).terms || _payTerms();
     const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
     if (qs('#lfi-due'))    qs('#lfi-due').value    = dueStr;
     if (qs('#lfi-status')) qs('#lfi-status').value = 'unpaid';
@@ -10594,7 +10601,7 @@ function openNewCombinedModal() {
   const combNum = getNextInvoiceNumber('combined');
   if (qs('#nciv-number')) qs('#nciv-number').value = combNum;
   if (qs('#nciv-date')) qs('#nciv-date').value = today();
-  const terms = DB.obj('invoice_settings',{}).terms || DB.obj('settings',{}).default_payment_terms || 30;
+  const terms = DB.obj('invoice_settings',{}).terms || _payTerms();
   const d = new Date(Date.now() + terms * 86400000);
   if (qs('#nciv-due')) qs('#nciv-due').value = d.toISOString().slice(0,10);
   if (qs('#nciv-status')) qs('#nciv-status').value = 'unpaid';
@@ -10614,7 +10621,7 @@ function _ncivRenderSkuRows() {
   const isDist = ac?.fulfilledBy && ac.fulfilledBy !== 'direct';
   const purplPrice = parseFloat(isDist ? ac?.pricePerCaseDist : (ac?.pricePerCaseDirect || ac?.pricePerCaseCustom)) || 0;
   const costs = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || 0.60;
+  const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
 
   // purpl SKU rows
@@ -12750,14 +12757,13 @@ async function confirmPortalOrder() {
 
     // Pricing
     const costs = DB.obj('costs', {cogs:{}});
-    const margin = costs.target_margin || 0.60;
+    const margin = costs.target_margin || _margin();
     const fallbackMarkup = 1 / Math.max(0.01, 1 - margin);
     const acPrice = parseFloat(isDistFulfilled ? acct.pricePerCaseDist : acct.pricePerCaseDirect) || 0;
     const effectivePrice = acPrice || ((costs.cogs?.classic || 2.15) * fallbackMarkup * CANS_PER_CASE);
     const purplTotal = purplCases * effectivePrice;
 
-    const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms
-                  || DB.obj('settings', {}).default_payment_terms || DB.obj('settings', {}).payment_terms || 30;
+    const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
 
     // Create order record(s)
