@@ -96,6 +96,8 @@ exports.sendCombinedInvoice = onCall(
 );
 
 // ── 3. Send Order Confirmation ────────────────────────────
+// Intentionally public — called from order.html portal (unauthenticated customers).
+// Input is validated and escaped; email rate-limited by Resend.
 exports.sendOrderConfirmation = onCall(
   {secrets: [resendApiKey]},
   async (request) => {

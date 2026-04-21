@@ -2665,8 +2665,10 @@ function sendEmailViaResend() {
 function markCadenceEmailSent(sentMessageId) {
   if (!_currentEmailPreview) return;
   const {stage, accountId} = _currentEmailPreview;
-  // Map template hyphen-ID back to underscore stage ID for cadence log consistency
   const stageId = _TEMPLATE_STAGE_IDS[stage] || stage;
+  const ac = DB.a('ac').find(x => x.id === accountId);
+  const recent = (ac?.cadence||[]).find(c => c.stage === stageId && (Date.now() - new Date(c.sentAt).getTime()) < 60000);
+  if (recent) { toast('Already sent — duplicate blocked'); return; }
   const entry = {
     id: uid(), stage: stageId,
     sentAt: new Date().toISOString(),
@@ -7963,8 +7965,25 @@ function removeStop(i) {
 
 function clearRoute() {
   if (!confirm2('Clear today\'s route?')) return;
-  // Archive completed run to history before clearing
   const run = DB.obj('today_run', {stops:[]});
+  // Clean up orders/invoices for completed stops before archiving
+  const completedStops = (run.stops||[]).filter(s => s.done);
+  if (completedStops.length) {
+    DB.atomicUpdate(cache => {
+      completedStops.forEach(stop => {
+        const acId = stop.accountId || DB.a('ac').find(a=>a.name===stop.name)?.id;
+        if (!acId) return;
+        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===(run.date||today()));
+        if (ord) {
+          cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
+          cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
+            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === (run.date||today()))
+          );
+        }
+      });
+    });
+  }
+  // Archive completed run to history
   if (run.stops && run.stops.length > 0) {
     const totalCases = run.stops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
     DB.push('runs', {
