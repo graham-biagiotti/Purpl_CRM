@@ -4426,6 +4426,11 @@ function deleteAccount(id) {
     cache['dist_invoices']     = (cache['dist_invoices']    ||[]).filter(r=>r.accountId!==id);
     cache['dist_pos']          = (cache['dist_pos']         ||[]).filter(r=>r.accountId!==id);
     cache['lf_wix_deductions'] = (cache['lf_wix_deductions']||[]).filter(r=>r.accountId!==id);
+    cache['shipments']         = (cache['shipments']        ||[]).filter(r=>r.accountId!==id);
+    cache['runs'] = (cache['runs']||[]).map(r => ({
+      ...r,
+      stops: (r.stops||[]).filter(s => s.accountId !== id),
+    }));
     const run = cache['today_run'];
     if (run && run.stops) run.stops = run.stops.filter(s=>s.accountId!==id);
   });
@@ -8174,9 +8179,16 @@ function removeStop(i) {
         const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===today());
         if (ord) {
           cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
+          const deletedInvIds = (cache['retail_invoices']||[])
+            .filter(inv => inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
+            .map(inv => inv.id);
           cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
             !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
           );
+          if (deletedInvIds.length) {
+            const rm = new Set(deletedInvIds);
+            cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && rm.has(e.invoiceId)));
+          }
         }
       });
     }
@@ -8193,17 +8205,25 @@ function clearRoute() {
   const completedStops = (run.stops||[]).filter(s => s.done);
   if (completedStops.length) {
     DB.atomicUpdate(cache => {
+      const runDate = run.date || today();
+      const deletedInvIds = new Set();
       completedStops.forEach(stop => {
         const acId = stop.accountId || _findAccount(null, stop.name)?.id;
         if (!acId) return;
-        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===(run.date||today()));
+        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===runDate);
         if (ord) {
           cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
+          (cache['retail_invoices']||[])
+            .filter(inv => inv.source === 'delivery_run' && inv.accountId === acId && inv.date === runDate)
+            .forEach(inv => deletedInvIds.add(inv.id));
           cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
-            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === (run.date||today()))
+            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === runDate)
           );
         }
       });
+      if (deletedInvIds.size) {
+        cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && deletedInvIds.has(e.invoiceId)));
+      }
     });
   }
   // Archive completed run to history
@@ -9741,8 +9761,11 @@ function openModal(id) {
 }
 function closeModal(id) {
   DB.markClean();
-  const m = id ? document.getElementById(id) : null;
-  if (m) { m.classList.remove('open'); return; }
+  if (id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('open');
+    return;
+  }
   document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('open'));
 }
 
@@ -10577,20 +10600,23 @@ function saveLfInvoice(id, isNew) {
   if (isNew) DB.push('lf_invoices', rec);
   else DB.update('lf_invoices', id, () => rec);
 
-  // Generate Wix pull deduction record
+  // Generate or refresh Wix pull deduction record
+  const existingDeduction = !isNew ? DB.a('lf_wix_deductions').find(d => d.invoiceId === saveId) : null;
   const deduction = {
-    id: uid(),
+    id: existingDeduction?.id || uid(),
     invoiceId:     saveId,
     invoiceNumber: rec.number,
     accountId:     rec.accountId,
     accountName:   rec.accountName,
-    date:          today(),
+    date:          existingDeduction?.date || today(),
     items:         lineItems.flatMap(l => l.hasVariants
       ? l.variantLines.map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
       : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
-    confirmed:     false,
+    confirmed:     existingDeduction?.confirmed || false,
   };
   if (isNew) DB.push('lf_wix_deductions', deduction);
+  else if (existingDeduction) DB.update('lf_wix_deductions', existingDeduction.id, () => deduction);
+  else DB.push('lf_wix_deductions', deduction);
 
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
@@ -11650,8 +11676,9 @@ function manualCreateCombined(accountId) {
 // ── Wix pull modal ────────────────────────────────────────
 
 function showWixPullModal(inv, deductionId) {
+  inv = inv || {};
   _wixPullDeductionId = deductionId;
-  _wixPullInvoiceId   = inv.id;
+  _wixPullInvoiceId   = inv.id || null;
   const acEl = qs('#wix-pull-account');
   if (acEl) acEl.textContent = inv.accountName || '—';
   const numEl = qs('#wix-pull-inv-number');
