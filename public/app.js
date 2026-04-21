@@ -12057,8 +12057,8 @@ const PortalDB = {
         this._db().collection('portal_orders').get(),
         this._db().collection('portal_notify').get(),
       ]);
-      this._orders = ordSnap.docs.map(d => ({ id: d.id, ...d.data(),
-        submittedAt: d.data().submittedAt?.toDate?.() || null }));
+      this._orders = ordSnap.docs.map(d => { const data = d.data(); return { ...data, id: d.id,
+        submittedAt: data.submittedAt?.toDate?.() || null }; });
       this._orders.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
       this._notify = notSnap.docs.map(d => ({ id: d.id, ...d.data(),
         submittedAt: d.data().submittedAt?.toDate?.() || null }));

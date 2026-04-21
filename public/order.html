@@ -953,8 +953,10 @@ function showThankYou(data) {
 
   // purpl section
   if (data.cases > 0) {
+    var purplPrice = pricePerCase ? parseFloat(pricePerCase) : null;
+    var purplTotal = purplPrice ? (data.cases * purplPrice) : null;
     summaryHtml += '<div style="font-size:12px;font-weight:700;color:#7B4FA0;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">💜 purpl Lemonade</div>';
-    summaryHtml += '<div class="summary-row"><span>Classic Lavender Lemonade</span><span>' + data.cases + ' cases (' + (data.cases * CANS_PER_CASE) + ' cans)</span></div>';
+    summaryHtml += '<div class="summary-row"><span>Classic Lavender Lemonade</span><span>' + data.cases + ' cases (' + (data.cases * CANS_PER_CASE) + ' cans)' + (purplTotal ? ' · $' + purplTotal.toFixed(2) : '') + '</span></div>';
   }
 
   // LF section
@@ -984,7 +986,7 @@ function showThankYou(data) {
   summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from delivery</span></div>';
 
   if (data.bothBrands) {
-    summaryHtml += '<div style="background:#eff6ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#1e40af">You will receive <strong>separate invoices</strong> for purpl and Lavender Fields.</div>';
+    summaryHtml += '<div style="background:#eff6ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#1e40af">You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.</div>';
   }
 
   document.getElementById('ty-summary').innerHTML = summaryHtml;
@@ -1072,7 +1074,6 @@ function submitOrder() {
   // Write LF order if any LF items
   var lfPromise = lfItems.length > 0
     ? db.collection('portal_orders').add({
-        id: null,
         accountId: accountId || null,
         accountName: finalAccountName,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1133,9 +1134,11 @@ function submitOrder() {
       }
       // Build orderSummary HTML for confirmation email
       var _oSummary = '';
+      var _emailPpc = pricePerCase ? parseFloat(pricePerCase) : null;
       if (_brandPurpl && cases > 0) {
+        var _emailPt = _emailPpc ? (cases * _emailPpc) : null;
         _oSummary += '<p style="margin:0 0 6px"><strong>💜 purpl Lemonade</strong></p>' +
-          '<p style="margin:0 0 12px;color:#374151">Classic Lavender Lemonade &mdash; ' + cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)</p>';
+          '<p style="margin:0 0 12px;color:#374151">Classic Lavender Lemonade &mdash; ' + cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)' + (_emailPt ? ' &mdash; $' + _emailPt.toFixed(2) : '') + '</p>';
       }
       if (lfItems.length) {
         _oSummary += '<p style="margin:0 0 6px"><strong>🌿 Lavender Fields</strong></p>';
@@ -1397,11 +1400,13 @@ function printCurrentOrder() {
   var dt = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
 
   var itemRows = '';
+  var _ppc = pricePerCase ? parseFloat(pricePerCase) : null;
   if (data.cases > 0) {
+    var _pt = _ppc ? (data.cases * _ppc) : null;
     itemRows += '<tr>' +
       '<td>Classic Lavender Lemonade</td>' +
       '<td style="color:#6b7280">💜 purpl</td>' +
-      '<td style="text-align:right">' + data.cases + ' case' + (data.cases!==1?'s':'') + ' (' + (data.cases*CANS_PER_CASE) + ' cans)</td>' +
+      '<td style="text-align:right">' + data.cases + ' case' + (data.cases!==1?'s':'') + ' (' + (data.cases*CANS_PER_CASE) + ' cans)' + (_pt ? ' &nbsp; $' + _pt.toFixed(2) : '') + '</td>' +
     '</tr>';
   }
   if (data.lfItems && data.lfItems.length) {
@@ -1474,7 +1479,7 @@ function printCurrentOrder() {
     '<div class="confirm">' +
     '<strong>Order received &mdash; thank you!</strong><br>' +
     'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
-    (data.bothBrands ? '<br><br>You will receive <strong>separate invoices</strong> for purpl and Lavender Fields.' : '') +
+    (data.bothBrands ? '<br><br>You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.' : '') +
     '</div>' +
     '<div style="text-align:center;margin:20px 0">' +
     '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
