@@ -18,6 +18,33 @@ function _payTerms() { return DB?.obj?.('settings',{})?.default_payment_terms ||
 function _gasPrice() { return DB?.obj?.('settings',{})?.gasPrice || 3.50; }
 function _lowStock() { return DB?.obj?.('settings',{})?.lowStockThreshold || 500; }
 
+// ── Invoice helpers — single source of truth ────────────
+function _allPurplInvoices() {
+  const ids = new Set(DB.a('retail_invoices').map(x => x.id));
+  return [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !ids.has(x.id))];
+}
+function findInvoice(id) {
+  return DB.a('retail_invoices').find(x => x.id === id)
+      || DB.a('lf_invoices').find(x => x.id === id)
+      || DB.a('iv').find(x => x.id === id) || null;
+}
+function _invoiceCol(id) {
+  if (DB.a('retail_invoices').some(x => x.id === id)) return 'retail_invoices';
+  if (DB.a('lf_invoices').some(x => x.id === id)) return 'lf_invoices';
+  return 'iv';
+}
+function updateInvoice(id, fn) { DB.update(_invoiceCol(id), id, fn); }
+function deleteInvoiceWithCleanup(id) {
+  DB.atomicUpdate(cache => {
+    for (const col of ['retail_invoices','lf_invoices','iv']) {
+      const i = (cache[col]||[]).findIndex(x => x.id === id);
+      if (i >= 0) { cache[col].splice(i, 1); break; }
+    }
+    cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
+  });
+}
+function _invAmt(inv) { return parseFloat(inv.amount || inv.total || 0); }
+
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -696,7 +723,7 @@ function renderDash() {
   loadScratchpad();
   const purplAcCount = allAc.filter(a => !a.isPbf).length;
   const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
-  const allPurplInv = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
+  const allPurplInv = _allPurplInvoices();
   const purplOutstanding = allPurplInv.filter(x => !['paid','draft'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
   const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
@@ -1285,7 +1312,7 @@ function renderCadenceOverdue() {
   // Invoices without a sent notification
   DB.a('ac').forEach(a=>{
     const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
-    [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
+    _allPurplInvoices().filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
       flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
     });
     DB.a('lf_invoices').filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
@@ -1433,7 +1460,7 @@ function renderInvoiceReminders() {
   const queue = [];
 
   // Check both retail_invoices and legacy iv for purpl invoices
-  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)].forEach(inv => {
+  _allPurplInvoices().forEach(inv => {
     if (['paid','draft'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.dueDate||inv.due);
@@ -1615,12 +1642,12 @@ function openAddInv(accountId=null, priceType='direct', cases=null, notesText=''
 
 function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNotes='') {
   const isNew = !id;
-  const inv   = id ? (DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id)) : null;
+  const inv   = id ? findInvoice(id) : null;
 
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
   if (isNew) {
-    const existing = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
+    const existing = _allPurplInvoices();
     const num = existing.length + 1;
     if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
@@ -1679,7 +1706,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   if (ivSendBtn) {
     ivSendBtn.style.display = isNew ? 'none' : '';
     ivSendBtn.onclick = () => {
-      const inv = DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id);
+      const inv = findInvoice(id);
       if (!inv) { toast('Save the invoice before sending'); return; }
       const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
       const to = ac.email || '';
@@ -2710,7 +2737,7 @@ function openEmailPreview(stage, accountId, extra={}) {
 function _openInvEmailPreview(accountId) {
   const invId = _latestAccountInvoiceId(accountId);
   const inv = invId
-    ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId))
+    ? findInvoice(invId)
     : null;
   openEmailPreview('invoice-sent', accountId, {
     invoiceNumber: inv?.number || '',
@@ -2894,7 +2921,7 @@ function renderMacEmailsTab(id) {
 }
 
 function _latestAccountInvoiceId(accountId) {
-  const purpl = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].filter(x=>x.accountId===accountId).sort((a,b)=>(b.created||b.date||'')>(a.created||a.date||'')?1:-1)[0];
+  const purpl = _allPurplInvoices().filter(x=>x.accountId===accountId).sort((a,b)=>(b.created||b.date||'')>(a.created||a.date||'')?1:-1)[0];
   const lf    = DB.a('lf_invoices').filter(x=>x.accountId===accountId).sort((a,b)=>b.created>a.created?1:-1)[0];
   if (!purpl && !lf) return '';
   if (!purpl) return lf.id;
@@ -3362,7 +3389,7 @@ function _renderEmailsRightCol() {
     const extra = {};
     if (_emailsSelectedTemplate === 'invoice-sent') {
       const invId = _latestAccountInvoiceId(account.id);
-      const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+      const inv = invId ? findInvoice(invId) : null;
       if (inv) {
         extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
         extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
@@ -3436,7 +3463,7 @@ function emailsPageSendEmail() {
   const extra = {};
   if (_emailsSelectedTemplate === 'invoice-sent') {
     const invId = _latestAccountInvoiceId(account.id);
-    const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
+    const inv = invId ? findInvoice(invId) : null;
     if (inv) {
       extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
       extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
@@ -8200,7 +8227,7 @@ function renderReports() {
       combinedEl.style.marginBottom = '12px';
       kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
     }
-    const purplInvoiced = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x=>x.number||x.invoiceNumber)].reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
+    const purplInvoiced = _allPurplInvoices().reduce((s,x) => s + _invAmt(x), 0);
     const lfInvoiced    = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
     combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
       `<div class="num">${fmtC(purplInvoiced + lfInvoiced)}</div>` +
@@ -8316,7 +8343,7 @@ function renderGoingColdReport() {
 
   const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
   const accounts = DB.a('ac').filter(a => a.status === 'active');
-  const allPurplInv = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
+  const allPurplInv = _allPurplInvoices();
 
   const rows = [];
   accounts.forEach(ac => {
@@ -9004,8 +9031,7 @@ function exportYearEnd() {
   const rows = [];
 
   // purpl invoices (deduplicate + exclude combined invoice components)
-  const _retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
-  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !_retailIds.has(x.id))].filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
+  _allPurplInvoices().filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
     const pd = x.paidDate || '';
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || x.accountId || '—';
@@ -10530,7 +10556,7 @@ function deleteLfInvoice(id) {
 // ── Combined invoices (purpl + LF cross-brand) ────────────
 
 function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=null) {
-  const purplInv = DB.a('retail_invoices').find(x => x.id === purplInvId) || DB.a('iv').find(x => x.id === purplInvId);
+  const purplInv = findInvoice(purplInvId);
   const lfInv    = DB.a('lf_invoices').find(x => x.id === lfInvId);
   if (!purplInv || !lfInv) {
     toast('Could not find invoices to combine');
@@ -10611,9 +10637,7 @@ function deleteCombinedInvoice(combinedId) {
 function getNextInvoiceNumber(type) {
   const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
   const collection = { purpl: 'retail_invoices', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
-  const items = type === 'purpl'
-    ? [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)]
-    : DB.a(collection);
+  const items = type === 'purpl' ? _allPurplInvoices() : DB.a(collection);
   const nums = items.map(x => {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
@@ -10821,7 +10845,7 @@ function buildCombinedInvoiceHTML(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
 
-  const purplInv   = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv   = findInvoice(rec.purplInvoiceId) || {};
   const lfInv      = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
   const account    = DB.a('ac').find(x => x.id === rec.accountId) || {};
   const invSettings = DB.obj('invoice_settings') || {};
@@ -11128,7 +11152,7 @@ function openCombinedInvoicePreview(combinedId) {
 
   const html     = buildCombinedInvoiceHTML(combinedId);
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
-  const purplInv = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId) || DB.a('iv').find(x => x.id === rec.purplInvoiceId) || {};
+  const purplInv = findInvoice(rec.purplInvoiceId) || {};
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
 
   qs('#civ-account-name').textContent = rec.accountName;
@@ -11194,8 +11218,7 @@ function printAccountStatement(accountId) {
   const a = DB.a('ac').find(x => x.id === accountId);
   if (!a) return;
 
-  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
-  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !retailIds.has(x.id))].filter(x => x.accountId === accountId);
+  const purplInvs = _allPurplInvoices().filter(x => x.accountId === accountId);
   const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid' };
 
   let totalOutstanding = 0;
@@ -11292,8 +11315,7 @@ function renderMacInvoicesTab(accountId) {
   const el      = qs('#mac-invoices-content');
   if (!el || !a) return;
 
-  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
-  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !retailIds.has(x.id))].filter(x => x.accountId === accountId);
+  const purplInvs = _allPurplInvoices().filter(x => x.accountId === accountId);
   const lfInvs    = DB.a('lf_invoices').filter(x => x.accountId === accountId);
   const combined  = DB.a('combined_invoices').filter(x => x.accountId === accountId);
 
@@ -13152,7 +13174,7 @@ function renderInvoicesPage() {
 
 function renderInvKpis() {
   const todayStr = today();
-  const purplInvs = [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)];
+  const purplInvs = _allPurplInvoices();
   const lfInvs    = DB.a('lf_invoices');
   const distInvs  = DB.a('dist_invoices');
 
@@ -13200,10 +13222,8 @@ function renderInvKpis() {
 
 function renderInvColPurpl() {
   const todayStr = today();
-  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
   const invs = [
-    ...DB.a('retail_invoices'),
-    ...DB.a('iv').filter(x => (x.accountId || x.number || x.invoiceNumber) && !retailIds.has(x.id)),
+    ..._allPurplInvoices(),
   ].filter(x => !x.combinedInvoiceId);
 
   function effectiveStatus(inv) {
@@ -13554,10 +13574,8 @@ function _sendDistInvoiceReminder(invId) {
 }
 
 function markInvoiceSent(id) {
-  const inRetail = DB.a('retail_invoices').find(x => x.id === id);
-  const inLf = DB.a('lf_invoices').find(x => x.id === id);
-  const inv = inRetail || inLf || DB.a('iv').find(x => x.id === id);
-  const col = inRetail ? 'retail_invoices' : inLf ? 'lf_invoices' : 'iv';
+  const inv = findInvoice(id);
+  const col = _invoiceCol(id);
   DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
   // Deduct purpl inventory when a draft is first sent — skip if already deducted
   const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
@@ -13577,14 +13595,7 @@ function markInvoiceSent(id) {
 
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice?')) return;
-  const inRetail = DB.a('retail_invoices').find(x => x.id === id);
-  const inLf = DB.a('lf_invoices').find(x => x.id === id);
-  DB.atomicUpdate(cache => {
-    if (inRetail) cache.retail_invoices = (cache.retail_invoices||[]).filter(x => x.id !== id);
-    else if (inLf) cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== id);
-    else cache.iv = (cache.iv||[]).filter(x => x.id !== id);
-    cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
-  });
+  deleteInvoiceWithCleanup(id);
   renderInvoicesPage();
   toast('Deleted');
 }
@@ -13643,9 +13654,7 @@ function loadApiSettings() {
 }
 
 function generateInvoicePrint(invoiceId) {
-  // Search both iv and retail_invoices collections
-  const iv = DB.a('retail_invoices').find(x => x.id === invoiceId)
-          || DB.a('iv').find(x => x.id === invoiceId);
+  const iv = findInvoice(invoiceId);
   if (!iv) { toast('Invoice not found'); return; }
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
@@ -14040,7 +14049,7 @@ function saveInv(id, isNew) {
 
   // isNew may be undefined if called from old code paths — treat missing id as new
   const _isNew   = isNew !== false && !id;
-  const existing = _isNew ? null : (DB.a('retail_invoices').find(x => x.id === id) || DB.a('iv').find(x => x.id === id));
+  const existing = _isNew ? null : findInvoice(id);
   const saveId   = _isNew ? uid() : id;
 
   const rec = {
@@ -14080,9 +14089,7 @@ function saveInv(id, isNew) {
       });
     }
   } else {
-    const inRetail = DB.a('retail_invoices').find(x => x.id === id);
-    if (inRetail) DB.update('retail_invoices', id, () => rec);
-    else DB.update('iv', id, () => rec);
+    updateInvoice(id, () => rec);
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
 
@@ -14094,11 +14101,9 @@ function saveInv(id, isNew) {
 
 function deleteInvRecord(id) {
   if (!confirm2('Delete this invoice?')) return;
-  const fromRetail = DB.a('retail_invoices').find(x=>x.id===id);
-  const fromIv = DB.a('iv').find(x=>x.id===id);
-  const invNum = (fromRetail||fromIv)?.invoiceNumber || (fromRetail||fromIv)?.number || id;
-  if (fromRetail) DB.remove('retail_invoices', id);
-  else DB.remove('iv', id);
+  const inv = findInvoice(id);
+  const invNum = inv?.invoiceNumber || inv?.number || id;
+  deleteInvoiceWithCleanup(id);
   auditLog('delete', 'invoice', id, invNum);
   closeModal('modal-add-inv');
   if (currentPage === 'invoices') renderInvoicesPage();
