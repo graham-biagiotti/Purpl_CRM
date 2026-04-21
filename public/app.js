@@ -35,7 +35,7 @@ function _findAccount(accountId, fallbackName) {
 
 // ── Overdue helper ──────────────────────────────────────
 function _isOverdue(inv) {
-  if (['paid','draft'].includes(inv.status)) return false;
+  if (['paid','draft','void'].includes(inv.status)) return false;
   const due = inv.dueDate || inv.due;
   return !!due && due < today();
 }
@@ -794,11 +794,11 @@ function renderDash() {
   const purplAcCount = allAc.filter(a => !a.isPbf).length;
   const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
   const allPurplInv = _allPurplInvoices();
-  const purplOutstanding = allPurplInv.filter(x => !['paid','draft'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
-  const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
+  const purplOutstanding = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
+  const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
-  const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
-  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft'].includes(i.status) && i.due && i.due < today()).length;
+  const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
+  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && i.due && i.due < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
@@ -1522,7 +1522,7 @@ function renderInvoiceReminders() {
 
   // Check both retail_invoices and legacy iv for purpl invoices
   _allPurplInvoices().forEach(inv => {
-    if (['paid','draft'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
+    if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
@@ -1533,7 +1533,7 @@ function renderInvoiceReminders() {
   });
 
   DB.a('lf_invoices').forEach(inv => {
-    if (['paid','draft'].includes(inv.status) || !inv.due || !inv.accountId) return;
+    if (['paid','draft','void'].includes(inv.status) || !inv.due || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.due);
     if (days < -7) return;
@@ -1697,7 +1697,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
   if (isNew) {
-    if (qs('#iv-number')) qs('#iv-number').value = getNextInvoiceNumber('purpl');
+    if (qs('#iv-number')) qs('#iv-number').value = peekNextInvoiceNumber();
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
     const settingsTerms = DB.obj('invoice_settings',{}).terms || _payTerms();
     const defaultTermsKey = Object.entries(_TERMS_DAYS).find(([,d]) => d === settingsTerms)?.[0] || 'net30';
@@ -10252,7 +10252,7 @@ function openLfInvoiceModal(id) {
 
   // Auto-number / load fields
   if (isNew) {
-    if (qs('#lfi-number')) qs('#lfi-number').value = getNextInvoiceNumber('lf');
+    if (qs('#lfi-number')) qs('#lfi-number').value = peekNextInvoiceNumber();
     if (qs('#lfi-issued')) qs('#lfi-issued').value  = today();
     const terms  = DB.obj('invoice_settings',{}).terms || _payTerms();
     const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
@@ -10673,9 +10673,8 @@ function deleteCombinedInvoice(combinedId) {
   toast('Combined invoice deleted');
 }
 
-function getNextInvoiceNumber(type) {
-  // Unified sequential numbering — all invoice types share one INV-XXX counter.
-  // 'type' parameter kept for backward compatibility but no longer changes the prefix.
+// Peek at what the next invoice number would be — no side effects, safe for modal preview
+function peekNextInvoiceNumber() {
   const allNums = [
     ..._allPurplInvoices(),
     ...DB.a('lf_invoices'),
@@ -10684,12 +10683,19 @@ function getNextInvoiceNumber(type) {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
   });
-  const invSettings = DB.obj('invoice_settings', {});
-  const settingsNext = invSettings.nextInvoiceNum || 0;
+  const settingsNext = DB.obj('invoice_settings', {}).nextInvoiceNum || 0;
   const cacheMax = allNums.length ? Math.max(...allNums) : 0;
-  const next = Math.max(cacheMax, settingsNext) + 1;
-  DB.setObj('invoice_settings', { ...invSettings, nextInvoiceNum: next });
-  return `INV-${String(next).padStart(3,'0')}`;
+  return `INV-${String(Math.max(cacheMax, settingsNext) + 1).padStart(4,'0')}`;
+}
+
+// Claim the next invoice number — bumps the counter. Call this only when actually saving.
+function getNextInvoiceNumber(type) {
+  // 'type' param kept for backwards compat, ignored — all invoices share INV- sequence
+  const num = peekNextInvoiceNumber();
+  const n = parseInt(num.replace(/[^0-9]/g,''));
+  const invSettings = DB.obj('invoice_settings', {});
+  DB.setObj('invoice_settings', { ...invSettings, nextInvoiceNum: n });
+  return num;
 }
 
 // ── New combined invoice modal ────────────────────────────
@@ -10700,8 +10706,7 @@ function openNewCombinedModal() {
   sel.innerHTML = '<option value="">Select account...</option>' +
     accts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
 
-  const combNum = getNextInvoiceNumber('combined');
-  if (qs('#nciv-number')) qs('#nciv-number').value = combNum;
+  if (qs('#nciv-number')) qs('#nciv-number').value = peekNextInvoiceNumber();
   if (qs('#nciv-date')) qs('#nciv-date').value = today();
   const terms = DB.obj('invoice_settings',{}).terms || _payTerms();
   const d = new Date(Date.now() + terms * 86400000);
@@ -11136,13 +11141,18 @@ function buildLfInvoiceEmailHTML(inv) {
   const invSettings = DB.obj('invoice_settings') || {};
   const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
   const itemRows = (inv.lineItems||[]).map(li => {
+    const parentUnitPrice = parseFloat(li.unitPrice||0);
     if (li.hasVariants && li.variantLines) {
-      return li.variantLines.map(vl => `<tr>
+      return li.variantLines.map(vl => {
+        const units = vl.units||0;
+        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
+        return `<tr>
         <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="${itemCellStyle};text-align:right">${vl.units||0}</td>
-        <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
-        <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(vl.lineTotal||0).toFixed(2)}</td>
-      </tr>`).join('');
+        <td style="${itemCellStyle};text-align:right">${units}</td>
+        <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
+        <td style="${itemCellStyle};text-align:right;font-weight:500">$${lineTotal.toFixed(2)}</td>
+      </tr>`;
+      }).join('');
     }
     return `<tr>
       <td style="${itemCellStyle}">${escHtml(li.skuName||'Item')}</td>
@@ -11229,7 +11239,7 @@ function openCombinedInvoicePreview(combinedId) {
   // Build status + tracking badges
   let statusHtml = '';
   const st = rec.status || 'draft';
-  const stColor = { draft:'gray', sent:'blue', paid:'green', overdue:'red' };
+  const stColor = { draft:'gray', sent:'blue', paid:'green', overdue:'red', void:'red' };
   statusHtml = `<span class="badge ${stColor[st]||'gray'}" style="margin-left:8px;text-transform:uppercase;font-size:10px">${st}</span>`;
   // Find cadence entry that matches this invoice to pull open/click tracking
   const trackEntry = (account.cadence||[]).find(c => c.invoiceId === rec.id && c.stage === 'invoice_sent');
@@ -11255,18 +11265,11 @@ function openCombinedInvoicePreview(combinedId) {
     const newDue = qs('#civ-edit-due').value;
     const newTerms = qs('#civ-edit-terms').value;
     const newNotes = qs('#civ-edit-notes').value;
-    DB.atomicUpdate(cache => {
-      const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
-      if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
-      if (rec.purplInvoiceId) {
-        const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
-      }
-      if (rec.lfInvoiceId) {
-        const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], date: newDate, dueDate: newDue, due: newDue, paymentTerms: newTerms, notes: newNotes };
-      }
-    });
+    const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
+    // Use DB.update for immediate Firestore writes via _writeDoc (survives tab close)
+    DB.update('combined_invoices', combinedId, x => ({ ...x, ...patch }));
+    if (rec.purplInvoiceId) DB.update('retail_invoices', rec.purplInvoiceId, x => ({ ...x, ...patch }));
+    if (rec.lfInvoiceId) DB.update('lf_invoices', rec.lfInvoiceId, x => ({ ...x, ...patch, issued: newDate, due: newDue }));
     toast('Invoice updated ✓');
     setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
   };
@@ -11343,6 +11346,31 @@ function openCombinedInvoicePreview(combinedId) {
         window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       });
   };
+  const voidBtn = qs('#civ-btn-void');
+  if (voidBtn) voidBtn.onclick = () => {
+    if (!confirm('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.')) return;
+    const wasDeducted = DB.a('iv').some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
+    DB.atomicUpdate(cache => {
+      const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+      if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
+      if (rec.purplInvoiceId) {
+        const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'void', voidedAt: new Date().toISOString() };
+      }
+      if (rec.lfInvoiceId) {
+        const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'void', voidedAt: new Date().toISOString() };
+      }
+      // Reverse inventory deductions
+      if (wasDeducted) {
+        cache.iv = (cache.iv||[]).filter(x => !(x.invoiceId === rec.purplInvoiceId && x.type === 'out'));
+      }
+    });
+    toast('Invoice voided' + (wasDeducted ? ' · inventory restored' : ''));
+    closeModal('modal-combined-invoice');
+    renderInvoicesPage();
+  };
+
   qs('#civ-btn-paid').onclick = () => {
     markCombinedPaid(combinedId);
     closeModal('modal-combined-invoice');
@@ -13328,15 +13356,15 @@ function renderInvKpis() {
   const totalInvoiced = purplInvs.reduce((s,x) => s + _pAmt(x), 0)
                       + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const outstanding   = purplInvs.filter(x => !['paid','draft'].includes(purplStatus(x)))
+  const outstanding   = purplInvs.filter(x => !['paid','draft','void'].includes(purplStatus(x)))
                           .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => !['paid','draft'].includes(x.status))
+                      + lfInvs.filter(x => !['paid','draft','void'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => ['unpaid','overdue'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
                           .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => !['paid','draft'].includes(x.status) && (x.due||'') < todayStr && x.due)
+                      + lfInvs.filter(x => !['paid','draft','void'].includes(x.status) && (x.due||'') < todayStr && x.due)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => x.status==='overdue' || (x.status!=='paid'&&x.dueDate&&x.dueDate<todayStr))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
@@ -13369,7 +13397,7 @@ function renderInvColPurpl() {
     return inv.status || 'unpaid';
   }
 
-  const outstanding = invs.filter(x => !['paid','draft'].includes(effectiveStatus(x)))
+  const outstanding = invs.filter(x => !['paid','draft','void'].includes(effectiveStatus(x)))
                         .reduce((s,x) => s + parseFloat(x.amount||0), 0);
   const overdueAmt  = invs.filter(x => effectiveStatus(x) === 'overdue')
                         .reduce((s,x) => s + parseFloat(x.amount||0), 0);
@@ -13747,8 +13775,7 @@ function saveInvoiceSettings() {
     fromEmail:     get('inv-from-email')?.value   || 'lavender@pbfwholesale.com',
     fromAddress:   get('inv-from-address')?.value || '393 Pumpkin Hill Rd, Warner, NH 03278',
     terms:         parseInt(get('inv-terms')?.value)||30,
-    nextPurplNum:  parseInt(get('set-next-purpl-inv-num')?.value)||existing.nextPurplNum||null,
-    nextLfNum:     parseInt(get('set-next-lf-inv-num')?.value)||existing.nextLfNum||null,
+    nextInvoiceNum: parseInt(get('set-next-inv-num')?.value)||existing.nextInvoiceNum||null,
     footerNotes:   get('inv-footer-notes')?.value||'',
     stripeLink:    get('inv-stripe-link')?.value||'',
     achRouting:    get('inv-ach-routing')?.value||'',
@@ -13766,8 +13793,7 @@ function loadInvoiceSettings() {
   set('inv-from-email',          s.fromEmail);
   set('inv-from-address',        s.fromAddress);
   set('inv-terms',               s.terms);
-  set('set-next-purpl-inv-num',  s.nextPurplNum);
-  set('set-next-lf-inv-num',     s.nextLfNum);
+  set('set-next-inv-num',        s.nextInvoiceNum);
   set('inv-footer-notes',        s.footerNotes);
   set('inv-stripe-link',         s.stripeLink);
   set('inv-ach-routing',         s.achRouting);
@@ -13988,13 +14014,18 @@ function generateLfInvoicePrint(invoiceId) {
   const status   = inv.status || 'unpaid';
 
   const itemRows = (inv.lineItems || []).map(li => {
+    const parentUnitPrice = parseFloat(li.unitPrice || 0);
     if (li.hasVariants && li.variantLines) {
-      return li.variantLines.map(vl => `<tr>
+      return li.variantLines.map(vl => {
+        const units = vl.units || 0;
+        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
+        return `<tr>
         <td><strong>${esc(li.skuName || 'Item')}</strong> — ${esc(vl.variantName || '')}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="text-align:center">${vl.units || 0}</td>
-        <td style="text-align:right">$${parseFloat(li.unitPrice || 0).toFixed(2)}</td>
-        <td style="text-align:right">$${parseFloat(vl.lineTotal || 0).toFixed(2)}</td>
-      </tr>`).join('');
+        <td style="text-align:center">${units}</td>
+        <td style="text-align:right">$${parentUnitPrice.toFixed(2)}</td>
+        <td style="text-align:right">$${lineTotal.toFixed(2)}</td>
+      </tr>`;
+      }).join('');
     }
     return `<tr>
       <td><strong>${esc(li.skuName || 'Item')}</strong></td>
@@ -14188,11 +14219,12 @@ function saveInv(id, isNew) {
   const existing = _isNew ? null : findInvoice(id);
   const saveId   = _isNew ? uid() : id;
 
+  const _invNum = number || existing?.invoiceNumber || existing?.number || getNextInvoiceNumber('purpl');
   const rec = {
     ...(existing||{}),
     id:           saveId,
-    invoiceNumber: number || existing?.invoiceNumber || existing?.number || getNextInvoiceNumber('purpl'),
-    number:       number || existing?.invoiceNumber || existing?.number || null,
+    invoiceNumber: _invNum,
+    number:       _invNum,
     accountId,
     accountName:  ac.name || '',
     date,

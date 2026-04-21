@@ -1334,14 +1334,10 @@
                 <input type="number" id="inv-terms" value="30" min="0">
               </div>
               <div class="form-group" style="margin-bottom:12px">
-                <label>Next purpl invoice #</label>
-                <input type="number" id="set-next-purpl-inv-num" min="1" step="1" placeholder="1001">
+                <label>Next invoice #</label>
+                <input type="number" id="set-next-inv-num" min="1" step="1" placeholder="1">
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">Auto-increments when a new invoice is saved. All invoices share one sequence (INV-0001, INV-0002...)</div>
               </div>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Next LF invoice #</label>
-              <input type="number" id="set-next-lf-inv-num" min="1" step="1" placeholder="1001">
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">Auto-increments when a new invoice is saved</div>
             </div>
             <div class="form-group" style="margin-bottom:12px">
               <label>Invoice footer notes</label>
@@ -3284,6 +3280,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <button class="btn primary" id="civ-btn-gmail" style="justify-content:center;font-weight:600">📧 Send Invoice to Customer</button>
           <button class="btn" id="civ-btn-newtab" style="justify-content:center">Open Full View ↗</button>
           <button class="btn primary green" id="civ-btn-paid" style="justify-content:center">✓ Mark Both Paid</button>
+          <button class="btn" id="civ-btn-void" style="justify-content:center;color:var(--red);border-color:var(--red)">⊘ Void Invoice</button>
         </div>
       </div>
     </div>
