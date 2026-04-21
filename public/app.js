@@ -19,14 +19,11 @@ function _gasPrice() { return DB?.obj?.('settings',{})?.gasPrice || 3.50; }
 function _lowStock() { return DB?.obj?.('settings',{})?.lowStockThreshold || 500; }
 
 // ── Pricing helper — single fallback chain ──────────────
-function _calcPricePerCase(account, sku) {
+function _calcPricePerCase(account) {
   const ac = account || {};
   const isDist = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDist ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
-  if (acPrice) return acPrice;
-  const markup = 1 / Math.max(0.01, 1 - _margin());
-  const cogsPrice = _cogs(sku || 'classic') * markup * CANS_PER_CASE;
-  return cogsPrice || PURPL_DIRECT_PER_CASE;
+  return acPrice || PURPL_DIRECT_PER_CASE;
 }
 
 // ── Account lookup helper ───────────────────────────────
@@ -1094,7 +1091,7 @@ function dashFilterFulfill(val) {
 // Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
 function calcOrderValue(o) {
   const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-  return (o.items||[]).reduce((s,i) => s + _calcPricePerCase(ac2, i.sku) * i.qty, 0);
+  return (o.items||[]).reduce((s,i) => s + _calcPricePerCase(ac2) * i.qty, 0);
 }
 
 // ── Needs Attention (30+ days no contact) ────────────────
@@ -8026,7 +8023,7 @@ function createDeliveryInvoice(accountId, ordId) {
   const invoiceNumber = getNextInvoiceNumber('purpl');
 
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = _calcPricePerCase(ac, i.sku);
+    const pricePerCase = _calcPricePerCase(ac);
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -12833,7 +12830,7 @@ async function confirmPortalOrder() {
     if (purplCases < 1 && lfItems.length < 1) { toast('Order has no items'); return; }
 
     // Pricing
-    const effectivePrice = _calcPricePerCase(acct, 'classic');
+    const effectivePrice = _calcPricePerCase(acct);
     const purplTotal = purplCases * effectivePrice;
 
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
