@@ -6613,13 +6613,29 @@ function handleCSVFile(input, distId) {
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
+  // Strip UTF-8 BOM that Excel/Windows adds to saved CSVs
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/).filter(l => l.length);
   if (!lines.length) return [];
-  const headers = lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
-  return lines.slice(1).map(line=>{
-    const vals = line.split(',').map(v=>v.trim().replace(/"/g,''));
-    return Object.fromEntries(headers.map((h,i)=>[h, vals[i]||'']));
-  }).filter(r=>Object.values(r).some(v=>v));
+  function parseRow(line) {
+    const cols = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++; continue; }
+        inQ = !inQ; continue;
+      }
+      if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+  const headers = parseRow(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = parseRow(line);
+    return Object.fromEntries(headers.map((h, i) => [h, vals[i] || '']));
+  }).filter(r => Object.values(r).some(v => v));
 }
 
 function showCSVPreview(rows, distId) {
