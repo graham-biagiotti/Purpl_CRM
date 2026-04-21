@@ -398,7 +398,9 @@ const DB = {
   obj(k, def = {}) { return this._cache[k] || def; },
   setObj(k, v) { this._cache[k] = v; this._save(k); },
   a(k) { return this.get(k); },
+  _stamp(item) { if (item && typeof item === 'object') item._updatedAt = new Date().toISOString(); return item; },
   push(k, v) {
+    if (COLLECTION_KEYS.includes(k)) this._stamp(v);
     const a = this.a(k); a.push(v); this._cache[k] = a; this._save(k);
     if (COLLECTION_KEYS.includes(k) && v?.id) this._writeDoc(k, v);
   },
@@ -406,7 +408,7 @@ const DB = {
     const a = this.a(k);
     const i = a.findIndex(x => x.id === id);
     if (i >= 0) {
-      a[i] = fn(a[i]); this._cache[k] = a; this._save(k);
+      a[i] = this._stamp(fn(a[i])); this._cache[k] = a; this._save(k);
       if (COLLECTION_KEYS.includes(k)) this._writeDoc(k, a[i]);
     }
   },
