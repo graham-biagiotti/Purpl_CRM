@@ -376,10 +376,10 @@ async function callSendCombinedInvoice(to, accountName, subject, html) {
   }
 }
 
-async function callSendOrderConfirmation(to, accountName, contactName, orderSummary, portalLink, isPbf) {
+async function callSendOrderConfirmation(to, accountName, contactName, orderSummary, portalLink, isPbf, portalOrderId, accountId) {
   try {
     const fn = firebase.functions().httpsCallable('sendOrderConfirmation');
-    const result = await fn({to, accountName, contactName, orderSummary, portalLink, isPbf});
+    const result = await fn({to, accountName, contactName, orderSummary, portalLink, isPbf, portalOrderId: portalOrderId || null, accountId: accountId || null});
     return result.data;
   } catch (err) {
     console.error('Send order confirmation error:', err);
@@ -13223,7 +13223,7 @@ async function confirmPortalOrder() {
         summaryParts += lfItems.map(i => `${escHtml(i.skuName)}: ${i.cases} cases`).join(', ');
       }
       const orderSummary = `<p style="margin:12px 0 4px"><strong>Order confirmed</strong></p><p style="margin:4px 0">${summaryParts}</p>`;
-      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, !!hasLf)
+      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, !!hasLf, _portalOrderId, d.accountId)
         .then(result => {
           const entry = {
             id: uid(),
