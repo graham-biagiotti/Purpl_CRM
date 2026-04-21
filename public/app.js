@@ -8018,9 +8018,12 @@ function offerBatchInvoice(stops) {
   if (existing) return; // already showing
 
   const uninvoiced = stops.filter(s=>{
+    if (!s.done) return false;
     const ac = (s.accountId ? DB.a('ac').find(a=>a.id===s.accountId) : null)
              || DB.a('ac').find(a=>a.name===s.name);
-    return ac && s.done;
+    if (!ac) return false;
+    const ord = DB.a('orders').find(o=>o.accountId===ac.id&&o.source==='run'&&o.created===today());
+    return ord && ord.invoiceStatus !== 'invoiced' && ord.invoiceStatus !== 'paid';
   });
   if (!uninvoiced.length) return;
 

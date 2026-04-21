@@ -1017,6 +1017,7 @@ function submitOrder() {
     if (!billingEmail) { showError('Please enter your billing email.'); return; }
   }
   if (!billingEmail) { showError('Please enter your billing email.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) { showError('Please enter a valid email address.'); return; }
 
   const deliveryWindow = document.getElementById('delivery-window').value.trim();
   const poNumber = document.getElementById('po-number').value.trim();
