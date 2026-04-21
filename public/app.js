@@ -75,7 +75,20 @@ const fmtC  = (n) => '$' + fmt(n,2);
 const fmtD  = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
 const fmtDLong = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—';
 const daysAgo = (s) => s ? Math.floor((Date.now()-new Date(s+'T12:00:00'))/(864e5)) : 999;
-const weeksAgo = (s) => Math.floor(daysAgo(s)/7);
+
+function _currentUserName() {
+  const u = window._currentUser;
+  return u?.displayName || u?.email?.split('@')[0] || 'unknown';
+}
+function _currentUserEmail() {
+  return window._currentUser?.email || '';
+}
+function _isAdmin() {
+  const s = DB?.obj?.('settings', {});
+  const email = _currentUserEmail();
+  const admins = s?.admins || ['graham@pumpkinblossomfarm.com'];
+  return admins.includes(email);
+}
 
 function toast(msg, dur=3000) {
   const el = document.getElementById('toast');
@@ -232,7 +245,7 @@ function auditLog(action, entityType, entityId, entityName) {
     entityType,   // 'account' | 'invoice' | 'order'
     entityId,
     entityName,
-    changedBy:  'graham',
+    changedBy:  _currentUserName(),
   });
 }
 
@@ -264,27 +277,27 @@ function statusBadge(map, val) {
 }
 
 // ── Email template HTML constants ───────────────────────
-const SIGNATURE_HTML = `
-<table width="100%" cellpadding="0" cellspacing="0">
+function _signatureHTML() {
+  const name = _currentUserName();
+  return `<table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding-top:16px;border-top:1px solid #e5e7eb;
       font-family:Inter,Arial,sans-serif;font-size:13px;
       color:#6b7280;line-height:1.6">
-      <strong style="color:#1a1a2e">Graham Biagiotti</strong>
-      — Director of Sales<br>
-      603-748-3038 · Warner, NH<br>
-      Pumpkin Blossom Farm | purpl &amp; Lavender Fields
-      <div style="margin-top:8px;font-size:13px;
-        color:#6b7280">
-        Reply to this email or contact Graham directly:<br>
-        <a href="mailto:graham@pumpkinblossomfarm.com"
+      <strong style="color:#1a1a2e">${escHtml(name)}</strong><br>
+      Pumpkin Blossom Farm | purpl &amp; Lavender Fields<br>
+      603-748-3038 · Warner, NH
+      <div style="margin-top:8px;font-size:13px;color:#6b7280">
+        <a href="mailto:lavender@pbfwholesale.com"
           style="color:#8B5FBF;text-decoration:none">
-          graham@pumpkinblossomfarm.com
+          lavender@pbfwholesale.com
         </a> · 603-748-3038
       </div>
     </td>
   </tr>
 </table>`;
+}
+const SIGNATURE_HTML = ''; // legacy reference — use _signatureHTML() instead
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
@@ -361,7 +374,7 @@ function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn
   return fn(to, subject, html)
     .then(result => {
       if (accountId && stage) {
-        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend', ...extra};
+        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', ...extra};
         if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
       }
@@ -373,7 +386,7 @@ function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn
       toast('Resend unavailable — opening Gmail');
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       if (accountId && stage) {
-        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'gmail', ...extra};
+        const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail', ...extra};
         DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
       }
       return null;
@@ -406,7 +419,7 @@ font-family:Inter,Arial,sans-serif">
         Arial,sans-serif;font-size:15px;color:#1a1a2e;
         line-height:1.7">
         ${bodyHTML}
-        <br><br>${SIGNATURE_HTML}
+        <br><br>${_signatureHTML()}
       </td></tr>
       <tr><td style="background:#f9fafb;padding:20px 40px;
         border-top:1px solid #e5e7eb;text-align:center;
@@ -1630,7 +1643,7 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
     </div>
     ${invSettings.stripeLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
     <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
-    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
+    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>${escHtml(_currentUserName())}</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
@@ -1747,7 +1760,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
           const entry = {
             id: uid(), stage: 'invoice_sent',
             sentAt: new Date().toISOString(),
-            sentBy: 'graham', method: 'resend',
+            sentBy: _currentUserName(), method: 'resend',
             invoiceId: inv.id, invoiceRef: inv.number,
           };
           if (result?.id) entry.sentMessageId = result.id;
@@ -2858,7 +2871,7 @@ function markCadenceEmailSent(sentMessageId) {
   const entry = {
     id: uid(), stage: stageId,
     sentAt: new Date().toISOString(),
-    sentBy: 'graham',
+    sentBy: _currentUserName(),
     method: 'manual',
   };
   if (sentMessageId) entry.sentMessageId = sentMessageId;
@@ -2948,7 +2961,7 @@ function renderMacEmailsTab(id) {
     const rows = cadence.slice().sort((a,b)=>b.sentAt>a.sentAt?1:-1).map(c=>{
       const s = CADENCE_STAGES.find(x=>x.id===c.stage);
       const status = ['Sent ✓', c.opened ? `👁 Opened ${fmtD(c.openedAt)}` : '', c.clicked ? `🔗 Clicked ${fmtD(c.clickedAt)}` : ''].filter(Boolean).join(' · ');
-      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'graham'}</td><td>${status}</td></tr>`;
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'—'}</td><td>${status}</td></tr>`;
     }).join('');
     logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
       <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -2968,7 +2981,7 @@ function _latestAccountInvoiceId(accountId) {
 
 
 function markCadenceSent(accountId, stageId, method, invoiceId) {
-  const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: 'graham', method: method||'manual' };
+  const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: _currentUserName(), method: method||'manual' };
   if (invoiceId) entry.invoiceId = invoiceId;
   DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
   renderMacEmailsTab(accountId);
@@ -2979,13 +2992,11 @@ function markCadenceSent(accountId, stageId, method, invoiceId) {
 // ══════════════════════════════════════════════════════════
 //  AI EMAIL DRAFTING
 // ══════════════════════════════════════════════════════════
-const _AI_SYSTEM_PROMPT = `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`;
+function _aiSystemPrompt() { return `You are a sales assistant for ${_currentUserName()} at Pumpkin Blossom Farm. They sell two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`; }
 
-const _AI_SIGNATURE = `Graham Biagiotti — Director of Sales
-603-748-3038 · Warner, NH
-Pumpkin Blossom Farm | purpl & Lavender Fields`;
+function _aiSignature() { return `${_currentUserName()}\n603-748-3038 · Warner, NH\nPumpkin Blossom Farm | purpl & Lavender Fields`; }
 
-const SIGNATURE = _AI_SIGNATURE;
+function _SIG() { return _aiSignature(); }
 
 const CADENCE_STAGES = [
   {
@@ -2994,7 +3005,7 @@ const CADENCE_STAGES = [
     desc: 'Thank you for applying',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Thank you for your wholesale application — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products at ${a.name}. We've received your application and will be in touch within 1 business day.\n\nIn the meantime, feel free to reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products at ${a.name}. We've received your application and will be in touch within 1 business day.\n\nIn the meantime, feel free to reach out with any questions.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'approved_welcome',
@@ -3005,7 +3016,7 @@ const CADENCE_STAGES = [
     body: (a) => {
       const token = a.orderPortalToken || '';
       const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '[portal link not yet generated — use Copy Link on the account first]';
-      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYour retailer order portal:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms: Net 30. Invoices from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${SIGNATURE}`;
+      return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYour retailer order portal:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms: Net 30. Invoices from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${_SIG()}`;
     }
   },
   {
@@ -3014,7 +3025,7 @@ const CADENCE_STAGES = [
     desc: 'Polite decline of application',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Re: Your wholesale application — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for your interest in carrying our products. After reviewing your application, we don't think it's the right fit at this time — but we appreciate you reaching out and wish you all the best.\n\nPlease don't hesitate to apply again in the future if circumstances change.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'order_confirmation',
@@ -3022,7 +3033,7 @@ const CADENCE_STAGES = [
     desc: 'Confirm order received, delivery coming',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Order received — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nWe received your order for ${a.name} and we're on it. You'll hear from us with delivery details shortly.\n\nQuestions? Reply to this email or call 603-748-3038.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe received your order for ${a.name} and we're on it. You'll hear from us with delivery details shortly.\n\nQuestions? Reply to this email or call 603-748-3038.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'invoice_sent',
@@ -3030,7 +3041,7 @@ const CADENCE_STAGES = [
     desc: 'Invoice notification to retailer',
     from: 'lavender@pbfwholesale.com',
     subject: (inv) => `Invoice ${inv?.number||inv?.invoiceNumber||''} from Pumpkin Blossom Farm`,
-    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||inv?.invoiceNumber||''} for ${fmtC(inv?.amount||inv?.total||0)}. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${SIGNATURE}`
+    body: (a, inv) => `Hi ${a.contact||a.name},\n\nPlease find your invoice ${inv?.number||inv?.invoiceNumber||''} for ${fmtC(inv?.amount||inv?.total||0)}. Payment is due within 30 days per our Net 30 terms.\n\n${inv?.link?`View invoice: ${inv.link}\n\n`:''}Please reach out with any questions.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'invoice_reminder',
@@ -3038,7 +3049,7 @@ const CADENCE_STAGES = [
     desc: 'Payment due soon or overdue',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Friendly reminder — invoice from Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nJust a friendly reminder that you have an outstanding invoice from Pumpkin Blossom Farm. We'd appreciate payment at your earliest convenience.\n\nIf you've already sent payment, please disregard this message.\n\nQuestions about your invoice? Reply to this email or call 603-748-3038.\n\nThank you,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust a friendly reminder that you have an outstanding invoice from Pumpkin Blossom Farm. We'd appreciate payment at your earliest convenience.\n\nIf you've already sent payment, please disregard this message.\n\nQuestions about your invoice? Reply to this email or call 603-748-3038.\n\nThank you,\n${_SIG()}`
   },
   {
     id: 'payment_overdue',
@@ -3046,7 +3057,7 @@ const CADENCE_STAGES = [
     desc: 'Past-due invoice follow-up',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Payment overdue — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nWe're reaching out regarding an overdue invoice for ${a.name}. Our records show payment is past the Net 30 terms.\n\nPlease arrange payment at your earliest convenience, or let us know if there's an issue we can help with.\n\nThank you for your attention to this.\n\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe're reaching out regarding an overdue invoice for ${a.name}. Our records show payment is past the Net 30 terms.\n\nPlease arrange payment at your earliest convenience, or let us know if there's an issue we can help with.\n\nThank you for your attention to this.\n\n${_SIG()}`
   },
   {
     id: 'first_order_followup',
@@ -3054,7 +3065,7 @@ const CADENCE_STAGES = [
     desc: 'Thank you for your first order',
     from: 'lavender@pbfwholesale.com',
     subject: () => "Thanks for your order — we're on it",
-    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with our products on your shelves.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nThank you for placing your first order with us. We're getting it ready and will be in touch with delivery details shortly.\n\nWe're excited to have ${a.name} as a retail partner and look forward to supporting your success with our products on your shelves.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'reorder_reminder',
@@ -3065,7 +3076,7 @@ const CADENCE_STAGES = [
     body: (a) => {
       const token = a.orderPortalToken || '';
       const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '';
-      return `Hi ${a.contact||a.name},\n\nHope things are going well at ${a.name}! It's been a little while since your last order and we wanted to check in.\n\nRunning low on anything? ${portalLink ? `You can reorder anytime through your portal:\n${portalLink}\n\n` : '\n'}Let us know if there's anything we can do — happy to help.\n\nWarmly,\n${SIGNATURE}`;
+      return `Hi ${a.contact||a.name},\n\nHope things are going well at ${a.name}! It's been a little while since your last order and we wanted to check in.\n\nRunning low on anything? ${portalLink ? `You can reorder anytime through your portal:\n${portalLink}\n\n` : '\n'}Let us know if there's anything we can do — happy to help.\n\nWarmly,\n${_SIG()}`;
     }
   },
   {
@@ -3074,7 +3085,7 @@ const CADENCE_STAGES = [
     desc: 'How did the delivery go?',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Quick check-in — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to check in after your recent delivery. Everything look good? Products shelved and selling well?\n\nIf you need anything — signage, marketing materials, or just want to chat about what's selling — don't hesitate to reach out.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to check in after your recent delivery. Everything look good? Products shelved and selling well?\n\nIf you need anything — signage, marketing materials, or just want to chat about what's selling — don't hesitate to reach out.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'new_product',
@@ -3082,7 +3093,7 @@ const CADENCE_STAGES = [
     desc: 'Announce a new product or flavor',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Something new from Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nWe're excited to share something new with you!\n\n[PRODUCT NAME / DESCRIPTION]\n\nWe think this would be a great fit for ${a.name}. Want to add it to your next order?\n\nLet us know if you'd like samples or more information.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nWe're excited to share something new with you!\n\n[PRODUCT NAME / DESCRIPTION]\n\nWe think this would be a great fit for ${a.name}. Want to add it to your next order?\n\nLet us know if you'd like samples or more information.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'thank_you',
@@ -3090,7 +3101,7 @@ const CADENCE_STAGES = [
     desc: 'Thank a retailer for their support',
     from: 'lavender@pbfwholesale.com',
     subject: () => 'Thank you — Pumpkin Blossom Farm',
-    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to take a moment to say thank you for your partnership with Pumpkin Blossom Farm. We really appreciate ${a.name}'s support.\n\nLooking forward to continued growth together.\n\nWarmly,\n${SIGNATURE}`
+    body: (a) => `Hi ${a.contact||a.name},\n\nJust wanted to take a moment to say thank you for your partnership with Pumpkin Blossom Farm. We really appreciate ${a.name}'s support.\n\nLooking forward to continued growth together.\n\nWarmly,\n${_SIG()}`
   },
   {
     id: 'custom',
@@ -3119,7 +3130,7 @@ async function _callAnthropicApi(userPrompt) {
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
-      system: _AI_SYSTEM_PROMPT,
+      system: _aiSystemPrompt(),
       messages: [{ role: 'user', content: userPrompt }]
     })
   });
@@ -3206,7 +3217,7 @@ ${historyText}
 ${context ? `Goal / context: ${context}` : ''}
 
 End the email with this exact signature:
-${_AI_SIGNATURE}`;
+${_aiSignature()}`;
 
   try {
     const result = await _callAnthropicApi(userPrompt);
@@ -3519,7 +3530,7 @@ function emailsPageSendEmail() {
   callSendEmail(toEmail, 'lavender@pbfwholesale.com', tpl.subject, tpl.body)
     .then((result) => {
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
-      const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'resend'};
+      const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend'};
       if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', account.id, a => ({
         ...a,
@@ -3536,7 +3547,7 @@ function emailsPageSendEmail() {
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
-        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'gmail'}]
+        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail'}]
       }));
       if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
     });
@@ -3547,7 +3558,7 @@ function emailsPageMarkSent() {
   const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
   DB.update('ac', _emailsSelectedAccountId, a => ({
     ...a,
-    cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: 'graham', method: 'manual'}]
+    cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'manual'}]
   }));
   toast('Email marked as sent');
   renderEmailsPage();
@@ -3858,7 +3869,7 @@ async function meBroadcastGenerate() {
   const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
   const goal     = qs('#me-goal')?.value?.trim() || '';
   const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
-  const userPrompt = `Write a broadcast wholesale email to ${n} accounts. Regarding: ${brandLabel}. ${goal ? 'Goal: ' + goal + '.' : ''} Keep it under 150 words, professional, no emojis. End with this exact signature:\n${_AI_SIGNATURE}`;
+  const userPrompt = `Write a broadcast wholesale email to ${n} accounts. Regarding: ${brandLabel}. ${goal ? 'Goal: ' + goal + '.' : ''} Keep it under 150 words, professional, no emojis. End with this exact signature:\n${_aiSignature()}`;
   const statusEl = qs('#me-broadcast-status');
   if (statusEl) statusEl.textContent = '⏳ Generating…';
   try {
@@ -3906,7 +3917,7 @@ async function meBroadcastSend() {
         const entry = {
           id: uid(), stage: 'broadcast',
           sentAt: new Date().toISOString(),
-          sentBy: 'graham', method: 'resend',
+          sentBy: _currentUserName(), method: 'resend',
           invoiceRef: subject,
         };
         if (result?.id) entry.sentMessageId = result.id;
@@ -4028,7 +4039,7 @@ async function meBatchGenerate(accountId) {
   const btn = qs('#mebw-gen-btn');
   if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
 
-  const userPrompt = `Write a wholesale outreach email for the following account:\n\nAccount: ${a.name}\nType: ${a.type||'Wholesale Account'}\nTerritory: ${a.territory||'New Hampshire'}\nBrand: ${brandLabel}\nLast order: ${a.lastOrder?fmtD(a.lastOrder):'Never'}\nLast contacted: ${a.lastContacted?fmtD(a.lastContacted):'Never'}\n\nRecent outreach history:\n${historyText}\n\n${context?'Goal / context: '+context+'\n':''}\nEnd the email with this exact signature:\n${_AI_SIGNATURE}`;
+  const userPrompt = `Write a wholesale outreach email for the following account:\n\nAccount: ${a.name}\nType: ${a.type||'Wholesale Account'}\nTerritory: ${a.territory||'New Hampshire'}\nBrand: ${brandLabel}\nLast order: ${a.lastOrder?fmtD(a.lastOrder):'Never'}\nLast contacted: ${a.lastContacted?fmtD(a.lastContacted):'Never'}\n\nRecent outreach history:\n${historyText}\n\n${context?'Goal / context: '+context+'\n':''}\nEnd the email with this exact signature:\n${_aiSignature()}`;
 
   try {
     const result = await _callAnthropicApi(userPrompt);
@@ -9684,8 +9695,6 @@ function saveInventorySettings() {
 function saveEmailSettings() {
   const existing = DB.obj('settings', {});
   DB.setObj('settings', { ...existing, emailSignature: qs('#set-email-sig')?.value||'' });
-  const apiExisting = DB.obj('api_settings', {});
-  DB.setObj('api_settings', { ...apiExisting, resendKey: qs('#set-resend-key')?.value?.trim()||'' });
   toast('Email settings saved ✓');
 }
 
@@ -10306,7 +10315,7 @@ function openLfInvoiceModal(id) {
           const entry = {
             id: uid(), stage: 'invoice_sent',
             sentAt: new Date().toISOString(),
-            sentBy: 'graham', method: 'resend',
+            sentBy: _currentUserName(), method: 'resend',
             invoiceId: inv.id, invoiceRef: inv.number,
           };
           if (result?.id) entry.sentMessageId = result.id;
@@ -10658,14 +10667,17 @@ function deleteCombinedInvoice(combinedId) {
 }
 
 function getNextInvoiceNumber(type) {
-  const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
-  const collection = { purpl: 'retail_invoices', lf: 'lf_invoices', combined: 'combined_invoices' }[type];
-  const items = type === 'purpl' ? _allPurplInvoices() : DB.a(collection);
+  const prefix = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
+  const items = type === 'purpl' ? _allPurplInvoices() : DB.a({ purpl:'retail_invoices', lf:'lf_invoices', combined:'combined_invoices' }[type]);
   const nums = items.map(x => {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
   });
-  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  const invSettings = DB.obj('invoice_settings', {});
+  const settingsNext = invSettings[`next${type.charAt(0).toUpperCase()+type.slice(1)}Num`] || 0;
+  const cacheMax = nums.length ? Math.max(...nums) : 0;
+  const next = Math.max(cacheMax, settingsNext) + 1;
+  DB.setObj('invoice_settings', { ...invSettings, [`next${type.charAt(0).toUpperCase()+type.slice(1)}Num`]: next });
   return `${prefix}-${String(next).padStart(3,'0')}`;
 }
 
@@ -11206,7 +11218,7 @@ function openCombinedInvoicePreview(combinedId) {
         const entry = {
           id: uid(), stage: 'invoice_sent',
           sentAt: new Date().toISOString(),
-          sentBy: 'graham', method: 'resend',
+          sentBy: _currentUserName(), method: 'resend',
           invoiceId: rec.id, invoiceRef,
         };
         if (result?.id) entry.sentMessageId = result.id;
@@ -13005,7 +13017,7 @@ async function confirmPortalOrder() {
             id: uid(),
             stage: 'order_confirmation',
             sentAt: new Date().toISOString(),
-            sentBy: 'graham',
+            sentBy: _currentUserName(),
             method: 'resend',
           };
           if (result?.id) entry.sentMessageId = result.id;
@@ -13669,8 +13681,6 @@ function loadApiSettings() {
   const s = DB.obj('api_settings', {});
   const el = document.getElementById('set-anthropic-key');
   if (el && s.anthropicKey) el.value = s.anthropicKey;
-  const re = document.getElementById('set-resend-key');
-  if (re && s.resendKey) re.value = s.resendKey;
 }
 
 function generateInvoicePrint(invoiceId) {
@@ -14376,7 +14386,7 @@ async function approveApplication(docId, app) {
       const entry = {
         id: uid(), stage: 'approved_welcome',
         sentAt: new Date().toISOString(),
-        sentBy: 'graham', method: 'auto',
+        sentBy: _currentUserName(), method: 'auto',
       };
       if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', acId, a => ({ ...a, cadence: [...(a.cadence || []), entry] }));
