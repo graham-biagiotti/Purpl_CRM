@@ -1076,6 +1076,7 @@ function submitOrder() {
         accountId: accountId || null,
         accountName: finalAccountName,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        mode: portalMode,
         brand: 'lf',
         lineItems: lfItems,
         total: lfTotal,

@@ -4966,7 +4966,7 @@ function saveLogOutreach() {
     DB.update('pr', id, p=>({
       ...p,
       outreach:[...(p.outreach||[]),entry],
-      lastContact: date,
+      lastContacted: date,
       ...(next ? {nextAction: next} : {}),
       ...(nextDate ? {nextDate} : {}),
     }));
@@ -10826,12 +10826,12 @@ function saveNewCombinedInvoice() {
 
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
-    date: issued, dueDate: due, due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
+    date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
     notes, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
-    date: issued, dueDate: due, due, total: lfSub, status,
+    date: issued, dueDate: due, total: lfSub, status,
     lineItems: lfLines.map(l => ({
       ...l, skuName: l.description, units: l.qty, lineTotal: l.total, hasVariants: false,
     })),
