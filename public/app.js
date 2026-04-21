@@ -63,6 +63,9 @@ function deleteInvoiceWithCleanup(id) {
       if (i >= 0) { cache[col].splice(i, 1); break; }
     }
     cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
+    // If this invoice is part of a combined, remove the combined reference
+    const ci = (cache.combined_invoices||[]).findIndex(x => x.purplInvoiceId === id || x.lfInvoiceId === id);
+    if (ci >= 0) cache.combined_invoices.splice(ci, 1);
   });
 }
 function _invAmt(inv) { return parseFloat(inv.amount || inv.total || 0); }
@@ -10561,7 +10564,7 @@ function saveLfInvoice(id, isNew) {
 
   const rec = {
     ...(existing||{}),
-    id: saveId, number,
+    id: saveId, number, invoiceNumber: number,
     accountId, accountName: ac.name||'',
     issued, due, lineItems, total, status,
     wixPulled:   existing?.wixPulled   || false,
@@ -10678,7 +10681,10 @@ function deleteCombinedInvoice(combinedId) {
     if (rec.purplInvoiceId) {
       cache.retail_invoices = (cache.retail_invoices||[]).filter(x => x.id !== rec.purplInvoiceId);
       // Remove any iv records that were either the invoice itself or its 'out' deductions
-      cache.iv = (cache.iv||[]).filter(x => !(x.id === rec.purplInvoiceId || (x.invoiceId === rec.purplInvoiceId && x.type === 'out')));
+      cache.iv = (cache.iv||[]).filter(x => !(
+        x.id === rec.purplInvoiceId ||
+        (x.type === 'out' && (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId))
+      ));
       // Remove the linked order
       cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'purpl'));
     }
@@ -10692,12 +10698,13 @@ function deleteCombinedInvoice(combinedId) {
     firebase.firestore().collection('portal_orders').doc(portalOrderId)
       .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
       .catch(e => console.warn('Could not reset portal order:', e));
-    // Also reset the paired order (LF side, if any)
+    // Also reset the paired portal order linked to this combined invoice
     firebase.firestore().collection('portal_orders')
       .where('accountId', '==', rec.accountId)
       .where('status', '==', 'confirmed').get()
       .then(snap => snap.docs.forEach(d => {
-        if (d.id !== portalOrderId) d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
+        const data = d.data();
+        if (d.id !== portalOrderId && data.convertedOrderId) d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
       }))
       .catch(() => {});
   }
@@ -10910,7 +10917,7 @@ function saveNewCombinedInvoice() {
       const purplIvEntries = purplLines.map(li => ({
         id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
         qty: (li.cases || 0) * CANS_PER_CASE,
-        note: 'Invoice ' + combNum, invoiceId: combId,
+        note: 'Invoice ' + combNum, invoiceId: purplId,
       })).filter(e => e.qty > 0);
       if (purplIvEntries.length) {
         cache.iv = [...(cache.iv||[]), ...purplIvEntries];
@@ -11383,21 +11390,21 @@ function openCombinedInvoicePreview(combinedId) {
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) voidBtn.onclick = () => {
     if (!confirm('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.')) return;
-    const wasDeducted = DB.a('iv').some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
+    const wasDeducted = DB.a('iv').some(x => (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId) && x.type === 'out');
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
       if (rec.purplInvoiceId) {
         const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'void', voidedAt: new Date().toISOString() };
+        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
       }
       if (rec.lfInvoiceId) {
         const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'void', voidedAt: new Date().toISOString() };
+        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
       }
       // Reverse inventory deductions
       if (wasDeducted) {
-        cache.iv = (cache.iv||[]).filter(x => !(x.invoiceId === rec.purplInvoiceId && x.type === 'out'));
+        cache.iv = (cache.iv||[]).filter(x => !(x.type === 'out' && (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId)));
       }
     });
     toast('Invoice voided' + (wasDeducted ? ' · inventory restored' : ''));
