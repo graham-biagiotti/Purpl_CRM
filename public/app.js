@@ -12759,9 +12759,14 @@ async function confirmPortalOrder() {
   try {
     const portalRef = firebase.firestore()
       .collection('portal_orders').doc(_portalOrderId);
-    const portalSnap = await portalRef.get();
-    const d = portalSnap.data();
-    if (d.status === 'confirmed') { toast('This order has already been confirmed'); closeModal('modal-confirm-portal-order'); return; }
+    const d = await firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(portalRef);
+      const data = snap.data();
+      if (data.status === 'confirmed') return null;
+      tx.update(portalRef, { status: 'confirmed', confirmedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      return data;
+    });
+    if (!d) { toast('This order has already been confirmed'); closeModal('modal-confirm-portal-order'); return; }
 
     // If unmatched, use the selected account from the picker
     if (!d.accountId) {
@@ -12954,12 +12959,8 @@ async function confirmPortalOrder() {
     });
     DB.markClean();
 
-    // Update portal_orders status for both orders
-    await portalRef.update({
-      status: 'confirmed',
-      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      convertedOrderId: purplOrderId || lfOrderId,
-    });
+    // Update portal_orders — primary already confirmed in transaction above
+    await portalRef.update({ convertedOrderId: purplOrderId || lfOrderId });
     if (paired) {
       const pairedRef = firebase.firestore().collection('portal_orders').doc(paired.id);
       await pairedRef.update({
