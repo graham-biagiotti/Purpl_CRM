@@ -1403,7 +1403,7 @@ async function sendInvoiceReminder(invId, collection) {
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || 0);
+  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || inv.total || 0);
   const invSettings = DB.obj('invoice_settings') || {};
   const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
   const isLf = collection === 'lf_invoices';
@@ -3184,7 +3184,7 @@ function _renderEmailsTemplatesCol() {
          onclick="selectEmailTemplate('${t.id}')">
       <div class="etc-name">${t.name}</div>
       <div class="etc-desc">${t.desc}</div>
-      <div class="etc-from">${t.from}</div>
+      <div class="etc-from">lavender@pbfwholesale.com</div>
     </div>`).join('');
   el.innerHTML = cards + `
     <div class="email-template-card" onclick="switchEmailsTab('mass')" style="border-style:dashed;margin-top:4px">
@@ -3233,7 +3233,7 @@ function _renderEmailsRightCol() {
       const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
       if (inv) {
         extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
-        extra.invoiceTotal = inv.total || inv.grandTotal || 0;
+        extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
       }
     }
     const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
@@ -3307,7 +3307,7 @@ function emailsPageSendEmail() {
     const inv = invId ? (DB.a('retail_invoices').find(x=>x.id===invId) || DB.a('iv').find(x=>x.id===invId) || DB.a('lf_invoices').find(x=>x.id===invId)) : null;
     if (inv) {
       extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
-      extra.invoiceTotal = inv.total || inv.grandTotal || 0;
+      extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
     }
   }
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
@@ -7759,18 +7759,26 @@ function toggleStop(i) {
     if (allDone) setTimeout(()=>openDeliveryCostModal(updatedRun.stops), 800);
 
   } else if (wasDone && !stop.done) {
-    // Un-toggling from done → reverse the side-effects
+    // Un-toggling from done → reverse all side-effects (order, invoice, inventory)
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
-      // Remove the delivery order and its linked inventory entries
+      const acId = ac2?.id || stop.accountId;
       const deliveryOrd = (cache['orders']||[]).find(o =>
-        o.source === 'run' && o.accountId === (ac2?.id||stop.accountId) && o.created === today()
+        o.source === 'run' && o.accountId === acId && o.created === today()
       );
       if (deliveryOrd) {
         cache['orders'] = (cache['orders']||[]).filter(o => o.id !== deliveryOrd.id);
+        // Remove linked invoice
+        cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
+          !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
+        );
+        // Remove linked inventory deductions
+        cache['iv'] = (cache['iv']||[]).filter(e =>
+          !(e.type === 'out' && e.invoiceId && (cache['retail_invoices']||[]).every(inv => inv.id !== e.invoiceId))
+        );
       }
     });
-    toast('Stop unmarked — delivery order reversed');
+    toast('Stop unmarked — order, invoice & inventory reversed');
   } else {
     DB.setObj('today_run', run);
   }
@@ -8814,12 +8822,13 @@ function exportYearEnd() {
   const acLookup = Object.fromEntries(DB.a('ac').map(a => [a.id, a.name]));
   const rows = [];
 
-  // purpl invoices (exclude those that are part of a combined invoice to avoid double-counting)
-  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => x.number || x.invoiceNumber)].filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
+  // purpl invoices (deduplicate + exclude combined invoice components)
+  const _retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
+  [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !_retailIds.has(x.id))].filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
     const pd = x.paidDate || '';
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || x.accountId || '—';
-    rows.push([pd, x.number, 'purpl', acName, parseFloat(x.amount||0).toFixed(2), 'Invoice']);
+    rows.push([pd, x.number||x.invoiceNumber, 'purpl', acName, parseFloat(x.amount||x.total||0).toFixed(2), 'Invoice']);
   });
 
   // LF invoices (exclude those that are part of a combined invoice)
@@ -12947,23 +12956,24 @@ function renderInvKpis() {
   const now = new Date();
   const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
 
-  const totalInvoiced = purplInvs.reduce((s,x) => s + parseFloat(x.amount||0), 0)
+  const _pAmt = x => parseFloat(x.amount||x.total||0);
+  const totalInvoiced = purplInvs.reduce((s,x) => s + _pAmt(x), 0)
                       + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
   const outstanding   = purplInvs.filter(x => !['paid','draft'].includes(purplStatus(x)))
-                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
-                      + lfInvs.filter(x => x.status !== 'paid')
+                          .reduce((s,x) => s + _pAmt(x), 0)
+                      + lfInvs.filter(x => !['paid','draft'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => ['unpaid','overdue'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
-                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
-                      + lfInvs.filter(x => x.status !== 'paid' && (x.due||'') < todayStr && x.due)
+                          .reduce((s,x) => s + _pAmt(x), 0)
+                      + lfInvs.filter(x => !['paid','draft'].includes(x.status) && (x.due||'') < todayStr && x.due)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => x.status==='overdue' || (x.status!=='paid'&&x.dueDate&&x.dueDate<todayStr))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
-                          .reduce((s,x) => s + parseFloat(x.amount||0), 0)
+                          .reduce((s,x) => s + _pAmt(x), 0)
                       + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
