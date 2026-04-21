@@ -1161,6 +1161,8 @@ function submitOrder() {
         to: billingEmail,
         accountName: finalAccountName,
         contactName: contactName || null,
+        accountId: accountId || null,
+        portalOrderId: purplRef?.id || lfRef?.id || null,
         isPbf: _brandLf,
         portalLink: window.location.href,
         orderSummary: _oSummary,

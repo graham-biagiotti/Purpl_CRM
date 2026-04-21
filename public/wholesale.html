@@ -832,7 +832,7 @@ function wsSubmitApplication() {
     brandsInterested: selectedBrands.slice(),
     source:          'wholesale_page',
     status:          'new'
-  }).then(function() {
+  }).then(function(docRef) {
     var card = document.getElementById('apply-form-card');
     card.innerHTML =
       '<div class="apply-success">' +
@@ -844,6 +844,7 @@ function wsSubmitApplication() {
       to: email,
       businessName: businessName,
       contactName: contactName,
+      inquiryDocId: docRef.id,
     }).catch(function(e) { console.log('Confirmation email error (non-critical):', e); });
   }).catch(function(e) {
     console.error('Application submit error:', e);

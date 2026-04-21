@@ -179,6 +179,21 @@ exports.sendOrderConfirmation = onCall(
           subject: `Order received — ${data.accountName}`,
         });
       }
+      // Also log on the portal_order doc so unmatched orders have tracking
+      if (data.portalOrderId && messageId) {
+        try {
+          await admin.firestore().collection('portal_orders').doc(data.portalOrderId).update({
+            emailLog: admin.firestore.FieldValue.arrayUnion({
+              stage: 'order_confirmation',
+              sentAt: new Date().toISOString(),
+              sentBy: 'system',
+              method: 'resend',
+              sentMessageId: messageId,
+              to: data.to,
+            }),
+          });
+        } catch(e) { console.warn('Failed to log portal order email:', e.message); }
+      }
 
       return {success: true, id: messageId};
     } catch (err) {
@@ -249,7 +264,23 @@ exports.sendApplicationConfirmation = onCall(
         subject: `Thank you for your wholesale application — Pumpkin Blossom Farm`,
         html,
       });
-      return {success: true, id: result.data?.id || result.id};
+      const messageId = result.data?.id || result.id;
+      // Log email to inquiry doc so it shows in tracking (admin SDK bypasses rules)
+      if (data.inquiryDocId) {
+        try {
+          await admin.firestore().collection('portal_inquiries').doc(data.inquiryDocId).update({
+            emailLog: admin.firestore.FieldValue.arrayUnion({
+              stage: 'application_received',
+              sentAt: new Date().toISOString(),
+              sentBy: 'system',
+              method: 'resend',
+              sentMessageId: messageId,
+              to: data.to,
+            }),
+          });
+        } catch(e) { console.warn('Failed to log application email:', e.message); }
+      }
+      return {success: true, id: messageId};
     } catch (err) {
       throw new HttpsError('internal', err.message);
     }
@@ -340,25 +371,48 @@ exports.resendWebhook = onRequest(
     try {
       const db  = admin.firestore();
       const ts  = event.data.created_at || new Date().toISOString();
-      const acSnap = await db.collection('workspace/main/ac').get();
       let updated = false;
 
+      // 1. Check account cadence entries (workspace/main/ac)
+      const acSnap = await db.collection('workspace/main/ac').get();
       for (const doc of acSnap.docs) {
         const account = doc.data();
         const cadence = (account.cadence || []);
         const entry = cadence.find(e => e.sentMessageId === emailId);
         if (!entry) continue;
+        if (type === 'email.opened' && !entry.opened) { entry.opened = true; entry.openedAt = ts; updated = true; }
+        else if (type === 'email.clicked' && !entry.clicked) { entry.clicked = true; entry.clickedAt = ts; updated = true; }
+        if (updated) { await doc.ref.update({ cadence }); break; }
+      }
 
-        if (type === 'email.opened' && !entry.opened) {
-          entry.opened = true; entry.openedAt = ts; updated = true;
-        } else if (type === 'email.clicked' && !entry.clicked) {
-          entry.clicked = true; entry.clickedAt = ts; updated = true;
-        }
-        if (updated) {
-          await doc.ref.update({ cadence });
-          break;
+      // 2. Check portal_inquiries emailLog (application confirmations, rejections)
+      if (!updated) {
+        const inqSnap = await db.collection('portal_inquiries').get();
+        for (const doc of inqSnap.docs) {
+          const inq = doc.data();
+          const log = (inq.emailLog || []);
+          const entry = log.find(e => e.sentMessageId === emailId);
+          if (!entry) continue;
+          if (type === 'email.opened' && !entry.opened) { entry.opened = true; entry.openedAt = ts; updated = true; }
+          else if (type === 'email.clicked' && !entry.clicked) { entry.clicked = true; entry.clickedAt = ts; updated = true; }
+          if (updated) { await doc.ref.update({ emailLog: log }); break; }
         }
       }
+
+      // 3. Check portal_orders emailLog (order confirmations)
+      if (!updated) {
+        const ordSnap = await db.collection('portal_orders').get();
+        for (const doc of ordSnap.docs) {
+          const ord = doc.data();
+          const log = (ord.emailLog || []);
+          const entry = log.find(e => e.sentMessageId === emailId);
+          if (!entry) continue;
+          if (type === 'email.opened' && !entry.opened) { entry.opened = true; entry.openedAt = ts; updated = true; }
+          else if (type === 'email.clicked' && !entry.clicked) { entry.clicked = true; entry.clickedAt = ts; updated = true; }
+          if (updated) { await doc.ref.update({ emailLog: log }); break; }
+        }
+      }
+
       res.status(200).send(updated ? 'ok' : 'no match');
     } catch (err) {
       console.error('resendWebhook error:', err);

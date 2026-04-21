@@ -67,6 +67,19 @@ function deleteInvoiceWithCleanup(id) {
 }
 function _invAmt(inv) { return parseFloat(inv.amount || inv.total || 0); }
 
+// Look up email tracking status for an invoice from the account's cadence array
+// Returns a small HTML badge string or '' if no send event
+function _invEmailBadge(inv) {
+  if (!inv?.accountId) return '';
+  const ac = DB.a('ac').find(x => x.id === inv.accountId);
+  if (!ac) return '';
+  const entry = (ac.cadence||[]).find(c => c.invoiceId === inv.id && (c.stage === 'invoice_sent' || c.stage === 'invoice_reminder'));
+  if (!entry) return '';
+  if (entry.opened) return `<span class="badge green" title="Opened ${entry.openedAt||''}" style="font-size:9px;margin-left:4px">👁</span>`;
+  if (entry.clicked) return `<span class="badge blue" title="Clicked ${entry.clickedAt||''}" style="font-size:9px;margin-left:4px">🔗</span>`;
+  return `<span class="badge gray" title="Sent ${entry.sentAt||''}, not yet opened" style="font-size:9px;margin-left:4px">✉</span>`;
+}
+
 // ── Helpers ─────────────────────────────────────────────
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
@@ -13464,7 +13477,7 @@ function renderInvColPurpl() {
         const statColor = {paid:'green',draft:'gray',sent:'blue',overdue:'red',partial:'amber',unpaid:'blue'};
         return `<div class="inv-col-compact-row">
           <div>
-            <div style="font-weight:600">${escHtml(acName)}</div>
+            <div style="font-weight:600">${escHtml(acName)}${_invEmailBadge(iv)}</div>
             <div style="font-size:11px;color:var(--muted)">${escHtml(iv.number||iv.invoiceNumber||'—')} · Due ${fmtD(due)}</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
@@ -13514,7 +13527,7 @@ function renderInvColPurpl() {
             const due = iv._due;
             const amt = iv.amount != null ? iv.amount : iv.total;
             return `<tr>
-              <td><strong>${escHtml(iv.number||iv.invoiceNumber||'—')}</strong></td>
+              <td><strong>${escHtml(iv.number||iv.invoiceNumber||'—')}</strong>${_invEmailBadge(iv)}</td>
               <td>${escHtml(iv._accountName)}</td>
               <td style="color:${due&&due<todayStr&&st!=='paid'?'var(--red)':'inherit'}">${fmtD(due)}</td>
               <td><strong>${amt != null ? fmtC(amt) : '<span style="color:var(--muted)">Draft</span>'}</strong></td>
@@ -13564,7 +13577,7 @@ function renderInvColLf() {
         const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
         return `<div class="inv-col-compact-row">
           <div>
-            <div style="font-weight:600">${escHtml(inv.accountName||'—')}</div>
+            <div style="font-weight:600">${escHtml(inv.accountName||'—')}${_invEmailBadge(inv)}</div>
             <div style="font-size:11px;color:var(--muted)">${escHtml(inv.number||'—')} · Due ${fmtD(inv.due)}</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
@@ -13596,7 +13609,7 @@ function renderInvColLf() {
               ? `<span style="color:var(--green,#16a34a);font-weight:600">✓</span>`
               : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
             return `<tr>
-              <td><strong>${escHtml(inv.number||'—')}</strong></td>
+              <td><strong>${escHtml(inv.number||'—')}</strong>${_invEmailBadge(inv)}</td>
               <td>${escHtml(inv.accountName||'—')}</td>
               <td>${fmtD(inv.due)}</td>
               <td><strong>${fmtC(inv.total||0)}</strong></td>
@@ -13634,7 +13647,7 @@ function renderInvColCombined() {
       } else {
         compactEl.innerHTML = pending.map(ci => `<div class="inv-col-compact-row" style="cursor:pointer" onclick="openCombinedInvoicePreview('${ci.id}')">
           <div>
-            <div style="font-weight:600">${escHtml(ci.accountName||'—')}</div>
+            <div style="font-weight:600">${escHtml(ci.accountName||'—')}${_invEmailBadge(ci)}</div>
             <div style="font-size:11px;color:var(--muted)">${escHtml(ci.number||ci.invoiceNumber||'')} · purpl ${fmtC(ci.purplSubtotal||0)} + LF ${fmtC(ci.lfSubtotal||0)}</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
@@ -14474,6 +14487,13 @@ async function renderApplications() {
             ${app.socialHandle ? `<div>📱 Social: ${escHtml(app.socialHandle)}</div>` : ''}
             ${app.message ? `<div style="margin-top:6px;padding:8px;background:#f9fafb;border-radius:6px;font-size:12px;color:var(--text);white-space:pre-wrap">${escHtml(app.message)}</div>` : ''}
             <div>📅 Submitted: ${dateStr}</div>
+            ${(app.emailLog||[]).length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px">
+              <div style="font-weight:600;color:var(--muted);margin-bottom:4px">Email History</div>
+              ${(app.emailLog||[]).map(e => `<div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:2px">
+                <span>${escHtml(e.stage||'email')} ${e.opened ? '<span style="color:#16a34a">👁 opened</span>' : e.clicked ? '<span style="color:#2563eb">🔗 clicked</span>' : ''}</span>
+                <span style="color:var(--muted)">${e.sentAt ? fmtD(e.sentAt.slice(0,10)) : ''}</span>
+              </div>`).join('')}
+            </div>` : ''}
           </div>
           ${isActive ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
             <button class="btn sm primary" onclick="approveApplication('${escHtml(app._docId)}')">Approve</button>
@@ -14607,18 +14627,32 @@ async function rejectApplication(docId, app) {
   if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
   if (!confirm2(`Reject application from ${app.businessName || 'this applicant'}?`)) return;
 
+  let emailResult = null;
+  let emailSentAt = null;
+  let emailMessageId = null;
   if (app.email) {
     try {
       const tmpAc = { name: app.businessName||'', email: app.email||'', contact: app.contactName||'', contacts: [{name:app.contactName||'',email:app.email||'',isPrimary:true}], orderPortalToken: null };
       const tpl = getCadenceEmailTemplate('rejected', tmpAc);
-      await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+      emailResult = await callSendEmail(app.email, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+      emailSentAt = new Date().toISOString();
+      emailMessageId = emailResult?.id || null;
     } catch(e) { console.error('Reject email failed', e); }
   }
 
   try {
-    await firebase.firestore().collection('portal_inquiries').doc(docId).update({
-      status: 'rejected', rejectedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    const updatePayload = {
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectedBy: _currentUserName(),
+    };
+    if (emailSentAt) {
+      updatePayload.emailLog = firebase.firestore.FieldValue.arrayUnion({
+        stage: 'rejected', sentAt: emailSentAt, sentBy: _currentUserName(),
+        method: 'resend', sentMessageId: emailMessageId, to: app.email||'',
+      });
+    }
+    await firebase.firestore().collection('portal_inquiries').doc(docId).update(updatePayload);
   } catch(e) { console.error('Firestore update failed', e); }
 
   toast('Application rejected');
