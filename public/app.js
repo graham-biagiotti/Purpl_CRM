@@ -1051,7 +1051,7 @@ function addQuickNote() {
   const inp = qs('#qn-input');
   const text = (inp?.value||'').trim();
   if (!text) return;
-  const note = { id: uid(), text, author: window._currentUser?.email||'Team', ts: Date.now() };
+  const note = { id: uid(), text, author: _currentUserName(), ts: Date.now() };
   DB.push('quick_notes', note);
   inp.value = '';
   renderQuickNotes();
@@ -1687,9 +1687,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
   if (isNew) {
-    const existing = _allPurplInvoices();
-    const num = existing.length + 1;
-    if (qs('#iv-number')) qs('#iv-number').value = 'INV-' + String(num).padStart(3,'0');
+    if (qs('#iv-number')) qs('#iv-number').value = getNextInvoiceNumber('purpl');
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
     const settingsTerms = DB.obj('invoice_settings',{}).terms || _payTerms();
     const defaultTermsKey = Object.entries(_TERMS_DAYS).find(([,d]) => d === settingsTerms)?.[0] || 'net30';
@@ -10244,8 +10242,7 @@ function openLfInvoiceModal(id) {
 
   // Auto-number / load fields
   if (isNew) {
-    const num = DB.a('lf_invoices').length + 1;
-    if (qs('#lfi-number')) qs('#lfi-number').value = 'LF-' + String(num).padStart(3,'0');
+    if (qs('#lfi-number')) qs('#lfi-number').value = getNextInvoiceNumber('lf');
     if (qs('#lfi-issued')) qs('#lfi-issued').value  = today();
     const terms  = DB.obj('invoice_settings',{}).terms || _payTerms();
     const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);

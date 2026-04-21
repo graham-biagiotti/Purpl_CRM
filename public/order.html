@@ -765,7 +765,7 @@ function getLfTotal() {
 }
 
 function loadLfSkus(prevOrder) {
-  db.collection('workspace').doc('main').collection('data').doc('store').get()
+  db.collection('workspace').doc('main').collection('config').doc('main').get()
     .then(function(doc) {
       var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
       if (skus.length) {
@@ -1506,21 +1506,25 @@ function toggleOrderHistory() {
 
 // ── Outstanding invoices ──────────────────────────────────
 function loadOutstandingInvoices(acId) {
-  db.collection('workspace').doc('main').collection('data').doc('store')
-    .get()
-    .then(function(doc) {
-      if (!doc.exists) return;
-      var data = doc.data();
-      // Check ALL invoice collections — iv (legacy), retail_invoices, lf_invoices, combined_invoices
-      var invoices = []
-        .concat((data.iv || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid' && (i.number || i.invoiceNumber); }))
-        .concat((data.retail_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }))
-        .concat((data.lf_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }))
-        .concat((data.combined_invoices || []).filter(function(i) { return i.accountId === acId && i.status !== 'paid'; }));
-      var settings = data.invoice_settings || {};
-      renderOutstandingInvoices(invoices, settings);
-    })
-    .catch(function(e) { console.log('Invoice load error:', e); });
+  if (!acId) return;
+  var invoices = [];
+  var collections = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
+  var loaded = 0;
+  collections.forEach(function(col) {
+    db.collection('workspace').doc('main').collection(col)
+      .where('accountId', '==', acId).get()
+      .then(function(snap) {
+        snap.docs.forEach(function(d) {
+          var inv = d.data();
+          if (inv.status !== 'paid') invoices.push(inv);
+        });
+      })
+      .catch(function() {})
+      .finally(function() {
+        loaded++;
+        if (loaded === collections.length) renderOutstandingInvoices(invoices, {});
+      });
+  });
 }
 
 function renderOutstandingInvoices(invoices, settings) {

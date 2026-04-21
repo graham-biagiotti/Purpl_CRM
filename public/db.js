@@ -108,7 +108,8 @@ const DB = {
 
     // Migrate arrays that moved from config to collections (one-time)
     const _movedToCollection = ['prod_hist','runs','shipments'];
-    const configData2 = configSnap?.data?.() || {};
+    const freshSnap = await getDoc(this._configRef()).catch(() => null);
+    const configData2 = freshSnap?.data?.() || {};
     let _needsConfigResave = false;
     for (const key of _movedToCollection) {
       const arr = configData2[key];
@@ -444,12 +445,18 @@ const DB = {
   },
 
   atomicUpdate(fn) {
+    const before = {};
+    COLLECTION_KEYS.forEach(k => { before[k] = new Set((this._cache[k]||[]).map(x => x?.id).filter(Boolean)); });
     fn(this._cache);
     const now = new Date().toISOString();
     COLLECTION_KEYS.forEach(k => {
-      (this._cache[k]||[]).forEach(item => { if (item && typeof item === 'object') item._updatedAt = now; });
+      (this._cache[k]||[]).forEach(item => {
+        if (item && typeof item === 'object') {
+          item._updatedAt = now;
+          if (item.id && !before[k].has(item.id)) this._writeDoc(k, item);
+        }
+      });
     });
-    // Find which keys were likely modified and save them all
     const allKeys = [...ARRAY_KEYS, ...OBJ_KEYS];
     allKeys.forEach(k => this._scheduleSave(k));
     // Flush immediately for atomicity
