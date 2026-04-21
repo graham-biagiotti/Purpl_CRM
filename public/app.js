@@ -10718,6 +10718,7 @@ function deleteCombinedInvoice(combinedId) {
     }
     if (rec.lfInvoiceId) {
       cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== rec.lfInvoiceId);
+      cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== rec.lfInvoiceId);
       cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'lf'));
     }
   });
