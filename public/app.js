@@ -13465,10 +13465,10 @@ function renderInvColCombined() {
       if (!pending.length) {
         compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">All combined invoices paid</div>';
       } else {
-        compactEl.innerHTML = pending.map(ci => `<div class="inv-col-compact-row">
+        compactEl.innerHTML = pending.map(ci => `<div class="inv-col-compact-row" style="cursor:pointer" onclick="openCombinedInvoicePreview('${ci.id}')">
           <div>
             <div style="font-weight:600">${escHtml(ci.accountName||'—')}</div>
-            <div style="font-size:11px;color:var(--muted)">purpl ${fmtC(ci.purplSubtotal||0)} + LF ${fmtC(ci.lfSubtotal||0)}</div>
+            <div style="font-size:11px;color:var(--muted)">${escHtml(ci.number||ci.invoiceNumber||'')} · purpl ${fmtC(ci.purplSubtotal||0)} + LF ${fmtC(ci.lfSubtotal||0)}</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
             <span class="badge ${ci.status==='paid'?'green':'amber'}">${ci.status||'draft'}</span>
@@ -13503,7 +13503,9 @@ function renderInvColCombined() {
         <td><strong>${fmtC(ci.grandTotal||0)}</strong></td>
         <td><span class="badge ${ci.status==='paid'?'green':ci.status==='sent'?'blue':'amber'}">${ci.status||'draft'}</span></td>
         <td style="white-space:nowrap">
+          <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">View</button>
           ${ci.status!=='paid' ? `<button class="btn xs green" onclick="markCombinedPaid('${ci.id}')">✓ Paid</button>` : ''}
+          <button class="btn xs red" onclick="deleteCombinedInvoice('${ci.id}')">✕</button>
         </td>
       </tr>`).join('')}
       </tbody>
