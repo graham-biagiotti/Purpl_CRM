@@ -10899,133 +10899,134 @@ function buildCombinedInvoiceHTML(combinedId) {
   const issueDate = new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
   const dueDate   = new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
 
-  const itemTableHeader = `<thead><tr>
-    <th style="text-align:left;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Item</th>
-    <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Qty</th>
-    <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Unit Price</th>
-    <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Total</th>
-  </tr></thead>`;
-
-  const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
+  const itemCellStyle = 'padding:10px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
   const purplRows = (purplInv.lineItems||[]).map(li => {
     const cases = li.qty || li.cases || 0;
     const cans = cases * CANS_PER_CASE;
+    const unitPrice = parseFloat(li.unitPrice||li.pricePerCase||0);
+    const lineTotal = parseFloat(li.total||li.lineTotal||0) || (cases * unitPrice);
     return `<tr>
-    <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Item')}</td>
-    <td style="${itemCellStyle};text-align:right">${cases} case${cases!==1?'s':''} <span style="color:#9ca3af;font-size:11px">(${cans} cans)</span></td>
-    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}/case</td>
-    <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.total||li.lineTotal||0).toFixed(2)}</td>
+    <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Classic Lavender Lemonade')}<div style="font-size:11px;color:#6b7280;margin-top:2px">${cans} cans · 12-pack cases</div></td>
+    <td style="${itemCellStyle};text-align:right">${cases}</td>
+    <td style="${itemCellStyle};text-align:right">$${unitPrice.toFixed(2)}</td>
+    <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
   </tr>`;
   }).join('');
 
   const lfRows = (lfInv.lineItems||[]).map(li => {
-    if (li.hasVariants && li.variantLines) {
-      return li.variantLines.map(vl => `<tr>
+    const parentUnitPrice = parseFloat(li.unitPrice||0);
+    if (li.hasVariants && li.variantLines && li.variantLines.length) {
+      return li.variantLines.map(vl => {
+        const units = vl.units||0;
+        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
+        return `<tr>
         <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="${itemCellStyle};text-align:right">${vl.units||0}</td>
-        <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
-        <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(vl.lineTotal||0).toFixed(2)}</td>
-      </tr>`).join('');
+        <td style="${itemCellStyle};text-align:right">${units}</td>
+        <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
+        <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
+      </tr>`;
+      }).join('');
     }
+    const units = li.units||0;
+    const lineTotal = parseFloat(li.lineTotal||li.total||0) || (units * parentUnitPrice);
     return `<tr>
       <td style="${itemCellStyle}">${escHtml(li.skuName||'Item')}</td>
-      <td style="${itemCellStyle};text-align:right">${li.units||0}</td>
-      <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
-      <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.lineTotal||0).toFixed(2)}</td>
+      <td style="${itemCellStyle};text-align:right">${units}</td>
+      <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
+      <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
     </tr>`;
   }).join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
-<tr><td align="center">
-<table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08)">
+  const sectionLabel = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1a1a2e';
+  const tableHeader = `<thead><tr>
+    <th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Item</th>
+    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Qty</th>
+    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Price</th>
+    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Total</th>
+  </tr></thead>`;
 
-  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:24px 40px">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>@media print { body { background:#fff !important; } .invoice-card { box-shadow:none !important; border:1px solid #e5e7eb !important; } }</style>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:Inter,Arial,sans-serif;color:#1a1a2e">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+<tr><td align="center">
+<table class="invoice-card" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px">
+
+  <tr><td style="padding:36px 48px 20px">
     <table width="100%"><tr>
       <td style="vertical-align:middle">
         <table cellpadding="0" cellspacing="0">
           <tr>
-            <td style="vertical-align:middle;padding-right:16px">
+            <td style="vertical-align:middle;padding-right:14px">
               <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                alt="purpl" width="100" height="40" style="display:block">
+                alt="purpl" width="90" height="36" style="display:block">
             </td>
             <td style="vertical-align:middle;padding:0 2px">
-              <div style="width:1px;height:44px;background:rgba(255,255,255,0.3)"></div>
+              <div style="width:1px;height:32px;background:#d1d5db"></div>
             </td>
-            <td style="vertical-align:middle;padding-left:16px">
+            <td style="vertical-align:middle;padding-left:14px">
               <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="44" height="44" style="display:block">
+                alt="Lavender Fields" width="36" height="36" style="display:block">
             </td>
           </tr>
         </table>
-        <div style="font-family:Arial,sans-serif;font-size:9px;color:rgba(255,255,255,0.5);
-          letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">
-          Pumpkin Blossom Farm · Wholesale
-        </div>
       </td>
       <td align="right" style="vertical-align:middle">
-        <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">INVOICE</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(purplInv.number||'')}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
+        <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">INVOICE</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(purplInv.number||'')}${lfInv.number ? ' · '+escHtml(lfInv.number) : ''}</div>
       </td>
     </tr></table>
   </td></tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
 
-  <tr><td style="padding:28px 40px 0">
+  <tr><td style="padding:8px 48px 28px">
     <table width="100%"><tr>
-      <td style="vertical-align:top;width:50%">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Billed To</div>
+      <td style="vertical-align:top;width:55%">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Billed To</div>
         <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(rec.accountName)}</div>
-        ${account.email ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${escHtml(account.email)}</div>` : ''}
-        ${account.address ? `<div style="font-size:13px;color:#6b7280;margin-top:2px">${escHtml(account.address)}</div>` : ''}
+        ${account.email ? `<div style="font-size:13px;color:#4b5563;margin-top:3px">${escHtml(account.email)}</div>` : ''}
+        ${account.address ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(account.address)}</div>` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Details</div>
-        <div style="font-size:13px;color:#6b7280">Issued: ${issueDate}</div>
-        <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueDate}</div>
-        <div style="font-size:13px;color:#6b7280;margin-top:2px">Terms: Net 30</div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
+        <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
+        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>
+        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>Net 30</strong></div>
       </td>
     </tr></table>
   </td></tr>
 
-  <tr><td style="padding:24px 40px 0">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#8B5FBF;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #8B5FBF">purpl Lemonade</div>
-    <table width="100%" cellpadding="0" cellspacing="0">${itemTableHeader}<tbody>${purplRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">purpl lemonade order</td></tr>`}</tbody></table>
-    <div style="text-align:right;padding:10px 0;border-top:1px solid #e5e7eb;margin-top:4px">
-      <span style="font-size:13px;color:#6b7280">purpl Subtotal: </span>
-      <span style="font-size:15px;font-weight:600;color:#8B5FBF">$${rec.purplSubtotal.toFixed(2)}</span>
+  <tr><td style="padding:0 48px">
+    <div style="${sectionLabel}">purpl Lemonade</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">${tableHeader}<tbody>${purplRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody></table>
+    <div style="text-align:right;padding:6px 0 20px">
+      <span style="font-size:12px;color:#6b7280">purpl Subtotal&nbsp;&nbsp;</span>
+      <span style="font-size:14px;font-weight:600;color:#1a1a2e">$${rec.purplSubtotal.toFixed(2)}</span>
     </div>
   </td></tr>
 
-  <tr><td style="padding:16px 40px 0">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#4a7c59;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #4a7c59">Lavender Fields at Pumpkin Blossom Farm</div>
-    <table width="100%" cellpadding="0" cellspacing="0">${itemTableHeader}<tbody>${lfRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">Lavender Fields order</td></tr>`}</tbody></table>
-    <div style="text-align:right;padding:10px 0;border-top:1px solid #e5e7eb;margin-top:4px">
-      <span style="font-size:13px;color:#6b7280">LF Subtotal: </span>
-      <span style="font-size:15px;font-weight:600;color:#4a7c59">$${rec.lfSubtotal.toFixed(2)}</span>
+  <tr><td style="padding:0 48px">
+    <div style="${sectionLabel}">Lavender Fields at Pumpkin Blossom Farm</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">${tableHeader}<tbody>${lfRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody></table>
+    <div style="text-align:right;padding:6px 0 24px">
+      <span style="font-size:12px;color:#6b7280">LF Subtotal&nbsp;&nbsp;</span>
+      <span style="font-size:14px;font-weight:600;color:#1a1a2e">$${rec.lfSubtotal.toFixed(2)}</span>
     </div>
   </td></tr>
 
-  <tr><td style="padding:20px 40px">
-    <div style="background:#f9fafb;border-radius:8px;padding:20px 24px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:16px;font-weight:700;color:#1a1a2e">Grand Total</div>
-        <div style="font-size:26px;font-weight:700;color:#2D1B4E">$${rec.grandTotal.toFixed(2)}</div>
-      </div>
-      <div style="font-size:12px;color:#9ca3af;margin-top:6px">Payment due within 30 days · Net 30</div>
-      ${invSettings.stripeLink ? `<div style="margin-top:16px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#2D1B4E;color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
+  <tr><td style="padding:0 48px 32px">
+    <div style="border-top:2px solid #1a1a2e;padding-top:16px;display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">Amount Due</div>
+      <div style="font-size:26px;font-weight:700;color:#1a1a2e">$${rec.grandTotal.toFixed(2)}</div>
     </div>
+    <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">Payment due within 30 days</div>
+    ${invSettings.stripeLink ? `<div style="margin-top:20px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#1a1a2e;color:#fff;padding:12px 36px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:500;letter-spacing:0.04em">PAY ONLINE</a></div>` : ''}
   </td></tr>
 
-  ${portalLink ? `<tr><td style="padding:0 40px 16px;text-align:center"><a href="${portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
-
-  <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
-    Pumpkin Blossom Farm LLC<br>
-    393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038<br>
-    <a href="https://drinkpurpl.com" style="color:#9ca3af">drinkpurpl.com</a>&nbsp;·&nbsp;<a href="https://pumpkinblossomfarm.com" style="color:#9ca3af">pumpkinblossomfarm.com</a>
+  <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#6b7280;line-height:1.8">
+    <strong style="color:#1a1a2e">Pumpkin Blossom Farm LLC</strong> · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#6b7280;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038
   </td></tr>
 
 </table></td></tr></table></body></html>`;
