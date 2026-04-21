@@ -14274,7 +14274,12 @@ async function renderApplications() {
             ${app.email ? `<div>✉ ${escHtml(app.email)}</div>` : ''}
             ${app.phone ? `<div>📞 ${escHtml(app.phone)}</div>` : ''}
             ${app.storeType ? `<div>🏪 ${escHtml(app.storeType)}</div>` : ''}
+            ${app.address ? `<div>📍 ${escHtml(app.address)}</div>` : ''}
             <div>🏷 Interested in: ${escHtml(brands)}</div>
+            ${app.distributorName ? `<div>🚛 Distributor: ${escHtml(app.distributorName)}</div>` : ''}
+            ${app.howHeard ? `<div>📣 How heard: ${escHtml(app.howHeard)}</div>` : ''}
+            ${app.socialHandle ? `<div>📱 Social: ${escHtml(app.socialHandle)}</div>` : ''}
+            ${app.message ? `<div style="margin-top:6px;padding:8px;background:#f9fafb;border-radius:6px;font-size:12px;color:var(--text);white-space:pre-wrap">${escHtml(app.message)}</div>` : ''}
             <div>📅 Submitted: ${dateStr}</div>
           </div>
           ${isActive ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
