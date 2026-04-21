@@ -446,6 +446,121 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>Warmly,</p>`)
+    },
+    'order-confirmation': {
+      subject: `Order confirmed — ${businessName}`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Your order for <strong>${businessName}</strong> has been confirmed and is being prepared.</p>
+        ${extra.orderSummary||''}
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f0f7f1;border-left:3px solid #22c55e;padding:16px 20px;border-radius:0 6px 6px 0">
+            <div style="font-size:14px;color:#1a4731">We'll be in touch shortly with delivery details. Your invoice will come from <strong>lavender@pbfwholesale.com</strong> upon delivery.</div>
+          </td></tr>
+        </table>
+        <p>Questions? Just reply to this email.</p>
+        <p>Warmly,</p>`)
+    },
+    'invoice-reminder': {
+      subject: `Friendly reminder — Invoice ${extra.invoiceNumber||''} due soon`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>Just a quick heads up — invoice <strong>${extra.invoiceNumber||''}</strong> for <strong>${businessName}</strong> is coming due.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:20px 24px">
+            <table width="100%">
+              <tr><td style="font-size:13px;color:#6b7280">Invoice</td><td align="right" style="font-weight:600">${extra.invoiceNumber||'—'}</td></tr>
+              <tr><td style="font-size:13px;color:#6b7280;padding-top:8px">Amount</td><td align="right" style="font-weight:600;padding-top:8px">${extra.invoiceTotal||'—'}</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <p>If you've already sent payment, please disregard this note. Otherwise, please remit at your earliest convenience.</p>
+        <p>Warmly,</p>`)
+    },
+    'payment-overdue': {
+      subject: `Past due — Invoice ${extra.invoiceNumber||''} for ${businessName}`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We wanted to follow up on invoice <strong>${extra.invoiceNumber||''}</strong> for <strong>${businessName}</strong>, which is now past due.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#fef2f2;border-left:3px solid #ef4444;padding:16px 20px;border-radius:0 6px 6px 0">
+            <div style="font-size:13px;color:#991b1b;font-weight:500">PAST DUE</div>
+            <div style="font-size:14px;color:#1a1a2e;margin-top:4px">Invoice ${extra.invoiceNumber||''} · ${extra.invoiceTotal||'—'}</div>
+          </td></tr>
+        </table>
+        <p>If payment has already been sent, we apologize for the reminder. Otherwise, we'd appreciate payment as soon as possible.</p>
+        <p>Please don't hesitate to reach out if you have any questions or need to discuss payment arrangements.</p>
+        <p>Warmly,</p>`)
+    },
+    'reorder-reminder': {
+      subject: `Time to restock? — ${businessName}`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>It's been a while since your last order — just checking in to see if <strong>${businessName}</strong> is ready to restock.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Reorder →</a>
+          </td></tr>
+        </table>
+        <p>If you need anything adjusted — quantities, delivery schedule, or product mix — just let us know.</p>
+        <p>Warmly,</p>`)
+    },
+    'delivery-followup': {
+      subject: `How did your delivery go? — ${businessName}`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We hope your recent delivery to <strong>${businessName}</strong> went smoothly. We wanted to check in and make sure everything arrived in great condition.</p>
+        <p>A few quick questions:</p>
+        <ul style="color:#374151;padding-left:20px">
+          <li style="margin-bottom:6px">Did everything arrive as expected?</li>
+          <li style="margin-bottom:6px">Is the product merchandised and ready to sell?</li>
+          <li>Any feedback on the delivery process?</li>
+        </ul>
+        <p>Your feedback helps us serve you better. Just reply to this email with any thoughts.</p>
+        <p>Warmly,</p>`)
+    },
+    'new-product': {
+      subject: `New from Pumpkin Blossom Farm — you'll want to see this`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We're excited to share something new with <strong>${businessName}</strong>.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#fdf9ff;border:1px solid #e9d5ff;border-radius:8px;padding:24px;text-align:center">
+            <div style="font-size:20px;font-weight:600;color:#4B2082;margin-bottom:8px">🆕 New Product Launch</div>
+            <div style="font-size:14px;color:#374151">Details coming soon — stay tuned for pricing and availability.</div>
+          </td></tr>
+        </table>
+        <p>Interested in adding this to your next order? Reply to this email or place an order through your portal:</p>
+        <p style="text-align:center"><a href="${portalLink}" style="color:${accentColor};font-weight:500">Open Your Portal →</a></p>
+        <p>Warmly,</p>`)
+    },
+    'thank-you': {
+      subject: `Thank you, ${businessName} — we appreciate your partnership`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We just wanted to take a moment to say <strong>thank you</strong> for being a valued retail partner. Your support of <strong>${businessName}</strong> carrying our products means the world to our small farm.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td style="background:#f0f7f1;border-radius:8px;padding:20px 24px;text-align:center">
+            <div style="font-size:15px;color:#166534;font-weight:500">🌿 Every can sold supports a family farm in Warner, NH</div>
+          </td></tr>
+        </table>
+        <p>If there's ever anything we can do better, please don't hesitate to let us know.</p>
+        <p>With gratitude,</p>`)
+    },
+    'custom': {
+      subject: `A message from Pumpkin Blossom Farm`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>[Your message here]</p>
+        <p>Warmly,</p>`)
     }
   };
   return templates[stage] || null;
@@ -13611,16 +13726,20 @@ function generateInvoicePrint(invoiceId) {
   </tr></thead>
   <tbody>
     ${(iv.lineItems||[]).length
-      ? iv.lineItems.map(li => `
-        <tr>
-          <td><strong>${esc(li.skuName||li.skuId||'purpl')}</strong>
-            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · ${CANS_PER_CASE} cans/case</div>
+      ? iv.lineItems.map(li => {
+          const isLfItem = li.caseSize || li.pricePerUnit || li.unitPrice;
+          const unitsPer = isLfItem ? (li.caseSize||1) : CANS_PER_CASE;
+          const unitLabel = isLfItem ? 'units/case' : 'cans/case';
+          const brandLabel = isLfItem ? 'Lavender Fields' : 'purpl';
+          return `<tr>
+          <td><strong>${esc(li.skuName||li.skuId||li.sku||'Product')}</strong>
+            <div style="font-size:11px;color:#9ca3af">${brandLabel} · ${unitsPer} ${unitLabel}</div>
           </td>
           <td style="text-align:center">${li.cases||'—'}</td>
-          <td style="text-align:center">${(li.cases||0)*CANS_PER_CASE}</td>
-          <td style="text-align:right">${li.pricePerCase ? fmt$(li.pricePerCase) : '—'}</td>
+          <td style="text-align:center">${(li.cases||0)*unitsPer}</td>
+          <td style="text-align:right">${li.pricePerCase ? fmt$(li.pricePerCase) : (li.pricePerUnit ? fmt$(li.pricePerUnit)+'/unit' : '—')}</td>
           <td style="text-align:right">${li.lineTotal != null ? fmt$(li.lineTotal) : '—'}</td>
-        </tr>`).join('')
+        </tr>`;}).join('')
       : `<tr>
           <td>
             <strong>Classic Lavender Lemonade</strong>
