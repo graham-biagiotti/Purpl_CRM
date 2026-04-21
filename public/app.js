@@ -278,15 +278,15 @@ function statusBadge(map, val) {
 
 // ── Email template HTML constants ───────────────────────
 function _signatureHTML() {
-  const name = _currentUserName();
   return `<table width="100%" cellpadding="0" cellspacing="0">
   <tr>
     <td style="padding-top:16px;border-top:1px solid #e5e7eb;
       font-family:Inter,Arial,sans-serif;font-size:13px;
       color:#6b7280;line-height:1.6">
-      <strong style="color:#1a1a2e">${escHtml(name)}</strong><br>
-      Pumpkin Blossom Farm | purpl &amp; Lavender Fields<br>
-      603-748-3038 · Warner, NH
+      <strong style="color:#1a1a2e">Graham Biagiotti</strong>
+      — Director of Sales<br>
+      603-748-3038 · Warner, NH<br>
+      Pumpkin Blossom Farm | purpl &amp; Lavender Fields
       <div style="margin-top:8px;font-size:13px;color:#6b7280">
         <a href="mailto:lavender@pbfwholesale.com"
           style="color:#8B5FBF;text-decoration:none">
@@ -1643,7 +1643,7 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
     </div>
     ${invSettings.stripeLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
     <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
-    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>${escHtml(_currentUserName())}</strong><br>Pumpkin Blossom Farm</p>
+    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
@@ -2992,9 +2992,9 @@ function markCadenceSent(accountId, stageId, method, invoiceId) {
 // ══════════════════════════════════════════════════════════
 //  AI EMAIL DRAFTING
 // ══════════════════════════════════════════════════════════
-function _aiSystemPrompt() { return `You are a sales assistant for ${_currentUserName()} at Pumpkin Blossom Farm. They sell two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`; }
+function _aiSystemPrompt() { return `You are a sales assistant for Graham Biagiotti at Pumpkin Blossom Farm. Graham sells two wholesale product lines: purpl (lavender lemonade, 12-pack cases, MSRP $3.29/can) and Lavender Fields (farm lavender products including simple syrup, candles, scrunchies, sachets, roll-ons, refresh powder, dryer sachets). Write professional, warm, concise wholesale outreach emails. Never use emojis in the email body. Always end with the signature block provided. Respond with JSON only: {"subject": "...", "body": "..."}`; }
 
-function _aiSignature() { return `${_currentUserName()}\n603-748-3038 · Warner, NH\nPumpkin Blossom Farm | purpl & Lavender Fields`; }
+function _aiSignature() { return `Graham Biagiotti — Director of Sales\n603-748-3038 · Warner, NH\nPumpkin Blossom Farm | purpl & Lavender Fields`; }
 
 function _SIG() { return _aiSignature(); }
 
