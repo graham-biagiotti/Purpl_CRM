@@ -17,11 +17,11 @@ const COLLECTION_KEYS = [
   'dist_profiles','dist_reps','dist_pricing','dist_pos',
   'dist_invoices','dist_chains','dist_imports',
   'audit_log',
+  'prod_hist','runs','shipments',
 ];
 
-// Collections that stay in a single config document (small/rarely changing)
+// Arrays that stay in a single config document (small/rarely changing)
 const CONFIG_ARRAY_KEYS = [
-  'prod_hist','shipments','runs',
   'saved_reports','loose_cans','repack_jobs','pallets','pack_supply',
   'quick_notes','stock_locations','stock_transfers',
   'lf_skus','lf_wix_deductions','pending_invoices','returns',
@@ -104,6 +104,32 @@ const DB = {
       OBJ_KEYS.forEach(k => {
         this._cache[k] = (configData[k] !== undefined && configData[k] !== null) ? configData[k] : null;
       });
+    }
+
+    // Migrate arrays that moved from config to collections (one-time)
+    const _movedToCollection = ['prod_hist','runs','shipments'];
+    const configData2 = configSnap?.data?.() || {};
+    let _needsConfigResave = false;
+    for (const key of _movedToCollection) {
+      const arr = configData2[key];
+      if (Array.isArray(arr) && arr.length > 0) {
+        console.log(`[db] Migrating ${arr.length} ${key} items from config to collection...`);
+        for (const item of arr) {
+          if (!item.id) continue;
+          this._cache[key] = this._cache[key] || [];
+          if (!this._cache[key].some(x => x.id === item.id)) this._cache[key].push(item);
+          try { await this._collRef(key).doc(item.id).set(item); } catch(e) { console.warn(`[db] Migration write failed for ${key}/${item.id}:`, e); }
+        }
+        _needsConfigResave = true;
+      }
+    }
+    if (_needsConfigResave) {
+      const cleanPayload = { _dbVersion: 2 };
+      CONFIG_ARRAY_KEYS.forEach(k => cleanPayload[k] = this._cache[k] || []);
+      OBJ_KEYS.forEach(k => cleanPayload[k] = this._cache[k] ?? null);
+      const { setDoc } = window.FirestoreAPI;
+      await setDoc(this._configRef(), cleanPayload).catch(e => console.warn('[db] Config cleanup failed:', e));
+      console.log('[db] Config doc cleaned — migrated arrays removed.');
     }
 
     this._firestoreReady = true;

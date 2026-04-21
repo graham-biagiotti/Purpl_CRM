@@ -8734,7 +8734,7 @@ function repRevenue() {
     const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
     const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
+      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
@@ -8780,7 +8780,7 @@ function repAccounts() {
     const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
+      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
       acMap[o.accountId].rev += pricePerCase * i.qty;
       acMap[o.accountId].qty += i.qty; // cases
     });
@@ -8988,7 +8988,7 @@ function repProfit() {
     const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
     const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
     (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc||(costs.cogs[i.sku]||2.15)*markup*CANS_PER_CASE;
+      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
       bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
     });
@@ -10706,7 +10706,7 @@ function _ncivRenderSkuRows() {
   const purplEl = document.getElementById('nciv-purpl-skus');
   if (purplEl) {
     purplEl.innerHTML = IV_SKUS.map(sku => {
-      const ppc = purplPrice || (costs.cogs[sku.id]||2.15) * markup * CANS_PER_CASE;
+      const ppc = purplPrice || PURPL_DIRECT_PER_CASE;
       return `<div class="lfi-item-row" data-sku="${sku.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
         <input class="nciv-p-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
