@@ -63,6 +63,8 @@ function deleteInvoiceWithCleanup(id) {
       if (i >= 0) { cache[col].splice(i, 1); break; }
     }
     cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
+    // Orphan LF Wix deductions tied to this invoice
+    cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== id);
     // If this invoice is part of a combined, remove the combined reference
     const ci = (cache.combined_invoices||[]).findIndex(x => x.purplInvoiceId === id || x.lfInvoiceId === id);
     if (ci >= 0) cache.combined_invoices.splice(ci, 1);
@@ -10695,16 +10697,26 @@ function deleteCombinedInvoice(combinedId) {
   });
   // Reset the portal order(s) so they can be re-confirmed
   if (portalOrderId) {
+    const primaryOrder = PortalDB.getOrders().find(o => o.id === portalOrderId);
+    const primaryTime = primaryOrder?.submittedAt?.toDate
+      ? primaryOrder.submittedAt.toDate().getTime()
+      : (primaryOrder?.submittedAt ? new Date(primaryOrder.submittedAt).getTime() : 0);
     firebase.firestore().collection('portal_orders').doc(portalOrderId)
       .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
       .catch(e => console.warn('Could not reset portal order:', e));
-    // Also reset the paired portal order linked to this combined invoice
+    // Also reset the paired portal order from the same submission (same account, within 60s, different brand)
     firebase.firestore().collection('portal_orders')
       .where('accountId', '==', rec.accountId)
       .where('status', '==', 'confirmed').get()
       .then(snap => snap.docs.forEach(d => {
+        if (d.id === portalOrderId) return;
         const data = d.data();
-        if (d.id !== portalOrderId && data.convertedOrderId) d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
+        if (!data.convertedOrderId) return;
+        const dTime = data.submittedAt?.toDate ? data.submittedAt.toDate().getTime()
+                    : (data.submittedAt ? new Date(data.submittedAt).getTime() : 0);
+        if (primaryTime && dTime && Math.abs(dTime - primaryTime) < 60000 && data.brand !== primaryOrder?.brand) {
+          d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
+        }
       }))
       .catch(() => {});
   }
@@ -11339,14 +11351,15 @@ function openCombinedInvoicePreview(combinedId) {
         const sentMessageId = result?.id || null;
         // Update status to 'sent' on all 3 invoice records atomically + deduct purpl inventory
         const wasDraft = rec.status === 'draft' || !rec.status;
-        const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
+        let didDeduct = false;
         DB.atomicUpdate(cache => {
           const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
           if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], status: 'sent', sentAt, sentMessageId };
           if (rec.purplInvoiceId) {
             const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
             if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'sent', sentAt, sentMessageId };
-            // Deduct purpl inventory if transitioning from draft and not already deducted
+            // Re-check alreadyDeducted inside atomic block to close double-send race
+            const alreadyDeducted = (cache.iv||[]).some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
             if (wasDraft && !alreadyDeducted && ri >= 0) {
               const purplInv = cache.retail_invoices[ri];
               const invNum = purplInv.number || purplInv.invoiceNumber || '';
@@ -11355,6 +11368,7 @@ function openCombinedInvoicePreview(combinedId) {
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
                   cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
+                  didDeduct = true;
                 }
               });
             }
@@ -11364,7 +11378,7 @@ function openCombinedInvoicePreview(combinedId) {
             if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'sent', sentAt, sentMessageId };
           }
         });
-        if (wasDraft && !alreadyDeducted) toast('Inventory deducted ✓', 2000);
+        if (didDeduct) toast('Inventory deducted ✓', 2000);
         // Log to account cadence
         const entry = { id: uid(), stage: 'invoice_sent', sentAt, sentBy: _currentUserName(), method: 'resend', invoiceId: rec.id, invoiceRef };
         if (sentMessageId) entry.sentMessageId = sentMessageId;
@@ -12857,12 +12871,16 @@ async function deletePortalOrder(orderId) {
     if (order) {
       const oTime = order.submittedAt?.toDate ? order.submittedAt.toDate().getTime()
                   : (order.submittedAt ? new Date(order.submittedAt).getTime() : 0);
-      const paired = PortalDB.getOrders().find(p =>
-        p.id !== orderId &&
-        (p.accountId === order.accountId || p.accountName === order.accountName) &&
-        p.brand !== order.brand &&
-        Math.abs((p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0)) - oTime) < 60000
-      );
+      const paired = PortalDB.getOrders().find(p => {
+        if (p.id === orderId) return false;
+        if (p.brand === order.brand) return false;
+        const dt = p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0);
+        if (!oTime || !dt || Math.abs(dt - oTime) >= 60000) return false;
+        // When both have accountIds, require a strict match. Otherwise fall back to
+        // accountName + billingEmail to avoid clobbering unrelated unmatched orders.
+        if (order.accountId && p.accountId) return p.accountId === order.accountId;
+        return p.accountName === order.accountName && (p.billingEmail || '') === (order.billingEmail || '');
+      });
       if (paired) toDelete.push(paired.id);
     }
     await Promise.all(toDelete.map(id =>
@@ -13688,7 +13706,7 @@ function renderInvColCombined() {
         <td>${fmtC(ci.purplSubtotal||0)}</td>
         <td>${fmtC(ci.lfSubtotal||0)}</td>
         <td><strong>${fmtC(ci.grandTotal||0)}</strong></td>
-        <td><span class="badge ${ci.status==='paid'?'green':ci.status==='sent'?'blue':'amber'}">${ci.status||'draft'}</span></td>
+        <td><span class="badge ${ci.status==='paid'?'green':ci.status==='sent'?'blue':ci.status==='void'?'red':'amber'}">${ci.status||'draft'}</span></td>
         <td style="white-space:nowrap">
           <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">View</button>
           ${ci.status!=='paid' ? `<button class="btn xs green" onclick="markCombinedPaid('${ci.id}')">✓ Paid</button>` : ''}
