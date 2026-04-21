@@ -81,10 +81,21 @@ async function bootApp() {
       loadingScreen.style.display = 'flex';
       appShell.style.display = 'none';
 
-      await Promise.race([
-        DB.init(user.uid, db),
-        new Promise(resolve => setTimeout(resolve, 10000))
-      ]);
+      const slowTimer = setTimeout(() => {
+        const el = loadingScreen.querySelector('p') || loadingScreen;
+        el.textContent = 'Loading is slow — check your connection…';
+      }, 10000);
+
+      try {
+        await DB.init(user.uid, db);
+      } catch(e) {
+        clearTimeout(slowTimer);
+        console.error('DB init failed:', e);
+        const el = loadingScreen.querySelector('p') || loadingScreen;
+        el.textContent = 'Unable to load data. Check your internet and refresh the page.';
+        return;
+      }
+      clearTimeout(slowTimer);
 
       checkMigration();
 

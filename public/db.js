@@ -380,19 +380,40 @@ const DB = {
     if (el) el.remove();
   },
 
-  // ── Public API (identical to single-doc version) ──
+  // ── Immediate single-doc writes (survives tab close via IndexedDB persistence) ──
+  _writeDoc(key, item) {
+    if (!this._db || !this._firestoreReady || !item?.id) return;
+    this._collRef(key).doc(item.id).set(item, { merge: true })
+      .catch(e => console.warn(`[db] Immediate write failed for ${key}/${item.id}:`, e));
+  },
+  _deleteDoc(key, id) {
+    if (!this._db || !this._firestoreReady || !id) return;
+    this._collRef(key).doc(id).delete()
+      .catch(e => console.warn(`[db] Immediate delete failed for ${key}/${id}:`, e));
+  },
+
+  // ── Public API ──
   get(k) { return this._cache[k] || []; },
   set(k, v) { this._cache[k] = v; this._save(k); },
   obj(k, def = {}) { return this._cache[k] || def; },
   setObj(k, v) { this._cache[k] = v; this._save(k); },
   a(k) { return this.get(k); },
-  push(k, v) { const a = this.a(k); a.push(v); this.set(k, a); },
+  push(k, v) {
+    const a = this.a(k); a.push(v); this._cache[k] = a; this._save(k);
+    if (COLLECTION_KEYS.includes(k) && v?.id) this._writeDoc(k, v);
+  },
   update(k, id, fn) {
     const a = this.a(k);
     const i = a.findIndex(x => x.id === id);
-    if (i >= 0) { a[i] = fn(a[i]); this.set(k, a); }
+    if (i >= 0) {
+      a[i] = fn(a[i]); this._cache[k] = a; this._save(k);
+      if (COLLECTION_KEYS.includes(k)) this._writeDoc(k, a[i]);
+    }
   },
-  remove(k, id) { this.set(k, this.a(k).filter(x => x.id !== id)); },
+  remove(k, id) {
+    this._cache[k] = this.a(k).filter(x => x.id !== id); this._save(k);
+    if (COLLECTION_KEYS.includes(k)) this._deleteDoc(k, id);
+  },
 
   atomicUpdate(fn) {
     fn(this._cache);
