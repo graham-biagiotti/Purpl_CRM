@@ -12831,9 +12831,24 @@ async function declinePortalOrder(id) {
 async function deletePortalOrder(orderId) {
   if (!confirm('Delete this submission? Cannot be undone.')) return;
   try {
-    await firebase.firestore()
-      .collection('portal_orders').doc(orderId).delete();
-    toast('Deleted ✓');
+    // Find the paired order (same account, within 60s, different brand) and delete both
+    const order = PortalDB.getOrders().find(o => o.id === orderId);
+    const toDelete = [orderId];
+    if (order) {
+      const oTime = order.submittedAt?.toDate ? order.submittedAt.toDate().getTime()
+                  : (order.submittedAt ? new Date(order.submittedAt).getTime() : 0);
+      const paired = PortalDB.getOrders().find(p =>
+        p.id !== orderId &&
+        (p.accountId === order.accountId || p.accountName === order.accountName) &&
+        p.brand !== order.brand &&
+        Math.abs((p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0)) - oTime) < 60000
+      );
+      if (paired) toDelete.push(paired.id);
+    }
+    await Promise.all(toDelete.map(id =>
+      firebase.firestore().collection('portal_orders').doc(id).delete()
+    ));
+    toast('Deleted ✓' + (toDelete.length > 1 ? ' (paired order also removed)' : ''));
     renderPreOrders(true);
   } catch(e) {
     console.error(e);
