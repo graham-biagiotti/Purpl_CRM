@@ -10656,21 +10656,42 @@ function markCombinedPaid(combinedId) {
 // ── Invoice numbering ─────────────────────────────────────
 
 function deleteCombinedInvoice(combinedId) {
-  if (!confirm('Delete this combined invoice and its purpl + LF components?')) return;
+  if (!confirm('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions and reset linked portal orders so you can re-confirm.')) return;
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
+  const portalOrderId = rec.portalOrderId;
   DB.atomicUpdate(cache => {
     cache.combined_invoices = (cache.combined_invoices||[]).filter(x => x.id !== combinedId);
     if (rec.purplInvoiceId) {
       cache.retail_invoices = (cache.retail_invoices||[]).filter(x => x.id !== rec.purplInvoiceId);
+      // Remove any iv records that were either the invoice itself or its 'out' deductions
       cache.iv = (cache.iv||[]).filter(x => !(x.id === rec.purplInvoiceId || (x.invoiceId === rec.purplInvoiceId && x.type === 'out')));
+      // Remove the linked order
+      cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'purpl'));
     }
     if (rec.lfInvoiceId) {
       cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== rec.lfInvoiceId);
+      cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'lf'));
     }
   });
+  // Reset the portal order(s) so they can be re-confirmed
+  if (portalOrderId) {
+    firebase.firestore().collection('portal_orders').doc(portalOrderId)
+      .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
+      .catch(e => console.warn('Could not reset portal order:', e));
+    // Also reset the paired order (LF side, if any)
+    firebase.firestore().collection('portal_orders')
+      .where('accountId', '==', rec.accountId)
+      .where('status', '==', 'confirmed').get()
+      .then(snap => snap.docs.forEach(d => {
+        if (d.id !== portalOrderId) d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
+      }))
+      .catch(() => {});
+  }
+  closeModal('modal-combined-invoice');
   renderInvoicesPage();
-  toast('Combined invoice deleted');
+  if (typeof renderPreOrders === 'function') renderPreOrders(true);
+  toast('Combined invoice deleted · portal order reset');
 }
 
 // Peek at what the next invoice number would be — no side effects, safe for modal preview
@@ -11369,6 +11390,12 @@ function openCombinedInvoicePreview(combinedId) {
     toast('Invoice voided' + (wasDeducted ? ' · inventory restored' : ''));
     closeModal('modal-combined-invoice');
     renderInvoicesPage();
+  };
+
+  const delBtn = qs('#civ-btn-delete');
+  if (delBtn) delBtn.onclick = () => {
+    closeModal('modal-combined-invoice');
+    deleteCombinedInvoice(combinedId);
   };
 
   qs('#civ-btn-paid').onclick = () => {
