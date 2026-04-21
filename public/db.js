@@ -193,7 +193,7 @@ const DB = {
       const items = Array.isArray(data[key]) ? data[key] : [];
       this._cache[key] = items;
       for (const item of items) {
-        if (!item.id) continue;
+        if (!item.id) { console.warn(`[db] Migration: skipping ${key} item without id`, item); continue; }
         try {
           await this._collRef(key).doc(item.id).set(item);
         } catch(e) {

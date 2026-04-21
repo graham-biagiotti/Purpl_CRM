@@ -4322,6 +4322,8 @@ function deleteAccount(id) {
     cache['combined_invoices'] = (cache['combined_invoices']||[]).filter(r=>r.accountId!==id);
     cache['pending_invoices']  = (cache['pending_invoices'] ||[]).filter(r=>r.accountId!==id);
     cache['returns']           = (cache['returns']          ||[]).filter(r=>r.accountId!==id);
+    cache['dist_invoices']     = (cache['dist_invoices']    ||[]).filter(r=>r.accountId!==id);
+    cache['dist_pos']          = (cache['dist_pos']         ||[]).filter(r=>r.accountId!==id);
     const run = cache['today_run'];
     if (run && run.stops) run.stops = run.stops.filter(s=>s.accountId!==id);
   });
@@ -7975,7 +7977,8 @@ function createDeliveryInvoice(accountId, ordId) {
   const isDistFulfilled = ac.fulfilledBy && ac.fulfilledBy !== 'direct';
   const acPrice = parseFloat(isDistFulfilled ? ac.pricePerCaseDist : (ac.pricePerCaseDirect || ac.pricePerCaseCustom)) || 0;
   const lineItems = (ord.items||[]).map(i=>{
-    const pricePerCase = acPrice || PURPL_DIRECT_PER_CASE;
+    const cogsMarkup = _cogs(i.sku) * markup * CANS_PER_CASE;
+    const pricePerCase = acPrice || cogsMarkup || PURPL_DIRECT_PER_CASE;
     return {sku: i.sku, cases: i.qty, pricePerCase, amount: i.qty * pricePerCase};
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
@@ -10568,16 +10571,42 @@ function markCombinedPaid(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
   const now = new Date().toISOString();
-  DB.update('combined_invoices', combinedId, x => ({...x, status: 'paid', paidAt: now}));
-  const inRetail = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
-  if (inRetail) DB.update('retail_invoices', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
-  else DB.update('iv', rec.purplInvoiceId, x => ({...x, status: 'paid', paidDate: now.slice(0,10)}));
-  DB.update('lf_invoices', rec.lfInvoiceId,    x => ({...x, status: 'paid', paidAt: now}));
+  const pd = now.slice(0,10);
+  DB.atomicUpdate(cache => {
+    const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+    if (ci >= 0) cache.combined_invoices[ci] = {...cache.combined_invoices[ci], status:'paid', paidAt:now};
+    const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+    if (ri >= 0) cache.retail_invoices[ri] = {...cache.retail_invoices[ri], status:'paid', paidDate:pd};
+    else {
+      const ii = (cache.iv||[]).findIndex(x => x.id === rec.purplInvoiceId);
+      if (ii >= 0) cache.iv[ii] = {...cache.iv[ii], status:'paid', paidDate:pd};
+    }
+    const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+    if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], status:'paid', paidAt:now};
+  });
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
 }
 
 // ── Invoice numbering ─────────────────────────────────────
+
+function deleteCombinedInvoice(combinedId) {
+  if (!confirm('Delete this combined invoice and its purpl + LF components?')) return;
+  const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
+  if (!rec) return;
+  DB.atomicUpdate(cache => {
+    cache.combined_invoices = (cache.combined_invoices||[]).filter(x => x.id !== combinedId);
+    if (rec.purplInvoiceId) {
+      cache.retail_invoices = (cache.retail_invoices||[]).filter(x => x.id !== rec.purplInvoiceId);
+      cache.iv = (cache.iv||[]).filter(x => !(x.id === rec.purplInvoiceId || (x.invoiceId === rec.purplInvoiceId && x.type === 'out')));
+    }
+    if (rec.lfInvoiceId) {
+      cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== rec.lfInvoiceId);
+    }
+  });
+  renderInvoicesPage();
+  toast('Combined invoice deleted');
+}
 
 function getNextInvoiceNumber(type) {
   const prefix     = { purpl: 'INV', lf: 'LF', combined: 'COMB' }[type];
@@ -12692,6 +12721,7 @@ async function confirmPortalOrder() {
       .collection('portal_orders').doc(_portalOrderId);
     const portalSnap = await portalRef.get();
     const d = portalSnap.data();
+    if (d.status === 'confirmed') { toast('This order has already been confirmed'); closeModal('modal-confirm-portal-order'); return; }
 
     // If unmatched, use the selected account from the picker
     if (!d.accountId) {
@@ -12712,7 +12742,8 @@ async function confirmPortalOrder() {
     const allPortal = PortalDB.getOrders();
     const paired = allPortal.find(p =>
       p.id !== _portalOrderId && (p.accountId === d.accountId || p.accountName === d.accountName) &&
-      p.brand !== d.brand && Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
+      p.brand !== d.brand && p.status !== 'confirmed' &&
+      Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
     );
 
     const purplDoc = d.brand === 'lf' ? paired : d;
@@ -13089,7 +13120,9 @@ const esc       = (s) => escHtml(String(s||''));
 // markPaid alias (iv collection invoice records)
 function markPaid(id) {
   const inRetail = DB.a('retail_invoices').find(x => x.id === id);
+  const inLf = DB.a('lf_invoices').find(x => x.id === id);
   if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today()}));
+  else if (inLf) DB.update('lf_invoices', id, x => ({...x, status:'paid', paidAt:new Date().toISOString()}));
   else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today()}));
   renderInvoicesPage();
   toast('Marked as paid ✓');
@@ -13522,8 +13555,9 @@ function _sendDistInvoiceReminder(invId) {
 
 function markInvoiceSent(id) {
   const inRetail = DB.a('retail_invoices').find(x => x.id === id);
-  const inv = inRetail || DB.a('iv').find(x => x.id === id);
-  const col = inRetail ? 'retail_invoices' : 'iv';
+  const inLf = DB.a('lf_invoices').find(x => x.id === id);
+  const inv = inRetail || inLf || DB.a('iv').find(x => x.id === id);
+  const col = inRetail ? 'retail_invoices' : inLf ? 'lf_invoices' : 'iv';
   DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
   // Deduct purpl inventory when a draft is first sent — skip if already deducted
   const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
@@ -13544,8 +13578,13 @@ function markInvoiceSent(id) {
 function deleteInvoice(id) {
   if (!confirm('Delete this invoice?')) return;
   const inRetail = DB.a('retail_invoices').find(x => x.id === id);
-  if (inRetail) DB.remove('retail_invoices', id);
-  else DB.remove('iv', id);
+  const inLf = DB.a('lf_invoices').find(x => x.id === id);
+  DB.atomicUpdate(cache => {
+    if (inRetail) cache.retail_invoices = (cache.retail_invoices||[]).filter(x => x.id !== id);
+    else if (inLf) cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== id);
+    else cache.iv = (cache.iv||[]).filter(x => x.id !== id);
+    cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
+  });
   renderInvoicesPage();
   toast('Deleted');
 }
