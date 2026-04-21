@@ -339,35 +339,27 @@ exports.resendWebhook = onRequest(
 
     try {
       const db  = admin.firestore();
-      const ref = db.doc('workspace/main/data/store');
-      const snap = await ref.get();
-      if (!snap.exists) { res.status(200).send('no data'); return; }
+      const ts  = event.data.created_at || new Date().toISOString();
+      const acSnap = await db.collection('workspace/main/ac').get();
+      let updated = false;
 
-      const data     = snap.data();
-      const accounts = data.ac || [];
-      const ts       = event.data.created_at || new Date().toISOString();
-      let updated    = false;
+      for (const doc of acSnap.docs) {
+        const account = doc.data();
+        const cadence = (account.cadence || []);
+        const entry = cadence.find(e => e.sentMessageId === emailId);
+        if (!entry) continue;
 
-      const updatedAccounts = accounts.map(account => {
-        const cadence = (account.cadence || []).map(entry => {
-          if (entry.sentMessageId !== emailId) return entry;
-          if (type === 'email.opened' && !entry.opened) {
-            updated = true;
-            return {...entry, opened: true, openedAt: ts};
-          }
-          if (type === 'email.clicked' && !entry.clicked) {
-            updated = true;
-            return {...entry, clicked: true, clickedAt: ts};
-          }
-          return entry;
-        });
-        return {...account, cadence};
-      });
-
-      if (updated) {
-        await ref.update({ac: updatedAccounts});
+        if (type === 'email.opened' && !entry.opened) {
+          entry.opened = true; entry.openedAt = ts; updated = true;
+        } else if (type === 'email.clicked' && !entry.clicked) {
+          entry.clicked = true; entry.clickedAt = ts; updated = true;
+        }
+        if (updated) {
+          await doc.ref.update({ cadence });
+          break;
+        }
       }
-      res.status(200).send('ok');
+      res.status(200).send(updated ? 'ok' : 'no match');
     } catch (err) {
       console.error('resendWebhook error:', err);
       res.status(500).send('error');
@@ -379,34 +371,23 @@ exports.resendWebhook = onRequest(
 async function _logCadenceEntry(accountId, entryData) {
   try {
     const db = admin.firestore();
-    const ref = db.doc('workspace/main/data/store');
+    const ref = db.collection('workspace/main/ac').doc(accountId);
     const snap = await ref.get();
     if (!snap.exists) return;
 
-    const data = snap.data();
-    const accounts = data.ac || [];
-    let updated = false;
-
-    const updatedAccounts = accounts.map(account => {
-      if (account.id !== accountId) return account;
-      updated = true;
-      const entry = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        sentAt: new Date().toISOString(),
-        sentBy: 'system',
-        method: 'resend',
-        ...entryData,
-      };
-      return {
-        ...account,
-        lastContacted: new Date().toISOString().slice(0, 10),
-        cadence: [...(account.cadence || []), entry],
-      };
+    const account = snap.data();
+    const entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      sentAt: new Date().toISOString(),
+      sentBy: 'system',
+      method: 'resend',
+      ...entryData,
+    };
+    await ref.update({
+      lastContacted: new Date().toISOString().slice(0, 10),
+      cadence: [...(account.cadence || []), entry],
+      _updatedAt: new Date().toISOString(),
     });
-
-    if (updated) {
-      await ref.update({ac: updatedAccounts});
-    }
   } catch (err) {
     console.warn('_logCadenceEntry error:', err.message);
   }
