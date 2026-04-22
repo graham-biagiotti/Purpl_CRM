@@ -11762,7 +11762,7 @@ function renderLfDashKpis() {
   const outstanding = lfInvs
     .filter(i => !['paid','draft','void'].includes(i.status))
     .reduce((s,i) => s + (i.total||0), 0);
-  const lfOverdue  = lfInvs.filter(i => !['paid','draft','void'].includes(i.status) && i.due && i.due < today()).length;
+  const lfOverdue  = lfInvs.filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
   const pendingWix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
 
   if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🌿 LF Accounts', lfAc, 'green');
