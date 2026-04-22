@@ -315,7 +315,6 @@ function _signatureHTML() {
   </tr>
 </table>`;
 }
-const SIGNATURE_HTML = ''; // legacy reference — use _signatureHTML() instead
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
@@ -809,8 +808,10 @@ function renderDash() {
 
   // ── Combined 6-card KPI row ──────────────────────────────
   loadScratchpad();
-  const purplAcCount = allAc.filter(a => !a.isPbf).length;
-  const lfAcCount    = allAc.filter(a => !!a.isPbf).length;
+  // Brand counts filter to active accounts so they line up with the main
+  // "Active Accounts" KPI — pulling from allAc included churned accounts.
+  const purplAcCount = ac.filter(a => !a.isPbf).length;
+  const lfAcCount    = ac.filter(a => !!a.isPbf).length;
   const allPurplInv = _allPurplInvoices();
   const purplOutstanding = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
   const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
@@ -9900,8 +9901,6 @@ function restoreMyData() {
     cache.settings = {...(cache.settings||{}), data_restored: true, seeded: true, nem_show_2026_imported: true};
     return cache;
   });
-
-  console.log(`[restore] ${ACCOUNTS.length} accounts + ${PROSPECTS.length} prospects restored.`);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11747,12 +11746,13 @@ function confirmWixPull(confirmed) {
 function renderLfDashKpis() {
   const el = qs('#dash-lf-kpis');
   if (!el) return;
-  const lfAc       = DB.a('ac').filter(a => !!a.isPbf).length;
+  const lfAc       = DB.a('ac').filter(a => a.status === 'active' && !!a.isPbf).length;
   const lfInvs     = DB.a('lf_invoices');
+  // Match the main dashboard's filter: outstanding = anything that isn't paid/draft/void.
   const outstanding = lfInvs
-    .filter(i => i.status === 'unpaid' || i.status === 'overdue')
+    .filter(i => !['paid','draft','void'].includes(i.status))
     .reduce((s,i) => s + (i.total||0), 0);
-  const lfOverdue  = lfInvs.filter(i => i.status === 'overdue').length;
+  const lfOverdue  = lfInvs.filter(i => !['paid','draft','void'].includes(i.status) && i.due && i.due < today()).length;
   const pendingWix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
 
   if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🌿 LF Accounts', lfAc, 'green');
@@ -14720,6 +14720,13 @@ async function rejectApplication(docId, app) {
         stage: 'rejected', sentAt: emailSentAt, sentBy: _currentUserName(),
         method: 'resend', sentMessageId: emailMessageId, to: app.email||'',
       });
+    } else {
+      // Even when no email was sent (missing address or send failure), keep
+      // an audit trail of the rejection decision on the inquiry doc.
+      updatePayload.emailLog = firebase.firestore.FieldValue.arrayUnion({
+        stage: 'rejected', sentAt: new Date().toISOString(), sentBy: _currentUserName(),
+        method: 'none', to: app.email||'', reason: app.email ? 'send_failed' : 'no_email',
+      });
     }
     await firebase.firestore().collection('portal_inquiries').doc(docId).update(updatePayload);
   } catch(e) { console.error('Firestore update failed', e); }
@@ -14735,9 +14742,11 @@ async function convertApplicationToProspect(docId, app) {
     app.storeDescription ? 'Store: ' + app.storeDescription : '',
     app.howHeard         ? 'How they heard: ' + app.howHeard : '',
     app.monthlyVolume    ? 'Monthly volume: ' + app.monthlyVolume : '',
+    app.distributorName  ? 'Distributor: ' + app.distributorName : '',
+    app.message          ? 'Message: ' + app.message : '',
   ].filter(Boolean).join('\n');
 
-  DB.push('pr', {
+  const prospect = {
     id:       uid(),
     name:     app.businessName || app.contactName || '—',
     contact:  app.contactName  || '',
@@ -14753,7 +14762,12 @@ async function convertApplicationToProspect(docId, app) {
     outreach: [],
     samples:  [],
     createdAt: today(),
-  });
+  };
+  if (typeof app.lat === 'number' && typeof app.lng === 'number') {
+    prospect.lat = app.lat;
+    prospect.lng = app.lng;
+  }
+  DB.push('pr', prospect);
 
   try {
     await firebase.firestore().collection('portal_inquiries').doc(docId).update({

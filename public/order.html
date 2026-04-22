@@ -1154,7 +1154,7 @@ function submitOrder() {
         });
         _oSummary += '<p style="margin:8px 0 0;font-weight:600;color:#166534">LF Total: $' + lfTotal.toFixed(2) + '</p>';
       }
-      if (poNumber) _oSummary += '<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ' + poNumber + '</p>';
+      if (poNumber) _oSummary += '<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ' + escHtml(poNumber) + '</p>';
 
       // Send order confirmation email (silent fail — never blocks order submission)
       firebase.functions().httpsCallable('sendOrderConfirmation')({
@@ -1493,9 +1493,6 @@ function printCurrentOrder() {
     '</body></html>');
   w.document.close();
 }
-
-function addDistributor() {}
-function removeDistributor() {}
 
 // ── Order History toggle ──────────────────────────────────
 function toggleOrderHistory() {
