@@ -29,7 +29,7 @@ function _calcPricePerCase(account) {
 // ── Account lookup helper ───────────────────────────────
 function _findAccount(accountId, fallbackName) {
   if (accountId) { const a = DB.a('ac').find(x => x.id === accountId); if (a) return a; }
-  if (fallbackName) return DB.a('ac').find(a => (a.name||'').toLowerCase() === (fallbackName||'').toLowerCase());
+  if (fallbackName) return DB.a('ac').find(a => (a.name||'').toLowerCase().trim() === (fallbackName||'').toLowerCase().trim());
   return null;
 }
 
@@ -817,7 +817,7 @@ function renderDash() {
   const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
   const combinedOutstanding  = purplOutstanding + lfOutstanding;
   const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
-  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && i.due && i.due < today()).length;
+  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
@@ -7567,8 +7567,10 @@ function openOrderDetail(id) {
     renderDash();
     toast('Order and linked inventory entries removed');
   };
-  qs('#mod-status-btn').onclick    = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
-  qs('#mod-reschedule-btn').onclick = ()=>{
+  const modStatusBtn = qs('#mod-status-btn');
+  if (modStatusBtn) modStatusBtn.onclick = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
+  const modReschedBtn = qs('#mod-reschedule-btn');
+  if (modReschedBtn) modReschedBtn.onclick = ()=>{
     const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
     if (!newDate || newDate===o.dueDate) return;
     DB.update('orders', id, x=>({...x, dueDate:newDate}));
@@ -11457,12 +11459,20 @@ function openCombinedInvoicePreview(combinedId) {
       if (rec.lfInvoiceId) {
         const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
         if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
+        cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== rec.lfInvoiceId);
       }
       // Reverse inventory deductions
       if (wasDeducted) {
         cache.iv = (cache.iv||[]).filter(x => !(x.type === 'out' && (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId)));
       }
     });
+    // Reset linked portal order so it can be re-confirmed with a new invoice
+    const portalOrderId = rec.portalOrderId;
+    if (portalOrderId) {
+      firebase.firestore().collection('portal_orders').doc(portalOrderId)
+        .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
+        .catch(e => console.warn('Could not reset portal order:', e));
+    }
     toast('Invoice voided' + (wasDeducted ? ' · inventory restored' : ''));
     closeModal('modal-combined-invoice');
     renderInvoicesPage();
