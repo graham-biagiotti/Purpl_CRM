@@ -51,7 +51,8 @@ exports.sendEmail = onCall(
 
       return {success: true, id: messageId};
     } catch (err) {
-      throw new HttpsError('internal', err.message);
+      console.error('Email send error:', err.message);
+      throw new HttpsError('internal', 'Email service unavailable');
     }
   }
 );
@@ -90,7 +91,8 @@ exports.sendCombinedInvoice = onCall(
 
       return {success: true, id: messageId};
     } catch (err) {
-      throw new HttpsError('internal', err.message);
+      console.error('Email send error:', err.message);
+      throw new HttpsError('internal', 'Email service unavailable');
     }
   }
 );
@@ -197,7 +199,8 @@ exports.sendOrderConfirmation = onCall(
 
       return {success: true, id: messageId};
     } catch (err) {
-      throw new HttpsError('internal', err.message);
+      console.error('Email send error:', err.message);
+      throw new HttpsError('internal', 'Email service unavailable');
     }
   }
 );
@@ -282,7 +285,8 @@ exports.sendApplicationConfirmation = onCall(
       }
       return {success: true, id: messageId};
     } catch (err) {
-      throw new HttpsError('internal', err.message);
+      console.error('Email send error:', err.message);
+      throw new HttpsError('internal', 'Email service unavailable');
     }
   }
 );
