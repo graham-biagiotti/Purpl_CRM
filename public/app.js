@@ -86,6 +86,10 @@ function _invEmailBadge(inv) {
 }
 
 // ── Helpers ─────────────────────────────────────────────
+function _pushCadence(existing, entry) {
+  const arr = [...(existing || []), entry];
+  return arr.length > 500 ? arr.slice(-500) : arr;
+}
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const today = () => new Date().toISOString().slice(0,10);
 const fmt   = (n, d=0) => (+n||0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
@@ -393,7 +397,7 @@ function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn
       if (accountId && stage) {
         const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', ...extra};
         if (result?.id) entry.sentMessageId = result.id;
-        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
+        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
       }
       toast('Email sent ✓');
       return result;
@@ -404,7 +408,7 @@ function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       if (accountId && stage) {
         const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail', ...extra};
-        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: [...(a.cadence||[]), entry]}));
+        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
       }
       return null;
     });
@@ -1793,7 +1797,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
           if (result?.id) entry.sentMessageId = result.id;
           DB.update('ac', ac.id, a => ({
             ...a, lastContacted: today(),
-            cadence: [...(a.cadence||[]), entry],
+            cadence: _pushCadence(a.cadence, entry),
           }));
           renderAccounts();
           const updatedAc = DB.a('ac').find(x => x.id === ac.id);
@@ -2902,7 +2906,7 @@ function markCadenceEmailSent(sentMessageId) {
     method: 'manual',
   };
   if (sentMessageId) entry.sentMessageId = sentMessageId;
-  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
+  DB.update('ac', accountId, a => ({...a, cadence: _pushCadence(a.cadence, entry)}));
   closeModal('modal-email-preview');
   openAccountToEmailsTab(accountId);
   renderCadenceOverdue();
@@ -3010,7 +3014,7 @@ function _latestAccountInvoiceId(accountId) {
 function markCadenceSent(accountId, stageId, method, invoiceId) {
   const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: _currentUserName(), method: method||'manual' };
   if (invoiceId) entry.invoiceId = invoiceId;
-  DB.update('ac', accountId, a => ({...a, cadence: [...(a.cadence||[]), entry]}));
+  DB.update('ac', accountId, a => ({...a, cadence: _pushCadence(a.cadence, entry)}));
   renderMacEmailsTab(accountId);
   renderCadenceOverdue();
   toast('Email logged as sent');
@@ -3562,7 +3566,7 @@ function emailsPageSendEmail() {
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
-        cadence: [...(a.cadence||[]), entry]
+        cadence: _pushCadence(a.cadence, entry)
       }));
       toast('Email sent ✓');
       renderEmailsPage();
@@ -3574,7 +3578,7 @@ function emailsPageSendEmail() {
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
-        cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail'}]
+        cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail'})
       }));
       if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
     });
@@ -3585,7 +3589,7 @@ function emailsPageMarkSent() {
   const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
   DB.update('ac', _emailsSelectedAccountId, a => ({
     ...a,
-    cadence: [...(a.cadence||[]), {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'manual'}]
+    cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'manual'})
   }));
   toast('Email marked as sent');
   renderEmailsPage();
@@ -3951,7 +3955,7 @@ async function meBroadcastSend() {
         DB.update('ac', a.id, ac => ({
           ...ac,
           lastContacted: today(),
-          cadence: [...(ac.cadence||[]), entry],
+          cadence: _pushCadence(ac.cadence, entry),
         }));
         sent++;
       } catch(_) { failed++; }
@@ -4332,6 +4336,8 @@ function renderParInputs(a) {
 async function saveAccount(id, isNew) {
   const name = qs('#eac-name')?.value?.trim();
   if (!name) { toast('Account name required'); return; }
+  const dupe = DB.a('ac').find(a => a.id !== id && (a.name||'').toLowerCase().trim() === name.toLowerCase());
+  if (dupe && !confirm2(`An account named "${dupe.name}" already exists. Create anyway?`)) return;
   const skus = [...document.querySelectorAll('#eac-skus input:checked')].map(x=>x.value);
   const par = {};
   skus.forEach(s=>{par[s]=parseInt(qs('#par-'+s)?.value)||24;});
@@ -7981,13 +7987,15 @@ function toggleStop(i) {
   const ac2 = (stop.accountId ? DB.a('ac').find(a=>a.id===stop.accountId) : null)
             || _findAccount(null, stop.name);
 
+  if (!wasDone && stop.done && !ac2) {
+    run.stops[i].done = false;
+    DB.setObj('today_run', run);
+    renderDelivery();
+    toast('Cannot mark done — no matching account for "' + (stop.name||'unknown') + '"');
+    return;
+  }
+
   if (!wasDone && stop.done && ac2) {
-    // ── Atomic delivery confirmation ──────────────────────
-    // All four side-effects in one Firestore write:
-    //  1. today_run updated above (done flag)
-    //  2. account lastOrder
-    //  3. inventory deduction in CANS (stop qty × CANS_PER_CASE)
-    //  4. delivery order record in CASES
     const ordItems = SKUS.filter(s=>stop[s.id]>0).map(s=>({sku:s.id, qty:stop[s.id]}));
     const canCount = ordItems.reduce((sum,i)=>sum + i.qty * CANS_PER_CASE, 0);
     const newOrd = {
@@ -10386,7 +10394,7 @@ function openLfInvoiceModal(id) {
           if (result?.id) entry.sentMessageId = result.id;
           DB.update('ac', ac.id, a => ({
             ...a, lastContacted: today(),
-            cadence: [...(a.cadence||[]), entry],
+            cadence: _pushCadence(a.cadence, entry),
           }));
           renderAccounts();
           const updatedAc = DB.a('ac').find(x => x.id === ac.id);
@@ -11429,7 +11437,7 @@ function openCombinedInvoicePreview(combinedId) {
         DB.update('ac', rec.accountId, a => ({
           ...a,
           lastContacted: today(),
-          cadence: [...(a.cadence||[]), entry],
+          cadence: _pushCadence(a.cadence, entry),
         }));
         renderAccounts();
         renderInvoicesPage();
@@ -13290,7 +13298,7 @@ async function confirmPortalOrder() {
           DB.update('ac', d.accountId, a => ({
             ...a,
             lastContacted: today(),
-            cadence: [...(a.cadence || []), entry],
+            cadence: _pushCadence(a.cadence, entry),
           }));
         })
         .catch(err => console.warn('Order confirmation email failed:', err));
@@ -14686,7 +14694,7 @@ async function approveApplication(docId, app) {
         sentBy: _currentUserName(), method: 'auto',
       };
       if (result?.id) entry.sentMessageId = result.id;
-      DB.update('ac', acId, a => ({ ...a, cadence: [...(a.cadence || []), entry] }));
+      DB.update('ac', acId, a => ({ ...a, cadence: _pushCadence(a.cadence, entry) }));
     } catch(e) { console.error('Approve email failed', e); toast('⚠️ Account created but welcome email failed — resend from Emails page'); }
   }
 

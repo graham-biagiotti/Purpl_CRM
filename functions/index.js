@@ -341,22 +341,25 @@ exports.resendWebhook = onRequest(
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
-    // Validate webhook signature if secret is configured
+    // Validate webhook signature — reject if secret is missing or verification fails
     const whSecret = process.env.RESEND_WEBHOOK_SECRET;
-    if (whSecret) {
-      try {
-        const {Webhook} = require('svix');
-        const wh = new Webhook(whSecret);
-        wh.verify(JSON.stringify(req.body), {
-          'svix-id': req.headers['svix-id'],
-          'svix-timestamp': req.headers['svix-timestamp'],
-          'svix-signature': req.headers['svix-signature'],
-        });
-      } catch (err) {
-        console.warn('Webhook signature verification failed:', err.message);
-        res.status(401).send('Invalid signature');
-        return;
-      }
+    if (!whSecret) {
+      console.error('RESEND_WEBHOOK_SECRET not configured — rejecting webhook');
+      res.status(500).send('Webhook secret not configured');
+      return;
+    }
+    try {
+      const {Webhook} = require('svix');
+      const wh = new Webhook(whSecret);
+      wh.verify(JSON.stringify(req.body), {
+        'svix-id': req.headers['svix-id'],
+        'svix-timestamp': req.headers['svix-timestamp'],
+        'svix-signature': req.headers['svix-signature'],
+      });
+    } catch (err) {
+      console.warn('Webhook signature verification failed:', err.message);
+      res.status(401).send('Invalid signature');
+      return;
     }
 
     const event = req.body;
@@ -437,9 +440,12 @@ async function _logCadenceEntry(accountId, entryData) {
       method: 'resend',
       ...entryData,
     };
+    const cadence = [...(account.cadence || []), entry];
+    // Cap at 500 entries to stay well under the 1MB Firestore doc limit
+    const trimmed = cadence.length > 500 ? cadence.slice(-500) : cadence;
     await ref.update({
       lastContacted: new Date().toISOString().slice(0, 10),
-      cadence: [...(account.cadence || []), entry],
+      cadence: trimmed,
       _updatedAt: new Date().toISOString(),
     });
   } catch (err) {
