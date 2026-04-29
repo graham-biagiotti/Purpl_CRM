@@ -6,7 +6,6 @@ if (!admin.apps.length) admin.initializeApp();
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
-const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -294,7 +293,6 @@ exports.sendApplicationConfirmation = onCall(
 
 // ── 3c. AI Proxy — keeps Anthropic key server-side ───────
 exports.callAnthropic = onCall(
-  {secrets: [anthropicApiKey]},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
