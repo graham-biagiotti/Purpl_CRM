@@ -782,28 +782,24 @@ function loadLfSkus(prevOrder) {
     });
 }
 
-let _portalPassword = '';
-
 function init() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('t');
 
-  // Load portal settings (password, mode, pricing)
-  db.collection('portal_settings').doc('config').get().then(function(doc) {
-    if (doc.exists) {
-      _portalPassword = doc.data().portalPassword || '';
-      portalMode = doc.data().mode || 'preorder';
-      pricePerCase = doc.data().pricePerCase || null;
-      if (portalMode === 'preorder') {
-        document.getElementById('preorder-banner').style.display = 'block';
-        if (document.getElementById('preorder-note')) document.getElementById('preorder-note').style.display = 'block';
-        document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
-      } else {
-        document.getElementById('submit-btn').textContent = 'Place Order';
-        if (pricePerCase) {
-          document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
-          document.getElementById('price-display').style.display = 'block';
-        }
+  // Load portal config via Cloud Function (never exposes password to client)
+  firebase.functions().httpsCallable('getPortalConfig')({}).then(function(result) {
+    var cfg = result.data || {};
+    portalMode = cfg.mode || 'preorder';
+    pricePerCase = cfg.pricePerCase || null;
+    if (portalMode === 'preorder') {
+      document.getElementById('preorder-banner').style.display = 'block';
+      if (document.getElementById('preorder-note')) document.getElementById('preorder-note').style.display = 'block';
+      document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
+    } else {
+      document.getElementById('submit-btn').textContent = 'Place Order';
+      if (pricePerCase) {
+        document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
+        document.getElementById('price-display').style.display = 'block';
       }
     }
   }).catch(function() {});
@@ -1618,20 +1614,24 @@ function renderOrderHistory(orders) {
 function checkPortalPassword() {
   const input = document.getElementById('portal-password').value.trim();
   if (!input) return;
-  if (!_portalPassword) {
-    // No password configured — let anyone through
-    document.getElementById('password-gate').style.display = 'none';
-    document.getElementById('order-form').style.display = '';
-    _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
-    return;
-  }
-  if (input === _portalPassword) {
-    document.getElementById('password-gate').style.display = 'none';
-    document.getElementById('order-form').style.display = '';
-    _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
-  } else {
-    document.getElementById('pw-error').style.display = '';
-  }
+  var btn = document.querySelector('#password-gate button');
+  if (btn) btn.disabled = true;
+  firebase.functions().httpsCallable('verifyPortalPassword')({ password: input })
+    .then(function(result) {
+      if (result.data && result.data.valid) {
+        document.getElementById('password-gate').style.display = 'none';
+        document.getElementById('order-form').style.display = '';
+        _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
+      } else {
+        document.getElementById('pw-error').style.display = '';
+      }
+    })
+    .catch(function() {
+      document.getElementById('pw-error').style.display = '';
+    })
+    .finally(function() {
+      if (btn) btn.disabled = false;
+    });
 }
 
 init();

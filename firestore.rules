@@ -2,8 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper: check if the authenticated user has admin role
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users collection: user can read own doc, admins can read/write all
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if isAdmin();
+    }
+
     // Accounts and prospects: auth required for all access.
-    // Portal token lookup is handled server-side via lookupPortalToken Cloud Function.
     match /accounts/{accountId} {
       allow read, write: if request.auth != null;
     }
@@ -13,7 +26,6 @@ service cloud.firestore {
     }
 
     // Portal: public can submit orders (create only)
-    // Field-level validation prevents oversized payloads and junk data.
     match /portal_orders/{orderId} {
       allow create: if true
         && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'status'])
@@ -42,10 +54,10 @@ service cloud.firestore {
       allow read, delete: if request.auth != null;
     }
 
-    // Portal: public can read settings for mode
+    // Portal settings: admin-only (Cloud Functions serve public fields)
     match /portal_settings/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
 
     // Wholesale page: public can submit inquiries
@@ -61,7 +73,14 @@ service cloud.firestore {
       allow read, update, delete: if request.auth != null;
     }
 
-    // Everything else requires auth (workspace collections, invoices, etc.)
+    // Workspace data: all auth users can read/write (employees need full access)
+    // Sensitive config writes restricted to admin
+    match /workspace/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Everything else requires auth
     match /{document=**} {
       allow read, write: if request.auth != null;
     }

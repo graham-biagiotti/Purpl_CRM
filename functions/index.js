@@ -6,6 +6,7 @@ if (!admin.apps.length) admin.initializeApp();
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
+const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -291,6 +292,84 @@ exports.sendApplicationConfirmation = onCall(
   }
 );
 
+// ── 3c. AI Proxy — keeps Anthropic key server-side ───────
+exports.callAnthropic = onCall(
+  {secrets: [anthropicApiKey]},
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    const data = request.data;
+    if (!data.prompt || typeof data.prompt !== 'string') {
+      throw new HttpsError('invalid-argument', 'Missing prompt');
+    }
+    if (data.prompt.length > 5000) {
+      throw new HttpsError('invalid-argument', 'Prompt too long');
+    }
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new HttpsError('failed-precondition', 'AI features not configured — ask admin to set ANTHROPIC_API_KEY');
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: data.systemPrompt || '',
+          messages: [{ role: 'user', content: data.prompt }],
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `API error ${response.status}`);
+      }
+      const result = await response.json();
+      return { text: result.content?.[0]?.text || '' };
+    } catch (err) {
+      console.error('Anthropic API error:', err.message);
+      throw new HttpsError('internal', 'AI service unavailable');
+    }
+  }
+);
+
+// ── 3e. Check Duplicate Application ──────────────────────
+exports.checkDuplicateApplication = onCall(async (request) => {
+  const email = request.data?.email;
+  if (!email || typeof email !== 'string') return { exists: false };
+  const db = admin.firestore();
+  const snap = await db.collection('portal_inquiries')
+    .where('email', '==', email.toLowerCase().trim()).limit(1).get();
+  return { exists: !snap.empty };
+});
+
+// ── 3f. Get Portal Config (public, no password) ──────────
+// Returns only public-safe fields from portal_settings.
+exports.getPortalConfig = onCall(async (request) => {
+  const db = admin.firestore();
+  const snap = await db.collection('portal_settings').doc('config').get();
+  if (!snap.exists) return { mode: 'preorder', pricePerCase: null };
+  const data = snap.data();
+  return {
+    mode: data.mode || 'preorder',
+    pricePerCase: data.pricePerCase || null,
+  };
+});
+
+// ── 3d. Verify Portal Password (public) ──────────────────
+// Checks password server-side — never exposes the password to the client.
+exports.verifyPortalPassword = onCall(async (request) => {
+  const pw = request.data?.password;
+  if (!pw || typeof pw !== 'string') return { valid: false };
+  const db = admin.firestore();
+  const snap = await db.collection('portal_settings').doc('config').get();
+  if (!snap.exists) return { valid: true };
+  const stored = snap.data().portalPassword || '';
+  if (!stored) return { valid: true };
+  return { valid: pw === stored };
+});
+
 // ── 4. Portal Token Lookup ─────────────────────────────────
 // Public callable — takes a token, returns account info for the portal.
 // Queries Firestore server-side so accounts/prospects collections can
@@ -456,3 +535,43 @@ async function _logCadenceEntry(accountId, entryData) {
     console.warn('_logCadenceEntry error:', err.message);
   }
 }
+
+// ── 7. Invite Employee ───────────────────────────────────
+// Admin-only: creates a Firebase Auth user and users/{uid} doc with role.
+exports.inviteEmployee = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+
+  const db = admin.firestore();
+  const callerSnap = await db.collection('users').doc(request.auth.uid).get();
+  if (!callerSnap.exists || callerSnap.data().role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Only admins can invite employees');
+  }
+
+  const {email, displayName, role} = request.data || {};
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    throw new HttpsError('invalid-argument', 'Valid email required');
+  }
+  const assignRole = (role === 'admin') ? 'admin' : 'employee';
+
+  try {
+    const userRecord = await admin.auth().createUser({
+      email,
+      displayName: displayName || email.split('@')[0],
+    });
+    await db.collection('users').doc(userRecord.uid).set({
+      email,
+      displayName: displayName || email.split('@')[0],
+      role: assignRole,
+      invitedBy: request.auth.token.email || request.auth.uid,
+      createdAt: new Date().toISOString(),
+    });
+    const link = await admin.auth().generatePasswordResetLink(email);
+    return { success: true, uid: userRecord.uid, resetLink: link };
+  } catch (err) {
+    if (err.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'A user with this email already exists');
+    }
+    console.error('inviteEmployee error:', err.message);
+    throw new HttpsError('internal', 'Failed to create employee account');
+  }
+});

@@ -809,50 +809,71 @@ function wsSubmitApplication() {
   if (hasError) return;
 
   btn.disabled = true;
-  btn.textContent = 'Submitting...';
+  btn.textContent = 'Checking...';
 
-  var addrEl = document.getElementById('ws-address');
-  var addrLat = addrEl?.dataset?.lat ? parseFloat(addrEl.dataset.lat) : null;
-  var addrLng = addrEl?.dataset?.lng ? parseFloat(addrEl.dataset.lng) : null;
+  // Check for duplicate application by email (server-side — portal_inquiries is not publicly readable)
+  firebase.functions().httpsCallable('checkDuplicateApplication')({ email: email })
+    .then(function(result) {
+      if (result.data && result.data.exists) {
+        btn.textContent = 'Submit Application';
+        btn.disabled = false;
+        var errEl = document.getElementById('ws-error');
+        if (errEl) {
+          errEl.textContent = 'An application with this email has already been submitted. We\'ll be in touch soon.';
+          errEl.style.display = 'block';
+        } else {
+          alert('An application with this email has already been submitted.');
+        }
+        return Promise.reject('duplicate');
+      }
+      btn.textContent = 'Submitting...';
 
-  firebase.firestore().collection('portal_inquiries').add({
-    submittedAt:     firebase.firestore.FieldValue.serverTimestamp(),
-    businessName:    businessName,
-    contactName:     contactName,
-    email:           email,
-    phone:           document.getElementById('ws-phone').value.trim(),
-    address:         addrEl.value.trim(),
-    lat:             addrLat,
-    lng:             addrLng,
-    storeType:       document.getElementById('ws-type').value,
-    message:         document.getElementById('ws-message').value.trim(),
-    howHeard:        document.getElementById('ws-how-heard').value.trim(),
-    distributorName: document.getElementById('ws-distributor').value.trim(),
-    socialHandle:    document.getElementById('ws-social').value.trim(),
-    brandsInterested: selectedBrands.slice(),
-    source:          'wholesale_page',
-    status:          'new'
-  }).then(function(docRef) {
-    var card = document.getElementById('apply-form-card');
-    card.innerHTML =
-      '<div class="apply-success">' +
-        '<h3>Application received.</h3>' +
-        '<p>We review every application and will follow up at the email address you provided within 1 business day.</p>' +
-      '</div>';
-    // Send confirmation email (fire-and-forget — don't block the success UI)
-    firebase.functions().httpsCallable('sendApplicationConfirmation')({
-      to: email,
-      businessName: businessName,
-      contactName: contactName,
-      inquiryDocId: docRef.id,
-    }).catch(function(e) { console.log('Confirmation email error (non-critical):', e); });
-  }).catch(function(e) {
-    console.error('Application submit error:', e);
-    errEl.textContent = 'Submission failed. Please try again or email graham@pumpkinblossomfarm.com';
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Submit Application';
-  });
+      var addrEl = document.getElementById('ws-address');
+      var addrLat = addrEl?.dataset?.lat ? parseFloat(addrEl.dataset.lat) : null;
+      var addrLng = addrEl?.dataset?.lng ? parseFloat(addrEl.dataset.lng) : null;
+
+      return firebase.firestore().collection('portal_inquiries').add({
+        submittedAt:     firebase.firestore.FieldValue.serverTimestamp(),
+        businessName:    businessName,
+        contactName:     contactName,
+        email:           email,
+        phone:           document.getElementById('ws-phone').value.trim(),
+        address:         addrEl.value.trim(),
+        lat:             addrLat,
+        lng:             addrLng,
+        storeType:       document.getElementById('ws-type').value,
+        message:         document.getElementById('ws-message').value.trim(),
+        howHeard:        document.getElementById('ws-how-heard').value.trim(),
+        distributorName: document.getElementById('ws-distributor').value.trim(),
+        socialHandle:    document.getElementById('ws-social').value.trim(),
+        brandsInterested: selectedBrands.slice(),
+        source:          'wholesale_page',
+        status:          'new'
+      });
+    }).then(function(docRef) {
+      var card = document.getElementById('apply-form-card');
+      card.innerHTML =
+        '<div class="apply-success">' +
+          '<h3>Application received.</h3>' +
+          '<p>We review every application and will follow up at the email address you provided within 1 business day.</p>' +
+        '</div>';
+      firebase.functions().httpsCallable('sendApplicationConfirmation')({
+        to: email,
+        businessName: businessName,
+        contactName: contactName,
+        inquiryDocId: docRef.id,
+      }).catch(function(e) { console.log('Confirmation email error (non-critical):', e); });
+    }).catch(function(e) {
+      if (e === 'duplicate') return;
+      console.error('Application submit error:', e);
+      var errEl = document.getElementById('ws-error');
+      if (errEl) {
+        errEl.textContent = 'Submission failed. Please try again or email graham@pumpkinblossomfarm.com';
+        errEl.style.display = 'block';
+      }
+      btn.disabled = false;
+      btn.textContent = 'Submit Application';
+    });
 }
 </script>
 <script>

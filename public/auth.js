@@ -97,6 +97,25 @@ async function bootApp() {
       }
       clearTimeout(slowTimer);
 
+      // Ensure a users/{uid} doc exists for role-based access control
+      try {
+        const { doc, getDoc, setDoc } = window.FirestoreAPI;
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || '',
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+          });
+        }
+        window._userRole = userSnap.exists() ? userSnap.data().role : 'admin';
+      } catch(e) {
+        console.warn('User doc init failed:', e);
+        window._userRole = 'employee';
+      }
+
       checkMigration();
 
       loadingScreen.style.display = 'none';

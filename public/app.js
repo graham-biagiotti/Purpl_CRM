@@ -106,10 +106,7 @@ function _currentUserEmail() {
   return window._currentUser?.email || '';
 }
 function _isAdmin() {
-  const s = DB?.obj?.('settings', {});
-  const email = _currentUserEmail();
-  const admins = s?.admins || ['graham@pumpkinblossomfarm.com'];
-  return admins.includes(email);
+  return window._userRole === 'admin';
 }
 
 function toast(msg, dur=3000) {
@@ -3145,33 +3142,9 @@ const CADENCE_STAGES = [
 ];
 
 async function _callAnthropicApi(userPrompt) {
-  const key = DB.obj('api_settings', {}).anthropicKey || '';
-  if (!key) {
-    toast('Add your Anthropic API key in Settings → AI to enable AI features', 5000);
-    throw new Error('No API key configured');
-  }
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: _aiSystemPrompt(),
-      messages: [{ role: 'user', content: userPrompt }]
-    })
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(()=>({}));
-    throw new Error(err?.error?.message || `API error ${response.status}`);
-  }
-  const data = await response.json();
-  const text = data.content?.[0]?.text || '';
-  // Strip markdown code fences if present
+  const fn = firebase.functions().httpsCallable('callAnthropic');
+  const result = await fn({ prompt: userPrompt, systemPrompt: _aiSystemPrompt() });
+  const text = result.data?.text || '';
   const clean = text.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
   return JSON.parse(clean);
 }
@@ -8095,14 +8068,14 @@ function offerDeliveryInvoice(stop, ac, ordId) {
   if (page) page.insertBefore(banner, page.firstChild);
 }
 
-function createDeliveryInvoice(accountId, ordId) {
+async function createDeliveryInvoice(accountId, ordId) {
   const ac      = DB.a('ac').find(a=>a.id===accountId);
   const ord     = DB.a('orders').find(o=>o.id===ordId);
   if (!ac || !ord) return;
 
   const terms   = _payTerms();
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
-  const invoiceNumber = getNextInvoiceNumber('purpl');
+  const invoiceNumber = await getNextInvoiceNumber('purpl');
 
   const lineItems = (ord.items||[]).map(i=>{
     const pricePerCase = _calcPricePerCase(ac);
@@ -10793,14 +10766,33 @@ function peekNextInvoiceNumber() {
   return `INV-${String(Math.max(cacheMax, settingsNext) + 1).padStart(4,'0')}`;
 }
 
-// Claim the next invoice number — bumps the counter. Call this only when actually saving.
-function getNextInvoiceNumber(type) {
-  // 'type' param kept for backwards compat, ignored — all invoices share INV- sequence
-  const num = peekNextInvoiceNumber();
-  const n = parseInt(num.replace(/[^0-9]/g,''));
-  const invSettings = DB.obj('invoice_settings', {});
-  DB.setObj('invoice_settings', { ...invSettings, nextInvoiceNum: n });
-  return num;
+// Claim the next invoice number atomically via Firestore transaction.
+// Prevents two tabs from claiming the same INV-XXXX.
+async function getNextInvoiceNumber(type) {
+  const configRef = firebase.firestore().collection('workspace').doc('main')
+    .collection('config').doc('main');
+  try {
+    const num = await firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(configRef);
+      const data = snap.data() || {};
+      const invSettings = data.invoice_settings || {};
+      const current = invSettings.nextInvoiceNum || 0;
+      const peek = peekNextInvoiceNumber();
+      const peekN = parseInt(peek.replace(/[^0-9]/g, ''));
+      const next = Math.max(current, peekN);
+      tx.update(configRef, { 'invoice_settings.nextInvoiceNum': next });
+      return `INV-${String(next).padStart(4, '0')}`;
+    });
+    const n = parseInt(num.replace(/[^0-9]/g, ''));
+    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+    return num;
+  } catch (e) {
+    console.warn('Invoice number transaction failed, falling back:', e);
+    const num = peekNextInvoiceNumber();
+    const n = parseInt(num.replace(/[^0-9]/g, ''));
+    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+    return num;
+  }
 }
 
 // ── New combined invoice modal ────────────────────────────
@@ -10900,7 +10892,7 @@ function _ncivCalcTotals() {
   document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
 }
 
-function saveNewCombinedInvoice() {
+async function saveNewCombinedInvoice() {
   const accountId = document.getElementById('nciv-account').value;
   if (!accountId) { toast('Select an account'); return; }
 
@@ -10940,10 +10932,10 @@ function saveNewCombinedInvoice() {
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
   const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
 
-  // Read next numbers before any write so they're accurate
-  const purplNum = getNextInvoiceNumber('purpl');
-  const lfNum    = getNextInvoiceNumber('lf');
-  const combNum  = userNum || getNextInvoiceNumber('combined');
+  // Read next numbers atomically before any write
+  const purplNum = await getNextInvoiceNumber('purpl');
+  const lfNum    = await getNextInvoiceNumber('lf');
+  const combNum  = userNum || await getNextInvoiceNumber('combined');
   const purplId  = uid();
   const lfId     = uid();
   const combId   = uid();
@@ -13136,21 +13128,21 @@ async function confirmPortalOrder() {
     const purplOrderId = hasPurpl ? uid() : null;
     const lfOrderId = hasLf ? uid() : null;
 
-    // Pre-compute invoice numbers BEFORE mutating cache
+    // Pre-compute invoice numbers atomically BEFORE mutating cache
     let purplNum, lfNum, combNum, purplInvId, lfInvId, combId;
     let singleInvNum, singleInvId;
     if (isDual) {
-      purplNum = getNextInvoiceNumber('purpl');
-      lfNum    = getNextInvoiceNumber('lf');
-      combNum  = getNextInvoiceNumber('combined');
+      purplNum = await getNextInvoiceNumber('purpl');
+      lfNum    = await getNextInvoiceNumber('lf');
+      combNum  = await getNextInvoiceNumber('combined');
       purplInvId = uid();
       lfInvId    = uid();
       combId     = uid();
     } else if (hasPurpl) {
-      singleInvNum = getNextInvoiceNumber('purpl');
+      singleInvNum = await getNextInvoiceNumber('purpl');
       singleInvId = uid();
     } else if (hasLf) {
-      singleInvNum = getNextInvoiceNumber('lf');
+      singleInvNum = await getNextInvoiceNumber('lf');
       singleInvId = uid();
     }
 
@@ -13945,22 +13937,17 @@ function loadInvoiceSettings() {
 }
 
 function saveApiSettings() {
-  DB.setObj('api_settings', {
-    anthropicKey: document.getElementById('set-anthropic-key')?.value?.trim() || '',
-  });
-  toast('API settings saved ✓');
+  toast('AI key is now managed via Firebase secrets — run: firebase functions:secrets:set ANTHROPIC_API_KEY', 5000);
 }
 
 function loadApiSettings() {
-  // Gate the integrations section: only admins see the API key input
   const adminCard = document.getElementById('integrations-admin-only');
   const lockedCard = document.getElementById('integrations-locked');
   if (_isAdmin()) {
     if (adminCard) adminCard.style.display = '';
     if (lockedCard) lockedCard.style.display = 'none';
-    const s = DB.obj('api_settings', {});
     const el = document.getElementById('set-anthropic-key');
-    if (el && s.anthropicKey) el.value = s.anthropicKey;
+    if (el) el.placeholder = 'Managed via Firebase secrets';
   } else {
     if (adminCard) adminCard.style.display = 'none';
     if (lockedCard) lockedCard.style.display = '';
