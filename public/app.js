@@ -14313,7 +14313,7 @@ ${inv.notes ? `<div style="margin-bottom:20px;font-size:13px;color:#6b7280"><str
 
 // ── Invoice modal helpers (v2 — iv collection) ─────────────
 
-function saveInv(id, isNew) {
+async function saveInv(id, isNew) {
   const number    = qs('#iv-number')?.value?.trim() || '';
   const accountId = qs('#iv-account')?.value;
   const date      = qs('#iv-date')?.value || today();
@@ -14358,7 +14358,7 @@ function saveInv(id, isNew) {
   const existing = _isNew ? null : findInvoice(id);
   const saveId   = _isNew ? uid() : id;
 
-  const _invNum = number || existing?.invoiceNumber || existing?.number || getNextInvoiceNumber('purpl');
+  const _invNum = number || existing?.invoiceNumber || existing?.number || await getNextInvoiceNumber('purpl');
   const rec = {
     ...(existing||{}),
     id:           saveId,
