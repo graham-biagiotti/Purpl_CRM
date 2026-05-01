@@ -536,7 +536,9 @@ async function _logCadenceEntry(accountId, entryData) {
 
 // ── 7. Invite Employee ───────────────────────────────────
 // Admin-only: creates a Firebase Auth user and users/{uid} doc with role.
-exports.inviteEmployee = onCall(async (request) => {
+exports.inviteEmployee = onCall(
+  {secrets: [resendApiKey]},
+  async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
 
   const db = admin.firestore();
@@ -564,6 +566,45 @@ exports.inviteEmployee = onCall(async (request) => {
       createdAt: new Date().toISOString(),
     });
     const link = await admin.auth().generatePasswordResetLink(email);
+
+    // Send invite email via Resend
+    try {
+      const {Resend} = require('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({
+        from: 'lavender@pbfwholesale.com',
+        to: email,
+        subject: 'You\'re invited to purpl CRM — Pumpkin Blossom Farm',
+        html: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="500" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:28px 32px;text-align:center">
+    <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px">purpl CRM</div>
+    <div style="color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Pumpkin Blossom Farm</div>
+  </td></tr>
+  <tr><td style="padding:28px 32px;font-size:15px;color:#1a1a2e;line-height:1.7">
+    <p>Hi ${escHtml(displayName || email.split('@')[0])},</p>
+    <p>You've been invited to join the <strong>purpl CRM</strong> team as ${assignRole === 'admin' ? 'an admin' : 'an employee'}.</p>
+    <p>Click the button below to set your password and sign in:</p>
+    <div style="text-align:center;margin:24px 0">
+      <a href="${link}" style="display:inline-block;background:#4a2d7a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
+    </div>
+    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#4a2d7a">purpl-crm.web.app</a> to sign in.</p>
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+    Pumpkin Blossom Farm LLC · Warner, NH
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`,
+      });
+    } catch (emailErr) {
+      console.warn('Invite email failed (account still created):', emailErr.message);
+    }
+
     return { success: true, uid: userRecord.uid, resetLink: link };
   } catch (err) {
     if (err.code === 'auth/email-already-exists') {

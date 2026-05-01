@@ -9753,8 +9753,9 @@ async function inviteEmployee() {
     const result = await fn({ email, displayName: name, role });
     if (resultEl) {
       resultEl.style.display = '';
-      resultEl.innerHTML = `<strong>Invite sent.</strong> Share this password reset link with the employee:<br>
-        <a href="${escHtml(result.data.resetLink)}" target="_blank" style="word-break:break-all;font-size:12px">${escHtml(result.data.resetLink)}</a>`;
+      resultEl.innerHTML = `<strong>✓ Invite email sent to ${escHtml(email)}.</strong> They'll get a link to set their password and sign in.<br>
+        <details style="margin-top:6px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Backup link (if email doesn't arrive)</summary>
+        <a href="${escHtml(result.data.resetLink)}" target="_blank" style="word-break:break-all;font-size:12px">${escHtml(result.data.resetLink)}</a></details>`;
     }
     auditLog('create', 'user', result.data.uid, `Invited ${email} as ${role}`);
     qs('#invite-email').value = '';
