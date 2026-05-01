@@ -1179,7 +1179,7 @@ function renderAttention() {
   });
 
   // Overdue distributor invoices
-  DB.a('dist_invoices').filter(i=>i.status==='unpaid'&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
+  DB.a('dist_invoices').filter(i=>!['paid','draft','void'].includes(i.status)&&i.dueDate&&i.dueDate<todayStr).forEach(i=>{
     const d = DB.a('dist_profiles').find(x=>x.id===i.distId);
     items.push({icon:'💸', name:`${d?.name||'Distributor'} — Invoice Overdue`, reason:`${fmtC(i.total)} due ${fmtD(i.dueDate)}`, action:`openDistributor('${i.distId}')`, borderColor:'#dc2626'});
   });
@@ -5215,9 +5215,11 @@ const DIST_PO_STATUS = {
 };
 
 const DIST_INV_STATUS = {
-  unpaid:  {label:'Unpaid',  cls:'amber'},
+  draft:   {label:'Draft',   cls:'gray'},
+  sent:    {label:'Sent',    cls:'blue'},
   paid:    {label:'Paid',    cls:'green'},
-  partial: {label:'Partial', cls:'blue'},
+  void:    {label:'Void',    cls:'red'},
+  unpaid:  {label:'Unpaid',  cls:'amber'},
   overdue: {label:'Overdue', cls:'red'},
 };
 
@@ -5237,7 +5239,7 @@ function _renderDistListKPIs() {
     const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
     return s + (dc||d.doorCount||0);
   }, 0);
-  const outstanding = allInvs.filter(i=>['unpaid','overdue'].includes(i.status));
+  const outstanding = allInvs.filter(i=>!['paid','draft','void'].includes(i.status));
   const outstandingVal = outstanding.reduce((s,i)=>s+(i.total||0),0);
 
   // Cases moved this month (sum dist_pos cases where dateReceived >= first of month)
@@ -5306,7 +5308,7 @@ function _renderDistListKPIs() {
 // ── List Page ─────────────────────────────────────────────
 function _distCardHTML(d) {
   const pos    = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
-  const invs   = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
+  const invs   = DB.a('dist_invoices').filter(i=>i.distId===d.id&&!['paid','draft','void'].includes(i.status));
   const chains = DB.a('dist_chains').filter(c=>c.distId===d.id);
   const totalDoors = chains.reduce((s,c)=>s+(c.doorCount||0),0) || d.doorCount || 0;
   const pendingVal = invs.reduce((s,i)=>s+(i.total||0),0);
@@ -5510,7 +5512,7 @@ function renderDistOverviewHTML(d) {
   const terms = d.paymentTerms==='custom' ? `Custom (${d.paymentTermsDays||'?'} days)` : d.paymentTerms||'Net 30';
   const linkedAccounts = DB.a('ac').filter(a=>a.fulfilledBy===d.id);
   const linkedCount = linkedAccounts.length;
-  const distInvs = DB.a('dist_invoices').filter(i=>i.distId===d.id&&['unpaid','overdue'].includes(i.status));
+  const distInvs = DB.a('dist_invoices').filter(i=>i.distId===d.id&&!['paid','draft','void'].includes(i.status));
   const outstandingInvVal = distInvs.reduce((s,i)=>s+(i.total||0),0);
   const recentPO = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0];
   const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
@@ -5894,18 +5896,19 @@ function renderDistOrdersHTML(d) {
 
 function renderDistInvoicesHTML(d) {
   const invs = DB.a('dist_invoices').filter(i=>i.distId===d.id).sort((a,b)=>b.dateIssued>a.dateIssued?1:-1);
-  const totalOutstanding = invs.filter(i=>['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+  const totalOutstanding = invs.filter(i=>!['paid','draft','void'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+  const statusMap = {draft:'gray', sent:'blue', paid:'green', void:'red'};
 
   const rows = invs.map(inv=>`<tr>
-    <td>${inv.invoiceNumber||'—'}</td>
+    <td><a href="#" onclick="editDistInvoice('${inv.id}');return false" style="color:var(--purple);text-decoration:none;font-weight:500">${escHtml(inv.invoiceNumber||'—')}</a></td>
     <td>${fmtD(inv.dateIssued)}</td>
     <td>${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
     <td>${fmtC(inv.total||0)}</td>
-    <td>${statusBadge(DIST_INV_STATUS,inv.status)}</td>
-    <td>${inv.externalRef?`<small style="color:var(--lavblue)">${inv.externalRef}</small>`:'—'}</td>
+    <td><span class="badge ${statusMap[inv.status]||'amber'}">${inv.status||'draft'}</span></td>
+    <td>${inv.externalRef?`<small style="color:var(--lavblue)">${escHtml(inv.externalRef)}</small>`:'—'}</td>
     <td>
-      ${inv.status!=='paid'?`<button class="btn xs green" onclick="markDistInvoicePaid('${inv.id}','${d.id}')">Mark Paid</button>`:''}
-      <button class="btn xs red" onclick="deleteDistInvoice('${inv.id}','${d.id}')">✕</button>
+      ${inv.status!=='paid'?`<button class="btn xs green" onclick="markDistInvoicePaid('${inv.id}','${d.id}')">✓ Paid</button>`:''}
+      <button class="btn xs" onclick="editDistInvoice('${inv.id}')">Edit</button>
     </td>
   </tr>`).join('');
 
@@ -6438,79 +6441,122 @@ function pickDistForInvoice() {
 function addDistInvoice(distId) { _openDistInvModal(distId); }
 function addDistInvoiceInModal(distId) { closeModal('modal-distributor'); _openDistInvModal(distId); }
 
-function _openDistInvModal(distId) {
+function _openDistInvModal(distId, existingId) {
+  const existing = existingId ? DB.a('dist_invoices').find(x => x.id === existingId) : null;
+  const isNew = !existing;
+  const titleEl = qs('#mdinv-title');
+  if (titleEl) titleEl.textContent = isNew ? 'New Distributor Invoice' : 'Edit Distributor Invoice';
+
+  // Populate distributor dropdown
+  const sel = qs('#mdinv-dist-sel');
+  if (sel) {
+    sel.innerHTML = '<option value="">Select distributor...</option>' +
+      DB.a('dist_profiles').map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+    sel.value = distId || existing?.distId || '';
+    sel.onchange = () => _mdinvUpdateDueDate();
+  }
+
   const el = qs('#mdinv-sku-inputs');
-  if (el) el.innerHTML = SKUS.map(s=>`
+  if (el) el.innerHTML = SKUS.map(s => `
     <div class="sku-row ${s.bg}" style="margin-bottom:4px">
       ${skuBadge(s.id)}
-      <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" style="width:80px">
+      <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" style="width:80px"
+        value="${existing ? (existing.items?.find(i => i.sku === s.id)?.cases || '') : ''}">
       <span style="font-size:12px;color:var(--muted)">cases</span>
     </div>`).join('');
 
-  const now = today();
-  const terms = DB.a('dist_profiles').find(x=>x.id===distId)?.paymentTermsDays||30;
-  const dueDate = new Date(Date.now()+terms*864e5).toISOString().slice(0,10);
+  qs('#mdinv-number').value  = existing?.invoiceNumber || peekNextInvoiceNumber();
+  qs('#mdinv-date').value    = existing?.dateIssued || today();
+  qs('#mdinv-po-ref').value  = existing?.poRef || '';
+  qs('#mdinv-ext-ref').value = existing?.externalRef || '';
+  qs('#mdinv-status').value  = existing?.status || 'draft';
+  qs('#mdinv-notes').value   = existing?.notes || '';
 
-  qs('#mdinv-number').value  = '';
-  qs('#mdinv-date').value    = now;
-  qs('#mdinv-due').value     = dueDate;
-  qs('#mdinv-po-ref').value  = '';
-  qs('#mdinv-ext-ref').value = '';
-  qs('#mdinv-status').value  = 'unpaid';
-  qs('#mdinv-notes').value   = '';
-  qs('#mdinv-save-btn').onclick = ()=>saveDistInvoice(distId);
+  _mdinvUpdateDueDate(existing?.dueDate);
+
+  qs('#mdinv-save-btn').onclick = () => saveDistInvoice(existingId);
+  const delBtn = qs('#mdinv-delete-btn');
+  if (delBtn) {
+    delBtn.style.display = isNew ? 'none' : '';
+    delBtn.onclick = () => deleteDistInvoice(existingId);
+  }
   openModal('modal-add-dist-invoice');
 }
 
-function saveDistInvoice(distId) {
-  const invNum = qs('#mdinv-number')?.value?.trim();
-  const date   = qs('#mdinv-date')?.value;
-  if (!invNum||!date) { toast('Invoice number and date required'); return; }
+function _mdinvUpdateDueDate(override) {
+  if (override) { qs('#mdinv-due').value = override; return; }
+  const distId = qs('#mdinv-dist-sel')?.value;
+  const terms = DB.a('dist_profiles').find(x => x.id === distId)?.paymentTermsDays || 30;
+  qs('#mdinv-due').value = new Date(Date.now() + terms * 864e5).toISOString().slice(0, 10);
+}
 
-  const pricing = DB.a('dist_pricing').filter(p=>p.distId===distId);
-  const items = SKUS.map(s=>({
-    sku:s.id,
-    cases: parseInt(qs('#mdinv-cases-'+s.id)?.value)||0,
-    pricePerCase: (v=>isNaN(v)?0:v)(parseFloat(pricing.find(p=>p.sku===s.id)?.pricePerCase))
-  })).filter(i=>i.cases>0);
+function editDistInvoice(invId) {
+  const inv = DB.a('dist_invoices').find(x => x.id === invId);
+  if (!inv) return;
+  _openDistInvModal(inv.distId, invId);
+}
+
+async function saveDistInvoice(existingId) {
+  const distId = qs('#mdinv-dist-sel')?.value;
+  if (!distId) { toast('Select a distributor'); return; }
+  const date = qs('#mdinv-date')?.value;
+  if (!date) { toast('Date required'); return; }
+
+  const userNum = qs('#mdinv-number')?.value?.trim();
+  const invNum = userNum || await getNextInvoiceNumber('dist');
+
+  const pricing = DB.a('dist_pricing').filter(p => p.distId === distId);
+  const items = SKUS.map(s => ({
+    sku: s.id,
+    cases: parseInt(qs('#mdinv-cases-' + s.id)?.value) || 0,
+    pricePerCase: (v => isNaN(v) ? 0 : v)(parseFloat(pricing.find(p => p.sku === s.id)?.pricePerCase))
+  })).filter(i => i.cases > 0);
   if (!items.length) { toast('Enter at least one SKU quantity'); return; }
 
-  const total = items.reduce((s,i)=>s+i.cases*i.pricePerCase, 0);
+  const total = items.reduce((s, i) => s + i.cases * i.pricePerCase, 0);
+  const dist = DB.a('dist_profiles').find(x => x.id === distId);
 
   const rec = {
-    id:uid(), distId,
+    ...(existingId ? (DB.a('dist_invoices').find(x => x.id === existingId) || {}) : {}),
+    id: existingId || uid(),
+    distId,
+    distName: dist?.name || '',
     invoiceNumber: invNum,
-    dateIssued:    date,
-    dueDate:       qs('#mdinv-due')?.value||'',
-    poRef:         qs('#mdinv-po-ref')?.value?.trim()||'',
-    externalRef:   qs('#mdinv-ext-ref')?.value?.trim()||'',
+    number: invNum,
+    dateIssued: date,
+    dueDate: qs('#mdinv-due')?.value || '',
+    poRef: qs('#mdinv-po-ref')?.value?.trim() || '',
+    externalRef: qs('#mdinv-ext-ref')?.value?.trim() || '',
     items, total,
-    status:  qs('#mdinv-status')?.value||'unpaid',
-    notes:   qs('#mdinv-notes')?.value?.trim()||'',
+    status: qs('#mdinv-status')?.value || 'draft',
+    notes: qs('#mdinv-notes')?.value?.trim() || '',
   };
-  DB.push('dist_invoices', rec);
+
+  if (existingId) DB.update('dist_invoices', existingId, () => rec);
+  else DB.push('dist_invoices', rec);
+
   closeModal('modal-add-dist-invoice');
   if (_currentDistId) openDistributor(_currentDistId);
+  if (currentPage === 'invoices') renderInvoicesPage();
   renderDistributors();
-  toast('Invoice saved');
+  toast(`Invoice ${invNum} saved ✓`);
 }
 
 function markDistInvoicePaid(invId, distId) {
-  DB.update('dist_invoices', invId, i=>({...i, status:'paid', paidDate:today()}));
-  const d = DB.a('dist_profiles').find(x=>x.id===distId);
+  DB.update('dist_invoices', invId, i => ({ ...i, status: 'paid', paidDate: today() }));
+  const d = DB.a('dist_profiles').find(x => x.id === distId);
   const pane = qs('#mdist-tab-invoices');
-  if (d&&pane) pane.innerHTML = renderDistInvoicesHTML(d);
-  // Refresh invoice page column if open
+  if (d && pane) pane.innerHTML = renderDistInvoicesHTML(d);
   if (qs('#inv-col-dist')) renderInvColDist();
   toast('Marked as paid');
 }
 
-function deleteDistInvoice(invId, distId) {
+function deleteDistInvoice(invId) {
   if (!confirm2('Delete this invoice?')) return;
   DB.remove('dist_invoices', invId);
-  const d = DB.a('dist_profiles').find(x=>x.id===distId);
-  const pane = qs('#mdist-tab-invoices');
-  if (d&&pane) pane.innerHTML = renderDistInvoicesHTML(d);
+  closeModal('modal-add-dist-invoice');
+  if (_currentDistId) openDistributor(_currentDistId);
+  if (currentPage === 'invoices') renderInvoicesPage();
   toast('Invoice deleted');
 }
 
@@ -6692,7 +6738,7 @@ function renderDistDashKPIs() {
     const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
     return s + (dc||d.doorCount||0);
   }, 0);
-  const outstandingInvs = DB.a('dist_invoices').filter(i=>['unpaid','overdue'].includes(i.status));
+  const outstandingInvs = DB.a('dist_invoices').filter(i=>!['paid','draft','void'].includes(i.status));
   const outstandingVal  = outstandingInvs.reduce((s,i)=>s+(i.total||0),0);
   const allPOs = DB.a('dist_pos').sort((a,b)=>b.dateReceived>a.dateReceived?1:-1);
   const lastPO  = allPOs[0]?.dateReceived || null;
@@ -8961,7 +9007,7 @@ function repDistributor() {
   });
 
   const totalPOs = rows.reduce((s,r)=>s+parseInt(r[2])||0,0);
-  const totalOut = allInv.filter(i=>['unpaid','overdue'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+  const totalOut = allInv.filter(i=>!['paid','draft','void'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
 
   _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.total||0),0)), fmtC(totalOut)+' outstanding');
 
@@ -13788,63 +13834,58 @@ function renderInvColDist() {
   const todayStr = today();
   const dists = DB.a('dist_profiles');
   const allInvs = DB.a('dist_invoices').slice().sort((a,b)=>a.dueDate>b.dueDate?1:-1);
+  const statusMap = {draft:'gray', sent:'blue', paid:'green', void:'red'};
 
-  function effectiveStatus(inv) {
-    if (inv.status === 'paid') return 'paid';
-    if (inv.dueDate && inv.dueDate < todayStr) return 'overdue';
-    return inv.status || 'unpaid';
-  }
-
-  const unpaidInvs = allInvs.filter(i => effectiveStatus(i) !== 'paid');
-  const totalOut   = unpaidInvs.reduce((s,i) => s + parseFloat(i.total||0), 0);
-  const overdueAmt = unpaidInvs.filter(i=>effectiveStatus(i)==='overdue').reduce((s,i)=>s+(i.total||0),0);
+  const outstandingInvs = allInvs.filter(i => !['paid','draft','void'].includes(i.status));
+  const totalOut   = outstandingInvs.reduce((s,i) => s + parseFloat(i.total||0), 0);
+  const overdueInvs = outstandingInvs.filter(i => i.dueDate && i.dueDate < todayStr);
+  const overdueAmt = overdueInvs.reduce((s,i) => s + (i.total||0), 0);
 
   const summaryEl = qs('#inv-col-dist-summary');
-  if (summaryEl) summaryEl.textContent = `${unpaidInvs.length} outstanding · ${fmtC(totalOut)}${overdueAmt>0?' · '+fmtC(overdueAmt)+' overdue':''}`;
+  if (summaryEl) summaryEl.textContent = `${outstandingInvs.length} outstanding · ${fmtC(totalOut)}${overdueAmt>0?' · '+fmtC(overdueAmt)+' overdue':''}`;
 
-  // Compact: top 5 urgent
   const compactEl = qs('#inv-col-dist-compact');
   if (compactEl) {
-    const top5 = unpaidInvs.slice(0,5);
+    const top5 = outstandingInvs.slice(0,5);
     compactEl.innerHTML = top5.length ? top5.map(inv=>{
       const d = dists.find(x=>x.id===inv.distId);
-      const st = effectiveStatus(inv);
-      return `<div class="inv-col-compact-row" onclick="openDistributor('${inv.distId}')" style="cursor:pointer">
+      const isOverdue = inv.dueDate && inv.dueDate < todayStr;
+      return `<div class="inv-col-compact-row" onclick="editDistInvoice('${inv.id}')" style="cursor:pointer">
         <div>
-          <div style="font-size:13px;font-weight:500">${escHtml(d?.name||inv.distId)}</div>
-          <div style="font-size:11px;color:var(--muted)">${inv.invoiceNumber||'—'} · Due ${inv.dueDate?fmtD(inv.dueDate):'—'}</div>
+          <div style="font-size:13px;font-weight:500">${escHtml(d?.name||inv.distName||'—')}</div>
+          <div style="font-size:11px;color:var(--muted)">${escHtml(inv.invoiceNumber||'—')} · Due ${inv.dueDate?fmtD(inv.dueDate):'—'}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <span style="font-size:13px;font-weight:600">${fmtC(inv.total||0)}</span>
-          <span class="badge ${DIST_INV_STATUS[st]?.cls||'gray'}">${DIST_INV_STATUS[st]?.label||st}</span>
+          <span class="badge ${isOverdue?'red':statusMap[inv.status]||'amber'}">${isOverdue?'overdue':inv.status||'draft'}</span>
         </div>
       </div>`;
     }).join('') : '<div class="empty" style="padding:16px">No outstanding distributor invoices</div>';
   }
 
-  // Expanded: full table
   const expandedEl = qs('#inv-col-dist-expanded');
   if (expandedEl) {
     expandedEl.innerHTML = `
     <div style="padding:0 4px 8px;display:flex;justify-content:flex-end">
-      <button class="btn xs" onclick="event.stopPropagation()">+ New (open distributor)</button>
+      <button class="btn xs primary" onclick="event.stopPropagation();_openDistInvModal()">+ New Invoice</button>
     </div>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Invoice #</th><th>Distributor</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Invoice #</th><th>Distributor</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
         <tbody>${allInvs.map(inv=>{
           const d = dists.find(x=>x.id===inv.distId);
-          const st = effectiveStatus(inv);
+          const isOverdue = !['paid','void'].includes(inv.status) && inv.dueDate && inv.dueDate < todayStr;
           return `<tr>
-            <td>${escHtml(inv.invoiceNumber||'—')}</td>
-            <td style="cursor:pointer;color:var(--lavblue)" onclick="openDistributor('${inv.distId}')">${escHtml(d?.name||inv.distId)}</td>
+            <td><a href="#" onclick="editDistInvoice('${inv.id}');return false" style="color:var(--purple);text-decoration:none;font-weight:500">${escHtml(inv.invoiceNumber||'—')}</a></td>
+            <td style="cursor:pointer;color:var(--lavblue)" onclick="openDistributor('${inv.distId}')">${escHtml(d?.name||inv.distName||'—')}</td>
             <td>${inv.dateIssued?fmtD(inv.dateIssued):'—'}</td>
-            <td class="${st==='overdue'?'red':''}">${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
+            <td class="${isOverdue?'red':''}">${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
             <td>${fmtC(inv.total||0)}</td>
-            <td>${statusBadge(DIST_INV_STATUS, st)}</td>
+            <td><span class="badge ${isOverdue?'red':statusMap[inv.status]||'amber'}">${isOverdue?'overdue':inv.status||'draft'}</span></td>
             <td style="white-space:nowrap">
-              ${st!=='paid'?`<button class="btn xs" onclick="markDistInvoicePaid('${inv.id}','${inv.distId}')">✓ Paid</button>`:''}
-              <button class="btn xs" onclick="_sendDistInvoiceReminder('${inv.id}')">✉ Remind</button>
+              ${inv.status!=='paid'?`<button class="btn xs green" onclick="markDistInvoicePaid('${inv.id}','${inv.distId}')">✓ Paid</button>`:''}
+              <button class="btn xs" onclick="editDistInvoice('${inv.id}')">Edit</button>
+              <button class="btn xs" onclick="_sendDistInvoiceReminder('${inv.id}')">✉</button>
             </td>
           </tr>`;
         }).join('')||'<tr><td colspan="7" class="empty">No distributor invoices</td></tr>'}
