@@ -10894,6 +10894,7 @@ function peekNextInvoiceNumber() {
     ..._allPurplInvoices(),
     ...DB.a('lf_invoices'),
     ...DB.a('combined_invoices'),
+    ...DB.a('dist_invoices'),
   ].map(x => {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
@@ -13942,7 +13943,7 @@ function renderInvColDist() {
     const top5 = outstandingInvs.slice(0,5);
     compactEl.innerHTML = top5.length ? top5.map(inv=>{
       const d = dists.find(x=>x.id===inv.distId);
-      const isOverdue = inv.dueDate && inv.dueDate < todayStr;
+      const isOverdue = !['paid','void'].includes(inv.status) && inv.dueDate && inv.dueDate < todayStr;
       return `<div class="inv-col-compact-row" onclick="editDistInvoice('${inv.id}')" style="cursor:pointer">
         <div>
           <div style="font-size:13px;font-weight:500">${escHtml(d?.name||inv.distName||'—')}</div>
