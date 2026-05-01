@@ -103,14 +103,20 @@ async function bootApp() {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) {
+          // Check if ANY users exist — first user ever is admin, all others are employee
+          const { collection, getDocs, query, limit } = window.FirestoreAPI;
+          const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+          const isFirstUser = usersSnap.empty;
           await setDoc(userRef, {
             email: user.email || '',
             displayName: user.displayName || user.email?.split('@')[0] || '',
-            role: 'admin',
+            role: isFirstUser ? 'admin' : 'employee',
             createdAt: new Date().toISOString(),
           });
+          window._userRole = isFirstUser ? 'admin' : 'employee';
+        } else {
+          window._userRole = userSnap.data().role || 'employee';
         }
-        window._userRole = userSnap.exists() ? userSnap.data().role : 'admin';
       } catch(e) {
         console.warn('User doc init failed:', e);
         window._userRole = 'employee';

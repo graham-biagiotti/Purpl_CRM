@@ -255,17 +255,24 @@ const renders = {
 };
 
 // ── Audit Log ────────────────────────────────────────────
-function auditLog(action, entityType, entityId, entityName) {
+function auditLog(action, entityType, entityId, entityName, extra) {
   if (!DB._firestoreReady) return;
   DB.push('audit_log', {
     id:         uid(),
     timestamp:  new Date().toISOString(),
-    action,       // 'create' | 'update' | 'delete'
-    entityType,   // 'account' | 'invoice' | 'order'
+    action,
+    entityType,
     entityId,
-    entityName,
+    entityName: entityName || '',
     changedBy:  _currentUserName(),
+    changedByEmail: _currentUserEmail(),
+    ...(extra || {}),
   });
+}
+function _requireAdmin(action) {
+  if (_isAdmin()) return true;
+  toast(`Only admins can ${action}`);
+  return false;
 }
 
 // ── STATUS CONFIG ────────────────────────────────────────
@@ -1945,7 +1952,10 @@ function markRetailInvPaid(id) {
 
 function deleteRetailInv(id) {
   if (!DB._firestoreReady) return;
+  if (!_requireAdmin('delete invoices')) return;
   if (!confirm2('Delete this invoice?')) return;
+  const inv = DB.a('retail_invoices').find(x => x.id === id);
+  auditLog('delete', 'retail_invoice', id, inv?.invoiceNumber || inv?.number || id);
   DB.remove('retail_invoices', id);
   renderInvoiceStatus();
   toast('Invoice deleted');
@@ -4392,6 +4402,7 @@ async function saveAccount(id, isNew) {
 }
 
 function deleteAccount(id) {
+  if (!_requireAdmin('delete accounts')) return;
   if (!confirm2('Delete this account? This cannot be undone.')) return;
   const acName = DB.a('ac').find(x=>x.id===id)?.name || id;
   DB.atomicUpdate(cache => {
@@ -5173,8 +5184,11 @@ function confirmMarkLost() {
 
 function _deleteProspectPermanent() {
   if (!_markLostId) return;
+  if (!_requireAdmin('delete prospects')) return;
   if (!confirm2('Permanently delete this prospect? This cannot be undone.')) return;
   const prospectId = _markLostId;
+  const prospectName = DB.a('pr').find(p => p.id === prospectId)?.name || prospectId;
+  auditLog('delete', 'prospect', prospectId, prospectName);
   DB.remove('pr', prospectId);
   try {
     firebase.firestore().collection('prospects').doc(prospectId).delete().catch(() => {});
@@ -6264,7 +6278,10 @@ async function saveDistributor(id, isNew) {
 }
 
 function deleteDistributor(id) {
+  if (!_requireAdmin('delete distributors')) return;
   if (!confirm2('Delete this distributor? This will also remove all associated reps, pricing, POs, and invoices.')) return;
+  const distName = DB.a('dist_profiles').find(x => x.id === id)?.name || id;
+  auditLog('delete', 'distributor', id, distName);
   DB.atomicUpdate(cache => {
     cache['dist_profiles'] = (cache['dist_profiles']||[]).filter(r=>r.id!==id);
     ['dist_reps','dist_pricing','dist_pos','dist_invoices','dist_chains','dist_imports'].forEach(k=>{
@@ -6552,7 +6569,10 @@ function markDistInvoicePaid(invId, distId) {
 }
 
 function deleteDistInvoice(invId) {
+  if (!_requireAdmin('delete invoices')) return;
   if (!confirm2('Delete this invoice?')) return;
+  const inv = DB.a('dist_invoices').find(x => x.id === invId);
+  auditLog('delete', 'dist_invoice', invId, inv?.invoiceNumber || invId);
   DB.remove('dist_invoices', invId);
   closeModal('modal-add-dist-invoice');
   if (_currentDistId) openDistributor(_currentDistId);
@@ -9600,6 +9620,13 @@ function deleteLLImportLog(id) {
 //  SETTINGS
 // ══════════════════════════════════════════════════════════
 function renderSettings() {
+  // Non-admins can view but not save settings
+  const settingsPage = document.getElementById('page-settings');
+  if (settingsPage) {
+    settingsPage.querySelectorAll('button.primary, button.green').forEach(btn => {
+      if (!_isAdmin()) btn.style.display = 'none';
+    });
+  }
   const s = DB.obj('settings', {});
   const c = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
 
@@ -9678,8 +9705,65 @@ function renderSettings() {
       const pane = document.getElementById('stab-' + btn.dataset.stab);
       if (pane) pane.style.display = '';
       if (btn.dataset.stab === 'audit') renderAuditLog();
+      if (btn.dataset.stab === 'team') renderTeamTab();
     };
   });
+}
+
+function renderTeamTab() {
+  const list = qs('#team-members-list');
+  const inviteSection = qs('#team-invite-section');
+  if (inviteSection) inviteSection.style.display = _isAdmin() ? '' : 'none';
+  if (!list) return;
+  firebase.firestore().collection('users').get().then(snap => {
+    const users = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    list.innerHTML = users.length ? `
+      <table class="data-table" style="width:100%;font-size:13px">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th>${_isAdmin()?'<th></th>':''}</tr></thead>
+        <tbody>${users.map(u => `<tr>
+          <td>${escHtml(u.displayName||'—')}</td>
+          <td>${escHtml(u.email||'—')}</td>
+          <td><span class="badge ${u.role==='admin'?'purple':'blue'}">${u.role||'employee'}</span></td>
+          <td>${u.createdAt?fmtD(u.createdAt.slice(0,10)):'—'}</td>
+          ${_isAdmin()?`<td>${u.uid !== window._currentUser?.uid ? `<button class="btn xs" onclick="toggleUserRole('${u.uid}','${u.role}')">${u.role==='admin'?'Make Employee':'Make Admin'}</button>`:''}</td>`:''}
+        </tr>`).join('')}</tbody>
+      </table>` : '<div class="empty">No team members yet</div>';
+  }).catch(() => { list.innerHTML = '<div class="empty">Could not load team members</div>'; });
+}
+
+function toggleUserRole(uid, currentRole) {
+  if (!_requireAdmin('change user roles')) return;
+  const newRole = currentRole === 'admin' ? 'employee' : 'admin';
+  if (!confirm2(`Change this user to ${newRole}?`)) return;
+  firebase.firestore().collection('users').doc(uid).update({ role: newRole })
+    .then(() => { toast(`Role changed to ${newRole}`); renderTeamTab(); })
+    .catch(e => toast('Failed: ' + e.message));
+  auditLog('update', 'user', uid, `Role changed to ${newRole}`);
+}
+
+async function inviteEmployee() {
+  if (!_requireAdmin('invite employees')) return;
+  const email = qs('#invite-email')?.value?.trim();
+  const name = qs('#invite-name')?.value?.trim();
+  const role = qs('#invite-role')?.value || 'employee';
+  if (!email) { toast('Email required'); return; }
+  const resultEl = qs('#invite-result');
+  try {
+    const fn = firebase.functions().httpsCallable('inviteEmployee');
+    const result = await fn({ email, displayName: name, role });
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.innerHTML = `<strong>Invite sent.</strong> Share this password reset link with the employee:<br>
+        <a href="${escHtml(result.data.resetLink)}" target="_blank" style="word-break:break-all;font-size:12px">${escHtml(result.data.resetLink)}</a>`;
+    }
+    auditLog('create', 'user', result.data.uid, `Invited ${email} as ${role}`);
+    qs('#invite-email').value = '';
+    qs('#invite-name').value = '';
+    renderTeamTab();
+  } catch(e) {
+    toast(e.message || 'Invite failed');
+    if (resultEl) { resultEl.style.display = ''; resultEl.textContent = 'Error: ' + (e.message || 'Unknown error'); }
+  }
 }
 
 function _updateVarietyTotal() {
@@ -9692,6 +9776,8 @@ function _updateVarietyTotal() {
 }
 
 function saveSettings() {
+  if (!_requireAdmin('change settings')) return;
+  auditLog('update', 'settings', 'settings', 'Settings changed');
   // Variety pack recipe validation
   const recipe = {};
   let recipeTotal = 0;
@@ -10670,7 +10756,10 @@ function saveLfInvoice(id, isNew) {
 }
 
 function deleteLfInvoice(id) {
+  if (!_requireAdmin('delete invoices')) return;
   if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
+  const invNum = DB.a('lf_invoices').find(x => x.id === id)?.number || id;
+  auditLog('delete', 'lf_invoice', id, invNum);
   DB.remove('lf_invoices', id);
   const orphans = DB.a('lf_wix_deductions').filter(d => d.invoiceId === id);
   orphans.forEach(d => DB.remove('lf_wix_deductions', d.id));
@@ -10744,9 +10833,11 @@ function markCombinedPaid(combinedId) {
 // ── Invoice numbering ─────────────────────────────────────
 
 function deleteCombinedInvoice(combinedId) {
+  if (!_requireAdmin('delete invoices')) return;
   if (!confirm('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions and reset linked portal orders so you can re-confirm.')) return;
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
+  auditLog('delete', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId);
   const portalOrderId = rec.portalOrderId;
   DB.atomicUpdate(cache => {
     cache.combined_invoices = (cache.combined_invoices||[]).filter(x => x.id !== combinedId);
@@ -11493,7 +11584,9 @@ function openCombinedInvoicePreview(combinedId) {
   };
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) voidBtn.onclick = () => {
+    if (!_requireAdmin('void invoices')) return;
     if (!confirm('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.')) return;
+    auditLog('void', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId);
     const wasDeducted = DB.a('iv').some(x => (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId) && x.type === 'out');
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
@@ -13935,13 +14028,18 @@ function markInvoiceSent(id) {
 }
 
 function deleteInvoice(id) {
+  if (!_requireAdmin('delete invoices')) return;
   if (!confirm('Delete this invoice?')) return;
+  const inv = findInvoice(id);
+  auditLog('delete', 'invoice', id, inv?.number || inv?.invoiceNumber || id);
   deleteInvoiceWithCleanup(id);
   renderInvoicesPage();
   toast('Deleted');
 }
 
 function saveInvoiceSettings() {
+  if (!_requireAdmin('change invoice settings')) return;
+  auditLog('update', 'settings', 'invoice_settings', 'Invoice settings changed');
   const get = id => document.getElementById(id);
   const existing = DB.obj('invoice_settings', {});
   const s = {

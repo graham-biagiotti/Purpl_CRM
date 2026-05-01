@@ -1226,6 +1226,7 @@
         <button class="tab" data-stab="email">Email</button>
         <button class="tab" data-stab="inventory">Inventory &amp; Production</button>
         <button class="tab" data-stab="integrations">Integrations</button>
+        <button class="tab" data-stab="team">Team</button>
         <button class="tab" data-stab="audit">Audit Log</button>
       </div>
 
@@ -1555,7 +1556,34 @@
         </div>
       </div>
 
-      <!-- Tab 6: Audit Log -->
+      <!-- Tab: Team Management -->
+      <div id="stab-team" class="stab-pane" style="display:none">
+        <div class="card">
+          <h3>Team Members</h3>
+          <div id="team-members-list" style="margin-bottom:16px"></div>
+          <div id="team-invite-section" style="display:none">
+            <h4 style="margin:16px 0 8px">Invite Employee</h4>
+            <div class="form-row col2">
+              <div class="form-group"><label>Email *</label><input id="invite-email" type="email" placeholder="employee@email.com"></div>
+              <div class="form-group"><label>Display name</label><input id="invite-name" placeholder="First Last"></div>
+            </div>
+            <div class="form-row col2">
+              <div class="form-group"><label>Role</label>
+                <select id="invite-role">
+                  <option value="employee">Employee</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn primary" onclick="inviteEmployee()">Send Invite</button>
+              </div>
+            </div>
+            <div id="invite-result" style="display:none;margin-top:8px;padding:10px;background:var(--bg-alt);border-radius:6px;font-size:13px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Audit Log -->
       <div id="stab-audit" class="stab-pane" style="display:none">
         <div class="card" style="margin-bottom:16px">
           <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
