@@ -554,13 +554,22 @@ exports.inviteEmployee = onCall(
   const assignRole = (role === 'admin') ? 'admin' : 'employee';
 
   try {
-    const userRecord = await admin.auth().createUser({
-      email,
-      displayName: displayName || email.split('@')[0],
-    });
+    let userRecord;
+    try {
+      userRecord = await admin.auth().createUser({
+        email,
+        displayName: displayName || email.split('@')[0],
+      });
+    } catch (createErr) {
+      if (createErr.code === 'auth/email-already-exists') {
+        userRecord = await admin.auth().getUserByEmail(email);
+      } else {
+        throw createErr;
+      }
+    }
     await db.collection('users').doc(userRecord.uid).set({
       email,
-      displayName: displayName || email.split('@')[0],
+      displayName: displayName || userRecord.displayName || email.split('@')[0],
       role: assignRole,
       invitedBy: request.auth.token.email || request.auth.uid,
       createdAt: new Date().toISOString(),
@@ -607,9 +616,6 @@ exports.inviteEmployee = onCall(
 
     return { success: true, uid: userRecord.uid, resetLink: link };
   } catch (err) {
-    if (err.code === 'auth/email-already-exists') {
-      throw new HttpsError('already-exists', 'A user with this email already exists');
-    }
     console.error('inviteEmployee error:', err.message);
     throw new HttpsError('internal', 'Failed to create employee account');
   }
