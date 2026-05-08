@@ -812,6 +812,12 @@ function wsSubmitApplication() {
   btn.disabled = true;
   btn.textContent = 'Checking...';
 
+  // Timeout safety — re-enable button if Cloud Function hangs
+  var _submitTimeout = setTimeout(function() {
+    btn.disabled = false;
+    btn.textContent = 'Submit Application';
+  }, 15000);
+
   // Check for duplicate application by email (server-side — portal_inquiries is not publicly readable)
   firebase.functions().httpsCallable('checkDuplicateApplication')({ email: email })
     .then(function(result) {
@@ -852,6 +858,7 @@ function wsSubmitApplication() {
         status:          'new'
       });
     }).then(function(docRef) {
+      clearTimeout(_submitTimeout);
       var card = document.getElementById('apply-form-card');
       card.innerHTML =
         '<div class="apply-success">' +
@@ -865,6 +872,7 @@ function wsSubmitApplication() {
         inquiryDocId: docRef.id,
       }).catch(function(e) { console.log('Confirmation email error (non-critical):', e); });
     }).catch(function(e) {
+      clearTimeout(_submitTimeout);
       if (e === 'duplicate') return;
       console.error('Application submit error:', e);
       var errEl = document.getElementById('ws-error');

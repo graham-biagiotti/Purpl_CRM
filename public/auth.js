@@ -117,7 +117,9 @@ async function bootApp() {
         }
       } catch(e) {
         console.warn('User doc init failed:', e);
-        window._userRole = 'employee';
+        // If we couldn't read/write the users collection, fall back to
+        // checking the owner email so the admin isn't locked out.
+        window._userRole = (user.email === 'graham@pumpkinblossomfarm.com') ? 'admin' : 'employee';
       }
 
       checkMigration();
