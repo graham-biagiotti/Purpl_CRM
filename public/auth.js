@@ -67,6 +67,21 @@ async function bootApp() {
     if (e.key === 'Enter') signInBtn.click();
   });
 
+  const forgotLink = document.getElementById('forgot-password-link');
+  if (forgotLink) {
+    forgotLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const email = emailInput.value.trim();
+      if (!email) { authStatus.textContent = 'Enter your email first, then click Forgot password.'; return; }
+      try {
+        await auth.sendPasswordResetEmail(email);
+        authStatus.textContent = 'Password reset email sent — check your inbox.';
+      } catch(err) {
+        authStatus.textContent = 'Could not send reset email. Check the email address and try again.';
+      }
+    });
+  }
+
   if (signOutBtn) {
     signOutBtn.addEventListener('click', async () => {
       if (!confirm('Sign out of purpl CRM?')) return;
