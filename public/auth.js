@@ -99,15 +99,13 @@ async function bootApp() {
 
       // Ensure a users/{uid} doc exists for role-based access control
       try {
-        const { doc, getDoc, setDoc } = window.FirestoreAPI;
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
+        const userRef = firebase.firestore().collection('users').doc(user.uid);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
           // Check if ANY users exist — first user ever is admin, all others are employee
-          const { collection, getDocs, query, limit } = window.FirestoreAPI;
-          const usersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
+          const usersSnap = await firebase.firestore().collection('users').limit(1).get();
           const isFirstUser = usersSnap.empty;
-          await setDoc(userRef, {
+          await userRef.set({
             email: user.email || '',
             displayName: user.displayName || user.email?.split('@')[0] || '',
             role: isFirstUser ? 'admin' : 'employee',

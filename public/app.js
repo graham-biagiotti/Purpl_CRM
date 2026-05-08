@@ -1524,7 +1524,7 @@ function renderInvoiceStatus() {
           <td style="white-space:nowrap">
             <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
             ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">Mark Paid</button>`:''}
-            <button class="btn xs red" onclick="deleteRetailInv('${inv.id}')">✕</button>
+            ${_isAdmin()?`<button class="btn xs red" onclick="deleteRetailInv('${inv.id}')">✕</button>`:''}
           </td>
         </tr>`;
       }).join('');
@@ -4295,7 +4295,7 @@ function editAccount(id) {
   qs('#eac-save-btn').onclick = () => saveAccount(id, isNew);
   if (!isNew) {
     const delBtn = qs('#eac-delete-btn');
-    if (delBtn) { delBtn.style.display=''; delBtn.onclick = ()=>deleteAccount(id); }
+    if (delBtn) { delBtn.style.display = _isAdmin() ? '' : 'none'; delBtn.onclick = ()=>deleteAccount(id); }
   } else {
     const delBtn = qs('#eac-delete-btn');
     if (delBtn) delBtn.style.display='none';
@@ -6210,7 +6210,7 @@ function editDistributor(id) {
   if (bl) bl.checked = brands.includes('lf')||brands.includes('both');
 
   const delBtn = qs('#edist-delete-btn');
-  if (delBtn) { delBtn.style.display = isNew?'none':''; delBtn.onclick=()=>deleteDistributor(d.id); }
+  if (delBtn) { delBtn.style.display = (!isNew && _isAdmin()) ? '' : 'none'; delBtn.onclick=()=>deleteDistributor(d.id); }
   qs('#edist-save-btn').onclick = ()=>saveDistributor(d.id, isNew);
   openModal('modal-edit-distributor');
   // Attach Places autocomplete to DC address field
@@ -6494,7 +6494,7 @@ function _openDistInvModal(distId, existingId) {
   qs('#mdinv-save-btn').onclick = () => saveDistInvoice(existingId);
   const delBtn = qs('#mdinv-delete-btn');
   if (delBtn) {
-    delBtn.style.display = isNew ? 'none' : '';
+    delBtn.style.display = (!isNew && _isAdmin()) ? '' : 'none';
     delBtn.onclick = () => deleteDistInvoice(existingId);
   }
   openModal('modal-add-dist-invoice');
@@ -10441,7 +10441,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
     if (qs('#lfi-delete-btn')) {
-      qs('#lfi-delete-btn').style.display = '';
+      qs('#lfi-delete-btn').style.display = _isAdmin() ? '' : 'none';
       qs('#lfi-delete-btn').onclick = () => deleteLfInvoice(id);
     }
   }
@@ -11593,6 +11593,7 @@ function openCombinedInvoicePreview(combinedId) {
       });
   };
   const voidBtn = qs('#civ-btn-void');
+  if (voidBtn) voidBtn.style.display = _isAdmin() ? '' : 'none';
   if (voidBtn) voidBtn.onclick = () => {
     if (!_requireAdmin('void invoices')) return;
     if (!confirm('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.')) return;
@@ -11628,6 +11629,7 @@ function openCombinedInvoicePreview(combinedId) {
   };
 
   const delBtn = qs('#civ-btn-delete');
+  if (delBtn) delBtn.style.display = _isAdmin() ? '' : 'none';
   if (delBtn) delBtn.onclick = () => {
     closeModal('modal-combined-invoice');
     deleteCombinedInvoice(combinedId);
@@ -13765,7 +13767,7 @@ function renderInvColPurpl() {
                 ${st==='draft' ? `<button class="btn xs blue" onclick="markInvoiceSent('${iv.id}')">✉ Sent</button>` : ''}
                 <button class="btn xs" onclick="generateInvoicePrint('${iv.id}')">🖨️</button>
                 <button class="btn xs" onclick="editInv('${iv.id}')">Edit</button>
-                <button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>
+                ${_isAdmin()?`<button class="btn xs red" onclick="deleteInvoice('${iv.id}')">✕</button>`:''}
               </div></td>
             </tr>`;
           }).join('')}
@@ -13913,7 +13915,7 @@ function renderInvColCombined() {
         <td style="white-space:nowrap">
           <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">View</button>
           ${ci.status!=='paid' ? `<button class="btn xs green" onclick="markCombinedPaid('${ci.id}')">✓ Paid</button>` : ''}
-          <button class="btn xs red" onclick="deleteCombinedInvoice('${ci.id}')">✕</button>
+          ${_isAdmin()?`<button class="btn xs red" onclick="deleteCombinedInvoice('${ci.id}')">✕</button>`:''}
         </td>
       </tr>`).join('')}
       </tbody>
