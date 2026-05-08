@@ -177,7 +177,11 @@ const DB = {
           this._pendingRemoteChanges = true;
           this._showRemoteChangeWarning();
         } else {
-          this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          try {
+            this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          } catch(mapErr) {
+            console.error(`[db] Corrupt snapshot for ${key}, keeping cache:`, mapErr);
+          }
           if (window.refreshCurrentPage) window.refreshCurrentPage();
         }
       }, err => {

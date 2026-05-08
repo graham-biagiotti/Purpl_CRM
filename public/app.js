@@ -10926,11 +10926,30 @@ async function getNextInvoiceNumber(type) {
     DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
     return num;
   } catch (e) {
-    console.warn('Invoice number transaction failed, falling back:', e);
-    const num = peekNextInvoiceNumber();
-    const n = parseInt(num.replace(/[^0-9]/g, ''));
-    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
-    return num;
+    console.warn('Invoice number transaction failed, retrying once:', e);
+    // Retry the transaction once before falling back to cache
+    try {
+      const num = await firebase.firestore().runTransaction(async tx => {
+        const snap = await tx.get(configRef);
+        const data = snap.data() || {};
+        const invSettings = data.invoice_settings || {};
+        const current = invSettings.nextInvoiceNum || 0;
+        const peek = peekNextInvoiceNumber();
+        const peekN = parseInt(peek.replace(/[^0-9]/g, ''));
+        const next = Math.max(current, peekN);
+        tx.update(configRef, { 'invoice_settings.nextInvoiceNum': next });
+        return `INV-${String(next).padStart(4, '0')}`;
+      });
+      const n = parseInt(num.replace(/[^0-9]/g, ''));
+      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+      return num;
+    } catch (e2) {
+      console.error('Invoice number transaction failed twice, using cache fallback:', e2);
+      const num = peekNextInvoiceNumber();
+      const n = parseInt(num.replace(/[^0-9]/g, ''));
+      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+      return num;
+    }
   }
 }
 
