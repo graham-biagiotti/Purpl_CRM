@@ -11502,10 +11502,18 @@ function openCombinedInvoicePreview(combinedId) {
     const newTerms = qs('#civ-edit-terms').value;
     const newNotes = qs('#civ-edit-notes').value;
     const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
-    // Use DB.update for immediate Firestore writes via _writeDoc (survives tab close)
-    DB.update('combined_invoices', combinedId, x => ({ ...x, ...patch }));
-    if (rec.purplInvoiceId) DB.update('retail_invoices', rec.purplInvoiceId, x => ({ ...x, ...patch }));
-    if (rec.lfInvoiceId) DB.update('lf_invoices', rec.lfInvoiceId, x => ({ ...x, ...patch, issued: newDate, due: newDue }));
+    DB.atomicUpdate(cache => {
+      const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+      if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
+      if (rec.purplInvoiceId) {
+        const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...patch };
+      }
+      if (rec.lfInvoiceId) {
+        const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...patch, issued: newDate, due: newDue };
+      }
+    });
     toast('Invoice updated ✓');
     setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
   };
