@@ -10505,15 +10505,18 @@ function openLfInvoiceModal(id) {
   const lfiSendBtn = qs('#lfi-send-btn');
   if (lfiSendBtn) {
     lfiSendBtn.style.display = isNew ? 'none' : '';
-    lfiSendBtn.onclick = () => {
+    lfiSendBtn.onclick = async () => {
       const inv = DB.a('lf_invoices').find(x => x.id === id);
       if (!inv) { toast('Save the invoice before sending'); return; }
       const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
       const to = ac.email || '';
       if (!to) { toast('No email address on file for this account'); return; }
-      const html    = buildLfInvoiceEmailHTML(inv);
+      lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Generating link…';
+      const payLink = await _getStripePayLink(inv, 'lf');
+      const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
+      const html    = buildLfInvoiceEmailHTML(sendInv);
       const subject = `Invoice ${inv.number||''} from Lavender Fields at Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
-      lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Sending…';
+      lfiSendBtn.textContent = 'Sending…';
       callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
         .then((result) => {
           toast('Invoice sent ✓');
@@ -11173,9 +11176,10 @@ async function saveNewCombinedInvoice() {
 
 // ── Combined invoice HTML builder ─────────────────────────
 
-function buildCombinedInvoiceHTML(combinedId) {
+function buildCombinedInvoiceHTML(combinedId, payLink) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
+  if (payLink) rec._payLink = payLink;
 
   const purplInv   = findInvoice(rec.purplInvoiceId) || {};
   const lfInv      = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
@@ -11581,8 +11585,7 @@ function openCombinedInvoicePreview(combinedId) {
     if (!to) { toast('No email address on file for this account'); return; }
     // Generate per-invoice Stripe payment link, then rebuild HTML with it
     const payLink = await _getStripePayLink(rec, 'combined');
-    const sendRec = payLink ? { ...rec, _payLink: payLink } : rec;
-    const sendHtml = buildCombinedInvoiceHTML(sendRec);
+    const sendHtml = buildCombinedInvoiceHTML(combinedId, payLink);
     callSendCombinedInvoice(to, rec.accountName, subject, sendHtml)
       .then((result) => {
         toast('Invoice sent ✓');
