@@ -372,6 +372,25 @@ async function callSendEmail(to, from, subject, html) {
   }
 }
 
+async function _getStripePayLink(invoice, type) {
+  if (!invoice?.id || !parseFloat(invoice.total || invoice.amount || invoice.grandTotal)) return null;
+  try {
+    const fn = firebase.functions().httpsCallable('createStripePaymentLink');
+    const result = await fn({
+      amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
+      invoiceNumber: invoice.number || invoice.invoiceNumber || '',
+      invoiceId: invoice.id,
+      invoiceType: type || 'retail',
+      accountName: invoice.accountName || '',
+      accountId: invoice.accountId || '',
+    });
+    return result.data?.url || null;
+  } catch (e) {
+    console.warn('Stripe link generation failed (using fallback):', e);
+    return DB.obj('invoice_settings', {}).stripeLink || null;
+  }
+}
+
 async function callSendCombinedInvoice(to, accountName, subject, html) {
   try {
     const fn = firebase.functions().httpsCallable('sendCombinedInvoice');
@@ -1609,11 +1628,15 @@ async function sendInvoiceReminder(invId, collection) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
   if (!ac || !ac.email) { toast('No email on file for this account'); return; }
 
+  const type = collection === 'lf_invoices' ? 'lf' : collection === 'combined_invoices' ? 'combined' : 'retail';
+  const payLink = await _getStripePayLink(inv, type);
+  const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
+
   const isOverdue = daysAgo(inv.due) > 0;
   const subject = isOverdue
     ? `Payment reminder — ${inv.number || ''} (${ac.name})`
     : `Invoice due soon — ${inv.number || ''} (${ac.name})`;
-  const html = buildInvoiceReminderHTML(inv, collection, isOverdue);
+  const html = buildInvoiceReminderHTML(sendInv, collection, isOverdue);
 
   _sendWithCadence({
     to: ac.email, subject, html, accountId: ac.id,
@@ -1678,7 +1701,7 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
       <div style="font-size:30px;font-weight:700;color:${accentColor}">$${parseFloat(amount).toFixed(2)}</div>
       <div style="font-size:12px;color:#9ca3af;margin-top:4px">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
     </div>
-    ${invSettings.stripeLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
+    ${inv._payLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
     <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
     <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
@@ -1780,15 +1803,18 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   const ivSendBtn = qs('#iv-send-btn');
   if (ivSendBtn) {
     ivSendBtn.style.display = isNew ? 'none' : '';
-    ivSendBtn.onclick = () => {
+    ivSendBtn.onclick = async () => {
       const inv = findInvoice(id);
       if (!inv) { toast('Save the invoice before sending'); return; }
       const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
       const to = ac.email || '';
       if (!to) { toast('No email address on file for this account'); return; }
-      const html    = buildPurplInvoiceEmailHTML(inv);
+      ivSendBtn.disabled = true; ivSendBtn.textContent = 'Generating link…';
+      const payLink = await _getStripePayLink(inv, 'retail');
+      const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
+      const html    = buildPurplInvoiceEmailHTML(sendInv);
       const subject = `Invoice ${inv.number||''} from Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
-      ivSendBtn.disabled = true; ivSendBtn.textContent = 'Sending…';
+      ivSendBtn.textContent = 'Sending…';
       callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
         .then((result) => {
           toast('Invoice sent ✓');
@@ -11299,7 +11325,7 @@ function buildCombinedInvoiceHTML(combinedId) {
       <div style="font-size:26px;font-weight:700;color:#1a1a2e">$${rec.grandTotal.toFixed(2)}</div>
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(paymentTerms)} · Due ${dueDate}</div>
-    ${invSettings.stripeLink ? `<div style="margin-top:20px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#1a1a2e;color:#fff;padding:12px 36px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:500;letter-spacing:0.04em">PAY ONLINE</a></div>` : ''}
+    ${rec._payLink ? `<div style="margin-top:20px;text-align:center"><a href="${escHtml(rec._payLink)}" style="display:inline-block;background:#1a1a2e;color:#fff;padding:12px 36px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:500;letter-spacing:0.04em">PAY ONLINE</a></div>` : ''}
   </td></tr>
 
   ${invoiceNotes ? `<tr><td style="padding:0 48px 24px">
@@ -11378,7 +11404,7 @@ function buildPurplInvoiceEmailHTML(inv) {
         <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
         <div style="font-size:24px;font-weight:700;color:#2D1B4E">$${parseFloat(inv.amount||0).toFixed(2)}</div>
       </div>
-      ${invSettings.stripeLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#2D1B4E;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
+      ${inv._payLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:#2D1B4E;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
     </div>
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
@@ -11467,7 +11493,7 @@ function buildLfInvoiceEmailHTML(inv) {
         <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
         <div style="font-size:24px;font-weight:700;color:#2a5c3f">$${parseFloat(inv.total||0).toFixed(2)}</div>
       </div>
-      ${invSettings.stripeLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(invSettings.stripeLink)}" style="display:inline-block;background:#2a5c3f;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
+      ${inv._payLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:#2a5c3f;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
     </div>
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
@@ -11549,11 +11575,15 @@ function openCombinedInvoicePreview(combinedId) {
       .then(() => toast('HTML copied'))
       .catch(() => toast('Copy failed'));
   };
-  qs('#civ-btn-gmail').onclick = () => {
+  qs('#civ-btn-gmail').onclick = async () => {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
     const to = account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
-    callSendCombinedInvoice(to, rec.accountName, subject, html)
+    // Generate per-invoice Stripe payment link, then rebuild HTML with it
+    const payLink = await _getStripePayLink(rec, 'combined');
+    const sendRec = payLink ? { ...rec, _payLink: payLink } : rec;
+    const sendHtml = buildCombinedInvoiceHTML(sendRec);
+    callSendCombinedInvoice(to, rec.accountName, subject, sendHtml)
       .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = rec.number || rec.invoiceNumber || '';

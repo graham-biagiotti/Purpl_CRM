@@ -6,6 +6,8 @@ if (!admin.apps.length) admin.initializeApp();
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
+const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+const stripeWebhookSec = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -620,3 +622,146 @@ exports.inviteEmployee = onCall(
     throw new HttpsError('internal', 'Failed to create employee account');
   }
 });
+
+// ── 8. Create Stripe Payment Link ────────────────────────
+// Auth-required. Generates a unique Stripe Checkout Session link for an invoice.
+exports.createStripePaymentLink = onCall(
+  {secrets: [stripeSecretKey]},
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    const data = request.data;
+    if (!data.amount || !data.invoiceNumber) {
+      throw new HttpsError('invalid-argument', 'Missing amount or invoiceNumber');
+    }
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new HttpsError('failed-precondition', 'Stripe not configured');
+
+    const stripe = require('stripe')(key);
+    const amountCents = Math.round(parseFloat(data.amount) * 100);
+    if (amountCents < 50) throw new HttpsError('invalid-argument', 'Amount too small');
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Invoice ${data.invoiceNumber}`,
+              description: data.accountName ? `${data.accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        metadata: {
+          invoiceNumber: data.invoiceNumber,
+          invoiceId: data.invoiceId || '',
+          invoiceType: data.invoiceType || 'retail',
+          accountId: data.accountId || '',
+        },
+        success_url: 'https://purpl-crm.web.app/order?paid=1',
+        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+      });
+      return { url: session.url, sessionId: session.id };
+    } catch (err) {
+      console.error('Stripe session error:', err.message);
+      throw new HttpsError('internal', 'Payment link creation failed');
+    }
+  }
+);
+
+// ── 9. Stripe Webhook ────────────────────────────────────
+// Receives checkout.session.completed events and marks the invoice as paid.
+exports.stripeWebhook = onRequest(
+  {secrets: [stripeSecretKey, stripeWebhookSec]},
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+
+    const key = process.env.STRIPE_SECRET_KEY;
+    const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!key || !whSecret) { res.status(500).send('Stripe not configured'); return; }
+
+    const stripe = require('stripe')(key);
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.rawBody, req.headers['stripe-signature'], whSecret
+      );
+    } catch (err) {
+      console.warn('Stripe webhook signature failed:', err.message);
+      res.status(400).send('Invalid signature');
+      return;
+    }
+
+    if (event.type !== 'checkout.session.completed') {
+      res.status(200).send('ignored');
+      return;
+    }
+
+    const session = event.data.object;
+    const meta = session.metadata || {};
+    const invoiceId = meta.invoiceId;
+    const invoiceType = meta.invoiceType || 'retail';
+
+    if (!invoiceId) {
+      res.status(200).send('no invoice id');
+      return;
+    }
+
+    try {
+      const db = admin.firestore();
+      const now = new Date().toISOString();
+      const paidData = {
+        status: 'paid',
+        paidDate: now.slice(0, 10),
+        paidAt: now,
+        paidVia: 'stripe',
+        stripeSessionId: session.id,
+        stripePaymentIntent: session.payment_intent,
+      };
+
+      // Update the correct invoice collection based on type
+      const colMap = {
+        retail: 'workspace/main/retail_invoices',
+        lf: 'workspace/main/lf_invoices',
+        combined: 'workspace/main/combined_invoices',
+        dist: 'workspace/main/dist_invoices',
+      };
+      const colPath = colMap[invoiceType] || colMap.retail;
+      await db.doc(`${colPath}/${invoiceId}`).update(paidData);
+
+      // If combined, also mark the child invoices as paid
+      if (invoiceType === 'combined') {
+        const combSnap = await db.doc(`${colPath}/${invoiceId}`).get();
+        if (combSnap.exists) {
+          const comb = combSnap.data();
+          if (comb.purplInvoiceId) {
+            await db.doc(`workspace/main/retail_invoices/${comb.purplInvoiceId}`).update(paidData).catch(() => {});
+          }
+          if (comb.lfInvoiceId) {
+            await db.doc(`workspace/main/lf_invoices/${comb.lfInvoiceId}`).update(paidData).catch(() => {});
+          }
+        }
+      }
+
+      // Log to audit
+      await db.collection('workspace/main/audit_log').add({
+        timestamp: now,
+        action: 'paid',
+        entityType: invoiceType + '_invoice',
+        entityId: invoiceId,
+        entityName: meta.invoiceNumber || '',
+        changedBy: 'stripe',
+        changedByEmail: 'stripe-webhook',
+        stripeSessionId: session.id,
+      });
+
+      res.status(200).send('ok');
+    } catch (err) {
+      console.error('Stripe webhook processing error:', err);
+      res.status(500).send('error');
+    }
+  }
+);
