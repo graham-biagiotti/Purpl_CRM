@@ -13120,6 +13120,7 @@ async function declinePortalOrder(id) {
 }
 
 async function deletePortalOrder(orderId) {
+  if (!_requireAdmin('delete portal orders')) return;
   if (!confirm('Delete this submission? Cannot be undone.')) return;
   try {
     // Find the paired order (same account, within 60s, different brand) and delete both
