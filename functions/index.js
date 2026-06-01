@@ -7,7 +7,6 @@ if (!admin.apps.length) admin.initializeApp();
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
-const stripeWebhookSec = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -675,7 +674,7 @@ exports.createStripePaymentLink = onCall(
 // ── 9. Stripe Webhook ────────────────────────────────────
 // Receives checkout.session.completed events and marks the invoice as paid.
 exports.stripeWebhook = onRequest(
-  {secrets: [stripeSecretKey, stripeWebhookSec]},
+  {secrets: [stripeSecretKey]},
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
