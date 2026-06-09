@@ -92,6 +92,15 @@ function _invEmailBadge(inv) {
 }
 
 // ── Helpers ─────────────────────────────────────────────
+function _once(fn) {
+  let running = false;
+  return async function(...args) {
+    if (running) return;
+    running = true;
+    try { await fn.apply(this, args); }
+    finally { setTimeout(() => { running = false; }, 400); }
+  };
+}
 function _pushCadence(existing, entry) {
   const arr = [...(existing || []), entry];
   return arr.length > 500 ? arr.slice(-500) : arr;
@@ -1798,7 +1807,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   // Line items
   _ivRenderLineRows(inv?.lineItems || []);
 
-  qs('#iv-save-btn').onclick = () => saveInv(id, isNew);
+  qs('#iv-save-btn').onclick = _once(() => saveInv(id, isNew));
 
   const ivPdfBtn = qs('#iv-pdf-btn');
   if (ivPdfBtn) {
@@ -4329,7 +4338,7 @@ function editAccount(id) {
   if (qs('#ac-price-dist'))   qs('#ac-price-dist').value   = a.pricePerCaseDist||'';
   if (qs('#ac-price-custom')) qs('#ac-price-custom').value = a.pricePerCaseCustom||'';
 
-  qs('#eac-save-btn').onclick = () => saveAccount(id, isNew);
+  qs('#eac-save-btn').onclick = _once(() => saveAccount(id, isNew));
   if (!isNew) {
     const delBtn = qs('#eac-delete-btn');
     if (delBtn) { delBtn.style.display = _isAdmin() ? '' : 'none'; delBtn.onclick = ()=>deleteAccount(id); }
@@ -4844,7 +4853,7 @@ function editProspect(id) {
   qs('#epr-next-date').value = p.nextDate||'';
   if (qs('#epr-ispbf')) qs('#epr-ispbf').checked = !!p.isPbf;
 
-  qs('#epr-save-btn').onclick = () => saveProspect(id, isNew);
+  qs('#epr-save-btn').onclick = _once(() => saveProspect(id, isNew));
   const delBtn = qs('#epr-delete-btn');
   if (delBtn) {
     delBtn.style.display = isNew ? 'none' : '';
@@ -6248,7 +6257,7 @@ function editDistributor(id) {
 
   const delBtn = qs('#edist-delete-btn');
   if (delBtn) { delBtn.style.display = (!isNew && _isAdmin()) ? '' : 'none'; delBtn.onclick=()=>deleteDistributor(d.id); }
-  qs('#edist-save-btn').onclick = ()=>saveDistributor(d.id, isNew);
+  qs('#edist-save-btn').onclick = _once(()=>saveDistributor(d.id, isNew));
   openModal('modal-edit-distributor');
   // Attach Places autocomplete to DC address field
   if (window.PlacesAC) PlacesAC.load().then(ok=>{ if (ok) PlacesAC.attach(qs('#edist-dc-address')); });
@@ -6528,7 +6537,7 @@ function _openDistInvModal(distId, existingId) {
 
   _mdinvUpdateDueDate(existing?.dueDate);
 
-  qs('#mdinv-save-btn').onclick = () => saveDistInvoice(existingId);
+  qs('#mdinv-save-btn').onclick = _once(() => saveDistInvoice(existingId));
   const delBtn = qs('#mdinv-delete-btn');
   if (delBtn) {
     delBtn.style.display = (!isNew && _isAdmin()) ? '' : 'none';
@@ -6996,7 +7005,7 @@ function openRepackModal() {
   if (outSku) outSku.innerHTML = SKUS.map(s=>`<option value="${s.id}">${s.label}</option>`).join('');
   qs('#repack-out-qty').value='';
   qs('#repack-note').value='';
-  qs('#repack-save-btn').onclick = saveRepackJob;
+  qs('#repack-save-btn').onclick = _once(saveRepackJob);
   openModal('modal-repack');
 }
 
@@ -7544,7 +7553,7 @@ function openNewOrder(accountId) {
   // Pre-fill today's date as default
   if (qs('#nord-due')) qs('#nord-due').value = today();
   if (qs('#nord-notes')) qs('#nord-notes').value = '';
-  qs('#nord-save-btn').onclick = saveNewOrder;
+  qs('#nord-save-btn').onclick = _once(saveNewOrder);
   openModal('modal-new-order');
 }
 
@@ -10522,7 +10531,7 @@ function openLfInvoiceModal(id) {
     _lfInvCalcTotal();
   }
 
-  qs('#lfi-save-btn').onclick = () => saveLfInvoice(id, isNew);
+  qs('#lfi-save-btn').onclick = _once(() => saveLfInvoice(id, isNew));
 
   const lfiPdfBtn = qs('#lfi-pdf-btn');
   if (lfiPdfBtn) {
