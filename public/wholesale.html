@@ -787,7 +787,7 @@ function wsSubmitApplication() {
 
   var businessName = document.getElementById('ws-business').value.trim();
   var contactName  = document.getElementById('ws-name').value.trim();
-  var email        = document.getElementById('ws-email').value.trim();
+  var email        = document.getElementById('ws-email').value.trim().toLowerCase();
   var emailValid   = email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   var hasError = false;

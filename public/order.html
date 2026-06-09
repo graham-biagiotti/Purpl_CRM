@@ -787,6 +787,18 @@ function init() {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('t');
 
+  // Stripe checkout return — show a confirmation banner
+  if (params.get('paid') === '1' || params.get('cancelled') === '1') {
+    var isPaid = params.get('paid') === '1';
+    var banner = document.createElement('div');
+    banner.style.cssText = 'max-width:600px;margin:24px auto;padding:18px 24px;border-radius:10px;text-align:center;font-size:15px;font-weight:600;' +
+      (isPaid ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d');
+    banner.textContent = isPaid
+      ? '✓ Payment received — thank you! A receipt has been emailed to you by Stripe.'
+      : 'Payment was cancelled. Your invoice is still open — you can pay any time using the link in your invoice email.';
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+
   // Load portal config via Cloud Function (never exposes password to client)
   firebase.functions().httpsCallable('getPortalConfig')({}).then(function(result) {
     var cfg = result.data || {};

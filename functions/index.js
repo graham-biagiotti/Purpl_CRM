@@ -7,6 +7,7 @@ if (!admin.apps.length) admin.initializeApp();
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -568,13 +569,16 @@ exports.inviteEmployee = onCall(
         throw createErr;
       }
     }
+    // Never downgrade an existing admin via re-invite; merge preserves other fields
+    const existingDoc = await db.collection('users').doc(userRecord.uid).get();
+    const existingRole = existingDoc.exists ? existingDoc.data().role : null;
     await db.collection('users').doc(userRecord.uid).set({
       email,
       displayName: displayName || userRecord.displayName || email.split('@')[0],
-      role: assignRole,
+      role: existingRole === 'admin' ? 'admin' : assignRole,
       invitedBy: request.auth.token.email || request.auth.uid,
-      createdAt: new Date().toISOString(),
-    });
+      ...(existingDoc.exists ? {} : { createdAt: new Date().toISOString() }),
+    }, { merge: true });
     const link = await admin.auth().generatePasswordResetLink(email);
 
     // Send invite email via Resend
@@ -674,7 +678,7 @@ exports.createStripePaymentLink = onCall(
 // ── 9. Stripe Webhook ────────────────────────────────────
 // Receives checkout.session.completed events and marks the invoice as paid.
 exports.stripeWebhook = onRequest(
-  {secrets: [stripeSecretKey]},
+  {secrets: [stripeSecretKey, stripeWebhookSecret]},
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
@@ -729,7 +733,26 @@ exports.stripeWebhook = onRequest(
         dist: 'workspace/main/dist_invoices',
       };
       const colPath = colMap[invoiceType] || colMap.retail;
-      await db.doc(`${colPath}/${invoiceId}`).update(paidData);
+      try {
+        await db.doc(`${colPath}/${invoiceId}`).update(paidData);
+      } catch (updateErr) {
+        // Invoice was deleted before payment completed — ack the webhook so
+        // Stripe stops retrying, but record the orphan payment in the audit log.
+        console.warn(`Stripe payment for missing invoice ${invoiceType}/${invoiceId}:`, updateErr.message);
+        await db.collection('workspace/main/audit_log').add({
+          timestamp: now,
+          action: 'paid_orphan',
+          entityType: invoiceType + '_invoice',
+          entityId: invoiceId,
+          entityName: meta.invoiceNumber || '',
+          changedBy: 'stripe',
+          changedByEmail: 'stripe-webhook',
+          stripeSessionId: session.id,
+          note: 'Payment received for an invoice that no longer exists',
+        }).catch(() => {});
+        res.status(200).send('invoice not found — payment logged');
+        return;
+      }
 
       // If combined, also mark the child invoices as paid
       if (invoiceType === 'combined') {

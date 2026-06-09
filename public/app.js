@@ -68,6 +68,12 @@ function deleteInvoiceWithCleanup(id) {
     // If this invoice is part of a combined, remove the combined reference
     const ci = (cache.combined_invoices||[]).findIndex(x => x.purplInvoiceId === id || x.lfInvoiceId === id);
     if (ci >= 0) cache.combined_invoices.splice(ci, 1);
+    // Drop cadence email-history entries that pointed at this invoice
+    cache.ac = (cache.ac||[]).map(a =>
+      (a.cadence||[]).some(c => c.invoiceId === id)
+        ? { ...a, cadence: a.cadence.filter(c => c.invoiceId !== id) }
+        : a
+    );
   });
 }
 function _invAmt(inv) { return parseFloat(inv.amount || inv.total || 0); }
@@ -3563,6 +3569,7 @@ function emailsPageSendEmail() {
   const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
   const toEmail = primary.email || account.email || '';
   if (!toEmail) { toast('No recipient email on file'); return; }
+  if (account.emailOptOut && !confirm2(`${account.name} has unsubscribed from emails. Send anyway?`)) return;
 
   const btn = document.getElementById('emails-page-send-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -3923,7 +3930,9 @@ async function meBroadcastGenerate() {
   }
 }
 
+let _meBroadcastInFlight = false;
 async function meBroadcastSend() {
+  if (_meBroadcastInFlight) { toast('Send already in progress'); return; }
   const accounts = DB.a('ac').filter(a=>_meSelectedIds.has(a.id));
   if (!accounts.length) { toast('No accounts selected'); return; }
   const subject   = qs('#me-subject')?.value?.trim() || '';
@@ -3937,6 +3946,7 @@ async function meBroadcastSend() {
   // Body is plain text with possible newlines
   const bodyHtml  = body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 
+  _meBroadcastInFlight = true;
   if (sendBtn) sendBtn.disabled = true;
   let sent = 0, failed = 0, skipped = 0;
 
@@ -3975,6 +3985,7 @@ async function meBroadcastSend() {
 
   const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
+  _meBroadcastInFlight = false;
   if (sendBtn) sendBtn.disabled = false;
   toast(summary, 5000);
 }
@@ -7010,18 +7021,21 @@ function saveRepackJob() {
       else DB.update('loose_cans', l.id, x=>({...x, qty:x.qty-use}));
     });
   });
-  // Add to finished packs inventory
-  DB.push('iv', {id:uid(), date, sku:outSku, type:'in', qty:outQty, note:`Repack job — ${Object.entries(inputs).map(([s,q])=>`${q} ${s}`).join(', ')}`});
+  // Add to finished packs inventory (tagged with repackId so deletion can reverse it)
+  DB.push('iv', {id:uid(), date, sku:outSku, type:'in', qty:outQty, repackId: job.id, note:`Repack job — ${Object.entries(inputs).map(([s,q])=>`${q} ${s}`).join(', ')}`});
   closeModal('modal-repack');
   _invRepack();
   toast('Repack job saved');
 }
 
 function deleteRepackJob(id) {
-  if (!confirm2('Delete this repack job? (inventory changes are not reversed)')) return;
-  DB.remove('repack_jobs', id);
+  if (!confirm2('Delete this repack job? Its finished-pack inventory entry will be reversed. (Consumed loose cans are not restored.)')) return;
+  DB.atomicUpdate(cache => {
+    cache['repack_jobs'] = (cache['repack_jobs']||[]).filter(x => x.id !== id);
+    cache['iv'] = (cache['iv']||[]).filter(e => e.repackId !== id);
+  });
   _invRepack();
-  toast('Job deleted');
+  toast('Job deleted · inventory reversed');
 }
 
 // ── Pallets ───────────────────────────────────────────────
@@ -7061,7 +7075,7 @@ function openPalletModal(palletId) {
     skuInputs.innerHTML = SKUS.map(s=>`
       <div class="form-row col2" style="margin-bottom:6px">
         <div>${skuBadge(s.id)}</div>
-        <input type="number" class="input pallet-sku-input" data-sku="${s.id}" min="0" placeholder="0 units" value="${p.contents?.[s.id]||''}" style="width:100%">
+        <input type="number" class="input pallet-sku-input" data-sku="${s.id}" min="0" placeholder="0 cases" value="${p.contents?.[s.id]||''}" style="width:100%">
       </div>`).join('');
   }
   qs('#pallet-save-btn').onclick = ()=>savePallet(palletId||uid(), isNew);
@@ -7090,18 +7104,22 @@ function shipPallet(palletId) {
   const dest = prompt('Ship to (distributor / account):') || '';
   const shipDate = prompt('Ship date (YYYY-MM-DD):', today()) || today();
   DB.update('pallets', palletId, p=>({...p, status:'shipped', shipTo:dest||p.shipTo, shipDate}));
-  Object.entries(p?.contents||{}).forEach(([sku,qty])=>{
-    DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
+  // Pallet contents are entered in CASES; the iv ledger is in cans
+  Object.entries(p?.contents||{}).forEach(([sku,cases])=>{
+    DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty: cases * CANS_PER_CASE, palletId, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
   });
   _invPallets();
   toast('Pallet marked as shipped');
 }
 
 function deletePallet(palletId) {
-  if (!confirm2('Delete this pallet record?')) return;
-  DB.remove('pallets', palletId);
+  if (!confirm2('Delete this pallet record? Inventory deductions from shipping it will be reversed.')) return;
+  DB.atomicUpdate(cache => {
+    cache['pallets'] = (cache['pallets']||[]).filter(x => x.id !== palletId);
+    cache['iv'] = (cache['iv']||[]).filter(e => e.palletId !== palletId);
+  });
   _invPallets();
-  toast('Pallet deleted');
+  toast('Pallet deleted · inventory reversed');
 }
 
 // ── Packaging Supplies ────────────────────────────────────
@@ -13691,20 +13709,22 @@ function renderInvKpis() {
   const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
 
   const _pAmt = x => parseFloat(x.amount||x.total||0);
-  const totalInvoiced = purplInvs.reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.reduce((s,x) => s + parseFloat(x.total||0), 0);
+  // Dist invoices use draft/sent/paid/void (new) but may have legacy unpaid/overdue statuses
+  const _distOpen = x => !['paid','draft','void'].includes(x.status);
+  const totalInvoiced = purplInvs.filter(x => x.status !== 'void').reduce((s,x) => s + _pAmt(x), 0)
+                      + lfInvs.filter(x => x.status !== 'void').reduce((s,x) => s + parseFloat(x.total||0), 0)
+                      + distInvs.filter(x => x.status !== 'void').reduce((s,x) => s + parseFloat(x.total||0), 0);
   const outstanding   = purplInvs.filter(x => !['paid','draft','void'].includes(purplStatus(x)))
                           .reduce((s,x) => s + _pAmt(x), 0)
                       + lfInvs.filter(x => !['paid','draft','void'].includes(x.status))
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => ['unpaid','overdue'].includes(x.status))
+                      + distInvs.filter(_distOpen)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
                           .reduce((s,x) => s + _pAmt(x), 0)
                       + lfInvs.filter(x => !['paid','draft','void'].includes(x.status) && (x.due||'') < todayStr && x.due)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => x.status==='overdue' || (x.status!=='paid'&&x.dueDate&&x.dueDate<todayStr))
+                      + distInvs.filter(x => _distOpen(x) && x.dueDate && x.dueDate < todayStr)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
                           .reduce((s,x) => s + _pAmt(x), 0)
