@@ -1988,7 +1988,7 @@ function deleteRetailInv(id) {
   if (!confirm2('Delete this invoice?')) return;
   const inv = DB.a('retail_invoices').find(x => x.id === id);
   auditLog('delete', 'retail_invoice', id, inv?.invoiceNumber || inv?.number || id);
-  DB.remove('retail_invoices', id);
+  deleteInvoiceWithCleanup(id);
   renderInvoiceStatus();
   toast('Invoice deleted');
 }
@@ -6610,7 +6610,10 @@ function deleteDistInvoice(invId) {
   if (!confirm2('Delete this invoice?')) return;
   const inv = DB.a('dist_invoices').find(x => x.id === invId);
   auditLog('delete', 'dist_invoice', invId, inv?.invoiceNumber || invId);
-  DB.remove('dist_invoices', invId);
+  DB.atomicUpdate(cache => {
+    cache['dist_invoices'] = (cache['dist_invoices']||[]).filter(x => x.id !== invId);
+    cache['iv'] = (cache['iv']||[]).filter(e => !(e.invoiceId === invId && e.type === 'out'));
+  });
   closeModal('modal-add-dist-invoice');
   if (_currentDistId) openDistributor(_currentDistId);
   if (currentPage === 'invoices') renderInvoicesPage();
@@ -7029,7 +7032,9 @@ function saveRepackJob() {
 }
 
 function deleteRepackJob(id) {
+  if (!_requireAdmin('delete repack jobs')) return;
   if (!confirm2('Delete this repack job? Its finished-pack inventory entry will be reversed. (Consumed loose cans are not restored.)')) return;
+  auditLog('delete', 'repack_job', id, '');
   DB.atomicUpdate(cache => {
     cache['repack_jobs'] = (cache['repack_jobs']||[]).filter(x => x.id !== id);
     cache['iv'] = (cache['iv']||[]).filter(e => e.repackId !== id);
@@ -7113,7 +7118,10 @@ function shipPallet(palletId) {
 }
 
 function deletePallet(palletId) {
+  if (!_requireAdmin('delete pallets')) return;
   if (!confirm2('Delete this pallet record? Inventory deductions from shipping it will be reversed.')) return;
+  const p = DB.a('pallets').find(x => x.id === palletId);
+  auditLog('delete', 'pallet', palletId, p?.label || palletId);
   DB.atomicUpdate(cache => {
     cache['pallets'] = (cache['pallets']||[]).filter(x => x.id !== palletId);
     cache['iv'] = (cache['iv']||[]).filter(e => e.palletId !== palletId);
@@ -7829,7 +7837,9 @@ function delShipment(id) {
 }
 
 function delProdHist(id) {
+  if (!_requireAdmin('delete production records')) return;
   if (!confirm2('Remove this production record?')) return;
+  auditLog('delete', 'prod_hist', id, '');
   // Remove linked inventory entries (by prodId; fallback: match by date+qty for legacy records)
   const rec = DB.a('prod_hist').find(p=>p.id===id);
   DB.a('iv').filter(e=>
@@ -10808,9 +10818,7 @@ function deleteLfInvoice(id) {
   if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
   const invNum = DB.a('lf_invoices').find(x => x.id === id)?.number || id;
   auditLog('delete', 'lf_invoice', id, invNum);
-  DB.remove('lf_invoices', id);
-  const orphans = DB.a('lf_wix_deductions').filter(d => d.invoiceId === id);
-  orphans.forEach(d => DB.remove('lf_wix_deductions', d.id));
+  deleteInvoiceWithCleanup(id);
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
   renderLfDashKpis();
