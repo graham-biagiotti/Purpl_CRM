@@ -1545,33 +1545,69 @@ function renderInvoiceStatus() {
       </div>`;
     }).join('') : '<div class="empty">No invoice issues</div>'}
     ${(()=>{
-      const rInvs = DB.a('retail_invoices').sort((a,b)=>b.date>a.date?1:-1);
-      if (!rInvs.length) return '';
-      const rows = rInvs.map(inv=>{
-        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
+      const _invStatusBadge = inv => {
         const isDraft = inv.status === 'draft';
-        const statusCls = inv.status==='paid'?'green': isDraft?'gray': _isOverdue(inv)?'red':'blue';
-        const statusLabel = inv.status==='paid'?'Paid': isDraft?'Draft': _isOverdue(inv)?'Overdue':'Unpaid';
+        const isVoid  = inv.status === 'void';
+        const isPaid  = inv.status === 'paid';
+        const od      = !isDraft && !isVoid && !isPaid && _isOverdue(inv);
+        const cls     = isPaid ? 'green' : isDraft ? 'gray' : isVoid ? 'red' : od ? 'red' : 'blue';
+        const label   = isPaid ? 'Paid' : isDraft ? 'Draft' : isVoid ? 'Void' : od ? 'Overdue' : 'Sent';
+        return `<span class="badge ${cls}">${label}</span>`;
+      };
+      const rInvs = DB.a('retail_invoices').filter(x => !x.combinedInvoiceId).sort((a,b)=>b.date>a.date?1:-1);
+      const lInvs = DB.a('lf_invoices').filter(x => !x.combinedInvoiceId).sort((a,b)=>(b.issued||b.date||'')>(a.issued||a.date||'')?1:-1);
+      const cInvs = DB.a('combined_invoices').sort((a,b)=>(b.date||'')>(a.date||'')?1:-1);
+      if (!rInvs.length && !lInvs.length && !cInvs.length) return '';
+
+      const purplRows = rInvs.map(inv=>{
+        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
         return `<tr>
-          <td>${inv.invoiceNumber||'—'}</td>
-          <td>${fmtD(inv.date)}</td>
-          <td>${acName}</td>
-          <td>${fmtD(inv.dueDate)}</td>
-          <td>${fmtC(inv.total||0)}</td>
-          <td><span class="badge ${statusCls}">${statusLabel}</span></td>
+          <td><span class="badge purple" style="font-size:10px;margin-right:4px">purpl</span> ${escHtml(inv.invoiceNumber||inv.number||'—')}</td>
+          <td>${escHtml(acName)}</td>
+          <td>${fmtD(inv.dueDate||inv.due)}</td>
+          <td>${fmtC(inv.total||inv.amount||0)}</td>
+          <td>${_invStatusBadge(inv)}</td>
           <td style="white-space:nowrap">
-            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️ Print / PDF</button>
-            ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">Mark Paid</button>`:''}
-            ${_isAdmin()?`<button class="btn xs red" onclick="deleteRetailInv('${inv.id}')">✕</button>`:''}
+            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️</button>
+            ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">✓ Paid</button>`:''}
           </td>
         </tr>`;
       }).join('');
+
+      const lfRows = lInvs.map(inv=>{
+        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
+        return `<tr>
+          <td><span class="badge" style="font-size:10px;margin-right:4px;background:#dcfce7;color:#166534">LF</span> ${escHtml(inv.number||'—')}</td>
+          <td>${escHtml(acName)}</td>
+          <td>${fmtD(inv.due)}</td>
+          <td>${fmtC(inv.total||0)}</td>
+          <td>${_invStatusBadge(inv)}</td>
+          <td style="white-space:nowrap">
+            <button class="btn xs" onclick="generateLfInvoicePrint('${inv.id}')">🖨️</button>
+            <button class="btn xs" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      const combRows = cInvs.map(ci=>{
+        return `<tr>
+          <td><span class="badge amber" style="font-size:10px;margin-right:4px">Combined</span> ${escHtml(ci.number||ci.invoiceNumber||'—')}</td>
+          <td>${escHtml(ci.accountName||'—')}</td>
+          <td>${fmtD(ci.dueDate||ci.due)}</td>
+          <td>${fmtC(ci.grandTotal||0)}</td>
+          <td>${_invStatusBadge(ci)}</td>
+          <td style="white-space:nowrap">
+            <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">Preview</button>
+          </td>
+        </tr>`;
+      }).join('');
+
       return `<div style="margin-top:16px">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Invoices</div>
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Recent Invoices</div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Invoice #</th><th>Date</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-            <tbody>${rows}</tbody>
+            <thead><tr><th>Invoice</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+            <tbody>${purplRows}${lfRows}${combRows}</tbody>
           </table>
         </div>
       </div>`;
@@ -11334,6 +11370,29 @@ async function saveNewCombinedInvoice() {
   setTimeout(() => openCombinedInvoicePreview(combId), 300);
 }
 
+// Shared payment-options HTML block used by print/PDF views and emails.
+// `payLink` is the per-invoice Stripe Checkout URL (or null).
+function _buildPaymentHTML(payLink) {
+  const s = DB.obj('invoice_settings', {});
+  const link = payLink || s.stripeLink || '';
+  return `
+    ${link ?
+      `<div style="margin-bottom:8px">
+        <a href="${link}"
+          style="background:#7B4FA0;color:#fff;padding:10px 20px;
+          border-radius:8px;text-decoration:none;font-weight:600;
+          display:inline-block">
+          💳 Pay Now Online →</a></div>` : ''}
+    ${s.achRouting ?
+      `<div style="margin-bottom:4px">
+        <strong>ACH Transfer:</strong>
+        Routing: ${s.achRouting} ·
+        Account: ${s.achAccount}</div>` : ''}
+    ${(s.checkInstructions || s.paymentInstructions) ?
+      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
+      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+}
+
 // ── Invoice legal terms (fine print) ──────────────────────
 
 const DEFAULT_INVOICE_LEGAL_TERMS = `Wholesale Terms — From Our Field to Your Front Door
@@ -11536,7 +11595,13 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
       <div style="font-size:26px;font-weight:700;color:#1a1a2e">$${rec.grandTotal.toFixed(2)}</div>
     </div>
     <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(paymentTerms)} · Due ${dueDate}</div>
-    ${rec._payLink ? `<div style="margin-top:20px;text-align:center"><a href="${escHtml(rec._payLink)}" style="display:inline-block;background:#1a1a2e;color:#fff;padding:12px 36px;border-radius:4px;text-decoration:none;font-size:13px;font-weight:500;letter-spacing:0.04em">PAY ONLINE</a></div>` : ''}
+  </td></tr>
+
+  <tr><td style="padding:0 48px 24px">
+    <div style="background:#f9fafb;border-radius:6px;padding:16px 20px;margin-top:4px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;font-weight:600">Payment Options</div>
+      ${_buildPaymentHTML(rec._payLink)}
+    </div>
   </td></tr>
 
   ${invoiceNotes ? `<tr><td style="padding:0 48px 24px">
@@ -11618,8 +11683,11 @@ function buildPurplInvoiceEmailHTML(inv) {
         <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
         <div style="font-size:24px;font-weight:700;color:#2D1B4E">$${parseFloat(inv.amount||0).toFixed(2)}</div>
       </div>
-      ${inv._payLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:#2D1B4E;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
     </div>
+  </td></tr>
+  <tr><td style="padding:4px 40px 16px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Payment Options</div>
+    ${_buildPaymentHTML(inv._payLink)}
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
   ${portalLink ? `<tr><td style="padding:0 40px 16px;text-align:center"><a href="${portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
@@ -11709,8 +11777,11 @@ function buildLfInvoiceEmailHTML(inv) {
         <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
         <div style="font-size:24px;font-weight:700;color:#2a5c3f">$${parseFloat(inv.total||0).toFixed(2)}</div>
       </div>
-      ${inv._payLink ? `<div style="margin-top:14px;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:#2a5c3f;color:#fff;padding:10px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pay Now →</a></div>` : ''}
     </div>
+  </td></tr>
+  <tr><td style="padding:4px 40px 16px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Payment Options</div>
+    ${_buildPaymentHTML(inv._payLink)}
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
   ${_legalTermsHTML() ? `<tr><td style="padding:0 40px 20px">${_legalTermsHTML()}</td></tr>` : ''}
@@ -11724,11 +11795,12 @@ function buildLfInvoiceEmailHTML(inv) {
 
 // ── Combined invoice preview modal ────────────────────────
 
-function openCombinedInvoicePreview(combinedId) {
+async function openCombinedInvoicePreview(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
-
-  const html     = buildCombinedInvoiceHTML(combinedId);
+  toast('Loading preview…');
+  const payLink = await _getStripePayLink(rec, 'combined');
+  const html     = buildCombinedInvoiceHTML(combinedId, payLink);
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
   const purplInv = findInvoice(rec.purplInvoiceId) || {};
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
@@ -11796,9 +11868,7 @@ function openCombinedInvoicePreview(combinedId) {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
     const to = account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
-    // Generate per-invoice Stripe payment link, then rebuild HTML with it
-    const payLink = await _getStripePayLink(rec, 'combined');
-    const sendHtml = buildCombinedInvoiceHTML(combinedId, payLink);
+    const sendHtml = html;
     callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
       .then((result) => {
         toast('Invoice sent ✓');
@@ -14388,9 +14458,11 @@ function loadApiSettings() {
   }
 }
 
-function generateInvoicePrint(invoiceId) {
+async function generateInvoicePrint(invoiceId) {
   const iv = findInvoice(invoiceId);
   if (!iv) { toast('Invoice not found'); return; }
+  toast('Generating PDF…');
+  const payLink = await _getStripePayLink(iv, 'retail');
   const s = DB.obj('invoice_settings', {});
   const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
   const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
@@ -14402,22 +14474,7 @@ function generateInvoicePrint(invoiceId) {
   const amt       = iv.amount != null ? iv.amount : (iv.total != null ? iv.total : null);
   const status    = iv.status || 'draft';
 
-  const paymentHtml = `
-    ${s.stripeLink ?
-      `<div style="margin-bottom:8px">
-        <a href="${s.stripeLink}"
-          style="background:#7B4FA0;color:#fff;padding:10px 20px;
-          border-radius:8px;text-decoration:none;font-weight:600;
-          display:inline-block">
-          💳 Pay Now Online →</a></div>` : ''}
-    ${s.achRouting ?
-      `<div style="margin-bottom:4px">
-        <strong>ACH Transfer:</strong>
-        Routing: ${s.achRouting} ·
-        Account: ${s.achAccount}</div>` : ''}
-    ${(s.checkInstructions || s.paymentInstructions) ?
-      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
-      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+  const paymentHtml = _buildPaymentHTML(payLink);
 
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
@@ -14582,9 +14639,11 @@ ${_legalTermsHTML() ? `<div style="margin-top:24px;padding-top:14px;border-top:1
   w.document.close();
 }
 
-function generateLfInvoicePrint(invoiceId) {
+async function generateLfInvoicePrint(invoiceId) {
   const inv = DB.a('lf_invoices').find(x => x.id === invoiceId);
   if (!inv) { toast('Invoice not found'); return; }
+  toast('Generating PDF…');
+  const payLink = await _getStripePayLink(inv, 'lf');
   const s        = DB.obj('invoice_settings', {});
   const ac       = DB.a('ac').find(x => x.id === inv.accountId) || {};
   const fromName = s.fromName  || 'Pumpkin Blossom Farm LLC';
@@ -14614,22 +14673,7 @@ function generateLfInvoicePrint(invoiceId) {
     </tr>`;
   }).join('') || `<tr><td colspan="4" style="color:#9ca3af">No line items</td></tr>`;
 
-  const paymentHtml = `
-    ${s.stripeLink ?
-      `<div style="margin-bottom:8px">
-        <a href="${s.stripeLink}"
-          style="background:#2a5c3f;color:#fff;padding:10px 20px;
-          border-radius:8px;text-decoration:none;font-weight:600;
-          display:inline-block">
-          💳 Pay Now Online →</a></div>` : ''}
-    ${s.achRouting ?
-      `<div style="margin-bottom:4px">
-        <strong>ACH Transfer:</strong>
-        Routing: ${s.achRouting} ·
-        Account: ${s.achAccount}</div>` : ''}
-    ${(s.checkInstructions || s.paymentInstructions) ?
-      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
-      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+  const paymentHtml = _buildPaymentHTML(payLink);
 
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
