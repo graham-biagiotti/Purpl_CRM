@@ -652,8 +652,15 @@ exports.createStripePaymentLink = onCall(
     if (!data.amount || !data.invoiceNumber) {
       throw new HttpsError('invalid-argument', 'Missing amount or invoiceNumber');
     }
-    const key = process.env.STRIPE_SECRET_KEY;
+    // Trim — keys saved via piped echo on Windows pick up trailing spaces/CRLF,
+    // which makes every Stripe call fail with an auth error.
+    const key = (process.env.STRIPE_SECRET_KEY || '').trim();
     if (!key) throw new HttpsError('failed-precondition', 'Stripe not configured');
+    if (!key.startsWith('sk_')) {
+      throw new HttpsError('failed-precondition',
+        'STRIPE_SECRET_KEY does not look like a secret key (must start with sk_). ' +
+        'You may have saved the publishable key (pk_...) by mistake.');
+    }
 
     const stripe = require('stripe')(key);
     const amountCents = Math.round(parseFloat(data.amount) * 100);
@@ -685,8 +692,10 @@ exports.createStripePaymentLink = onCall(
       });
       return { url: session.url, sessionId: session.id };
     } catch (err) {
-      console.error('Stripe session error:', err.message);
-      throw new HttpsError('internal', 'Payment link creation failed');
+      console.error('Stripe session error:', err.type, err.code, err.message);
+      // Surface the real Stripe error so the CRM can show what's wrong.
+      // (Only authenticated CRM users can call this — no key material is leaked.)
+      throw new HttpsError('internal', 'Stripe: ' + (err.message || err.type || 'unknown error'));
     }
   }
 );
@@ -698,8 +707,8 @@ exports.stripeWebhook = onRequest(
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
-    const key = process.env.STRIPE_SECRET_KEY;
-    const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const key = (process.env.STRIPE_SECRET_KEY || '').trim();
+    const whSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
     if (!key || !whSecret) { res.status(500).send('Stripe not configured'); return; }
 
     const stripe = require('stripe')(key);
