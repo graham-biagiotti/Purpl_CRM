@@ -435,8 +435,12 @@ async function _getStripePayLink(invoice, type) {
       accountId: invoice.accountId || '',
     });
     const d = result.data || {};
-    if (d.ok && d.url) return d.url;
-    _stickyError('⚠ Stripe pay link failed: ' + (d.error || 'no link returned') + ' — the invoice will go out WITHOUT a pay button.');
+    if (d.ok && d.url) {
+      const old = document.getElementById('sticky-error');
+      if (old) old.remove();
+      return d.url;
+    }
+    _stickyError('Stripe pay link failed: ' + (d.error || 'no link returned') + ' — the invoice will send without a pay button.');
     return DB.obj('invoice_settings', {}).stripeLink || null;
   } catch (e) {
     console.error('Stripe link generation failed:', e);
@@ -11464,22 +11468,20 @@ async function saveNewCombinedInvoice() {
 function _buildPaymentHTML(payLink) {
   const s = DB.obj('invoice_settings', {});
   const link = payLink || s.stripeLink || '';
-  return `
-    ${link ?
-      `<div style="margin-bottom:8px">
-        <a href="${link}"
-          style="background:#7B4FA0;color:#fff;padding:10px 20px;
-          border-radius:8px;text-decoration:none;font-weight:600;
-          display:inline-block">
-          💳 Pay Now Online →</a></div>` : ''}
-    ${s.achRouting ?
-      `<div style="margin-bottom:4px">
-        <strong>ACH Transfer:</strong>
-        Routing: ${s.achRouting} ·
-        Account: ${s.achAccount}</div>` : ''}
-    ${(s.checkInstructions || s.paymentInstructions) ?
-      `<div style="white-space:pre-line">${s.checkInstructions || s.paymentInstructions}</div>`
-      : `<div>Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong></div>`}`;
+  const otherMethods = [];
+  if (s.achRouting) otherMethods.push(`<strong>ACH / Wire:</strong> Routing ${s.achRouting} · Account ${s.achAccount || '—'}`);
+  if (s.checkInstructions || s.paymentInstructions) otherMethods.push(escHtml(s.checkInstructions || s.paymentInstructions));
+  if (!otherMethods.length) otherMethods.push('Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong>');
+  return `${link ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">
+    <tr><td align="center" style="padding:0">
+      <table cellpadding="0" cellspacing="0"><tr><td align="center" style="background:#1a1a2e;border-radius:6px">
+        <a href="${link}" target="_blank" style="display:inline-block;padding:14px 40px;font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.04em">Pay Online</a>
+      </td></tr></table>
+    </td></tr>
+  </table>` : ''}
+  <div style="font-size:12px;color:#6b7280;line-height:1.8;${link ? 'border-top:1px solid #e5e7eb;padding-top:10px;margin-top:2px' : ''}">
+    ${otherMethods.join('<br>')}
+  </div>`;
 }
 
 // ── Invoice legal terms (fine print) ──────────────────────
@@ -11612,13 +11614,12 @@ function buildInvoiceDocHTML(o) {
   const grandTotal = parseFloat(o.grandTotal || 0);
 
   const paymentSection = isPaid
-    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px 20px;font-size:13px;color:#166534">
-        ✓ This invoice was paid${o.paidAt ? ' on ' + fmtLong(o.paidAt) : ''}. Thank you!
-      </div>`
-    : `<div style="background:#f9fafb;border-radius:6px;padding:16px 20px">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;font-weight:600">Payment Options</div>
+    ? `<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px 20px;font-size:13px;color:#166534;text-align:center">
+        This invoice has been paid${o.paidAt ? ' — ' + fmtLong(o.paidAt) : ''}. Thank you!
+      </td></tr></table>`
+    : `<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:0">
         ${_buildPaymentHTML(o.payLink)}
-      </div>`;
+      </td></tr></table>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
