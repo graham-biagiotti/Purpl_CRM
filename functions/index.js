@@ -447,7 +447,7 @@ exports.lookupPortalToken = onCall(async (request) => {
 // ── 5. Resend Webhook ─────────────────────────────────────
 // Validates webhook signature via svix, then updates cadence entries.
 exports.resendWebhook = onRequest(
-  {secrets: [resendWebhookSecret]},
+  {secrets: [resendWebhookSecret], invoker: 'public'},
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
@@ -803,7 +803,7 @@ exports.createStripePaymentLink = onCall(
 // ── 9. Stripe Webhook ────────────────────────────────────
 // Receives checkout.session.completed events and marks the invoice as paid.
 exports.stripeWebhook = onRequest(
-  {secrets: [stripeSecretKey, stripeWebhookSecret]},
+  {secrets: [stripeSecretKey, stripeWebhookSecret], invoker: 'public'},
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
