@@ -325,17 +325,6 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         </div>
       </div>
 
-      <!-- Raspberry — coming soon -->
-      <div class="product-card coming-soon">
-        <div class="product-name">Raspberry Lavender Lemonade
-          <span class="coming-soon-badge">Coming Soon</span></div>
-        <div class="product-desc">12 fl oz · 12 cans per case</div>
-        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
-        <div class="notify-row">
-          <input type="checkbox" id="notify-raspberry" onchange="checkSubmitEnabled()">
-          <label for="notify-raspberry">Notify me when available</label>
-        </div>
-      </div>
     </div>
 
     <!-- Dual-brand notice -->
@@ -919,7 +908,7 @@ function updateCans() {
 
 function checkSubmitEnabled() {
   const cases = parseInt(document.getElementById('classic-cases').value) || 0;
-  const notifyChecked = ['blueberry', 'peach', 'raspberry']
+  const notifyChecked = ['blueberry', 'peach']
     .some(f => document.getElementById('notify-' + f).checked);
   const lfTotal = _brandLf ? getLfTotal() : 0;
   const hasPurpl = _brandPurpl && (cases > 0 || notifyChecked);
@@ -1034,7 +1023,7 @@ function submitOrder() {
   const poNumber = document.getElementById('po-number').value.trim();
   const notes = document.getElementById('order-notes').value.trim();
 
-  const checkedFlavors = ['blueberry', 'peach', 'raspberry']
+  const checkedFlavors = ['blueberry', 'peach']
     .filter(f => document.getElementById('notify-' + f).checked);
 
   const orderData = {

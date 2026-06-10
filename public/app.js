@@ -189,10 +189,14 @@ const SKUS = [
   {id:'classic',    label:'Classic',    cls:'sku-classic',    bg:'classic-bg'},
   {id:'blueberry',  label:'Blueberry',  cls:'sku-blueberry',  bg:'blueberry-bg'},
   {id:'peach',      label:'Peach',      cls:'sku-peach',       bg:'peach-bg'},
-  {id:'raspberry',  label:'Raspberry',  cls:'sku-raspberry',   bg:'raspberry-bg'},
   {id:'variety',    label:'Variety',    cls:'sku-variety',     bg:'variety-bg'},
 ];
-const SKU_MAP = Object.fromEntries(SKUS.map(s=>[s.id,s]));
+// Discontinued SKUs — excluded from all entry forms, but kept here so
+// historical invoices/orders/inventory still render with correct badges.
+const ARCHIVED_SKUS = [
+  {id:'raspberry',  label:'Raspberry',  cls:'sku-raspberry',   bg:'raspberry-bg'},
+];
+const SKU_MAP = Object.fromEntries([...SKUS, ...ARCHIVED_SKUS].map(s=>[s.id,s]));
 const skuBadge = (id) => {
   const s = SKU_MAP[id] || {label:id||'—', cls:'sku-classic'};
   return `<span class="badge ${s.cls}">${s.label}</span>`;
@@ -756,7 +760,7 @@ function seedIfEmpty() {
   const accs = [
     {id:uid(),name:'Whole Foods Market – Oak Park',contact:'Lisa Park',phone:'708-555-0100',email:'lisa@wf-oakpark.com',type:'Grocery',status:'active',skus:['classic','blueberry'],par:{classic:48,blueberry:24},territory:'North',since:'2023-03-01',notes:[],lastOrder:today()},
     {id:uid(),name:'Mariano\'s – Lincoln Square',contact:'Tom Ruiz',phone:'773-555-0120',email:'tom@marianos-ls.com',type:'Grocery',status:'active',skus:['classic','peach'],par:{classic:36,peach:24},territory:'North',since:'2023-06-15',notes:[],lastOrder:today()},
-    {id:uid(),name:'Central Gym & Fitness',contact:'Rachel Kim',phone:'312-555-0140',email:'rachel@centralgym.com',type:'Gym',status:'active',skus:['classic','raspberry'],par:{classic:24,raspberry:12},territory:'Central',since:'2024-01-10',notes:[],lastOrder:today()},
+    {id:uid(),name:'Central Gym & Fitness',contact:'Rachel Kim',phone:'312-555-0140',email:'rachel@centralgym.com',type:'Gym',status:'active',skus:['classic','peach'],par:{classic:24,peach:12},territory:'Central',since:'2024-01-10',notes:[],lastOrder:today()},
     {id:uid(),name:'Sunrise Café',contact:'Marco Soto',phone:'773-555-0160',email:'marco@sunrisecafe.com',type:'Café',status:'paused',skus:['variety'],par:{variety:12},territory:'South',since:'2023-09-01',notes:[],lastOrder:'2024-11-15'},
   ];
   const prs = [
@@ -766,7 +770,7 @@ function seedIfEmpty() {
   DB.set('ac', accs);
   DB.set('pr', prs);
 
-  const costs = {cogs:{classic:2.10,blueberry:2.20,peach:2.15,raspberry:2.18,variety:2.25},overhead_monthly:1200,target_margin:0.60};
+  const costs = {cogs:{classic:2.10,blueberry:2.20,peach:2.15,variety:2.25},overhead_monthly:1200,target_margin:0.60};
   DB.setObj('costs', costs);
   const settings = {company:'purpl Beverages',currency:'USD',territory_labels:['North','South','Central','West'],payment_terms:30,seeded:true};
   DB.setObj('settings', settings);
@@ -1746,7 +1750,6 @@ const IV_SKUS = [
   {id:'classic',   name:'Classic 12-pack'},
   {id:'blueberry', name:'Blueberry 12-pack'},
   {id:'peach',     name:'Peach 12-pack'},
-  {id:'raspberry', name:'Raspberry 12-pack'},
   {id:'variety',   name:'Variety 12-pack'},
 ];
 
@@ -7306,7 +7309,7 @@ function toggleReturnCredit() {
 
 function invAdjust(sku, type) {
   if (!DB._firestoreReady) return;
-  const skuVal = sku || prompt('SKU (classic/blueberry/peach/raspberry/variety):');
+  const skuVal = sku || prompt('SKU (classic/blueberry/peach/variety):');
   if (!skuVal || !SKU_MAP[skuVal]) { if(skuVal) toast('Unknown SKU'); return; }
   const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
   if (!qty || qty <= 0) return;
