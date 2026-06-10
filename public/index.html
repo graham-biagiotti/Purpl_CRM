@@ -2211,7 +2211,10 @@
     <div class="modal-hdr"><h2 id="lfi-modal-title">New LF Invoice</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Invoice #</label><input id="lfi-number" placeholder="LF-001"></div>
-      <div class="form-group"><label>Account *</label><select id="lfi-account"></select></div>
+      <div class="form-group"><label>Account *</label>
+        <input id="lfi-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('lfi-account', this.value)">
+        <select id="lfi-account"></select>
+      </div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="lfi-issued"></div>
@@ -2725,7 +2728,10 @@
     <div class="modal-hdr"><h2 id="iv-modal-title">New purpl Invoice</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Invoice #</label><input id="iv-number" placeholder="INV-001"></div>
-      <div class="form-group"><label>Account *</label><select id="iv-account" onchange="ivAccountChange()"></select></div>
+      <div class="form-group"><label>Account *</label>
+        <input id="iv-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('iv-account', this.value)">
+        <select id="iv-account" onchange="ivAccountChange()"></select>
+      </div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="iv-date" onchange="ivTermsChange()"></div>
@@ -3192,7 +3198,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="form-row col2">
       <div class="form-group">
         <label>Account *</label>
-        <select id="nciv-account" onchange="ncivAccountChanged()"><option value="">Select account...</option></select>
+        <input id="nciv-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('nciv-account', this.value)">
+        <select id="nciv-account" onchange="ncivAccountChanged()"></select>
       </div>
       <div class="form-group">
         <label>Invoice Number</label>

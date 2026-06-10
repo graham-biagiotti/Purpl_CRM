@@ -1745,6 +1745,41 @@ function setInvStatus(id, status) {
 //  RETAIL INVOICES (standalone customer invoices)
 // ══════════════════════════════════════════════════════════
 
+// ── Searchable account selects (invoice modals) ───────────
+// Keeps the native <select> (so all existing .value reads/writes work)
+// and pairs it with a "<selectId>-search" text input that filters options.
+
+function _populateAccountSelect(selectId, accounts, selectedId, placeholder) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel._accounts = accounts.map(a => ({ id: a.id, name: a.name || '' }));
+  sel._placeholder = placeholder || '— Select Account —';
+  const search = document.getElementById(selectId + '-search');
+  if (search) search.value = '';
+  _renderAccountSelectOptions(sel, '');
+  if (selectedId) sel.value = selectedId;
+}
+
+function _renderAccountSelectOptions(sel, q) {
+  const ql = (q || '').trim().toLowerCase();
+  const list = (sel._accounts || []).filter(a => !ql || a.name.toLowerCase().includes(ql));
+  const prev = sel.value;
+  sel.innerHTML = `<option value="">${escHtml(sel._placeholder || '— Select Account —')}</option>` +
+    list.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+  if (prev && list.some(a => a.id === prev)) sel.value = prev;
+  return list;
+}
+
+function filterAccountSelect(selectId, q) {
+  const sel = document.getElementById(selectId);
+  if (!sel || !sel._accounts) return;
+  const before = sel.value;
+  const list = _renderAccountSelectOptions(sel, q);
+  // While typing, auto-pick the first match if the old pick was filtered out
+  if ((q || '').trim() && list.length && !sel.value) sel.value = list[0].id;
+  if (sel.value !== before) sel.dispatchEvent(new Event('change'));
+}
+
 // purpl invoice SKUs
 const IV_SKUS = [
   {id:'classic',   name:'Classic 12-pack'},
@@ -1797,15 +1832,9 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     }
   }
 
-  // Account selector
-  const acSel = qs('#iv-account');
-  if (acSel) {
-    const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
-    acSel.innerHTML = '<option value="">— Select Account —</option>' +
-      accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
-    const acId = inv?.accountId || prefillAccountId;
-    if (acId) acSel.value = acId;
-  }
+  // Account selector (searchable)
+  const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+  _populateAccountSelect('iv-account', accounts, inv?.accountId || prefillAccountId || '');
 
   // Pricing tier
   const tierSel = qs('#iv-tier');
@@ -10529,14 +10558,9 @@ function openLfInvoiceModal(id) {
     }
   }
 
-  // Account selector (all non-inactive accounts)
-  const acSel = qs('#lfi-account');
-  if (acSel) {
-    const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
-    acSel.innerHTML = '<option value="">— Select Account —</option>' +
-      accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
-    if (inv?.accountId) acSel.value = inv.accountId;
-  }
+  // Account selector (all non-inactive accounts, searchable)
+  const lfiAccounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+  _populateAccountSelect('lfi-account', lfiAccounts, inv?.accountId || '');
 
   // Line items
   const container = qs('#lfi-line-items');
@@ -11056,10 +11080,8 @@ async function getNextInvoiceNumber(type) {
 // ── New combined invoice modal ────────────────────────────
 
 function openNewCombinedModal() {
-  const accts = DB.a('ac').filter(a => a.isPbf);
-  const sel = document.getElementById('nciv-account');
-  sel.innerHTML = '<option value="">Select account...</option>' +
-    accts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+  const accts = DB.a('ac').filter(a => a.isPbf).sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+  _populateAccountSelect('nciv-account', accts, '', 'Select account...');
 
   if (qs('#nciv-number')) qs('#nciv-number').value = peekNextInvoiceNumber();
   if (qs('#nciv-date')) qs('#nciv-date').value = today();
