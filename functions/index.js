@@ -683,8 +683,8 @@ exports.stripeStatus = onCall(
         payment_method_types: ['card'],
         line_items: [{price_data: {currency: 'usd', product_data: {name: 'Connection Test'}, unit_amount: 100}, quantity: 1}],
         mode: 'payment',
-        success_url: 'https://purpl-crm.web.app/order?paid=1',
-        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
       });
       steps.push('Checkout session created: ' + session.id);
       return {ok: true, url: session.url, steps};
@@ -736,8 +736,8 @@ exports.createPayLink = onCall(
           invoiceType: data.invoiceType || 'retail',
           accountId: data.accountId || '',
         },
-        success_url: 'https://purpl-crm.web.app/order?paid=1',
-        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
       });
       return {ok: true, v: 2, url: session.url, sessionId: session.id};
     } catch (err) {
@@ -789,8 +789,8 @@ exports.createStripePaymentLink = onCall(
           invoiceType: data.invoiceType || 'retail',
           accountId: data.accountId || '',
         },
-        success_url: 'https://purpl-crm.web.app/order?paid=1',
-        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
       });
       return { ok: true, url: session.url, sessionId: session.id };
     } catch (err) {
