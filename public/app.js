@@ -413,12 +413,16 @@ async function _getStripePayLink(invoice, type) {
       accountName: invoice.accountName || '',
       accountId: invoice.accountId || '',
     });
-    const url = result.data?.url || null;
-    if (!url) toast('⚠ Stripe did not return a payment link — sending without Pay button', 6000);
-    return url;
+    const d = result.data || {};
+    if (d.ok && d.url) return d.url;
+    // Function returned structured error instead of throwing
+    const msg = d.error || 'Stripe did not return a payment link';
+    console.warn('Stripe pay link:', msg);
+    toast('⚠ ' + msg, 8000);
+    return DB.obj('invoice_settings', {}).stripeLink || null;
   } catch (e) {
     console.error('Stripe link generation failed:', e);
-    toast('⚠ Stripe pay link failed: ' + _stripeErrHint(e), 8000);
+    toast('⚠ Stripe pay link failed: ' + (e?.message || 'unknown error — check the Functions deploy'), 8000);
     return DB.obj('invoice_settings', {}).stripeLink || null;
   }
 }

@@ -685,27 +685,24 @@ exports.stripeStatus = onCall(
 
 // ── 8b. Create Stripe Payment Link ───────────────────────
 // Auth-required. Generates a unique Stripe Checkout Session link for an invoice.
+// Returns {ok, url, error} instead of throwing — Firebase v2 onCall wraps
+// thrown errors as opaque "internal", hiding the real message.
 exports.createStripePaymentLink = onCall(
   {secrets: [stripeSecretKey]},
   async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    if (!request.auth) return {ok: false, error: 'Not signed in'};
     const data = request.data;
-    if (!data.amount || !data.invoiceNumber) {
-      throw new HttpsError('invalid-argument', 'Missing amount or invoiceNumber');
-    }
-    // Trim — keys saved via piped echo on Windows pick up trailing spaces/CRLF,
-    // which makes every Stripe call fail with an auth error.
-    const key = (process.env.STRIPE_SECRET_KEY || '').trim();
-    if (!key) throw new HttpsError('failed-precondition', 'Stripe not configured');
-    if (!key.startsWith('sk_')) {
-      throw new HttpsError('failed-precondition',
-        'STRIPE_SECRET_KEY does not look like a secret key (must start with sk_). ' +
-        'You may have saved the publishable key (pk_...) by mistake.');
-    }
+    if (!data.amount || !data.invoiceNumber) return {ok: false, error: 'Missing amount or invoice number'};
 
-    const stripe = require('stripe')(key);
+    const key = (process.env.STRIPE_SECRET_KEY || '').trim();
+    if (!key) return {ok: false, error: 'STRIPE_SECRET_KEY is not set. Run: firebase functions:secrets:set STRIPE_SECRET_KEY'};
+    if (!key.startsWith('sk_')) return {ok: false, error: 'STRIPE_SECRET_KEY starts with ' + key.slice(0, 3) + ' — must start with sk_live_ or sk_test_'};
+
+    let stripe;
+    try { stripe = require('stripe')(key); } catch (e) { return {ok: false, error: 'Stripe SDK failed: ' + e.message}; }
+
     const amountCents = Math.round(parseFloat(data.amount) * 100);
-    if (amountCents < 50) throw new HttpsError('invalid-argument', 'Amount too small');
+    if (amountCents < 50) return {ok: false, error: 'Amount too small (min $0.50)'};
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -731,12 +728,10 @@ exports.createStripePaymentLink = onCall(
         success_url: 'https://purpl-crm.web.app/order?paid=1',
         cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
       });
-      return { url: session.url, sessionId: session.id };
+      return { ok: true, url: session.url, sessionId: session.id };
     } catch (err) {
       console.error('Stripe session error:', err.type, err.code, err.message);
-      // Surface the real Stripe error so the CRM can show what's wrong.
-      // (Only authenticated CRM users can call this — no key material is leaked.)
-      throw new HttpsError('internal', 'Stripe: ' + (err.message || err.type || 'unknown error'));
+      return {ok: false, error: 'Stripe: ' + (err.message || err.type || 'unknown error')};
     }
   }
 );
