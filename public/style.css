@@ -857,3 +857,78 @@ td { padding: 9px 12px; font-size: 13px; }
 }
 #offline-banner.visible { display: block; }
 body.offline-mode #app-shell { padding-top: 40px; }
+
+/* ══════════════════════════════════════════════════════════
+   POLISH PASS 3 — micro-interactions & consistency
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Text selection in brand color ───────────────────────── */
+::selection { background: #e4d5f5; color: #2d1b4e; }
+
+/* ── Thin, subtle scrollbars everywhere ──────────────────── */
+* { scrollbar-width: thin; scrollbar-color: #d6cce6 transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d6cce6; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #b9a8d6; background-clip: content-box; }
+
+/* ── Page enters with a soft fade ────────────────────────── */
+@keyframes pageIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.page.active { animation: pageIn .18s ease-out; }
+
+/* ── Modals ease in instead of snapping ──────────────────── */
+@keyframes overlayIn { from { background: rgba(0,0,0,0); } to { background: rgba(0,0,0,.45); } }
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.overlay.open { animation: overlayIn .16s ease-out; }
+.overlay.open .modal { animation: modalIn .2s cubic-bezier(.2,.9,.3,1); }
+
+/* ── Softer input focus ring (was a hard outline) ────────── */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #b794d4;
+  box-shadow: 0 0 0 3px rgba(123,79,160,.14);
+}
+input, select, textarea { transition: border-color .12s, box-shadow .12s; }
+
+/* ── Button micro-interactions ───────────────────────────── */
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+.btn.red:hover { background: #dc2626; border-color: #dc2626; }
+.btn.green:hover { background: #059669; border-color: #059669; }
+
+/* ── Table rows: brand-tinted hover ──────────────────────── */
+tr:hover td { background: #faf8fe; }
+td, th { transition: background .1s; }
+th { cursor: default; }
+th[onclick] { cursor: pointer; }
+th[onclick]:hover { color: var(--text); background: #f3eefa; }
+
+/* ── Tabs: hover + smooth underline ──────────────────────── */
+.tab { transition: color .12s, border-color .12s; border-radius: 6px 6px 0 0; }
+.tab:hover { color: var(--text); background: #faf8fe; }
+.tab.active:hover { color: #7B4FA0; background: none; }
+
+/* ── KPI cards: gentle lift on hover ─────────────────────── */
+.kpi { transition: box-shadow .15s, transform .15s; }
+.kpi:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(123,79,160,.1); }
+
+/* ── Invoice columns: lift like cards ────────────────────── */
+.inv-col { transition: box-shadow .15s; }
+.inv-col:hover { box-shadow: 0 3px 12px rgba(123,79,160,.08); }
+
+/* ── Status badges read like labels ──────────────────────── */
+.badge { text-transform: capitalize; }
+
+/* ── Empty states: quieter ───────────────────────────────── */
+.empty { color: #9ca3af; }
+
+/* ── Topbar: hairline depth over content ─────────────────── */
+.topbar { box-shadow: 0 1px 3px rgba(45,27,78,.05); }
+
+/* ── Respect reduced-motion preference ───────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .page.active, .overlay.open, .overlay.open .modal { animation: none; }
+  .kpi, .btn, .sb-nav a { transition: none; }
+  .kpi:hover { transform: none; }
+  .btn:active { transform: none; }
+}
