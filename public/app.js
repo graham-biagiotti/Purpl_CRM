@@ -871,8 +871,138 @@ function migrateLfSkuPrices() {
 // ══════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
+// ── Global search (topbar) ─────────────────────────────────
+function _gsNavigate(type, id) {
+  const box = document.getElementById('global-search-results');
+  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+  const inp = document.getElementById('global-search');
+  if (inp) inp.value = '';
+  if      (type === 'ac')           { nav('accounts');      openAccount(id); }
+  else if (type === 'pr')           { nav('prospects');     openProspect(id); }
+  else if (type === 'dist')         { nav('distributors');  openDistributor(id); }
+  else if (type === 'inv-retail')   { nav('invoices');      openInvModal(id); }
+  else if (type === 'inv-lf')       { nav('invoices');      openLfInvoiceModal(id); }
+  else if (type === 'inv-combined') { nav('invoices');      openCombinedInvoicePreview(id); }
+  else if (type === 'inv-dist')     { nav('invoices');      editDistInvoice(id); }
+}
+
+function _globalSearchRun() {
+  const inp = document.getElementById('global-search');
+  const box = document.getElementById('global-search-results');
+  if (!inp || !box) return;
+  const q = inp.value.toLowerCase().trim();
+  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+  const hits = [];
+  DB.a('ac').forEach(a => {
+    if ((a.name||'').toLowerCase().includes(q) || (a.email||'').toLowerCase().includes(q))
+      hits.push({t:'ac', id:a.id, label:a.name||'—', sub:a.email||a.address||'Account', badge:'Account', cls:'purple'});
+  });
+  DB.a('pr').forEach(p2 => {
+    if ((p2.name||'').toLowerCase().includes(q))
+      hits.push({t:'pr', id:p2.id, label:p2.name||'—', sub:'Prospect · '+(p2.status||p2.stage||''), badge:'Prospect', cls:'blue'});
+  });
+  DB.a('dist_profiles').forEach(d => {
+    if ((d.name||'').toLowerCase().includes(q))
+      hits.push({t:'dist', id:d.id, label:d.name||'—', sub:'Distributor', badge:'Distributor', cls:'cyan'});
+  });
+  const invMatch = x => ((x.number||x.invoiceNumber||'') + ' ' + (x.accountName||x.distName||'')).toLowerCase().includes(q);
+  DB.a('retail_invoices').forEach(x => { if (invMatch(x)) hits.push({t:'inv-retail', id:x.id, label:(x.number||x.invoiceNumber||'—')+' · '+(x.accountName||''), sub:fmtC(x.amount||x.total||0)+' · '+(x.status||'draft'), badge:'purpl inv', cls:'purple'}); });
+  DB.a('lf_invoices').forEach(x => { if (invMatch(x)) hits.push({t:'inv-lf', id:x.id, label:(x.number||x.invoiceNumber||'—')+' · '+(x.accountName||''), sub:fmtC(x.total||0)+' · '+(x.status||'draft'), badge:'LF inv', cls:'green'}); });
+  DB.a('combined_invoices').forEach(x => { if (invMatch(x)) hits.push({t:'inv-combined', id:x.id, label:(x.number||x.invoiceNumber||'—')+' · '+(x.accountName||''), sub:fmtC(x.grandTotal||0)+' · '+(x.status||'draft'), badge:'Combined', cls:'amber'}); });
+  DB.a('dist_invoices').forEach(x => { if (invMatch(x)) hits.push({t:'inv-dist', id:x.id, label:(x.number||x.invoiceNumber||'—')+' · '+(x.distName||''), sub:fmtC(x.total||0)+' · '+(x.status||'draft'), badge:'Dist inv', cls:'gray'}); });
+
+  const top = hits.slice(0, 8);
+  box.innerHTML = top.length
+    ? top.map(h => `<div class="gs-item" onclick="_gsNavigate('${h.t}','${h.id}')">
+        <div style="min-width:0"><div class="gs-label">${escHtml(h.label)}</div><div class="gs-sub">${escHtml(h.sub)}</div></div>
+        <span class="badge ${h.cls}" style="flex-shrink:0">${h.badge}</span>
+      </div>`).join('')
+    : '<div class="gs-empty">No matches</div>';
+  box.style.display = '';
+}
+
+// ── Dashboard: quick actions + activity feed ───────────────
+function renderDashQuickActions() {
+  const el = document.getElementById('dash-quick-actions');
+  if (!el) return;
+  const todayStr = today();
+  const open2 = x => !['paid','draft','void'].includes(x.status);
+  const od = x => { const due = x.dueDate || x.due || ''; return open2(x) && due && due < todayStr; };
+  const overdue = _allPurplInvoices().filter(x => !x.combinedInvoiceId && od(x)).length
+    + DB.a('lf_invoices').filter(x => !x.combinedInvoiceId && od(x)).length
+    + DB.a('combined_invoices').filter(od).length
+    + DB.a('dist_invoices').filter(od).length;
+  const drafts = _allPurplInvoices().filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
+    + DB.a('lf_invoices').filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
+    + DB.a('combined_invoices').filter(x => (x.status||'draft') === 'draft').length;
+  const pendingOrders = DB.a('orders').filter(o => o.status === 'pending').length;
+  const wix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  const cards = [];
+  if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
+  if (drafts)        cards.push({n:drafts, label:'Draft invoice'+(drafts>1?'s':'')+' to send', cls:'qa-amber', go:"nav('invoices')"});
+  if (pendingOrders) cards.push({n:pendingOrders, label:'Order'+(pendingOrders>1?'s':'')+' to schedule', cls:'qa-blue', go:"nav('orders-delivery')"});
+  if (wix)           cards.push({n:wix, label:'LF deduction'+(wix>1?'s':'')+' pending', cls:'qa-green', go:"nav('invoices')"});
+  if (!cards.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  el.innerHTML = cards.map(c => `<button class="qa-card ${c.cls}" onclick="${c.go}">
+    <span class="qa-num">${c.n}</span><span class="qa-label">${c.label}</span><span class="qa-go">→</span>
+  </button>`).join('');
+}
+
+function _timeAgo(iso) {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (isNaN(ms)) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : d + 'd ago';
+}
+
+function renderDashActivity() {
+  const el = document.getElementById('dash-activity');
+  if (!el) return;
+  const icons = {create:'✚', update:'✎', delete:'🗑', paid:'💵', paid_orphan:'⚠️', invite:'👤'};
+  const verbs = {create:'created', update:'updated', delete:'deleted', paid:'received payment for', paid_orphan:'orphan payment for', invite:'invited'};
+  const entries = DB.a('audit_log').slice()
+    .sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''))
+    .slice(0, 10);
+  if (!entries.length) { el.innerHTML = '<div class="empty" style="padding:20px">No activity yet</div>'; return; }
+  el.innerHTML = entries.map(e => {
+    const who  = (e.changedBy || e.changedByEmail || 'Someone').split(' ')[0];
+    const what = (verbs[e.action] || e.action || '') + ' ' + String(e.entityType||'').replace(/_/g, ' ');
+    return `<div class="act-row">
+      <span class="act-icon">${icons[e.action]||'·'}</span>
+      <div class="act-body"><strong>${escHtml(who)}</strong> ${escHtml(what)} <strong>${escHtml(e.entityName||'')}</strong></div>
+      <span class="act-time">${_timeAgo(e.timestamp)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Dark mode ──────────────────────────────────────────────
+function _syncThemeLabel() {
+  const lbl = document.getElementById('theme-toggle-label');
+  if (lbl) lbl.textContent = document.body.classList.contains('dark') ? 'Light mode' : 'Dark mode';
+}
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  try { localStorage.setItem('purpl_theme', document.body.classList.contains('dark') ? 'dark' : 'light'); } catch (e) {}
+  _syncThemeLabel();
+}
+
+// Switch the open account modal to the Emails tab (used by header quick action)
+function _macGoToEmailsTab() {
+  document.querySelector('#modal-account .tab[data-tab="emails"]')?.click();
+}
+
 function renderDash() {
   if (!DB._firestoreReady) return;
+  renderDashQuickActions();
+  renderDashActivity();
   const ac  = DB.a('ac').filter(x=>x.status==='active');
   const pr  = DB.a('pr');
   const ord = DB.a('orders');
@@ -2758,6 +2888,20 @@ function openAccount(id) {
     brandBadgeEl.innerHTML = a.isPbf
       ? `<span class="badge green">🌿 Lavender Fields wholesaler + purpl</span>`
       : `<span class="badge purple">purpl only</span>`;
+  }
+  const avEl = qs('#mac-avatar');
+  if (avEl) {
+    const initials = (a.name||'?').trim().split(/\s+/).slice(0,2).map(w => (w[0]||'').toUpperCase()).join('') || '?';
+    const hues = ['#7B4FA0','#4a7c59','#b45309','#1d4ed8','#be185d','#0f766e'];
+    avEl.style.background = hues[(a.name||'').length % hues.length];
+    avEl.textContent = initials;
+  }
+  const qaEl = qs('#mac-quick-actions');
+  if (qaEl) {
+    qaEl.innerHTML =
+      `<button class="btn xs primary" onclick="closeModal('modal-account');openAddInv('${id}')">🧾 New Invoice</button>` +
+      `<button class="btn xs" onclick="_macGoToEmailsTab()">✉️ Email</button>` +
+      `<button class="btn xs" onclick="printAccountStatement('${id}')">🖨 Statement</button>`;
   }
 
   // Overview tab
@@ -10117,15 +10261,42 @@ function setupFilters() {
   // Projections velocity window
   const projVelSrc = qs('#proj-velocity-source');
   if (projVelSrc) projVelSrc.addEventListener('change', renderProjectionsPage);
-  // Global search (also feeds accounts)
+  // Global cross-entity search with dropdown results
   const gs = qs('#global-search');
-  if (gs) gs.addEventListener('input', ()=>{
-    const q = gs.value.toLowerCase().trim();
-    if (currentPage==='accounts') {
-      const inp = qs('#ac-search');
-      if (inp) { inp.value=q; renderAccounts(); }
-    }
-  });
+  if (gs) {
+    let _gsTimer = null;
+    gs.addEventListener('input', () => {
+      clearTimeout(_gsTimer);
+      _gsTimer = setTimeout(_globalSearchRun, 120);
+    });
+    gs.addEventListener('keydown', (ev) => {
+      const box = document.getElementById('global-search-results');
+      if (ev.key === 'Escape') {
+        gs.value = '';
+        if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+        gs.blur();
+      } else if (ev.key === 'Enter') {
+        box?.querySelector('.gs-item')?.click();
+      }
+    });
+    document.addEventListener('click', (ev) => {
+      if (!ev.target.closest('#global-search-wrap')) {
+        const box = document.getElementById('global-search-results');
+        if (box) box.style.display = 'none';
+      }
+    });
+    // "/" focuses search from anywhere (unless already typing somewhere)
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === '/' && !ev.ctrlKey && !ev.metaKey &&
+          !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+        ev.preventDefault();
+        gs.focus();
+      }
+    });
+  }
+  // Dark mode toggle
+  const tt = qs('#theme-toggle-btn');
+  if (tt) { _syncThemeLabel(); tt.addEventListener('click', toggleTheme); }
 }
 
 // ══════════════════════════════════════════════════════════
