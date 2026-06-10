@@ -622,12 +622,22 @@ th{padding:11px 14px}
 /* ── LF SKU table ───────────────────────────────────────── */
 .lf-sku-archived td { opacity: 0.45; }
 
-/* ── LF Invoice line item rows ──────────────────────────── */
-.lfi-item-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
-.lfi-item-row .lfi-sku-sel{flex:1;min-width:180px}
-.lfi-item-row .lfi-cases-label{font-size:12px;color:var(--muted)}
-.lfi-item-row .lfi-units-display{font-size:12px;color:var(--muted);min-width:80px}
-.lfi-item-row .lfi-line-amt{font-weight:600;min-width:70px;text-align:right}
+/* ── Unified invoice modal line items ───────────────────── */
+/* Block container for line items with stacked content (SKU header +
+   variant rows + case note). Plain flex containers break this layout. */
+.inv-line-block{display:block;padding:8px 2px;border-bottom:1px solid var(--border)}
+.inv-line-block:last-child{border-bottom:none}
+.inv-line-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.inv-line-head .inv-line-name{flex:1;min-width:140px;font-size:13px;font-weight:500}
+.inv-line-unit{font-size:11px;color:var(--muted);white-space:nowrap}
+.inv-line-total{min-width:74px;text-align:right;font-size:13px;font-weight:600}
+.inv-qty-input{width:64px;text-align:center}
+.inv-price-input{width:76px;text-align:center}
+.inv-variant-row{display:flex;align-items:center;gap:8px;padding:4px 0 4px 18px;font-size:12.5px}
+.inv-variant-row .inv-variant-name{flex:1;min-width:0}
+.inv-case-note{text-align:right;font-size:11px;color:var(--muted);padding-top:3px}
+.inv-sku-row{grid-template-columns:104px 1fr}
+.inv-sku-row .inv-sku-inputs{display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
 /* ── Mass Email page ─────────────────────────────────────── */
 @media (max-width:700px){

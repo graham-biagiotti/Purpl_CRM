@@ -2218,6 +2218,17 @@
       <div class="form-group"><label>Due</label><input type="date" id="lfi-due"></div>
     </div>
     <div class="form-row col2">
+      <div class="form-group"><label>Status</label>
+        <select id="lfi-status">
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="paid">Paid</option>
+          <option value="void">Void</option>
+        </select>
+      </div>
+      <div class="form-group"><label>External Ref (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
+    </div>
+    <div class="form-row col2">
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="lfi-delivery-date"></div>
       <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
@@ -2230,17 +2241,6 @@
       <div style="text-align:right;font-weight:700;font-size:15px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px">
         Total: <span id="lfi-total">$0.00</span>
       </div>
-    </div>
-    <div class="form-row col2">
-      <div class="form-group"><label>Status</label>
-        <select id="lfi-status">
-          <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
-          <option value="paid">Paid</option>
-          <option value="void">Void</option>
-        </select>
-      </div>
-      <div class="form-group"><label>External Ref / Invoice # (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
     </div>
     <div class="form-group" style="margin-bottom:16px">
       <label>Notes</label>
@@ -3219,6 +3219,11 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     </div>
 
+    <div class="form-row col2">
+      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
+      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+    </div>
+
     <!-- purpl section — same pattern as separate purpl invoice -->
     <div style="margin-bottom:16px">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#8B5FBF;padding:8px 0 6px;border-bottom:2px solid #8B5FBF;margin-bottom:10px">💜 purpl Lemonade</div>
@@ -3239,11 +3244,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <div style="text-align:right;font-size:18px;font-weight:700;padding:14px 0;border-top:2px solid var(--purple);margin-top:4px;color:var(--purple)">
       Combined Total: <span id="nciv-grand-total">$0.00</span>
-    </div>
-
-    <div class="form-row col2">
-      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
 
     <div class="form-row">

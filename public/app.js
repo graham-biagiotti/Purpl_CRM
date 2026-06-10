@@ -1885,15 +1885,17 @@ function _ivRenderLineRows(existingItems) {
     const cases     = existing?.cases || 0;
     const lineTotal = cases * ppc;
     const row = document.createElement('div');
-    row.className     = 'lfi-item-row';
+    row.className     = `sku-row inv-sku-row ${SKU_MAP[sku.id]?.bg || ''}`;
     row.dataset.skuId = sku.id;
     row.innerHTML = `
-      <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
-      <input class="iv-cases" type="number" min="0" step="1" value="${cases}" style="width:70px" oninput="_ivRowCalc('${sku.id}')">
-      <span class="lfi-cases-label">cases</span>
-      <span class="lfi-units-display">= <strong class="iv-units">${cases * CANS_PER_CASE}</strong> cans</span>
-      <input class="iv-ppc" type="number" min="0" step="0.01" value="${ppc||''}" placeholder="$/cs" style="width:76px" oninput="_ivRowCalc('${sku.id}')">
-      <span class="lfi-line-amt iv-line-total">${fmtC(lineTotal)}</span>`;
+      ${skuBadge(sku.id)}
+      <div class="inv-sku-inputs">
+        <input class="iv-cases inv-qty-input" type="number" min="0" step="1" value="${cases}" oninput="_ivRowCalc('${sku.id}')">
+        <span class="inv-line-unit">cases</span>
+        <span class="inv-line-unit">= <strong class="iv-units">${cases * CANS_PER_CASE}</strong> cans</span>
+        <input class="iv-ppc inv-price-input" type="number" min="0" step="0.01" value="${ppc||''}" placeholder="$/cs" oninput="_ivRowCalc('${sku.id}')">
+        <span class="iv-line-total inv-line-total">${fmtC(lineTotal)}</span>
+      </div>`;
     container.appendChild(row);
   });
   _ivCalcTotal();
@@ -1937,7 +1939,7 @@ function ivAccountChange() {
   const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
   const tier = qs('#iv-tier')?.value || 'direct';
   const basePrice = _ivGetPrice(ac, tier);
-  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+  qs('#iv-line-items')?.querySelectorAll('[data-sku-id]').forEach(row => {
     const ppcEl = row.querySelector('.iv-ppc');
     if (ppcEl && (!ppcEl.value || ppcEl.value === '0')) {
       ppcEl.value = basePrice || '';
@@ -1951,7 +1953,7 @@ function ivTierChange() {
   const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
   const tier = qs('#iv-tier')?.value || 'direct';
   const basePrice = _ivGetPrice(ac, tier);
-  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+  qs('#iv-line-items')?.querySelectorAll('[data-sku-id]').forEach(row => {
     const ppcEl = row.querySelector('.iv-ppc');
     if (ppcEl) ppcEl.value = basePrice || '';
     _ivRowCalc(row.dataset.skuId);
@@ -1978,7 +1980,7 @@ function _ivCalcTotal() {
   const container = qs('#iv-line-items');
   if (!container) return;
   let total = 0;
-  container.querySelectorAll('.lfi-item-row').forEach(row => {
+  container.querySelectorAll('[data-sku-id]').forEach(row => {
     const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
     const ppc   = parseFloat(row.querySelector('.iv-ppc')?.value || 0);
     total += cases * ppc;
@@ -6530,11 +6532,13 @@ function _openDistInvModal(distId, existingId) {
 
   const el = qs('#mdinv-sku-inputs');
   if (el) el.innerHTML = SKUS.map(s => `
-    <div class="sku-row ${s.bg}" style="margin-bottom:4px">
+    <div class="sku-row inv-sku-row ${s.bg}">
       ${skuBadge(s.id)}
-      <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" style="width:80px"
-        value="${existing ? (existing.items?.find(i => i.sku === s.id)?.cases || '') : ''}">
-      <span style="font-size:12px;color:var(--muted)">cases</span>
+      <div class="inv-sku-inputs">
+        <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" class="inv-qty-input"
+          value="${existing ? (existing.items?.find(i => i.sku === s.id)?.cases || '') : ''}">
+        <span class="inv-line-unit">cases</span>
+      </div>
     </div>`).join('');
 
   qs('#mdinv-number').value  = existing?.invoiceNumber || peekNextInvoiceNumber();
@@ -10602,22 +10606,22 @@ function _lfInvRenderLineRow(item) {
   const skus  = DB.a('lf_skus').filter(s => !s.archived);
   const rowId = uid();
   const row   = document.createElement('div');
-  row.className     = 'lfi-item-row';
+  row.className     = 'inv-line-block';
   row.dataset.rowId = rowId;
   const selOpts = skus.map(s => {
     const sel = item && s.id === item.skuId ? 'selected' : '';
     return `<option value="${s.id}" data-price="${s.wholesalePrice}" data-case="${s.caseSize}" ${sel}>${escHtml(s.name)}</option>`;
   }).join('');
   row.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <select class="lfi-sku-sel" onchange="_lfInvSkuChanged('${rowId}')">
+    <div class="inv-line-head">
+      <select class="lfi-sku-sel" style="flex:1;min-width:180px" onchange="_lfInvSkuChanged('${rowId}')">
         <option value="">— Select SKU —</option>${selOpts}
       </select>
       <button type="button" class="btn sm red" onclick="_lfInvRemoveRow('${rowId}')">✕</button>
     </div>
     <div class="lfi-variant-area" style="margin-top:6px"></div>
-    <div style="display:flex;justify-content:flex-end;font-size:13px;margin-top:4px">
-      Row total: <strong class="lfi-line-amt" style="margin-left:6px">${fmtC(item?.lineTotal||0)}</strong>
+    <div style="display:flex;justify-content:flex-end;align-items:baseline;font-size:13px;margin-top:4px">
+      Row total: <strong class="lfi-line-amt inv-line-total" style="margin-left:6px">${fmtC(item?.lineTotal||0)}</strong>
     </div>`;
   container.appendChild(row);
   if (item?.skuId) _lfInvBuildVariantArea(rowId, item);
@@ -10647,28 +10651,28 @@ function _lfInvBuildVariantArea(rowId, item) {
       // Older invoices stored whole cases per variant — fall back to cases × caseSize
       const units = vl?.units != null ? vl.units : (vl?.cases || 0) * caseSize;
       return `
-        <div class="lfi-variant-row" data-variant-id="${v.id}"
-          style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
-          <span style="width:180px;flex-shrink:0">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
-          <input class="lfi-var-units" type="number" min="0" step="1" value="${units||0}"
-            style="width:60px" oninput="_lfInvRowCalc('${rowId}')">
-          <span>units</span>
-          <span class="lfi-var-total" style="margin-left:auto">${fmtC(vl?.lineTotal||0)}</span>
+        <div class="lfi-variant-row inv-variant-row" data-variant-id="${v.id}">
+          <span class="inv-variant-name">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
+          <input class="lfi-var-units inv-qty-input" type="number" min="0" step="1" value="${units||0}"
+            oninput="_lfInvRowCalc('${rowId}')">
+          <span class="inv-line-unit">units</span>
+          <span class="lfi-var-total inv-line-total">${fmtC(vl?.lineTotal||0)}</span>
         </div>`;
     }).join('');
     area.innerHTML = `
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
-        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/unit · ${caseSize} units/case · $${(parseFloat(skuObj.wholesalePrice) * caseSize).toFixed(2)}/case · mix variants to split a case
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px;padding-left:18px">
+        $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/unit · ${caseSize} units/case · mix variants to split a case
       </div>
       <div class="lfi-variants-container">${varRows}</div>
-      <div class="lfi-case-summary" style="font-size:11px;color:var(--muted);text-align:right;padding-top:3px"></div>`;
+      <div class="lfi-case-summary inv-case-note"></div>`;
   } else {
     area.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;font-size:13px">
-        <input class="lfi-cases" type="number" min="0" step="1" value="${item?.cases||0}"
-          style="width:70px" oninput="_lfInvRowCalc('${rowId}')">
-        <span>cases</span>
-        <span>= <strong class="lfi-units">${item?.units||0}</strong> units</span>
+      <div class="inv-variant-row" style="padding-left:18px">
+        <span class="inv-variant-name inv-line-unit" style="font-size:12.5px">Quantity</span>
+        <input class="lfi-cases inv-qty-input" type="number" min="0" step="1" value="${item?.cases||0}"
+          oninput="_lfInvRowCalc('${rowId}')">
+        <span class="inv-line-unit">cases</span>
+        <span class="inv-line-unit">= <strong class="lfi-units">${item?.units||0}</strong> units</span>
       </div>`;
   }
   _lfInvRowCalc(rowId);
@@ -10731,7 +10735,7 @@ function _lfInvCalcTotal() {
   const container = qs('#lfi-line-items');
   if (!container) return;
   let total = 0;
-  container.querySelectorAll('.lfi-item-row').forEach(row => {
+  container.querySelectorAll('.inv-line-block').forEach(row => {
     const sel       = row.querySelector('.lfi-sku-sel');
     const opt       = sel?.options[sel?.selectedIndex];
     const unitPrice = parseFloat(opt?.dataset?.price || 0);
@@ -10769,7 +10773,7 @@ function saveLfInvoice(id, isNew) {
 
   // Collect line items from DOM
   const lineItems = [];
-  qs('#lfi-line-items').querySelectorAll('.lfi-item-row').forEach(row => {
+  qs('#lfi-line-items').querySelectorAll('.inv-line-block').forEach(row => {
     const sel     = row.querySelector('.lfi-sku-sel');
     const skuId   = sel?.value;
     if (!skuId) return;
@@ -11084,17 +11088,20 @@ function _ncivRenderSkuRows() {
   const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
 
-  // purpl SKU rows
+  // purpl SKU rows — same colored badge rows as the purpl invoice modal
   const purplEl = document.getElementById('nciv-purpl-skus');
   if (purplEl) {
     purplEl.innerHTML = IV_SKUS.map(sku => {
       const ppc = purplPrice || PURPL_DIRECT_PER_CASE;
-      return `<div class="lfi-item-row" data-sku="${sku.id}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)}</span>
-        <input class="nciv-p-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
-        <span style="font-size:11px;color:var(--muted)">cases</span>
-        <input class="nciv-p-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${ppc.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
-        <span class="nciv-p-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#8B5FBF">$0.00</span>
+      return `<div class="sku-row inv-sku-row ${SKU_MAP[sku.id]?.bg || ''}" data-sku="${sku.id}">
+        ${skuBadge(sku.id)}
+        <div class="inv-sku-inputs">
+          <input class="nciv-p-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="1" value="0" oninput="_ncivCalcTotals()">
+          <span class="inv-line-unit">cases</span>
+          <input class="nciv-p-ppc inv-price-input" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${ppc.toFixed(2)}" oninput="_ncivCalcTotals()">
+          <span class="inv-line-unit">$/cs</span>
+          <span class="nciv-p-line inv-line-total" data-sku="${sku.id}" style="color:#8B5FBF">$0.00</span>
+        </div>
       </div>`;
     }).join('');
   }
@@ -11111,29 +11118,31 @@ function _ncivRenderSkuRows() {
       const variants = (sku.variants||[]).filter(v => !v.archived);
       if (variants.length > 0) {
         const varRows = variants.map(v => `
-          <div style="display:flex;align-items:center;gap:8px;padding:2px 0 2px 18px;font-size:12px">
-            <span style="flex:1;color:var(--fg)">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
-            <input class="nciv-lf-var-units" data-sku="${sku.id}" data-variant="${v.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
-            <span style="font-size:11px;color:var(--muted)">units</span>
+          <div class="inv-variant-row">
+            <span class="inv-variant-name">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
+            <input class="nciv-lf-var-units inv-qty-input" data-sku="${sku.id}" data-variant="${v.id}" type="number" min="0" step="1" value="0" oninput="_ncivCalcTotals()">
+            <span class="inv-line-unit">units</span>
           </div>`).join('');
-        return `<div class="lfi-item-row" data-sku="${sku.id}" data-casesize="${cs}" style="padding:6px 0;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)} <span style="font-size:11px;color:var(--muted)">(${cs}/case · mix variants to split a case)</span></span>
-            <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
-            <span style="font-size:11px;color:var(--muted)">/unit</span>
-            <span class="nciv-lf-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#4a7c59">$0.00</span>
+        return `<div class="nciv-lf-row inv-line-block" data-sku="${sku.id}" data-casesize="${cs}">
+          <div class="inv-line-head">
+            <span class="inv-line-name">${escHtml(sku.name)} <span class="inv-line-unit">(${cs}/case · mix variants to split a case)</span></span>
+            <input class="nciv-lf-ppc inv-price-input" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" oninput="_ncivCalcTotals()">
+            <span class="inv-line-unit">/unit</span>
+            <span class="nciv-lf-line inv-line-total" data-sku="${sku.id}" style="color:#4a7c59">$0.00</span>
           </div>
           ${varRows}
-          <div class="nciv-lf-casecount" data-sku="${sku.id}" style="text-align:right;font-size:11px;color:var(--muted);padding-top:2px"></div>
+          <div class="nciv-lf-casecount inv-case-note" data-sku="${sku.id}"></div>
         </div>`;
       }
-      return `<div class="lfi-item-row" data-sku="${sku.id}" data-casesize="${cs}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)} <span style="font-size:11px;color:var(--muted)">(${cs}/case)</span></span>
-        <input class="nciv-lf-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
-        <span style="font-size:11px;color:var(--muted)">cases</span>
-        <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
-        <span style="font-size:11px;color:var(--muted)">/unit</span>
-        <span class="nciv-lf-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#4a7c59">$0.00</span>
+      return `<div class="nciv-lf-row inv-line-block" data-sku="${sku.id}" data-casesize="${cs}">
+        <div class="inv-line-head">
+          <span class="inv-line-name">${escHtml(sku.name)} <span class="inv-line-unit">(${cs}/case)</span></span>
+          <input class="nciv-lf-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="1" value="0" oninput="_ncivCalcTotals()">
+          <span class="inv-line-unit">cases</span>
+          <input class="nciv-lf-ppc inv-price-input" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" oninput="_ncivCalcTotals()">
+          <span class="inv-line-unit">/unit</span>
+          <span class="nciv-lf-line inv-line-total" data-sku="${sku.id}" style="color:#4a7c59">$0.00</span>
+        </div>
       </div>`;
     }).join('');
   }
@@ -11153,7 +11162,7 @@ function _ncivCalcTotals() {
   });
 
   let lfSub = 0;
-  document.querySelectorAll('#nciv-lf-skus .lfi-item-row').forEach(rowEl => {
+  document.querySelectorAll('#nciv-lf-skus .nciv-lf-row').forEach(rowEl => {
     const sku = rowEl.dataset.sku;
     const unitPrice = parseFloat(rowEl.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
     const caseSize = parseInt(rowEl.dataset.casesize) || 1;
@@ -11206,7 +11215,7 @@ async function saveNewCombinedInvoice() {
   // Collect LF lines from SKU rows — LF is priced per unit, sold in cases.
   // Variant SKUs collect per-variant units so cases can be split across types.
   const lfLines = [];
-  document.querySelectorAll('#nciv-lf-skus .lfi-item-row').forEach(rowEl => {
+  document.querySelectorAll('#nciv-lf-skus .nciv-lf-row').forEach(rowEl => {
     const skuId = rowEl.dataset.sku;
     const unitPrice = parseFloat(rowEl.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
     const skuObj = DB.a('lf_skus').find(s => s.id === skuId);
@@ -14748,7 +14757,7 @@ async function saveInv(id, isNew) {
 
   // Collect line items from DOM
   const lineItems = [];
-  qs('#iv-line-items')?.querySelectorAll('.lfi-item-row').forEach(row => {
+  qs('#iv-line-items')?.querySelectorAll('[data-sku-id]').forEach(row => {
     const skuId = row.dataset.skuId;
     const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
     if (!cases) return;
