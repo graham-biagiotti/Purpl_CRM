@@ -1776,6 +1776,8 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-due'))    qs('#iv-due').value    = dueStr;
     if (qs('#iv-status')) qs('#iv-status').value = 'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = prefillNotes || '';
+    if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = '';
+    if (qs('#iv-tracking'))      qs('#iv-tracking').value      = '';
     if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
   } else if (inv) {
     if (qs('#iv-number')) qs('#iv-number').value = inv.number||'';
@@ -1783,6 +1785,8 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-due'))    qs('#iv-due').value    = inv.due||'';
     if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
+    if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = inv.deliveryDate||'';
+    if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
     const savedTerms = inv.paymentTerms || 'net30';
     if (qs('#iv-terms')) qs('#iv-terms').value = savedTerms;
     if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = savedTerms === 'custom' ? '' : 'none';
@@ -8226,6 +8230,7 @@ async function createDeliveryInvoice(accountId, ordId) {
     cases: totalCases, cans: totalCases * CANS_PER_CASE,
     pricePerCase, total,
     status: 'draft', source: 'delivery_run', notes: '',
+    deliveryDate: today(),
     accountName: ac.name,
   };
 
@@ -10502,6 +10507,8 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-status')) qs('#lfi-status').value = 'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
+    if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
+    if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
   } else {
     if (qs('#lfi-number')) qs('#lfi-number').value = inv.number||'';
@@ -10510,6 +10517,8 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
+    if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
+    if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
     if (qs('#lfi-delete-btn')) {
       qs('#lfi-delete-btn').style.display = _isAdmin() ? '' : 'none';
       qs('#lfi-delete-btn').onclick = () => deleteLfInvoice(id);
@@ -10632,24 +10641,27 @@ function _lfInvBuildVariantArea(rowId, item) {
   const variants = (skuObj?.variants||[]).filter(v => !v.archived);
 
   if (variants.length > 0) {
+    const caseSize = parseInt(skuObj.caseSize) || 1;
     const varRows = variants.map(v => {
       const vl = item?.variantLines?.find(x => x.variantId === v.id);
+      // Older invoices stored whole cases per variant — fall back to cases × caseSize
+      const units = vl?.units != null ? vl.units : (vl?.cases || 0) * caseSize;
       return `
         <div class="lfi-variant-row" data-variant-id="${v.id}"
           style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px">
           <span style="width:180px;flex-shrink:0">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
-          <input class="lfi-var-cases" type="number" min="0" step="1" value="${vl?.cases||0}"
+          <input class="lfi-var-units" type="number" min="0" step="1" value="${units||0}"
             style="width:60px" oninput="_lfInvRowCalc('${rowId}')">
-          <span>cases</span>
-          <span>= <strong class="lfi-var-units">${vl?.units||0}</strong> units</span>
+          <span>units</span>
           <span class="lfi-var-total" style="margin-left:auto">${fmtC(vl?.lineTotal||0)}</span>
         </div>`;
     }).join('');
     area.innerHTML = `
       <div style="font-size:12px;color:var(--muted);margin-bottom:4px">
-        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/unit · ${skuObj.caseSize} units/case · $${(parseFloat(skuObj.wholesalePrice) * skuObj.caseSize).toFixed(2)}/case
+        Variants — $${parseFloat(skuObj.wholesalePrice).toFixed(2)}/unit · ${caseSize} units/case · $${(parseFloat(skuObj.wholesalePrice) * caseSize).toFixed(2)}/case · mix variants to split a case
       </div>
-      <div class="lfi-variants-container">${varRows}</div>`;
+      <div class="lfi-variants-container">${varRows}</div>
+      <div class="lfi-case-summary" style="font-size:11px;color:var(--muted);text-align:right;padding-top:3px"></div>`;
   } else {
     area.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;font-size:13px">
@@ -10678,16 +10690,26 @@ function _lfInvRowCalc(rowId) {
 
   const variantRows = row.querySelectorAll('.lfi-variant-row');
   if (variantRows.length > 0) {
+    let totalUnits = 0;
     variantRows.forEach(vr => {
-      const cases     = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
-      const units     = cases * caseSize;
+      const units     = parseInt(vr.querySelector('.lfi-var-units')?.value || 0);
       const lineTotal = units * unitPrice;
-      const unitsEl   = vr.querySelector('.lfi-var-units');
-      if (unitsEl) unitsEl.textContent = units;
+      totalUnits += units;
       const ltEl = vr.querySelector('.lfi-var-total');
       if (ltEl) ltEl.textContent = fmtC(lineTotal);
       rowTotal += lineTotal;
     });
+    const sumEl = row.querySelector('.lfi-case-summary');
+    if (sumEl) {
+      if (totalUnits > 0 && caseSize > 0) {
+        const casesExact = totalUnits / caseSize;
+        const whole = totalUnits % caseSize === 0;
+        sumEl.innerHTML = `${totalUnits} units = ${whole ? casesExact : casesExact.toFixed(2)} case${casesExact === 1 ? '' : 's'}`
+          + (whole ? '' : ` <span style="color:#d97706;font-weight:600">(partial case — ${caseSize}/case)</span>`);
+      } else {
+        sumEl.textContent = '';
+      }
+    }
   } else {
     const cases   = parseInt(row.querySelector('.lfi-cases')?.value || 0);
     const unitsEl = row.querySelector('.lfi-units');
@@ -10717,8 +10739,8 @@ function _lfInvCalcTotal() {
     const variantRows = row.querySelectorAll('.lfi-variant-row');
     if (variantRows.length > 0) {
       variantRows.forEach(vr => {
-        const cases = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
-        total += cases * caseSize * unitPrice;
+        const units = parseInt(vr.querySelector('.lfi-var-units')?.value || 0);
+        total += units * unitPrice;
       });
     } else {
       const cases = parseInt(row.querySelector('.lfi-cases')?.value || 0);
@@ -10737,6 +10759,8 @@ function saveLfInvoice(id, isNew) {
   const status    = qs('#lfi-status')?.value || 'draft';
   const notes     = qs('#lfi-notes')?.value?.trim() || '';
   const link      = qs('#lfi-link')?.value?.trim() || '';
+  const deliveryDate   = qs('#lfi-delivery-date')?.value || '';
+  const trackingNumber = qs('#lfi-tracking')?.value?.trim() || '';
 
   if (!accountId) { toast('Select an account'); return; }
 
@@ -10759,15 +10783,16 @@ function saveLfInvoice(id, isNew) {
       variantRows.forEach(vr => {
         const variantId  = vr.dataset.variantId;
         const variantObj = skuObj?.variants?.find(v => v.id === variantId);
-        const cases      = parseInt(vr.querySelector('.lfi-var-cases')?.value || 0);
-        if (!cases) return;
-        const units     = cases * caseSize;
+        const units      = parseInt(vr.querySelector('.lfi-var-units')?.value || 0);
+        if (!units) return;
         const lineTotal = units * unitPrice;
+        // cases may be fractional when a case is split across variants
+        const cases = caseSize ? +(units / caseSize).toFixed(2) : 0;
         variantLines.push({variantId, variantName: variantObj?.name || '', cases, units, lineTotal});
       });
       if (!variantLines.length) return;
-      const totalCases = variantLines.reduce((s,v)=>s+v.cases, 0);
       const totalUnits = variantLines.reduce((s,v)=>s+v.units, 0);
+      const totalCases = caseSize ? +(totalUnits / caseSize).toFixed(2) : 0;
       const totalLine  = variantLines.reduce((s,v)=>s+v.lineTotal, 0);
       lineItems.push({
         skuId, skuName: skuObj?.name || opt?.textContent?.trim() || '',
@@ -10798,7 +10823,7 @@ function saveLfInvoice(id, isNew) {
     issued, due, lineItems, total, status,
     wixPulled:   existing?.wixPulled   || false,
     wixPulledAt: existing?.wixPulledAt || null,
-    notes, link,
+    notes, link, deliveryDate, trackingNumber,
   };
 
   if (isNew) DB.push('lf_invoices', rec);
@@ -11039,6 +11064,8 @@ function openNewCombinedModal() {
   if (qs('#nciv-due')) qs('#nciv-due').value = d.toISOString().slice(0,10);
   if (qs('#nciv-status')) qs('#nciv-status').value = 'draft';
   if (qs('#nciv-notes')) qs('#nciv-notes').value = '';
+  if (qs('#nciv-delivery-date')) qs('#nciv-delivery-date').value = '';
+  if (qs('#nciv-tracking')) qs('#nciv-tracking').value = '';
 
   _ncivRenderSkuRows();
   openModal('modal-new-combined');
@@ -11072,13 +11099,34 @@ function _ncivRenderSkuRows() {
     }).join('');
   }
 
-  // LF SKU rows — priced per unit, sold in cases
+  // LF SKU rows — priced per unit, sold in cases.
+  // SKUs with variants get per-variant unit inputs so a case can be split
+  // across variant types (e.g. a case of 6 scrunchies in mixed scents).
   const lfSkus = DB.a('lf_skus').filter(s => !s.archived);
   const lfEl = document.getElementById('nciv-lf-skus');
   if (lfEl) {
     lfEl.innerHTML = lfSkus.map(sku => {
       const unitPrice = sku.wholesalePrice || 0;
       const cs = sku.caseSize || 1;
+      const variants = (sku.variants||[]).filter(v => !v.archived);
+      if (variants.length > 0) {
+        const varRows = variants.map(v => `
+          <div style="display:flex;align-items:center;gap:8px;padding:2px 0 2px 18px;font-size:12px">
+            <span style="flex:1;color:var(--fg)">${escHtml(v.name)}${_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : ''}</span>
+            <input class="nciv-lf-var-units" data-sku="${sku.id}" data-variant="${v.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
+            <span style="font-size:11px;color:var(--muted)">units</span>
+          </div>`).join('');
+        return `<div class="lfi-item-row" data-sku="${sku.id}" data-casesize="${cs}" style="padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)} <span style="font-size:11px;color:var(--muted)">(${cs}/case · mix variants to split a case)</span></span>
+            <input class="nciv-lf-ppc" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" style="width:76px;text-align:center" oninput="_ncivCalcTotals()">
+            <span style="font-size:11px;color:var(--muted)">/unit</span>
+            <span class="nciv-lf-line" data-sku="${sku.id}" style="min-width:70px;text-align:right;font-size:13px;font-weight:600;color:#4a7c59">$0.00</span>
+          </div>
+          ${varRows}
+          <div class="nciv-lf-casecount" data-sku="${sku.id}" style="text-align:right;font-size:11px;color:var(--muted);padding-top:2px"></div>
+        </div>`;
+      }
       return `<div class="lfi-item-row" data-sku="${sku.id}" data-casesize="${cs}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <span style="flex:1;font-size:13px;font-weight:500">${escHtml(sku.name)} <span style="font-size:11px;color:var(--muted)">(${cs}/case)</span></span>
         <input class="nciv-lf-cases" data-sku="${sku.id}" type="number" min="0" step="1" value="0" style="width:60px;text-align:center" oninput="_ncivCalcTotals()">
@@ -11105,14 +11153,33 @@ function _ncivCalcTotals() {
   });
 
   let lfSub = 0;
-  document.querySelectorAll('.nciv-lf-cases').forEach(el => {
-    const sku = el.dataset.sku;
-    const cases = parseInt(el.value) || 0;
-    const unitPrice = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
-    const caseSize = parseInt(el.closest('.lfi-item-row')?.dataset.casesize) || 1;
-    const line = cases * caseSize * unitPrice;
+  document.querySelectorAll('#nciv-lf-skus .lfi-item-row').forEach(rowEl => {
+    const sku = rowEl.dataset.sku;
+    const unitPrice = parseFloat(rowEl.querySelector(`.nciv-lf-ppc[data-sku="${sku}"]`)?.value) || 0;
+    const caseSize = parseInt(rowEl.dataset.casesize) || 1;
+    let line = 0;
+    const varInputs = rowEl.querySelectorAll('.nciv-lf-var-units');
+    if (varInputs.length > 0) {
+      let totalUnits = 0;
+      varInputs.forEach(vi => { totalUnits += parseInt(vi.value) || 0; });
+      line = totalUnits * unitPrice;
+      const cc = rowEl.querySelector('.nciv-lf-casecount');
+      if (cc) {
+        if (totalUnits > 0) {
+          const casesExact = totalUnits / caseSize;
+          const whole = totalUnits % caseSize === 0;
+          cc.innerHTML = `${totalUnits} units = ${whole ? casesExact : casesExact.toFixed(2)} case${casesExact === 1 ? '' : 's'}`
+            + (whole ? '' : ` <span style="color:#d97706;font-weight:600">(partial case)</span>`);
+        } else {
+          cc.textContent = '';
+        }
+      }
+    } else {
+      const cases = parseInt(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
+      line = cases * caseSize * unitPrice;
+    }
     lfSub += line;
-    const lineEl = document.querySelector(`.nciv-lf-line[data-sku="${sku}"]`);
+    const lineEl = rowEl.querySelector(`.nciv-lf-line[data-sku="${sku}"]`);
     if (lineEl) lineEl.textContent = '$' + line.toFixed(2);
   });
 
@@ -11136,15 +11203,35 @@ async function saveNewCombinedInvoice() {
     purplLines.push({ skuId, sku: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units: cases * CANS_PER_CASE, unitPrice: ppc, pricePerCase: ppc, total: cases * ppc, lineTotal: cases * ppc });
   });
 
-  // Collect LF lines from SKU rows — LF is priced per unit, sold in cases
+  // Collect LF lines from SKU rows — LF is priced per unit, sold in cases.
+  // Variant SKUs collect per-variant units so cases can be split across types.
   const lfLines = [];
-  document.querySelectorAll('.nciv-lf-cases').forEach(el => {
-    const skuId = el.dataset.sku;
-    const cases = parseInt(el.value) || 0;
-    if (!cases) return;
-    const unitPrice = parseFloat(document.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
+  document.querySelectorAll('#nciv-lf-skus .lfi-item-row').forEach(rowEl => {
+    const skuId = rowEl.dataset.sku;
+    const unitPrice = parseFloat(rowEl.querySelector(`.nciv-lf-ppc[data-sku="${skuId}"]`)?.value) || 0;
     const skuObj = DB.a('lf_skus').find(s => s.id === skuId);
     const caseSize = skuObj?.caseSize || 1;
+    const varInputs = rowEl.querySelectorAll('.nciv-lf-var-units');
+    if (varInputs.length > 0) {
+      const variantLines = [];
+      varInputs.forEach(vi => {
+        const units = parseInt(vi.value) || 0;
+        if (!units) return;
+        const variantObj = skuObj?.variants?.find(v => v.id === vi.dataset.variant);
+        variantLines.push({
+          variantId: vi.dataset.variant, variantName: variantObj?.name || '',
+          units, cases: +(units / caseSize).toFixed(2), lineTotal: units * unitPrice,
+        });
+      });
+      if (!variantLines.length) return;
+      const totalUnits = variantLines.reduce((s,v) => s + v.units, 0);
+      const totalCases = +(totalUnits / caseSize).toFixed(2);
+      const lineTotal  = variantLines.reduce((s,v) => s + v.lineTotal, 0);
+      lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: totalCases, cases: totalCases, units: totalUnits, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: true, variantLines });
+      return;
+    }
+    const cases = parseInt(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
+    if (!cases) return;
     const units = cases * caseSize;
     const lineTotal = units * unitPrice;
     lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: false });
@@ -11158,6 +11245,8 @@ async function saveNewCombinedInvoice() {
   const status   = qs('#nciv-status')?.value || 'draft';
   const notes    = qs('#nciv-notes')?.value || '';
   const userNum  = qs('#nciv-number')?.value?.trim() || '';
+  const deliveryDate   = qs('#nciv-delivery-date')?.value || '';
+  const trackingNumber = qs('#nciv-tracking')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
   const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
 
@@ -11172,15 +11261,13 @@ async function saveNewCombinedInvoice() {
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
-    notes, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: lfSub, status,
-    lineItems: lfLines.map(l => ({
-      ...l, skuName: l.description, units: l.qty, lineTotal: l.total, hasVariants: false,
-    })),
-    notes, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+    lineItems: lfLines,
+    notes, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   const combInv = {
     id: combId, number: combNum, invoiceNumber: combNum,
@@ -11189,7 +11276,7 @@ async function saveNewCombinedInvoice() {
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
-    notes, source: 'manual',
+    notes, deliveryDate, trackingNumber, source: 'manual',
   };
 
   DB.atomicUpdate(cache => {
@@ -11214,6 +11301,50 @@ async function saveNewCombinedInvoice() {
   renderInvoicesPage();
   toast('Combined invoice created — ' + combNum);
   setTimeout(() => openCombinedInvoicePreview(combId), 300);
+}
+
+// ── Invoice legal terms (fine print) ──────────────────────
+
+const DEFAULT_INVOICE_LEGAL_TERMS = `Wholesale Terms — From Our Field to Your Front Door
+We're honored to have our products on your shelves!
+Wholesale Payment Terms: Net 30 from the invoice date. A 2% monthly finance charge may apply to late payments.
+Shipping: Calculated and included on your invoice unless other delivery methods have been arranged.
+Order Issues: Please inspect your shipment upon arrival. Let us know within 7 days if anything needs our attention — we're here to make it right.
+Pricing Notice: We reserve the right to update pricing with 30 days' notice, but we'll always keep you in the loop.`;
+
+function _invoiceLegalTermsText() {
+  const s = DB.obj('invoice_settings', {});
+  // null/undefined = never customized → use default. Empty string = user cleared it on purpose.
+  return s.legalTerms != null ? s.legalTerms : DEFAULT_INVOICE_LEGAL_TERMS;
+}
+
+// Renders the fine-print block used at the bottom of every invoice
+// (emails + print/PDF). First line is the heading; "Label: text" lines
+// get a bold label.
+function _legalTermsHTML() {
+  const text = (_invoiceLegalTermsText() || '').trim();
+  if (!text) return '';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const title = lines.shift() || '';
+  const body = lines.map(l => {
+    const m = l.match(/^([^:]{2,40}):\s+(.*)$/);
+    return m
+      ? `<div style="margin-top:3px"><strong style="color:#6b7280">${escHtml(m[1])}:</strong> ${escHtml(m[2])}</div>`
+      : `<div style="margin-top:3px">${escHtml(l)}</div>`;
+  }).join('');
+  return `<div style="font-size:10px;color:#9ca3af;line-height:1.6;text-align:left">
+    <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;font-size:10px;margin-bottom:3px">${escHtml(title)}</div>
+    ${body}
+  </div>`;
+}
+
+// Small "Delivered / Tracking" lines for the invoice details column.
+function _deliveryDetailsHTML(deliveryDate, tracking, style) {
+  const fmtLong = s => { try { return new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); } catch(e) { return s; } };
+  let out = '';
+  if (deliveryDate) out += `<div style="${style}">Delivery: <strong>${fmtLong(deliveryDate)}</strong></div>`;
+  if (tracking)     out += `<div style="${style}">Tracking: <strong>${escHtml(tracking)}</strong></div>`;
+  return out;
 }
 
 // ── Combined invoice HTML builder ─────────────────────────
@@ -11241,6 +11372,8 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
   const dueDate   = rec.dueDate ? _fmtLongDate(rec.dueDate) : (rec.due ? _fmtLongDate(rec.due) : new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}));
   const paymentTerms = rec.paymentTerms || 'Net 30';
   const invoiceNotes = rec.notes || '';
+  const deliveryDate = rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '';
+  const trackingNum  = rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '';
 
   const itemCellStyle = 'padding:10px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
   const purplRows = (purplInv.lineItems||[]).map(li => {
@@ -11343,6 +11476,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
         <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
         <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>
         <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(paymentTerms)}</strong></div>
+        ${_deliveryDetailsHTML(deliveryDate, trackingNum, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
       </td>
     </tr></table>
   </td></tr>
@@ -11378,6 +11512,8 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Notes</div>
     <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(invoiceNotes)}</div>
   </td></tr>` : ''}
+
+  ${_legalTermsHTML() ? `<tr><td style="padding:0 48px 24px">${_legalTermsHTML()}</td></tr>` : ''}
 
   <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#6b7280;line-height:1.8">
     <strong style="color:#1a1a2e">Pumpkin Blossom Farm LLC</strong> · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
@@ -11430,6 +11566,7 @@ function buildPurplInvoiceEmailHTML(inv) {
         ${inv.date ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
         <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
         <div style="font-size:13px;color:#6b7280;margin-top:2px">Terms: ${_invTermsLabel(inv)}</div>
+        ${_deliveryDetailsHTML(inv.deliveryDate, inv.trackingNumber, 'font-size:13px;color:#6b7280;margin-top:2px')}
       </td>
     </tr></table>
   </td></tr>
@@ -11455,6 +11592,7 @@ function buildPurplInvoiceEmailHTML(inv) {
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
   ${portalLink ? `<tr><td style="padding:0 40px 16px;text-align:center"><a href="${portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
+  ${_legalTermsHTML() ? `<tr><td style="padding:0 40px 20px">${_legalTermsHTML()}</td></tr>` : ''}
   <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
@@ -11519,6 +11657,7 @@ function buildLfInvoiceEmailHTML(inv) {
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
         ${inv.issued ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.issued+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
         <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
+        ${_deliveryDetailsHTML(inv.deliveryDate, inv.trackingNumber, 'font-size:13px;color:#6b7280;margin-top:2px')}
       </td>
     </tr></table>
   </td></tr>
@@ -11543,6 +11682,7 @@ function buildLfInvoiceEmailHTML(inv) {
     </div>
   </td></tr>
   ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
+  ${_legalTermsHTML() ? `<tr><td style="padding:0 40px 20px">${_legalTermsHTML()}</td></tr>` : ''}
   <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
@@ -13000,20 +13140,19 @@ function createLfInvoiceFromPortal(portalOrderId) {
             const lastRow = rows[rows.length-1];
             if (!lastRow) return;
             const rowId = lastRow.dataset.rowId;
-            // Set SKU name and price manually
-            const skuSel = qs('#lfi-sku-'+rowId);
-            if (skuSel) {
-              // Try to find matching SKU by name
-              const matchOpt = Array.from(skuSel.options).find(opt => opt.text.includes(it.skuName||''));
+            // Match SKU by name, then build the qty/variant area for it
+            const skuSel = lastRow.querySelector('.lfi-sku-sel');
+            if (skuSel && it.skuName) {
+              const matchOpt = Array.from(skuSel.options).find(opt => opt.text.includes(it.skuName));
               if (matchOpt) {
                 skuSel.value = matchOpt.value;
-                skuSel.dispatchEvent(new Event('change'));
+                _lfInvBuildVariantArea(rowId, null);
               }
             }
-            const casesEl = qs('#lfi-cases-'+rowId);
+            // Simple SKUs get the case count prefilled; variant SKUs are left
+            // for manual entry since the portal order doesn't say which variants
+            const casesEl = lastRow.querySelector('.lfi-cases');
             if (casesEl) { casesEl.value = it.cases||0; _lfInvRowCalc(rowId); }
-            const priceEl = qs('#lfi-price-'+rowId);
-            if (priceEl && it.unitPrice) { priceEl.value = parseFloat(it.unitPrice).toFixed(2); _lfInvRowCalc(rowId); }
           });
           _lfInvCalcTotal();
         }
@@ -13786,7 +13925,7 @@ function renderInvColPurpl() {
   ].filter(x => !x.combinedInvoiceId);
 
   function effectiveStatus(inv) {
-    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
+    if (inv.status === 'paid' || inv.status === 'draft' || inv.status === 'void') return inv.status;
     const due = inv.due || inv.dueDate || '';
     if (due && due < todayStr) return 'overdue';
     return inv.status || 'draft';
@@ -14172,6 +14311,7 @@ function saveInvoiceSettings() {
     terms:         parseInt(get('inv-terms')?.value)||30,
     nextInvoiceNum: parseInt(get('set-next-inv-num')?.value)||existing.nextInvoiceNum||null,
     footerNotes:   get('inv-footer-notes')?.value||'',
+    legalTerms:    get('inv-legal-terms') ? get('inv-legal-terms').value : (existing.legalTerms != null ? existing.legalTerms : DEFAULT_INVOICE_LEGAL_TERMS),
     stripeLink:    get('inv-stripe-link')?.value||'',
     achRouting:    get('inv-ach-routing')?.value||'',
     achAccount:    get('inv-ach-account')?.value||'',
@@ -14190,6 +14330,8 @@ function loadInvoiceSettings() {
   set('inv-terms',               s.terms);
   set('set-next-inv-num',        s.nextInvoiceNum);
   set('inv-footer-notes',        s.footerNotes);
+  { const el = document.getElementById('inv-legal-terms');
+    if (el) el.value = s.legalTerms != null ? s.legalTerms : DEFAULT_INVOICE_LEGAL_TERMS; }
   set('inv-stripe-link',         s.stripeLink);
   set('inv-ach-routing',         s.achRouting);
   set('inv-ach-account',         s.achAccount);
@@ -14329,6 +14471,10 @@ function generateInvoicePrint(invoiceId) {
   <div>
     <div class="section-label">Payment Terms</div>
     <div>${_invTermsLabel(iv)}</div>
+    ${iv.deliveryDate ?
+      `<div style="font-size:12px;margin-top:4px">Delivery: <strong>${fmtDate(iv.deliveryDate)}</strong></div>` : ''}
+    ${iv.trackingNumber ?
+      `<div style="font-size:12px;margin-top:2px">Tracking: <strong>${esc(iv.trackingNumber)}</strong></div>` : ''}
     ${iv.linkedOrderId ?
       `<div style="font-size:11px;color:#9ca3af;margin-top:4px">
         Order ref: ${iv.linkedOrderId}</div>` : ''}
@@ -14393,6 +14539,8 @@ function generateInvoicePrint(invoiceId) {
     font-weight:600;cursor:pointer">
     🖨️ Print / Save as PDF</button>
 </div>
+
+${_legalTermsHTML() ? `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb">${_legalTermsHTML()}</div>` : ''}
 
 <div class="footer">
   Thank you for your business — purpl by Pumpkin Blossom Farm
@@ -14529,6 +14677,10 @@ function generateLfInvoicePrint(invoiceId) {
   <div>
     <div class="section-label">Payment Terms</div>
     <div>Net ${s.terms || 30} days</div>
+    ${inv.deliveryDate ?
+      `<div style="font-size:12px;margin-top:4px">Delivery: <strong>${fmtDate(inv.deliveryDate)}</strong></div>` : ''}
+    ${inv.trackingNumber ?
+      `<div style="font-size:12px;margin-top:2px">Tracking: <strong>${esc(inv.trackingNumber)}</strong></div>` : ''}
   </div>
 </div>
 
@@ -14563,6 +14715,8 @@ ${inv.notes ? `<div style="margin-bottom:20px;font-size:13px;color:#6b7280"><str
     🖨️ Print / Save as PDF</button>
 </div>
 
+${_legalTermsHTML() ? `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb">${_legalTermsHTML()}</div>` : ''}
+
 <div class="footer">
   Thank you for your business — Lavender Fields at Pumpkin Blossom Farm
   <br>pumpkinblossomfarm.com · lavender@pbfwholesale.com
@@ -14582,6 +14736,8 @@ async function saveInv(id, isNew) {
   const status    = qs('#iv-status')?.value || 'draft';
   const notes     = qs('#iv-notes')?.value?.trim() || '';
   const tier      = qs('#iv-tier')?.value || 'direct';
+  const deliveryDate   = qs('#iv-delivery-date')?.value || '';
+  const trackingNumber = qs('#iv-tracking')?.value?.trim() || '';
   const paymentTerms = qs('#iv-terms')?.value || 'net30';
   const paymentTermsCustom = paymentTerms === 'custom' ? (qs('#iv-terms-custom')?.value?.trim() || '') : undefined;
 
@@ -14637,6 +14793,8 @@ async function saveInv(id, isNew) {
     priceType:    tier,
     status,
     notes,
+    deliveryDate,
+    trackingNumber,
     lineItems,
     paymentTerms,
     ...(paymentTermsCustom !== undefined ? { paymentTermsCustom } : {}),

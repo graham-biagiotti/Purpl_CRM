@@ -1343,6 +1343,11 @@
               <textarea id="inv-footer-notes" rows="2" placeholder="Thank you for your business." style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
               <div style="font-size:11px;color:var(--muted);margin-top:3px">Appears on all invoice print/PDF views</div>
             </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Legal terms / fine print</label>
+              <textarea id="inv-legal-terms" rows="8" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px">Appears as fine print at the bottom of every invoice (emails + PDFs). The first line is the heading; lines like "Shipping: ..." get a bold label. Clear the box to remove fine print entirely.</div>
+            </div>
           </div>
           <div class="card">
             <div class="section-hdr"><h2>Payment Methods</h2></div>
@@ -2212,6 +2217,10 @@
       <div class="form-group"><label>Issued</label><input type="date" id="lfi-issued"></div>
       <div class="form-group"><label>Due</label><input type="date" id="lfi-due"></div>
     </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="lfi-delivery-date"></div>
+      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+    </div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;font-weight:600;color:var(--fg)">Line Items</label>
@@ -2750,11 +2759,15 @@
       <div class="form-group"><label>Status</label>
         <select id="iv-status">
           <option value="draft">Draft</option>
-          <option value="unpaid">Unpaid</option>
+          <option value="sent">Sent</option>
           <option value="paid">Paid</option>
-          <option value="overdue">Overdue</option>
+          <option value="void">Void</option>
         </select>
       </div>
+    </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="iv-delivery-date"></div>
+      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
     <div style="margin-bottom:14px">
       <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
@@ -3226,6 +3239,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <div style="text-align:right;font-size:18px;font-weight:700;padding:14px 0;border-top:2px solid var(--purple);margin-top:4px;color:var(--purple)">
       Combined Total: <span id="nciv-grand-total">$0.00</span>
+    </div>
+
+    <div class="form-row col2">
+      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
+      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
 
     <div class="form-row">
