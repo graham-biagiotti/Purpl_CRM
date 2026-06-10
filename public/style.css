@@ -70,29 +70,40 @@ a:hover{color:var(--brand-purple-hover)}
 #app-shell{display:none;width:100%}
 
 /* SIDEBAR */
-.sidebar{width:220px;min-height:100vh;background:linear-gradient(180deg, #2d1b4e 0%, #1a1025 40%, #110b1a 100%);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100;box-shadow:2px 0 16px rgba(0,0,0,0.3)}
-.sb-logo{padding:24px 18px 20px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center}
+.sidebar{width:230px;min-height:100vh;background:linear-gradient(180deg, #2d1b4e 0%, #1a1025 45%, #110b1a 100%);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100;box-shadow:2px 0 20px rgba(0,0,0,0.35)}
+.sb-logo{padding:20px 16px 18px;border-bottom:1px solid rgba(255,255,255,0.07)}
+.sb-logo-row{display:flex;align-items:center;gap:11px}
+.sb-logo-img{width:38px;height:38px;flex-shrink:0;border-radius:50%;background:rgba(255,255,255,0.92);padding:3px;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.sb-tagline{font-size:9px;color:#6b5f8a;letter-spacing:.08em;text-transform:uppercase;margin-top:3px;font-weight:500}
 
-/* Brand lockup in sidebar */
+/* Brand lockup in sidebar (legacy) */
 .brand-lockup{display:flex;align-items:center;gap:10px}
 .brand-sprig{width:16px;height:32px;flex-shrink:0;color:#fff;opacity:.9}
 .brand-text .wordmark{font-family:var(--font-brand);font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px;line-height:1}
 .brand-text .wordmark sup{font-size:9px;font-weight:400;vertical-align:super;opacity:.7;font-family:var(--font-body)}
 .brand-text .tagline{font-size:10px;color:#6b5f8a;margin-top:2px;letter-spacing:.02em}
 
-.sb-nav{flex:1;padding:10px 0;overflow-y:auto;overflow-x:hidden}
-.sb-nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;color:#9080b0;text-decoration:none;font-size:13px;transition:all .2s;cursor:pointer;border:none;background:none;width:100%;border-radius:0 8px 8px 0;margin-right:8px;border-left:3px solid transparent}
-.sb-nav a:hover{background:rgba(123,79,160,0.15);color:#c4b0e0}
-.sb-nav a.active{background:rgba(123,79,160,0.25);color:#fff;border-left:3px solid #9B6DC0;box-shadow:inset 0 0 12px rgba(155,109,192,0.1)}
-.sb-nav .section{font-size:10px;color:rgba(255,255,255,0.25);padding:18px 18px 6px;text-transform:uppercase;letter-spacing:.12em;font-weight:600}
+.sb-nav{flex:1;padding:8px 0 12px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(155,109,192,0.3) transparent}
+.sb-nav::-webkit-scrollbar{width:4px}
+.sb-nav::-webkit-scrollbar-thumb{background:rgba(155,109,192,0.3);border-radius:2px}
+.sb-nav a{display:flex;align-items:center;gap:11px;padding:9px 14px;color:#9080b0;text-decoration:none;font-size:13px;font-weight:450;transition:background .18s,color .18s,transform .18s;cursor:pointer;border:none;background:none;border-radius:8px;margin:1px 10px;width:calc(100% - 20px)}
+.sb-nav a svg{flex-shrink:0;opacity:.75;transition:opacity .18s}
+.sb-nav a:hover{background:rgba(123,79,160,0.14);color:#d4c4ec;transform:translateX(2px)}
+.sb-nav a:hover svg{opacity:1}
+.sb-nav a.active{background:linear-gradient(90deg, rgba(155,109,192,0.32) 0%, rgba(123,79,160,0.16) 100%);color:#fff;box-shadow:inset 2.5px 0 0 #b88ae0, 0 1px 6px rgba(0,0,0,0.18)}
+.sb-nav a.active svg{opacity:1;color:#c9a3ee}
+.sb-nav .section{font-size:9.5px;color:rgba(255,255,255,0.3);padding:16px 24px 5px;text-transform:uppercase;letter-spacing:.14em;font-weight:700}
+.sb-nav > .section:first-child{padding-top:12px}
 .sb-nav .sb-divider{height:1px;background:rgba(255,255,255,0.06);margin:8px 18px}
-.sb-bottom{padding:16px 18px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:6px}
+.sb-bottom{padding:12px 16px 14px;border-top:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;gap:8px;background:rgba(0,0,0,0.18)}
 .sb-bottom small{color:#555;font-size:11px}
-.sb-signout{font-size:11px;color:#6b5f8a;background:none;border:none;cursor:pointer;text-align:left;padding:0;transition:color .15s}
-.sb-signout:hover{color:#9B6DC0}
+.sb-sync-row{display:flex;align-items:center;gap:6px;font-size:11px;color:#7a6f96}
+.sb-signout{font-size:12px;color:#8a7daa;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:7px;cursor:pointer;text-align:left;padding:7px 11px;transition:all .18s;display:flex;align-items:center;gap:8px;width:100%}
+.sb-signout:hover{color:#fff;background:rgba(155,109,192,0.18);border-color:rgba(155,109,192,0.35)}
+.sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:220px;flex:1;min-height:100vh;display:flex;flex-direction:column}
+.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
@@ -403,11 +414,7 @@ body{font-size:15px;line-height:1.5}
 .dash-welcome-right .dw-summary{font-size:13px;opacity:.85;line-height:1.8}
 .dash-welcome-right .dw-summary strong{color:#e2ccff;font-weight:600}
 
-/* ── Sidebar nav enhanced ───────────────────────────────── */
-.sb-nav a{border-radius:6px;margin:0 8px}
-.sb-nav .section{font-weight:700;border-top:1px solid #1a1030;padding-top:14px;margin-top:4px}
-/* First section has no top border */
-.sb-nav > .section:first-child{border-top:none;padding-top:10px}
+/* ── Sidebar nav enhanced (styles consolidated into main sidebar block above) ── */
 
 /* ── Table Rows Enhanced ────────────────────────────────── */
 td{padding:12px 14px;font-size:14px}
@@ -721,11 +728,9 @@ td { padding: 9px 12px; font-size: 13px; }
 .section-hdr h2 { font-size: 14px; font-weight: 600; font-family: inherit; color: var(--text); }
 
 /* ── Sidebar wordmark + More nav section ─────────────────── */
-.sb-wordmark { font-size: 14px; letter-spacing: -0.01em; line-height: 1.3; }
-.sb-divider { border-top: 1px solid rgba(255,255,255,0.08); margin: 6px 12px; }
-.sb-more { opacity: 0.65; font-size: 12px !important; }
+.sb-wordmark { font-size: 13.5px; letter-spacing: -0.01em; line-height: 1.25; }
+.sb-more { opacity: 0.7; font-size: 12.5px !important; }
 .sb-more:hover, .sb-more.active { opacity: 1 !important; }
-.sb-logo { padding: 14px 16px; }
 
 /* ── Distributor Pipeline ──────────────────────────────────── */
 .dist-pipeline-group { margin-bottom: 28px; }
