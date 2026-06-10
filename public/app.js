@@ -963,6 +963,43 @@ function _timeAgo(iso) {
   return d === 1 ? 'yesterday' : d + 'd ago';
 }
 
+function renderDashPayments() {
+  const el = document.getElementById('dash-payments');
+  if (!el) return;
+  const paidKey = x => x.paidAt || x.paidDate || '';
+  const pays = [];
+  _allPurplInvoices().forEach(x => {
+    if (x.status === 'paid' && !x.combinedInvoiceId && paidKey(x))
+      pays.push({key:paidKey(x), num:x.number||x.invoiceNumber||'—', name:x.accountName||'', amt:parseFloat(x.amount||x.total||0), via:x.paidVia||'manual', open:`openInvModal('${x.id}')`});
+  });
+  DB.a('lf_invoices').forEach(x => {
+    if (x.status === 'paid' && !x.combinedInvoiceId && paidKey(x))
+      pays.push({key:paidKey(x), num:x.number||x.invoiceNumber||'—', name:x.accountName||'', amt:parseFloat(x.total||0), via:x.paidVia||'manual', open:`openLfInvoiceModal('${x.id}')`});
+  });
+  DB.a('combined_invoices').forEach(x => {
+    if (x.status === 'paid' && paidKey(x))
+      pays.push({key:paidKey(x), num:x.number||x.invoiceNumber||'—', name:x.accountName||'', amt:parseFloat(x.grandTotal||0), via:x.paidVia||'manual', open:`openCombinedInvoicePreview('${x.id}')`});
+  });
+  DB.a('dist_invoices').forEach(x => {
+    if (x.status === 'paid' && paidKey(x))
+      pays.push({key:paidKey(x), num:x.number||x.invoiceNumber||'—', name:x.distName||'', amt:parseFloat(x.total||0), via:x.paidVia||'manual', open:`editDistInvoice('${x.id}')`});
+  });
+  pays.sort((a,b) => b.key.localeCompare(a.key));
+  const top = pays.slice(0, 6);
+  if (!top.length) { el.innerHTML = '<div class="empty" style="padding:20px">No payments yet</div>'; return; }
+  el.innerHTML = top.map(p2 => {
+    const when = p2.key.length > 10 ? _timeAgo(p2.key) : fmtD(p2.key);
+    const viaBadge = p2.via === 'stripe'
+      ? '<span class="badge purple" style="font-size:10px">Stripe</span>'
+      : '<span class="badge gray" style="font-size:10px">Manual</span>';
+    return `<div class="act-row" style="cursor:pointer;align-items:center" onclick="${p2.open}">
+      <span class="act-icon" style="color:#16a34a;font-weight:700">✓</span>
+      <div class="act-body"><strong>${fmtC(p2.amt)}</strong> · ${escHtml(p2.name)} <span style="color:var(--muted);font-size:11.5px">${escHtml(p2.num)}</span></div>
+      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">${viaBadge}<span class="act-time">${when}</span></span>
+    </div>`;
+  }).join('');
+}
+
 function renderDashActivity() {
   const el = document.getElementById('dash-activity');
   if (!el) return;
@@ -1002,6 +1039,7 @@ function _macGoToEmailsTab() {
 function renderDash() {
   if (!DB._firestoreReady) return;
   renderDashQuickActions();
+  renderDashPayments();
   renderDashActivity();
   const ac  = DB.a('ac').filter(x=>x.status==='active');
   const pr  = DB.a('pr');
