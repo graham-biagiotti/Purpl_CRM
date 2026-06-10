@@ -414,6 +414,22 @@ exports.lookupPortalToken = onCall(async (request) => {
     };
   }
 
+  // Fallback: check workspace/main/ac (token may exist here if external write failed)
+  const wsSnap = await db.collection('workspace/main/ac')
+    .where('orderPortalToken', '==', token).limit(1).get();
+  if (!wsSnap.empty) {
+    const d = wsSnap.docs[0].data();
+    return {
+      found: true,
+      isProspect: false,
+      accountId: wsSnap.docs[0].id,
+      accountName: d.name || '',
+      accountEmail: d.email || '',
+      isPbf: d.isPbf || false,
+      portalPrefs: d.portalPrefs || {},
+    };
+  }
+
   return { found: false };
 });
 

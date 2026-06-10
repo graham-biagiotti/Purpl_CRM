@@ -8222,7 +8222,7 @@ async function createDeliveryInvoice(accountId, ordId) {
     date: today(), dueDate, lineItems,
     cases: totalCases, cans: totalCases * CANS_PER_CASE,
     pricePerCase, total,
-    status: 'unpaid', source: 'delivery_run', notes: '',
+    status: 'draft', source: 'delivery_run', notes: '',
     accountName: ac.name,
   };
 
@@ -10395,10 +10395,12 @@ let _wixPullDeductionId = null;
 let _wixPullInvoiceId   = null;
 
 const LF_INV_STATUS = {
-  unpaid:  {label:'Unpaid',  cls:'amber'},
+  draft:   {label:'Draft',   cls:'gray'},
+  sent:    {label:'Sent',    cls:'blue'},
   paid:    {label:'Paid',    cls:'green'},
+  void:    {label:'Void',    cls:'red'},
+  unpaid:  {label:'Unpaid',  cls:'amber'},
   overdue: {label:'Overdue', cls:'red'},
-  partial: {label:'Partial', cls:'blue'},
 };
 
 function setLfInvFilter(status) {
@@ -10473,7 +10475,7 @@ function renderLfInvoicesPage() {
 function markLfInvPaid(id) {
   const inv = DB.a('lf_invoices').find(x => x.id === id);
   if (!inv) return;
-  const newStatus = inv.status === 'paid' ? 'unpaid' : 'paid';
+  const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
   DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidAt: newStatus === 'paid' ? today() : null}));
   renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
@@ -10494,7 +10496,7 @@ function openLfInvoiceModal(id) {
     const terms  = DB.obj('invoice_settings',{}).terms || _payTerms();
     const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
     if (qs('#lfi-due'))    qs('#lfi-due').value    = dueStr;
-    if (qs('#lfi-status')) qs('#lfi-status').value = 'unpaid';
+    if (qs('#lfi-status')) qs('#lfi-status').value = 'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
@@ -10502,7 +10504,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-number')) qs('#lfi-number').value = inv.number||'';
     if (qs('#lfi-issued')) qs('#lfi-issued').value  = inv.issued||today();
     if (qs('#lfi-due'))    qs('#lfi-due').value    = inv.due||'';
-    if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'unpaid';
+    if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
     if (qs('#lfi-delete-btn')) {
@@ -10729,7 +10731,7 @@ function saveLfInvoice(id, isNew) {
   const accountId = qs('#lfi-account')?.value;
   const issued    = qs('#lfi-issued')?.value || today();
   const due       = qs('#lfi-due')?.value || '';
-  const status    = qs('#lfi-status')?.value || 'unpaid';
+  const status    = qs('#lfi-status')?.value || 'draft';
   const notes     = qs('#lfi-notes')?.value?.trim() || '';
   const link      = qs('#lfi-link')?.value?.trim() || '';
 
@@ -11032,7 +11034,7 @@ function openNewCombinedModal() {
   const terms = DB.obj('invoice_settings',{}).terms || _payTerms();
   const d = new Date(Date.now() + terms * 86400000);
   if (qs('#nciv-due')) qs('#nciv-due').value = d.toISOString().slice(0,10);
-  if (qs('#nciv-status')) qs('#nciv-status').value = 'unpaid';
+  if (qs('#nciv-status')) qs('#nciv-status').value = 'draft';
   if (qs('#nciv-notes')) qs('#nciv-notes').value = '';
 
   _ncivRenderSkuRows();
@@ -11150,7 +11152,7 @@ async function saveNewCombinedInvoice() {
   const account  = DB.a('ac').find(x => x.id === accountId) || {};
   const due      = qs('#nciv-due')?.value || '';
   const issued   = qs('#nciv-date')?.value || today();
-  const status   = qs('#nciv-status')?.value || 'unpaid';
+  const status   = qs('#nciv-status')?.value || 'draft';
   const notes    = qs('#nciv-notes')?.value || '';
   const userNum  = qs('#nciv-number')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
@@ -11850,7 +11852,7 @@ function renderMacInvoicesTab(accountId) {
           <div style="font-size:11px;color:var(--muted)">Due ${fmtD(iv.due||iv.dueDate)}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          ${statBadge(iv.status||'unpaid', statColor[iv.status]||'blue')}
+          ${statBadge(iv.status||'draft', statColor[iv.status]||'gray')}
           <strong>${fmtC(iv.amount||0)}</strong>
         </div>
       </div>`).join('')
@@ -11864,7 +11866,7 @@ function renderMacInvoicesTab(accountId) {
           <div style="font-size:11px;color:var(--muted)">Due ${fmtD(inv.due)}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          ${statBadge(inv.status||'unpaid', LF_INV_STATUS[inv.status]?.cls||'gray')}
+          ${statBadge(inv.status||'draft', LF_INV_STATUS[inv.status]?.cls||'gray')}
           <strong>${fmtC(inv.total||0)}</strong>
         </div>
       </div>`).join('')
@@ -12030,6 +12032,18 @@ function migrateAccountContacts() {
 
 // ══════════════════════════════════════════════════════════
 //  PASTE-TO-CREATE ACCOUNT
+function migrateInvoiceStatuses() {
+  if (!DB._firestoreReady) return;
+  const remap = { unpaid: 'sent', overdue: 'sent' };
+  ['lf_invoices', 'dist_invoices', 'retail_invoices'].forEach(col => {
+    DB.a(col).forEach(inv => {
+      if (remap[inv.status]) {
+        DB.update(col, inv.id, x => ({ ...x, status: remap[x.status] || x.status }));
+      }
+    });
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 let _pastePreviewData = null;
 
@@ -12100,6 +12114,7 @@ window.onAppReady = function() {
   migrateLfSkuPrices();
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
   migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
+  migrateInvoiceStatuses(); // one-time: unpaid/overdue → sent for all invoice types
 
   // Allow db.js real-time listener to refresh whichever page is open.
   // Also used to retry one-time migrations that were skipped because the
@@ -13721,7 +13736,7 @@ function renderInvKpis() {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
     const due = inv.due || inv.dueDate || '';
     if (due && due < todayStr) return 'overdue';
-    return inv.status || 'unpaid';
+    return inv.status || 'draft';
   }
 
   const now = new Date();
@@ -13771,7 +13786,7 @@ function renderInvColPurpl() {
     if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
     const due = inv.due || inv.dueDate || '';
     if (due && due < todayStr) return 'overdue';
-    return inv.status || 'unpaid';
+    return inv.status || 'draft';
   }
 
   const outstanding = invs.filter(x => !['paid','draft','void'].includes(effectiveStatus(x)))
@@ -14393,7 +14408,7 @@ function generateLfInvoicePrint(invoiceId) {
   const fromName = s.fromName  || 'Pumpkin Blossom Farm LLC';
   const fromAddr = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
   const invNum   = inv.number || '—';
-  const status   = inv.status || 'unpaid';
+  const status   = inv.status || 'draft';
 
   const itemRows = (inv.lineItems || []).map(li => {
     const parentUnitPrice = parseFloat(li.unitPrice || 0);
