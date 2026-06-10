@@ -14436,25 +14436,28 @@ async function testStripeConnection() {
   el.style.color = 'var(--muted)';
   el.textContent = 'Testing Stripe…';
   try {
-    const fn = firebase.functions().httpsCallable('createStripePaymentLink');
-    const result = await fn({
-      amount: 1.00,
-      invoiceNumber: 'TEST-' + Date.now().toString().slice(-6),
-      invoiceId: 'stripe-connection-test',
-      invoiceType: 'test',
-      accountName: 'Connection Test',
-    });
-    const url = result.data?.url;
-    if (url) {
+    const fn = firebase.functions().httpsCallable('stripeStatus');
+    const d = (await fn({})).data;
+    const stepsHtml = (d.steps||[]).map(s => `<div style="padding:2px 0;font-size:11px;color:var(--muted)">· ${escHtml(s)}</div>`).join('');
+    if (d.ok) {
       el.style.color = '#16a34a';
-      el.innerHTML = '✓ Stripe is working. Test link ($1 — do <strong>not</strong> pay it): <a href="' + escHtml(url) + '" target="_blank" rel="noopener">open</a>';
+      el.innerHTML = '✓ Stripe is working!<br>' + stepsHtml +
+        '<div style="margin-top:6px">Test checkout ($1 — do <strong>not</strong> pay): <a href="' + escHtml(d.url) + '" target="_blank" rel="noopener">open link</a></div>';
     } else {
       el.style.color = '#dc2626';
-      el.textContent = '✗ Stripe responded but returned no link — check the Functions logs in Firebase console.';
+      el.innerHTML = '✗ Failed at step: <strong>' + escHtml(d.step||'?') + '</strong><br>' +
+        '<div style="margin-top:4px">' + escHtml(d.msg||'unknown') + '</div>' + stepsHtml;
     }
   } catch (e) {
-    el.style.color = '#dc2626';
-    el.textContent = '✗ ' + (e.code || 'error') + ': ' + _stripeErrHint(e);
+    const code = e?.code || '';
+    if (code.includes('not-found')) {
+      el.style.color = '#dc2626';
+      el.textContent = '✗ stripeStatus function not found — deploy functions: firebase deploy --only functions --project default';
+    } else {
+      el.style.color = '#dc2626';
+      el.textContent = '✗ ' + (e.code || 'error') + ': ' + (e.message || 'unknown') +
+        ' — if this says "internal", the functions deploy is stale. Run: firebase deploy --only functions --project default';
+    }
   }
 }
 

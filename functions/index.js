@@ -642,7 +642,48 @@ exports.inviteEmployee = onCall(
   }
 });
 
-// ── 8. Create Stripe Payment Link ────────────────────────
+// ── 8a. Stripe Diagnostic ────────────────────────────────
+// Returns a step-by-step report instead of throwing — so the CRM always
+// gets a readable answer even if require('stripe') itself crashes.
+exports.stripeStatus = onCall(
+  {secrets: [stripeSecretKey]},
+  async (request) => {
+    if (!request.auth) return {ok: false, step: 'auth', msg: 'Not signed in'};
+    const steps = [];
+    // 1. Check key
+    const raw = process.env.STRIPE_SECRET_KEY;
+    if (!raw) return {ok: false, step: 'secret', msg: 'STRIPE_SECRET_KEY env var is empty/missing. Run: firebase functions:secrets:set STRIPE_SECRET_KEY', steps};
+    const key = raw.trim();
+    steps.push('Key exists: ' + key.slice(0, 7) + '...' + key.slice(-4) + ' (' + key.length + ' chars)');
+    if (raw !== key) steps.push('WARNING: key had leading/trailing whitespace — trimmed');
+    if (!key.startsWith('sk_')) return {ok: false, step: 'key_format', msg: 'Key starts with "' + key.slice(0, 3) + '" — must start with sk_live_ or sk_test_. You may have saved the publishable key by mistake.', steps};
+    steps.push('Key format OK (starts with sk_)');
+    // 2. Load stripe
+    let stripe;
+    try {
+      stripe = require('stripe')(key);
+      steps.push('Stripe SDK loaded OK');
+    } catch (e) {
+      return {ok: false, step: 'require', msg: 'require("stripe") failed: ' + (e.message || String(e)), steps};
+    }
+    // 3. Test API call
+    try {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{price_data: {currency: 'usd', product_data: {name: 'Connection Test'}, unit_amount: 100}, quantity: 1}],
+        mode: 'payment',
+        success_url: 'https://purpl-crm.web.app/order?paid=1',
+        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+      });
+      steps.push('Checkout session created: ' + session.id);
+      return {ok: true, url: session.url, steps};
+    } catch (e) {
+      return {ok: false, step: 'stripe_api', msg: (e.type || '') + ': ' + (e.message || String(e)), steps};
+    }
+  }
+);
+
+// ── 8b. Create Stripe Payment Link ───────────────────────
 // Auth-required. Generates a unique Stripe Checkout Session link for an invoice.
 exports.createStripePaymentLink = onCall(
   {secrets: [stripeSecretKey]},
