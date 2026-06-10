@@ -1619,7 +1619,7 @@ function renderInvoiceStatus() {
       const lfRows = lInvs.map(inv=>{
         const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
         return `<tr>
-          <td><span class="badge" style="font-size:10px;margin-right:4px;background:#dcfce7;color:#166534">LF</span> ${escHtml(inv.number||'—')}</td>
+          <td><span class="badge" style="font-size:10px;margin-right:4px;background:#dcfce7;color:#166534">LF</span> ${escHtml(inv.number||inv.invoiceNumber||'—')}</td>
           <td>${escHtml(acName)}</td>
           <td>${fmtD(inv.due)}</td>
           <td>${fmtC(inv.total||0)}</td>
@@ -1975,7 +1975,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
         toast('Invoice saved & sent ✓');
       } catch (e) {
         console.error('Invoice send failed:', e);
-        toast('Invoice saved, but the email failed — open it and try Send again');
+        toast('Invoice saved, but the email failed' + (e?.message ? ' (' + e.message + ')' : '') + ' — open it and try Send again', 8000);
         closeModal('modal-add-inv');
         if (currentPage === 'invoices') renderInvoicesPage();
       } finally {
@@ -2119,7 +2119,7 @@ function calcInvTotal() { _ivCalcTotal(); }
 
 function markRetailInvPaid(id) {
   if (!DB._firestoreReady) return;
-  DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today()}));
+  DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   renderInvoiceStatus();
   toast('Marked as paid');
 }
@@ -6743,7 +6743,7 @@ async function saveDistInvoice(existingId) {
 }
 
 function markDistInvoicePaid(invId, distId) {
-  DB.update('dist_invoices', invId, i => ({ ...i, status: 'paid', paidDate: today() }));
+  DB.update('dist_invoices', invId, i => ({ ...i, status: 'paid', paidDate: today(), paidAt: new Date().toISOString() }));
   const d = DB.a('dist_profiles').find(x => x.id === distId);
   const pane = qs('#mdist-tab-invoices');
   if (d && pane) pane.innerHTML = renderDistInvoicesHTML(d);
@@ -9387,7 +9387,7 @@ function exportYearEnd() {
 
   // purpl invoices (deduplicate + exclude combined invoice components)
   _allPurplInvoices().filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
-    const pd = x.paidDate || '';
+    const pd = (x.paidDate || x.paidAt || '').slice(0,10);
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || x.accountId || '—';
     rows.push([pd, x.number||x.invoiceNumber, 'purpl', acName, parseFloat(x.amount||x.total||0).toFixed(2), 'Invoice']);
@@ -9395,7 +9395,7 @@ function exportYearEnd() {
 
   // LF invoices (exclude those that are part of a combined invoice)
   DB.a('lf_invoices').filter(x => x.status === 'paid' && !x.combinedInvoiceId).forEach(x => {
-    const pd = (x.paidAt||'').slice(0,10);
+    const pd = (x.paidDate || x.paidAt || '').slice(0,10);
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number||'—', 'LF', acName, parseFloat(x.total||0).toFixed(2), 'Invoice']);
@@ -9403,7 +9403,7 @@ function exportYearEnd() {
 
   // Combined invoices → two rows each (purpl subtotal + LF subtotal)
   DB.a('combined_invoices').filter(x => x.status === 'paid').forEach(x => {
-    const pd = (x.paidAt||'').slice(0,10);
+    const pd = (x.paidDate || x.paidAt || '').slice(0,10);
     if (!inYear(pd)) return;
     const acName = x.accountName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number, 'purpl', acName, parseFloat(x.purplSubtotal||0).toFixed(2), 'Combined - purpl']);
@@ -10612,7 +10612,7 @@ function markLfInvPaid(id) {
   const inv = DB.a('lf_invoices').find(x => x.id === id);
   if (!inv) return;
   const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
-  DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidAt: newStatus === 'paid' ? today() : null}));
+  DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null}));
   renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
 }
@@ -10729,7 +10729,7 @@ function openLfInvoiceModal(id) {
         showWixPullModal(inv, out.deduction.id);
       } catch (e) {
         console.error('LF invoice send failed:', e);
-        toast('Invoice saved, but the email failed — open it and try Send again');
+        toast('Invoice saved, but the email failed' + (e?.message ? ' (' + e.message + ')' : '') + ' — open it and try Send again', 8000);
         closeModal('modal-lf-invoice');
         if (currentPage === 'invoices') renderInvoicesPage();
       } finally {
@@ -11070,15 +11070,15 @@ function markCombinedPaid(combinedId) {
   const pd = now.slice(0,10);
   DB.atomicUpdate(cache => {
     const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
-    if (ci >= 0) cache.combined_invoices[ci] = {...cache.combined_invoices[ci], status:'paid', paidAt:now};
+    if (ci >= 0) cache.combined_invoices[ci] = {...cache.combined_invoices[ci], status:'paid', paidDate:pd, paidAt:now};
     const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-    if (ri >= 0) cache.retail_invoices[ri] = {...cache.retail_invoices[ri], status:'paid', paidDate:pd};
+    if (ri >= 0) cache.retail_invoices[ri] = {...cache.retail_invoices[ri], status:'paid', paidDate:pd, paidAt:now};
     else {
       const ii = (cache.iv||[]).findIndex(x => x.id === rec.purplInvoiceId);
-      if (ii >= 0) cache.iv[ii] = {...cache.iv[ii], status:'paid', paidDate:pd};
+      if (ii >= 0) cache.iv[ii] = {...cache.iv[ii], status:'paid', paidDate:pd, paidAt:now};
     }
     const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-    if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], status:'paid', paidAt:now};
+    if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], status:'paid', paidDate:pd, paidAt:now};
   });
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
@@ -11615,7 +11615,7 @@ function buildInvoiceDocHTML(o) {
 
   const paymentSection = isPaid
     ? `<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px 20px;font-size:13px;color:#166534;text-align:center">
-        This invoice has been paid${o.paidAt ? ' — ' + fmtLong(o.paidAt) : ''}. Thank you!
+        This invoice has been paid${o.paidAt ? ' — ' + fmtLong(String(o.paidAt).slice(0,10)) : ''}. Thank you!
       </td></tr></table>`
     : `<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:0">
         ${_buildPaymentHTML(o.payLink)}
@@ -13954,9 +13954,9 @@ const esc       = (s) => escHtml(String(s||''));
 function markPaid(id) {
   const inRetail = DB.a('retail_invoices').find(x => x.id === id);
   const inLf = DB.a('lf_invoices').find(x => x.id === id);
-  if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today()}));
-  else if (inLf) DB.update('lf_invoices', id, x => ({...x, status:'paid', paidAt:new Date().toISOString()}));
-  else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today()}));
+  if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  else if (inLf) DB.update('lf_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   renderInvoicesPage();
   toast('Marked as paid ✓');
 }
@@ -14017,11 +14017,11 @@ function renderInvKpis() {
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => _distOpen(x) && x.dueDate && x.dueDate < todayStr)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+  const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
                           .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => x.status === 'paid' && (x.paidAt||'').slice(0,10) >= fom)
+                      + lfInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => x.status === 'paid' && (x.paidDate||'') >= fom)
+                      + distInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
 
   const el = qs('#inv-page-kpis');

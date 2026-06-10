@@ -54,7 +54,7 @@ exports.sendEmail = onCall(
       return {success: true, id: messageId};
     } catch (err) {
       console.error('Email send error:', err.message);
-      throw new HttpsError('internal', 'Email service unavailable');
+      throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }
   }
 );
@@ -94,7 +94,7 @@ exports.sendCombinedInvoice = onCall(
       return {success: true, id: messageId};
     } catch (err) {
       console.error('Email send error:', err.message);
-      throw new HttpsError('internal', 'Email service unavailable');
+      throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }
   }
 );
@@ -202,7 +202,13 @@ exports.sendOrderConfirmation = onCall(
       return {success: true, id: messageId};
     } catch (err) {
       console.error('Email send error:', err.message);
-      throw new HttpsError('internal', 'Email service unavailable');
+      // Flag the portal order so the CRM can see the customer never got
+      // a confirmation — otherwise this failure is invisible to everyone.
+      if (data.portalOrderId) {
+        await admin.firestore().collection('portal_orders').doc(String(data.portalOrderId))
+          .update({confirmationEmailFailed: true}).catch(() => {});
+      }
+      throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }
   }
 );
@@ -288,7 +294,12 @@ exports.sendApplicationConfirmation = onCall(
       return {success: true, id: messageId};
     } catch (err) {
       console.error('Email send error:', err.message);
-      throw new HttpsError('internal', 'Email service unavailable');
+      // Flag the inquiry so the CRM shows the applicant never got a confirmation.
+      if (data.inquiryDocId) {
+        await admin.firestore().collection('portal_inquiries').doc(String(data.inquiryDocId))
+          .update({confirmationEmailFailed: true}).catch(() => {});
+      }
+      throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }
   }
 );
@@ -638,7 +649,7 @@ exports.inviteEmployee = onCall(
     return { success: true, uid: userRecord.uid, resetLink: link };
   } catch (err) {
     console.error('inviteEmployee error:', err.message);
-    throw new HttpsError('internal', 'Failed to create employee account');
+    throw new HttpsError('internal', 'Invite failed: ' + (err.message || 'unknown error'));
   }
 });
 
