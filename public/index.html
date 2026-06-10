@@ -1352,8 +1352,12 @@
           <div class="card">
             <div class="section-hdr"><h2>Payment Methods</h2></div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Stripe payment link</label>
+              <label>Stripe payment link (fallback only — per-invoice links are generated automatically)</label>
               <input id="inv-stripe-link" placeholder="https://buy.stripe.com/...">
+              <div style="margin-top:8px">
+                <button type="button" class="btn sm" onclick="testStripeConnection()">⚡ Test Stripe Connection</button>
+              </div>
+              <div id="stripe-test-result" style="font-size:12px;margin-top:6px"></div>
             </div>
             <div class="form-group" style="margin-bottom:12px">
               <label>ACH routing number</label>

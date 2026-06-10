@@ -391,6 +391,15 @@ async function callSendEmail(to, from, subject, html) {
   }
 }
 
+function _stripeErrHint(e) {
+  const code = String(e?.code || '');
+  if (code.includes('not-found'))           return 'the createStripePaymentLink function is not deployed — run: firebase deploy --only functions';
+  if (code.includes('failed-precondition')) return 'STRIPE_SECRET_KEY is not set — run: firebase functions:secrets:set STRIPE_SECRET_KEY, then redeploy functions';
+  if (code.includes('unauthenticated'))     return 'you are signed out — refresh the page and sign in';
+  if (code.includes('invalid-argument'))    return e?.message || 'invalid invoice data';
+  return e?.message || 'unknown error';
+}
+
 async function _getStripePayLink(invoice, type) {
   if (!invoice?.id || !parseFloat(invoice.total || invoice.amount || invoice.grandTotal)) return null;
   try {
@@ -404,9 +413,12 @@ async function _getStripePayLink(invoice, type) {
       accountName: invoice.accountName || '',
       accountId: invoice.accountId || '',
     });
-    return result.data?.url || null;
+    const url = result.data?.url || null;
+    if (!url) toast('⚠ Stripe did not return a payment link — sending without Pay button', 6000);
+    return url;
   } catch (e) {
-    console.warn('Stripe link generation failed (using fallback):', e);
+    console.error('Stripe link generation failed:', e);
+    toast('⚠ Stripe pay link failed: ' + _stripeErrHint(e), 8000);
     return DB.obj('invoice_settings', {}).stripeLink || null;
   }
 }
@@ -14414,6 +14426,36 @@ function loadInvoiceSettings() {
   set('inv-ach-account',         s.achAccount);
   set('inv-check-instructions',  s.checkInstructions);
   set('inv-payment-instructions', s.checkInstructions || s.paymentInstructions);
+}
+
+// Settings → Payment Methods: one-click Stripe diagnostic.
+// Creates a $1 test checkout session and shows the exact result/error.
+async function testStripeConnection() {
+  const el = document.getElementById('stripe-test-result');
+  if (!el) return;
+  el.style.color = 'var(--muted)';
+  el.textContent = 'Testing Stripe…';
+  try {
+    const fn = firebase.functions().httpsCallable('createStripePaymentLink');
+    const result = await fn({
+      amount: 1.00,
+      invoiceNumber: 'TEST-' + Date.now().toString().slice(-6),
+      invoiceId: 'stripe-connection-test',
+      invoiceType: 'test',
+      accountName: 'Connection Test',
+    });
+    const url = result.data?.url;
+    if (url) {
+      el.style.color = '#16a34a';
+      el.innerHTML = '✓ Stripe is working. Test link ($1 — do <strong>not</strong> pay it): <a href="' + escHtml(url) + '" target="_blank" rel="noopener">open</a>';
+    } else {
+      el.style.color = '#dc2626';
+      el.textContent = '✗ Stripe responded but returned no link — check the Functions logs in Firebase console.';
+    }
+  } catch (e) {
+    el.style.color = '#dc2626';
+    el.textContent = '✗ ' + (e.code || 'error') + ': ' + _stripeErrHint(e);
+  }
 }
 
 function saveApiSettings() {
