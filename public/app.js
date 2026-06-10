@@ -406,10 +406,10 @@ async function _getStripePayLink(invoice, type) {
   }
 }
 
-async function callSendCombinedInvoice(to, accountName, subject, html) {
+async function callSendCombinedInvoice(to, accountName, subject, html, accountId, invoiceNumber) {
   try {
     const fn = firebase.functions().httpsCallable('sendCombinedInvoice');
-    const result = await fn({to, accountName, subject, html});
+    const result = await fn({to, accountName, subject, html, accountId: accountId || null, invoiceNumber: invoiceNumber || null});
     return result.data;
   } catch (err) {
     console.error('Send combined invoice error:', err);
@@ -2646,7 +2646,7 @@ function openAccount(id) {
   qs('#mac-since').textContent = fmtD(a.since);
   qs('#mac-last-order').textContent = a.lastOrder ? `${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d ago)` : '—';
   qs('#mac-skus').innerHTML = (a.skus||[]).map(skuBadge).join(' ');
-  qs('#mac-par').innerHTML = Object.entries(a.par||{}).map(([k,v])=>`${skuBadge(k)} par: <strong>${v}</strong>`).join('&nbsp;&nbsp;');
+  qs('#mac-par').innerHTML = Object.entries(a.par||{}).map(([k,v])=>`${skuBadge(k)} par: <strong>${escHtml(String(v))}</strong>`).join('&nbsp;&nbsp;');
 
   // Locations
   const locs = (a.locs && a.locs.length) ? a.locs
@@ -4822,7 +4822,7 @@ function convertProspect(id) {
         const data = doc.data();
         firebase.firestore().collection('accounts').doc(newAc.id).set({
           ...data, accountId: newAc.id, accountName: newAc.name,
-        });
+        }, { merge: true });
         doc.ref.delete().catch(() => {});
       }
     })
@@ -6370,7 +6370,9 @@ function _editDistRepOpen(repId, distId, isNew) {
 function saveDistRep(repId, distId, isNew) {
   const name = qs('#mrep-name')?.value?.trim();
   if (!name) { toast('Rep name required'); return; }
+  const existing = isNew ? null : DB.a('dist_reps').find(x => x.id === repId);
   const rec = {
+    ...(existing||{}),
     id:repId, distId, name,
     title:        qs('#mrep-title-field')?.value?.trim()||'',
     phone:        qs('#mrep-phone')?.value?.trim()||'',
@@ -11621,7 +11623,7 @@ function openCombinedInvoicePreview(combinedId) {
     // Generate per-invoice Stripe payment link, then rebuild HTML with it
     const payLink = await _getStripePayLink(rec, 'combined');
     const sendHtml = buildCombinedInvoiceHTML(combinedId, payLink);
-    callSendCombinedInvoice(to, rec.accountName, subject, sendHtml)
+    callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
       .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = rec.number || rec.invoiceNumber || '';

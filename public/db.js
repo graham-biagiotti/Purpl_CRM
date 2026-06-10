@@ -173,9 +173,9 @@ const DB = {
         const remoteChanges = snap.docChanges().filter(c => !c.doc.metadata.hasPendingWrites);
         if (!remoteChanges.length) return;
 
-        if (this._dirty) {
+        if (this._dirty || (this._saveDirtyKeys && this._saveDirtyKeys.has(key))) {
           this._pendingRemoteChanges = true;
-          this._showRemoteChangeWarning();
+          if (this._dirty) this._showRemoteChangeWarning();
         } else {
           try {
             this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
@@ -438,10 +438,13 @@ const DB = {
   update(k, id, fn) {
     const a = this.a(k);
     const i = a.findIndex(x => x.id === id);
-    if (i >= 0) {
-      a[i] = this._stamp(fn(a[i])); this._cache[k] = a; this._save(k);
-      if (COLLECTION_KEYS.includes(k)) this._writeDoc(k, a[i]);
+    if (i < 0) {
+      console.warn(`[db] update: ${k}/${id} not found (may have been deleted)`);
+      return false;
     }
+    a[i] = this._stamp(fn(a[i])); this._cache[k] = a; this._save(k);
+    if (COLLECTION_KEYS.includes(k)) this._writeDoc(k, a[i]);
+    return true;
   },
   remove(k, id) {
     this._cache[k] = this.a(k).filter(x => x.id !== id); this._save(k);
