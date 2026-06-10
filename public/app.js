@@ -397,7 +397,8 @@ async function _getStripePayLink(invoice, type) {
     const fn = firebase.functions().httpsCallable('createStripePaymentLink');
     const result = await fn({
       amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
-      invoiceNumber: invoice.number || invoice.invoiceNumber || '',
+      invoiceNumber: invoice.number || invoice.invoiceNumber ||
+        ('INV-' + String(invoice.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()),
       invoiceId: invoice.id,
       invoiceType: type || 'retail',
       accountName: invoice.accountName || '',
@@ -1889,39 +1890,56 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
 
   const ivSendBtn = qs('#iv-send-btn');
   if (ivSendBtn) {
-    ivSendBtn.style.display = isNew ? 'none' : '';
+    ivSendBtn.style.display = '';
+    ivSendBtn.textContent = 'Save & Send';
     ivSendBtn.onclick = async () => {
-      const inv = findInvoice(id);
-      if (!inv) { toast('Save the invoice before sending'); return; }
-      const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-      const to = ac.email || '';
-      if (!to) { toast('No email address on file for this account'); return; }
-      ivSendBtn.disabled = true; ivSendBtn.textContent = 'Generating link…';
-      const payLink = await _getStripePayLink(inv, 'retail');
-      const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
-      const html    = buildPurplInvoiceEmailHTML(sendInv);
-      const subject = `Invoice ${inv.number||''} from Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
-      ivSendBtn.textContent = 'Sending…';
-      callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
-        .then((result) => {
-          toast('Invoice sent ✓');
-          const entry = {
-            id: uid(), stage: 'invoice_sent',
-            sentAt: new Date().toISOString(),
-            sentBy: _currentUserName(), method: 'resend',
-            invoiceId: inv.id, invoiceRef: inv.number,
-          };
-          if (result?.id) entry.sentMessageId = result.id;
-          DB.update('ac', ac.id, a => ({
-            ...a, lastContacted: today(),
-            cadence: _pushCadence(a.cadence, entry),
-          }));
-          renderAccounts();
-          const updatedAc = DB.a('ac').find(x => x.id === ac.id);
-          if (updatedAc) { renderAccountOutreach(updatedAc); renderMacEmailsTab(ac.id); }
-        })
-        .catch(() => { toast('Failed to send — check connection'); })
-        .finally(() => { ivSendBtn.disabled = false; ivSendBtn.textContent = 'Send Email'; });
+      if (ivSendBtn.disabled) return;
+      ivSendBtn.disabled = true; ivSendBtn.textContent = 'Saving…';
+      try {
+        // Persist first — works for brand-new invoices too (one-step send)
+        const rec = await _saveInvCore(id, isNew);
+        if (!rec) return; // validation toast already shown
+        const ac = DB.a('ac').find(x => x.id === rec.accountId) || {};
+        if (!ac.email) {
+          toast('Saved — but no email address on file for this account');
+          closeModal('modal-add-inv');
+          if (currentPage === 'invoices') renderInvoicesPage();
+          renderInvoiceStatus();
+          return;
+        }
+        ivSendBtn.textContent = 'Generating link…';
+        const payLink = rec.status === 'paid' ? null : await _getStripePayLink(rec, 'retail');
+        const sendInv = payLink ? { ...rec, _payLink: payLink } : rec;
+        const html    = buildPurplInvoiceEmailHTML(sendInv);
+        const subject = `Invoice ${rec.number||''} from Pumpkin Blossom Farm — ${ac.name||rec.accountName||''}`;
+        ivSendBtn.textContent = 'Sending…';
+        const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
+        // Sending flips Draft → Sent (and deducts inventory once)
+        if ((rec.status || 'draft') === 'draft') markInvoiceSent(rec.id);
+        const entry = {
+          id: uid(), stage: 'invoice_sent',
+          sentAt: new Date().toISOString(),
+          sentBy: _currentUserName(), method: 'resend',
+          invoiceId: rec.id, invoiceRef: rec.number,
+        };
+        if (result?.id) entry.sentMessageId = result.id;
+        DB.update('ac', ac.id, a => ({
+          ...a, lastContacted: today(),
+          cadence: _pushCadence(a.cadence, entry),
+        }));
+        closeModal('modal-add-inv');
+        if (currentPage === 'invoices') renderInvoicesPage();
+        renderInvoiceStatus();
+        renderAccounts();
+        toast('Invoice saved & sent ✓');
+      } catch (e) {
+        console.error('Invoice send failed:', e);
+        toast('Invoice saved, but the email failed — open it and try Send again');
+        closeModal('modal-add-inv');
+        if (currentPage === 'invoices') renderInvoicesPage();
+      } finally {
+        ivSendBtn.disabled = false; ivSendBtn.textContent = 'Save & Send';
+      }
     };
   }
 
@@ -10621,39 +10639,61 @@ function openLfInvoiceModal(id) {
 
   const lfiSendBtn = qs('#lfi-send-btn');
   if (lfiSendBtn) {
-    lfiSendBtn.style.display = isNew ? 'none' : '';
+    lfiSendBtn.style.display = '';
+    lfiSendBtn.textContent = 'Save & Send';
     lfiSendBtn.onclick = async () => {
-      const inv = DB.a('lf_invoices').find(x => x.id === id);
-      if (!inv) { toast('Save the invoice before sending'); return; }
-      const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-      const to = ac.email || '';
-      if (!to) { toast('No email address on file for this account'); return; }
-      lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Generating link…';
-      const payLink = await _getStripePayLink(inv, 'lf');
-      const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
-      const html    = buildLfInvoiceEmailHTML(sendInv);
-      const subject = `Invoice ${inv.number||''} from Lavender Fields at Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
-      lfiSendBtn.textContent = 'Sending…';
-      callSendEmail(to, 'lavender@pbfwholesale.com', subject, html)
-        .then((result) => {
-          toast('Invoice sent ✓');
-          const entry = {
-            id: uid(), stage: 'invoice_sent',
-            sentAt: new Date().toISOString(),
-            sentBy: _currentUserName(), method: 'resend',
-            invoiceId: inv.id, invoiceRef: inv.number,
-          };
-          if (result?.id) entry.sentMessageId = result.id;
-          DB.update('ac', ac.id, a => ({
-            ...a, lastContacted: today(),
-            cadence: _pushCadence(a.cadence, entry),
-          }));
-          renderAccounts();
-          const updatedAc = DB.a('ac').find(x => x.id === ac.id);
-          if (updatedAc) { renderAccountOutreach(updatedAc); renderMacEmailsTab(ac.id); }
-        })
-        .catch(() => { toast('Failed to send — check connection'); })
-        .finally(() => { lfiSendBtn.disabled = false; lfiSendBtn.textContent = 'Send Email'; });
+      if (lfiSendBtn.disabled) return;
+      lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Saving…';
+      try {
+        // Persist first — works for brand-new invoices too (one-step send)
+        const out = _saveLfInvoiceCore(id, isNew);
+        if (!out) return; // validation toast already shown
+        const inv = out.rec;
+        const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+        if (!ac.email) {
+          toast('Saved — but no email address on file for this account');
+          closeModal('modal-lf-invoice');
+          if (currentPage === 'invoices') renderInvoicesPage();
+          renderLfDashKpis();
+          showWixPullModal(inv, out.deduction.id);
+          return;
+        }
+        lfiSendBtn.textContent = 'Generating link…';
+        const payLink = inv.status === 'paid' ? null : await _getStripePayLink(inv, 'lf');
+        const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
+        const html    = buildLfInvoiceEmailHTML(sendInv);
+        const subject = `Invoice ${inv.number||''} from Lavender Fields at Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
+        lfiSendBtn.textContent = 'Sending…';
+        const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
+        // Sending flips Draft → Sent automatically
+        if ((inv.status || 'draft') === 'draft') {
+          DB.update('lf_invoices', inv.id, x => ({ ...x, status: 'sent', sentAt: today() }));
+        }
+        const entry = {
+          id: uid(), stage: 'invoice_sent',
+          sentAt: new Date().toISOString(),
+          sentBy: _currentUserName(), method: 'resend',
+          invoiceId: inv.id, invoiceRef: inv.number,
+        };
+        if (result?.id) entry.sentMessageId = result.id;
+        DB.update('ac', ac.id, a => ({
+          ...a, lastContacted: today(),
+          cadence: _pushCadence(a.cadence, entry),
+        }));
+        closeModal('modal-lf-invoice');
+        if (currentPage === 'invoices') renderInvoicesPage();
+        renderLfDashKpis();
+        renderAccounts();
+        toast('Invoice saved & sent ✓');
+        showWixPullModal(inv, out.deduction.id);
+      } catch (e) {
+        console.error('LF invoice send failed:', e);
+        toast('Invoice saved, but the email failed — open it and try Send again');
+        closeModal('modal-lf-invoice');
+        if (currentPage === 'invoices') renderInvoicesPage();
+      } finally {
+        lfiSendBtn.disabled = false; lfiSendBtn.textContent = 'Save & Send';
+      }
     };
   }
 
@@ -10816,6 +10856,18 @@ function _lfInvCalcTotal() {
 }
 
 function saveLfInvoice(id, isNew) {
+  const out = _saveLfInvoiceCore(id, isNew);
+  if (!out) return;
+  closeModal('modal-lf-invoice');
+  if (currentPage === 'invoices') renderInvoicesPage();
+  renderLfDashKpis();
+  toast(`Invoice ${out.rec.number} saved ✓`);
+  showWixPullModal(out.rec, out.deduction.id);
+}
+
+// Validates + persists the LF invoice from the modal. Returns
+// {rec, deduction} or null if validation failed (toast already shown).
+function _saveLfInvoiceCore(id, isNew) {
   const number    = qs('#lfi-number')?.value?.trim() || '';
   const accountId = qs('#lfi-account')?.value;
   const issued    = qs('#lfi-issued')?.value || today();
@@ -10911,11 +10963,8 @@ function saveLfInvoice(id, isNew) {
   else if (existingDeduction) DB.update('lf_wix_deductions', existingDeduction.id, () => deduction);
   else DB.push('lf_wix_deductions', deduction);
 
-  closeModal('modal-lf-invoice');
-  if (currentPage === 'invoices') renderInvoicesPage();
-  renderLfDashKpis();
-  toast(`Invoice ${rec.number} saved ✓`);
-  showWixPullModal(rec, deduction.id);
+  auditLog(isNew ? 'create' : 'update', 'lf_invoice', saveId, rec.number || saveId);
+  return { rec, deduction };
 }
 
 function deleteLfInvoice(id) {
@@ -10932,7 +10981,7 @@ function deleteLfInvoice(id) {
 
 // ── Combined invoices (purpl + LF cross-brand) ────────────
 
-function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=null) {
+async function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=null) {
   const purplInv = findInvoice(purplInvId);
   const lfInv    = DB.a('lf_invoices').find(x => x.id === lfInvId);
   if (!purplInv || !lfInv) {
@@ -10940,8 +10989,11 @@ function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrderId=nul
     return null;
   }
   const id = uid();
+  const num = await getNextInvoiceNumber('combined');
   const rec = {
     id,
+    number: num,
+    invoiceNumber: num,
     purplInvoiceId: purplInvId,
     lfInvoiceId:    lfInvId,
     accountId,
@@ -11437,98 +11489,121 @@ function _deliveryDetailsHTML(deliveryDate, tracking, style) {
   return out;
 }
 
-// ── Combined invoice HTML builder ─────────────────────────
+// ── Unified invoice document ──────────────────────────────
+// ONE layout for every invoice (purpl-only, LF-only, combined) and every
+// channel (email + print/PDF + preview). Table-based markup only — Gmail
+// and Outlook strip flexbox, which used to scramble the Amount Due row.
 
-function buildCombinedInvoiceHTML(combinedId, payLink) {
-  const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
-  if (!rec) return '';
-  if (payLink) rec._payLink = payLink;
+function _normPurplLines(inv) {
+  const lines = (inv.lineItems && inv.lineItems.length) ? inv.lineItems
+    : ((inv.cases || inv.amount) ? [{ skuName: 'Classic Lavender Lemonade', cases: inv.cases || 0, pricePerCase: inv.pricePerCase || 0, lineTotal: inv.amount != null ? inv.amount : (inv.total || 0) }] : []);
+  return lines.map(li => {
+    const cases = li.cases || li.qty || 0;
+    const ppc = parseFloat(li.pricePerCase != null ? li.pricePerCase : (li.unitPrice || 0)) || 0;
+    const total = parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : cases * ppc)) || 0;
+    return {
+      name: li.skuName || li.sku || li.description || 'purpl Lemonade',
+      sub: `${cases * CANS_PER_CASE} cans · 12-pack cases`,
+      qty: cases + ' cs',
+      price: '$' + ppc.toFixed(2) + '/cs',
+      total,
+    };
+  });
+}
 
-  const purplInv   = findInvoice(rec.purplInvoiceId) || {};
-  const lfInv      = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
-  const account    = DB.a('ac').find(x => x.id === rec.accountId) || {};
-  const invSettings = DB.obj('invoice_settings') || {};
-
-  const portalLink = account.orderPortalToken
-    ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
-    : null;
-
-  const _fmtLongDate = (s) => {
-    if (!s) return '';
-    try { return new Date(s+'T12:00:00').toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}); }
-    catch(e) { return s; }
-  };
-  const issueDate = rec.date ? _fmtLongDate(rec.date) : new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'});
-  const dueDate   = rec.dueDate ? _fmtLongDate(rec.dueDate) : (rec.due ? _fmtLongDate(rec.due) : new Date(Date.now() + 30*86400000).toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'}));
-  const paymentTerms = rec.paymentTerms || 'Net 30';
-  const invoiceNotes = rec.notes || '';
-  const deliveryDate = rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '';
-  const trackingNum  = rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '';
-
-  const itemCellStyle = 'padding:10px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
-  const purplRows = (purplInv.lineItems||[]).map(li => {
-    const cases = li.qty || li.cases || 0;
-    const cans = cases * CANS_PER_CASE;
-    const unitPrice = parseFloat(li.unitPrice||li.pricePerCase||0);
-    const lineTotal = parseFloat(li.total||li.lineTotal||0) || (cases * unitPrice);
-    return `<tr>
-    <td style="${itemCellStyle}">${escHtml(li.sku||li.description||'Classic Lavender Lemonade')}<div style="font-size:11px;color:#6b7280;margin-top:2px">${cans} cans · 12-pack cases</div></td>
-    <td style="${itemCellStyle};text-align:right">${cases}</td>
-    <td style="${itemCellStyle};text-align:right">$${unitPrice.toFixed(2)}</td>
-    <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
-  </tr>`;
-  }).join('');
-
-  const lfRows = (lfInv.lineItems||[]).map(li => {
-    const parentUnitPrice = parseFloat(li.unitPrice||0);
+function _normLfLines(inv) {
+  const out = [];
+  (inv.lineItems || []).forEach(li => {
+    const up = parseFloat(li.unitPrice != null ? li.unitPrice : (li.pricePerUnit || 0)) || 0;
     if (li.hasVariants && li.variantLines && li.variantLines.length) {
-      return li.variantLines.map(vl => {
-        const units = vl.units||0;
-        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
-        return `<tr>
-        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="${itemCellStyle};text-align:right">${units}</td>
-        <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
-        <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
-      </tr>`;
-      }).join('');
+      li.variantLines.forEach(vl => {
+        const units = vl.units || 0;
+        out.push({
+          name: `${li.skuName || 'Item'} — ${vl.variantName || ''}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}`,
+          sub: '', qty: units + '', price: '$' + up.toFixed(2),
+          total: parseFloat(vl.lineTotal) || units * up,
+        });
+      });
+    } else {
+      const units = li.units || 0;
+      out.push({
+        name: li.skuName || li.description || 'Item',
+        sub: '', qty: units + '', price: '$' + up.toFixed(2),
+        total: parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || units * up,
+      });
     }
-    const units = li.units||0;
-    const lineTotal = parseFloat(li.lineTotal||li.total||0) || (units * parentUnitPrice);
-    return `<tr>
-      <td style="${itemCellStyle}">${escHtml(li.skuName||'Item')}</td>
-      <td style="${itemCellStyle};text-align:right">${units}</td>
-      <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
-      <td style="${itemCellStyle};text-align:right;font-weight:600">$${lineTotal.toFixed(2)}</td>
-    </tr>`;
-  }).join('');
+  });
+  return out;
+}
+
+function buildInvoiceDocHTML(o) {
+  const fmtLong = s => { if (!s) return ''; try { return new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); } catch (e) { return s; } };
+  const issueDate = fmtLong(o.issueDate) || fmtLong(today());
+  const dueDate   = fmtLong(o.dueDate);
+  const isPaid    = o.status === 'paid';
+
+  const cell = 'padding:10px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
+  const headTh = a => `text-align:${a};font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e`;
+  const tableHeader = `<thead><tr>
+    <th style="${headTh('left')}">Item</th>
+    <th style="${headTh('right')}">Qty</th>
+    <th style="${headTh('right')}">Price</th>
+    <th style="${headTh('right')}">Total</th>
+  </tr></thead>`;
+  const rowHtml = r => `<tr>
+    <td style="${cell}">${escHtml(r.name)}${r.sub ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${escHtml(r.sub)}</div>` : ''}</td>
+    <td style="${cell};text-align:right;white-space:nowrap">${escHtml(String(r.qty))}</td>
+    <td style="${cell};text-align:right;white-space:nowrap">${escHtml(r.price)}</td>
+    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap">$${(r.total || 0).toFixed(2)}</td>
+  </tr>`;
 
   const sectionLabel = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1a1a2e';
-  const tableHeader = `<thead><tr>
-    <th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Item</th>
-    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Qty</th>
-    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Price</th>
-    <th style="text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e">Total</th>
-  </tr></thead>`;
+  const purplLines = o.purplLines || [];
+  const lfLines    = o.lfLines || [];
+  const both       = purplLines.length > 0 && lfLines.length > 0;
+
+  const section = (label, shortLabel, rows, subtotal) => `
+  <tr><td style="padding:0 48px">
+    <div style="${sectionLabel}">${label}</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">${tableHeader}<tbody>${rows.map(rowHtml).join('') || `<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody></table>
+    ${both ? `<div style="text-align:right;padding:6px 0 20px">
+      <span style="font-size:12px;color:#6b7280">${shortLabel} Subtotal&nbsp;&nbsp;</span>
+      <span style="font-size:14px;font-weight:600;color:#1a1a2e">$${(parseFloat(subtotal != null ? subtotal : rows.reduce((s2, r) => s2 + r.total, 0)) || 0).toFixed(2)}</span>
+    </div>` : `<div style="padding:0 0 10px"></div>`}
+  </td></tr>`;
+
+  const grandTotal = parseFloat(o.grandTotal || 0);
+
+  const paymentSection = isPaid
+    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px 20px;font-size:13px;color:#166534">
+        ✓ This invoice was paid${o.paidAt ? ' on ' + fmtLong(o.paidAt) : ''}. Thank you!
+      </div>`
+    : `<div style="background:#f9fafb;border-radius:6px;padding:16px 20px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;font-weight:600">Payment Options</div>
+        ${_buildPaymentHTML(o.payLink)}
+      </div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice ${escHtml(o.number || '')}</title>
 <style>
   @page { size: letter; margin: 0.5in; }
   @media print {
     body { background:#fff !important; padding:0 !important; }
     .invoice-wrap { padding:0 !important; }
     .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
+    .no-print { display:none !important; }
   }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f5f5f7;font-family:Inter,Arial,sans-serif;color:#1a1a2e">
+${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14px;z-index:10"><button onclick="window.print()" style="background:#7B4FA0;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)">\ud83d\udda8\ufe0f Print / Save as PDF</button></div>` : ''}
 <table class="invoice-wrap" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
 <tr><td align="center">
 <table class="invoice-card" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px">
 
   <tr><td style="padding:36px 48px 20px">
-    <table width="100%"><tr>
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="vertical-align:middle">
         <table cellpadding="0" cellspacing="0">
           <tr>
@@ -11548,66 +11623,53 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
       </td>
       <td align="right" style="vertical-align:middle">
         <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">INVOICE</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(rec.number||rec.invoiceNumber||'')}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(o.number || '')}</div>
+        ${isPaid ? `<div style="margin-top:6px"><span style="display:inline-block;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:0.08em">PAID</span></div>` : ''}
       </td>
     </tr></table>
   </td></tr>
 
   <tr><td style="padding:8px 48px 28px">
-    <table width="100%"><tr>
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="vertical-align:top;width:55%">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Billed To</div>
-        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(rec.accountName)}</div>
-        ${account.email ? `<div style="font-size:13px;color:#4b5563;margin-top:3px">${escHtml(account.email)}</div>` : ''}
-        ${account.address ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(account.address)}</div>` : ''}
+        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(o.accountName || '')}</div>
+        ${o.accountEmail ? `<div style="font-size:13px;color:#4b5563;margin-top:3px">${escHtml(o.accountEmail)}</div>` : ''}
+        ${o.accountAddress ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(o.accountAddress)}</div>` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
         <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
-        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>
-        <div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(paymentTerms)}</strong></div>
-        ${_deliveryDetailsHTML(deliveryDate, trackingNum, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
+        ${dueDate ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>` : ''}
+        ${o.terms ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(o.terms)}</strong></div>` : ''}
+        ${_deliveryDetailsHTML(o.deliveryDate, o.tracking, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
       </td>
     </tr></table>
   </td></tr>
 
-  <tr><td style="padding:0 48px">
-    <div style="${sectionLabel}">purpl Lemonade</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">${tableHeader}<tbody>${purplRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody></table>
-    <div style="text-align:right;padding:6px 0 20px">
-      <span style="font-size:12px;color:#6b7280">purpl Subtotal&nbsp;&nbsp;</span>
-      <span style="font-size:14px;font-weight:600;color:#1a1a2e">$${rec.purplSubtotal.toFixed(2)}</span>
-    </div>
-  </td></tr>
+  ${purplLines.length ? section('purpl Lemonade', 'purpl', purplLines, o.purplSubtotal) : ''}
+  ${lfLines.length ? section('Lavender Fields at Pumpkin Blossom Farm', 'LF', lfLines, o.lfSubtotal) : ''}
 
-  <tr><td style="padding:0 48px">
-    <div style="${sectionLabel}">Lavender Fields at Pumpkin Blossom Farm</div>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">${tableHeader}<tbody>${lfRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody></table>
-    <div style="text-align:right;padding:6px 0 24px">
-      <span style="font-size:12px;color:#6b7280">LF Subtotal&nbsp;&nbsp;</span>
-      <span style="font-size:14px;font-weight:600;color:#1a1a2e">$${rec.lfSubtotal.toFixed(2)}</span>
-    </div>
-  </td></tr>
-
-  <tr><td style="padding:0 48px 32px">
-    <div style="border-top:2px solid #1a1a2e;padding-top:16px;display:flex;justify-content:space-between;align-items:baseline">
-      <div style="font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">Amount Due</div>
-      <div style="font-size:26px;font-weight:700;color:#1a1a2e">$${rec.grandTotal.toFixed(2)}</div>
-    </div>
-    <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(paymentTerms)} · Due ${dueDate}</div>
+  <tr><td style="padding:0 48px 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1a2e">
+      <tr>
+        <td style="padding-top:16px;font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">Amount Due</td>
+        <td style="padding-top:16px;text-align:right;font-size:26px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${grandTotal.toFixed(2)}</td>
+      </tr>
+    </table>
+    ${(o.terms || dueDate) ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(o.terms || '')}${o.terms && dueDate ? ' · ' : ''}${dueDate ? 'Due ' + dueDate : ''}</div>` : ''}
   </td></tr>
 
   <tr><td style="padding:0 48px 24px">
-    <div style="background:#f9fafb;border-radius:6px;padding:16px 20px;margin-top:4px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:10px;font-weight:600">Payment Options</div>
-      ${_buildPaymentHTML(rec._payLink)}
-    </div>
+    ${paymentSection}
   </td></tr>
 
-  ${invoiceNotes ? `<tr><td style="padding:0 48px 24px">
+  ${o.notes ? `<tr><td style="padding:0 48px 24px">
     <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Notes</div>
-    <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(invoiceNotes)}</div>
+    <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(o.notes)}</div>
   </td></tr>` : ''}
+
+  ${o.portalLink ? `<tr><td style="padding:0 48px 20px;text-align:center"><a href="${o.portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
 
   ${_legalTermsHTML() ? `<tr><td style="padding:0 48px 24px">${_legalTermsHTML()}</td></tr>` : ''}
 
@@ -11619,178 +11681,84 @@ function buildCombinedInvoiceHTML(combinedId, payLink) {
 </table></td></tr></table></body></html>`;
 }
 
-function buildPurplInvoiceEmailHTML(inv) {
-  const ac          = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const invSettings = DB.obj('invoice_settings') || {};
-  const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
-  const itemRows = (inv.lineItems||[]).map(li => `<tr>
-    <td style="${itemCellStyle}">${escHtml(li.skuName||li.sku||'Item')}</td>
-    <td style="${itemCellStyle};text-align:right">${li.cases||li.qty||0} cs</td>
-    <td style="${itemCellStyle};text-align:right">$${parseFloat(li.pricePerCase||li.unitPrice||0).toFixed(2)}/cs</td>
-    <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.lineTotal||0).toFixed(2)}</td>
-  </tr>`).join('');
-  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
-  const portalLink = ac.orderPortalToken ? `https://purpl-crm.web.app/order?t=${ac.orderPortalToken}` : null;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:24px 40px">
-    <table width="100%"><tr>
-      <td>
-        <table cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
-          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
-          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
-        </tr></table>
-        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
-      </td>
-      <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
-    </tr></table>
-  </td></tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
-  <tr><td style="padding:24px 40px 0">
-    <table width="100%"><tr>
-      <td style="vertical-align:top;width:50%">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Billed To</div>
-        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(ac.name||inv.accountName||'')}</div>
-        ${ac.email ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${escHtml(ac.email)}</div>` : ''}
-      </td>
-      <td style="vertical-align:top;text-align:right">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
-        ${inv.date ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
-        <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
-        <div style="font-size:13px;color:#6b7280;margin-top:2px">Terms: ${_invTermsLabel(inv)}</div>
-        ${_deliveryDetailsHTML(inv.deliveryDate, inv.trackingNumber, 'font-size:13px;color:#6b7280;margin-top:2px')}
-      </td>
-    </tr></table>
-  </td></tr>
-  <tr><td style="padding:20px 40px 0">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <thead><tr>
-        <th style="text-align:left;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Item</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Qty</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Price</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Total</th>
-      </tr></thead>
-      <tbody>${itemRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">purpl lemonade order</td></tr>`}</tbody>
-    </table>
-  </td></tr>
-  <tr><td style="padding:16px 40px">
-    <div style="background:#f9fafb;border-radius:8px;padding:16px 24px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
-        <div style="font-size:24px;font-weight:700;color:#2D1B4E">$${parseFloat(inv.amount||0).toFixed(2)}</div>
-      </div>
-    </div>
-  </td></tr>
-  <tr><td style="padding:4px 40px 16px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Payment Options</div>
-    ${_buildPaymentHTML(inv._payLink)}
-  </td></tr>
-  ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
-  ${portalLink ? `<tr><td style="padding:0 40px 16px;text-align:center"><a href="${portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
-  ${_legalTermsHTML() ? `<tr><td style="padding:0 40px 20px">${_legalTermsHTML()}</td></tr>` : ''}
-  <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
-    <a href="https://drinkpurpl.com" style="color:#9ca3af">drinkpurpl.com</a>
-  </td></tr>
-</table></td></tr></table></body></html>`;
+// ── Per-type wrappers — all feed the same unified template ───
+
+function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
+  const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
+  if (!rec) return '';
+  if (payLink) rec._payLink = payLink;
+  const purplInv = findInvoice(rec.purplInvoiceId) || {};
+  const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
+  const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
+  return buildInvoiceDocHTML({
+    number: rec.number || rec.invoiceNumber || '',
+    status: rec.status,
+    paidAt: rec.paidAt,
+    accountName: rec.accountName || account.name || '',
+    accountEmail: account.email || '',
+    accountAddress: account.address || '',
+    issueDate: rec.date,
+    dueDate: rec.dueDate || rec.due,
+    terms: rec.paymentTerms || 'Net 30',
+    deliveryDate: rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '',
+    tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
+    purplLines: _normPurplLines(purplInv),
+    lfLines: _normLfLines(lfInv),
+    purplSubtotal: rec.purplSubtotal,
+    lfSubtotal: rec.lfSubtotal,
+    grandTotal: rec.grandTotal,
+    notes: rec.notes || '',
+    payLink: rec._payLink || null,
+    printButton: !!(opts && opts.printButton),
+  });
 }
 
-function buildLfInvoiceEmailHTML(inv) {
-  const ac          = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const invSettings = DB.obj('invoice_settings') || {};
-  const itemCellStyle = 'padding:8px 0;font-size:13px;border-bottom:1px solid #f3f4f6';
-  const itemRows = (inv.lineItems||[]).map(li => {
-    const parentUnitPrice = parseFloat(li.unitPrice||0);
-    if (li.hasVariants && li.variantLines) {
-      return li.variantLines.map(vl => {
-        const units = vl.units||0;
-        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
-        return `<tr>
-        <td style="${itemCellStyle}">${escHtml(li.skuName)} — ${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="${itemCellStyle};text-align:right">${units}</td>
-        <td style="${itemCellStyle};text-align:right">$${parentUnitPrice.toFixed(2)}</td>
-        <td style="${itemCellStyle};text-align:right;font-weight:500">$${lineTotal.toFixed(2)}</td>
-      </tr>`;
-      }).join('');
-    }
-    return `<tr>
-      <td style="${itemCellStyle}">${escHtml(li.skuName||'Item')}</td>
-      <td style="${itemCellStyle};text-align:right">${li.units||0}</td>
-      <td style="${itemCellStyle};text-align:right">$${parseFloat(li.unitPrice||0).toFixed(2)}</td>
-      <td style="${itemCellStyle};text-align:right;font-weight:500">$${parseFloat(li.lineTotal||0).toFixed(2)}</td>
-    </tr>`;
-  }).join('');
-  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#2a5c3f 0%,#4a7c59 100%);padding:24px 40px">
-    <table width="100%"><tr>
-      <td>
-        <table cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
-          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
-          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
-        </tr></table>
-        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
-      </td>
-      <td align="right"><div style="font-size:22px;font-weight:700;color:#fff">INVOICE</div><div style="font-size:12px;color:rgba(255,255,255,0.6);margin-top:4px">${escHtml(inv.number||'')}</div></td>
-    </tr></table>
-  </td></tr>
-  <tr><td style="background:#4a7c59;height:4px"></td></tr>
-  <tr><td style="padding:24px 40px 0">
-    <table width="100%"><tr>
-      <td style="vertical-align:top;width:50%">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Billed To</div>
-        <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(ac.name||inv.accountName||'')}</div>
-        ${ac.email ? `<div style="font-size:13px;color:#6b7280;margin-top:4px">${escHtml(ac.email)}</div>` : ''}
-      </td>
-      <td style="vertical-align:top;text-align:right">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:6px;font-weight:600">Details</div>
-        ${inv.issued ? `<div style="font-size:13px;color:#6b7280">Issued: ${new Date(inv.issued+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>` : ''}
-        <div style="font-size:13px;color:#6b7280;margin-top:2px">Due: ${dueLabel}</div>
-        ${_deliveryDetailsHTML(inv.deliveryDate, inv.trackingNumber, 'font-size:13px;color:#6b7280;margin-top:2px')}
-      </td>
-    </tr></table>
-  </td></tr>
-  <tr><td style="padding:20px 40px 0">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <thead><tr>
-        <th style="text-align:left;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Item</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Qty</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Price</th>
-        <th style="text-align:right;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px">Total</th>
-      </tr></thead>
-      <tbody>${itemRows||`<tr><td colspan="4" style="font-size:13px;color:#9ca3af;padding:8px 0">Lavender Fields order</td></tr>`}</tbody>
-    </table>
-  </td></tr>
-  <tr><td style="padding:16px 40px">
-    <div style="background:#f9fafb;border-radius:8px;padding:16px 24px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:15px;font-weight:700;color:#1a1a2e">Total Due</div>
-        <div style="font-size:24px;font-weight:700;color:#2a5c3f">$${parseFloat(inv.total||0).toFixed(2)}</div>
-      </div>
-    </div>
-  </td></tr>
-  <tr><td style="padding:4px 40px 16px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#9ca3af;margin-bottom:8px;font-weight:600">Payment Options</div>
-    ${_buildPaymentHTML(inv._payLink)}
-  </td></tr>
-  ${inv.notes ? `<tr><td style="padding:0 40px 16px;font-size:13px;color:#6b7280">${escHtml(inv.notes)}</td></tr>` : ''}
-  ${_legalTermsHTML() ? `<tr><td style="padding:0 40px 20px">${_legalTermsHTML()}</td></tr>` : ''}
-  <tr><td style="background:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.8">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    <a href="mailto:lavender@pbfwholesale.com" style="color:#9ca3af">lavender@pbfwholesale.com</a> · 603-748-3038 ·
-    <a href="https://pumpkinblossomfarm.com" style="color:#9ca3af">pumpkinblossomfarm.com</a>
-  </td></tr>
-</table></td></tr></table></body></html>`;
+function buildPurplInvoiceEmailHTML(inv, opts) {
+  const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  return buildInvoiceDocHTML({
+    number: inv.number || inv.invoiceNumber || '',
+    status: inv.status,
+    paidAt: inv.paidAt,
+    accountName: ac.name || inv.accountName || '',
+    accountEmail: ac.email || '',
+    accountAddress: ac.address || '',
+    issueDate: inv.date,
+    dueDate: inv.due || inv.dueDate,
+    terms: _invTermsLabel(inv),
+    deliveryDate: inv.deliveryDate || '',
+    tracking: inv.trackingNumber || '',
+    purplLines: _normPurplLines(inv),
+    lfLines: [],
+    grandTotal: inv.amount != null ? inv.amount : (inv.total || 0),
+    notes: inv.notes || '',
+    payLink: inv._payLink || null,
+    portalLink: ac.orderPortalToken ? `https://purpl-crm.web.app/order?t=${ac.orderPortalToken}` : null,
+    printButton: !!(opts && opts.printButton),
+  });
+}
+
+function buildLfInvoiceEmailHTML(inv, opts) {
+  const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const s  = DB.obj('invoice_settings', {});
+  return buildInvoiceDocHTML({
+    number: inv.number || inv.invoiceNumber || '',
+    status: inv.status,
+    paidAt: inv.paidAt,
+    accountName: ac.name || inv.accountName || '',
+    accountEmail: ac.email || '',
+    accountAddress: ac.address || '',
+    issueDate: inv.issued || inv.date,
+    dueDate: inv.due || inv.dueDate,
+    terms: 'Net ' + (s.terms || 30),
+    deliveryDate: inv.deliveryDate || '',
+    tracking: inv.trackingNumber || '',
+    purplLines: [],
+    lfLines: _normLfLines(inv),
+    grandTotal: inv.total || 0,
+    notes: inv.notes || '',
+    payLink: inv._payLink || null,
+    printButton: !!(opts && opts.printButton),
+  });
 }
 
 // ── Combined invoice preview modal ────────────────────────
@@ -11799,7 +11767,14 @@ async function openCombinedInvoicePreview(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
   toast('Loading preview…');
-  const payLink = await _getStripePayLink(rec, 'combined');
+  // Older combined invoices were created without a number — backfill one,
+  // since Stripe link generation requires it.
+  if (!rec.number && !rec.invoiceNumber) {
+    const n = await getNextInvoiceNumber('combined');
+    DB.update('combined_invoices', combinedId, x => ({ ...x, number: n, invoiceNumber: n }));
+    rec.number = n; rec.invoiceNumber = n;
+  }
+  const payLink = rec.status === 'paid' ? null : await _getStripePayLink(rec, 'combined');
   const html     = buildCombinedInvoiceHTML(combinedId, payLink);
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
   const purplInv = findInvoice(rec.purplInvoiceId) || {};
@@ -11855,7 +11830,8 @@ async function openCombinedInvoicePreview(combinedId) {
   qs('#civ-preview-frame').srcdoc = html;
 
   qs('#civ-btn-newtab').onclick = () => {
-    const blob = new Blob([html], {type:'text/html'});
+    const printHtml = buildCombinedInvoiceHTML(combinedId, null, { printButton: true });
+    const blob = new Blob([printHtml], {type:'text/html'});
     window.open(URL.createObjectURL(blob), '_blank');
   };
   const copyBtn = qs('#civ-btn-copy');
@@ -12175,11 +12151,11 @@ function renderMacInvoicesTab(accountId) {
     ${manualSection}`;
 }
 
-function manualCreateCombined(accountId) {
+async function manualCreateCombined(accountId) {
   const purplId = qs('#civ-sel-purpl')?.value;
   const lfId    = qs('#civ-sel-lf')?.value;
   if (!purplId || !lfId) { toast('Select both invoices'); return; }
-  const combinedId = createCombinedInvoice(purplId, lfId, accountId);
+  const combinedId = await createCombinedInvoice(purplId, lfId, accountId);
   if (!combinedId) return;
   toast('Combined invoice created');
   openCombinedInvoicePreview(combinedId);
@@ -14458,352 +14434,58 @@ function loadApiSettings() {
   }
 }
 
+// ── Print / PDF — same unified template as emails ─────────
+// The window opens synchronously (inside the click) so pop-up blockers
+// don't eat it; content is written once the Stripe link resolves.
+function _openInvoiceWindow() {
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return null; }
+  try { w.document.write('<p style="font-family:sans-serif;color:#6b7280;padding:40px;text-align:center">Generating invoice…</p>'); } catch (e) {}
+  return w;
+}
+function _writeInvoiceWindow(w, html) {
+  try {
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  } catch (e) { console.error('Print window write failed:', e); }
+}
+
 async function generateInvoicePrint(invoiceId) {
   const iv = findInvoice(invoiceId);
   if (!iv) { toast('Invoice not found'); return; }
-  toast('Generating PDF…');
-  const payLink = await _getStripePayLink(iv, 'retail');
-  const s = DB.obj('invoice_settings', {});
-  const ac = DB.a('ac').find(x => x.id === iv.accountId) || {};
-  const fromName  = s.fromName  || 'Pumpkin Blossom Farm LLC';
-  const fromEmail = s.fromEmail || 'lavender@pbfwholesale.com';
-  const fromAddr  = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
-  const cans      = iv.cans || ((iv.cases||0) * CANS_PER_CASE);
-  const invNum    = iv.number || iv.invoiceNumber || '—';
-  const dueDate   = iv.due   || iv.dueDate || '';
-  const amt       = iv.amount != null ? iv.amount : (iv.total != null ? iv.total : null);
-  const status    = iv.status || 'draft';
-
-  const paymentHtml = _buildPaymentHTML(payLink);
-
-  const w = window.open('', '_blank');
-  if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
-  w.document.write(`<!DOCTYPE html>
-<html><head><title>Invoice ${invNum}</title>
-<style>
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    max-width:800px;margin:40px auto;padding:0 20px;
-    color:#1a1a2e;font-size:13px}
-  .header{display:flex;justify-content:space-between;
-    align-items:flex-start;margin-bottom:32px;
-    padding-bottom:20px;border-bottom:2px solid #7B4FA0}
-  .logo{height:50px}
-  .inv-label{font-size:32px;font-weight:700;
-    color:#7B4FA0;letter-spacing:-1px}
-  .inv-meta div{margin-bottom:4px;font-size:12px}
-  .bill-to{display:grid;grid-template-columns:1fr 1fr;
-    gap:20px;margin-bottom:24px}
-  .section-label{font-size:10px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.08em;
-    color:#9ca3af;margin-bottom:6px}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px}
-  th{background:#f9fafb;padding:8px 12px;text-align:left;
-    font-size:11px;font-weight:600;text-transform:uppercase;
-    letter-spacing:.05em;color:#6b7280;
-    border-bottom:2px solid #e5e7eb}
-  td{padding:10px 12px;border-bottom:1px solid #f3f4f6}
-  .total-row td{font-weight:700;font-size:15px;
-    color:#7B4FA0;border-top:2px solid #7B4FA0;border-bottom:none}
-  .payment-box{background:#f5f0ff;border-radius:8px;
-    padding:16px;margin-bottom:20px}
-  .footer{text-align:center;color:#9ca3af;font-size:11px;
-    margin-top:32px;padding-top:16px;
-    border-top:1px solid #e5e7eb}
-  .status-badge{display:inline-block;padding:3px 10px;
-    border-radius:20px;font-size:11px;font-weight:600;
-    background:${status==='paid'?'#dcfce7':
-      status==='overdue'?'#fee2e2':'#fef3c7'};
-    color:${status==='paid'?'#166534':
-      status==='overdue'?'#991b1b':'#92400e'}}
-  @media print{button{display:none}}
-</style></head><body>
-
-<div class="header">
-  <div>
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
-      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-        style="height:40px" alt="purpl">
-      <div style="width:1px;height:36px;background:#e5e7eb"></div>
-      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-        style="height:36px" alt="Lavender Fields">
-    </div>
-    <div style="font-size:12px;color:#6b7280">
-      ${fromName}<br>${fromAddr}<br>${fromEmail} · 603-748-3038
-    </div>
-  </div>
-  <div style="text-align:right">
-    <div class="inv-label">INVOICE</div>
-    <div class="inv-meta" style="margin-top:8px">
-      <div><strong>#${invNum}</strong></div>
-      <div>Date: ${fmtDate(iv.date)}</div>
-      <div>Due: ${fmtDate(dueDate)}</div>
-      <div style="margin-top:6px">
-        <span class="status-badge">${status.toUpperCase()}</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="bill-to">
-  <div>
-    <div class="section-label">Bill To</div>
-    <div style="font-weight:600;font-size:14px">
-      ${esc(iv.accountName || ac.name || '?')}</div>
-    ${ac.address ?
-      `<div style="color:#6b7280;font-size:12px;margin-top:4px">
-        ${esc(ac.address)}</div>` : ''}
-    ${iv.billingEmail ?
-      `<div style="color:#6b7280;font-size:12px">
-        ${esc(iv.billingEmail)}</div>` : ''}
-  </div>
-  <div>
-    <div class="section-label">Payment Terms</div>
-    <div>${_invTermsLabel(iv)}</div>
-    ${iv.deliveryDate ?
-      `<div style="font-size:12px;margin-top:4px">Delivery: <strong>${fmtDate(iv.deliveryDate)}</strong></div>` : ''}
-    ${iv.trackingNumber ?
-      `<div style="font-size:12px;margin-top:2px">Tracking: <strong>${esc(iv.trackingNumber)}</strong></div>` : ''}
-    ${iv.linkedOrderId ?
-      `<div style="font-size:11px;color:#9ca3af;margin-top:4px">
-        Order ref: ${iv.linkedOrderId}</div>` : ''}
-  </div>
-</div>
-
-<table>
-  <thead><tr>
-    <th>Product</th>
-    <th style="text-align:center">Cases</th>
-    <th style="text-align:center">Cans</th>
-    <th style="text-align:right">Price/Case</th>
-    <th style="text-align:right">Total</th>
-  </tr></thead>
-  <tbody>
-    ${(iv.lineItems||[]).length
-      ? iv.lineItems.map(li => {
-          const isLfItem = li.caseSize || li.pricePerUnit || li.unitPrice;
-          const unitsPer = isLfItem ? (li.caseSize||1) : CANS_PER_CASE;
-          const unitLabel = isLfItem ? 'units/case' : 'cans/case';
-          const brandLabel = isLfItem ? 'Lavender Fields' : 'purpl';
-          return `<tr>
-          <td><strong>${esc(li.skuName||li.skuId||li.sku||'Product')}</strong>
-            <div style="font-size:11px;color:#9ca3af">${brandLabel} · ${unitsPer} ${unitLabel}</div>
-          </td>
-          <td style="text-align:center">${li.cases||'—'}</td>
-          <td style="text-align:center">${(li.cases||0)*unitsPer}</td>
-          <td style="text-align:right">${li.pricePerCase ? fmt$(li.pricePerCase) : (li.pricePerUnit ? fmt$(li.pricePerUnit)+'/unit' : '—')}</td>
-          <td style="text-align:right">${li.lineTotal != null ? fmt$(li.lineTotal) : '—'}</td>
-        </tr>`;}).join('')
-      : `<tr>
-          <td>
-            <strong>Classic Lavender Lemonade</strong>
-            <div style="font-size:11px;color:#9ca3af">purpl · 12 fl oz · ${CANS_PER_CASE} cans/case</div>
-            ${iv.notes ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${esc(iv.notes)}</div>` : ''}
-          </td>
-          <td style="text-align:center">${iv.cases||'—'}</td>
-          <td style="text-align:center">${cans||'—'}</td>
-          <td style="text-align:right">${iv.pricePerCase ? fmt$(iv.pricePerCase) : '—'}</td>
-          <td style="text-align:right">${amt != null ? fmt$(amt) : '<span style="color:#9ca3af">TBD</span>'}</td>
-        </tr>`}
-  </tbody>
-  <tfoot>
-    <tr class="total-row">
-      <td colspan="4">Total Due</td>
-      <td style="text-align:right">
-        ${amt != null ? fmt$(amt) :
-          '<span style="color:#9ca3af">Amount Pending</span>'}</td>
-    </tr>
-  </tfoot>
-</table>
-
-<div class="payment-box">
-  <div class="section-label" style="margin-bottom:10px">Payment Options</div>
-  ${paymentHtml}
-</div>
-
-<div style="text-align:center;margin:20px 0">
-  <button onclick="window.print()"
-    style="background:#7B4FA0;color:#fff;border:none;
-    padding:10px 24px;border-radius:8px;font-size:14px;
-    font-weight:600;cursor:pointer">
-    🖨️ Print / Save as PDF</button>
-</div>
-
-${_legalTermsHTML() ? `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb">${_legalTermsHTML()}</div>` : ''}
-
-<div class="footer">
-  Thank you for your business — purpl by Pumpkin Blossom Farm
-  <br>drinkpurpl.com · lavender@pbfwholesale.com
-</div>
-
-</body></html>`);
-  w.document.close();
+  const w = _openInvoiceWindow();
+  if (!w) return;
+  const payLink = iv.status === 'paid' ? null : await _getStripePayLink(iv, 'retail');
+  const html = buildPurplInvoiceEmailHTML(payLink ? { ...iv, _payLink: payLink } : iv, { printButton: true });
+  _writeInvoiceWindow(w, html);
 }
 
 async function generateLfInvoicePrint(invoiceId) {
   const inv = DB.a('lf_invoices').find(x => x.id === invoiceId);
   if (!inv) { toast('Invoice not found'); return; }
-  toast('Generating PDF…');
-  const payLink = await _getStripePayLink(inv, 'lf');
-  const s        = DB.obj('invoice_settings', {});
-  const ac       = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const fromName = s.fromName  || 'Pumpkin Blossom Farm LLC';
-  const fromAddr = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
-  const invNum   = inv.number || '—';
-  const status   = inv.status || 'draft';
-
-  const itemRows = (inv.lineItems || []).map(li => {
-    const parentUnitPrice = parseFloat(li.unitPrice || 0);
-    if (li.hasVariants && li.variantLines) {
-      return li.variantLines.map(vl => {
-        const units = vl.units || 0;
-        const lineTotal = parseFloat(vl.lineTotal) || (units * parentUnitPrice);
-        return `<tr>
-        <td><strong>${esc(li.skuName || 'Item')}</strong> — ${esc(vl.variantName || '')}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</td>
-        <td style="text-align:center">${units}</td>
-        <td style="text-align:right">$${parentUnitPrice.toFixed(2)}</td>
-        <td style="text-align:right">$${lineTotal.toFixed(2)}</td>
-      </tr>`;
-      }).join('');
-    }
-    return `<tr>
-      <td><strong>${esc(li.skuName || 'Item')}</strong></td>
-      <td style="text-align:center">${li.units || 0}</td>
-      <td style="text-align:right">$${parseFloat(li.unitPrice || 0).toFixed(2)}</td>
-      <td style="text-align:right">$${parseFloat(li.lineTotal || 0).toFixed(2)}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="4" style="color:#9ca3af">No line items</td></tr>`;
-
-  const paymentHtml = _buildPaymentHTML(payLink);
-
-  const w = window.open('', '_blank');
-  if (!w) { toast('Pop-up blocked — allow pop-ups for this site'); return; }
-  w.document.write(`<!DOCTYPE html>
-<html><head><title>Invoice ${invNum}</title>
-<style>
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-    max-width:800px;margin:40px auto;padding:0 20px;
-    color:#1a1a2e;font-size:13px}
-  .header{display:flex;justify-content:space-between;
-    align-items:flex-start;margin-bottom:32px;
-    padding-bottom:20px;border-bottom:2px solid #2a5c3f}
-  .inv-label{font-size:32px;font-weight:700;
-    color:#2a5c3f;letter-spacing:-1px}
-  .inv-meta div{margin-bottom:4px;font-size:12px}
-  .bill-to{display:grid;grid-template-columns:1fr 1fr;
-    gap:20px;margin-bottom:24px}
-  .section-label{font-size:10px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.08em;
-    color:#9ca3af;margin-bottom:6px}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px}
-  th{background:#f9fafb;padding:8px 12px;text-align:left;
-    font-size:11px;font-weight:600;text-transform:uppercase;
-    letter-spacing:.05em;color:#6b7280;
-    border-bottom:2px solid #e5e7eb}
-  td{padding:10px 12px;border-bottom:1px solid #f3f4f6}
-  .total-row td{font-weight:700;font-size:15px;
-    color:#2a5c3f;border-top:2px solid #2a5c3f;border-bottom:none}
-  .payment-box{background:#f0fdf4;border-radius:8px;
-    padding:16px;margin-bottom:20px}
-  .footer{text-align:center;color:#9ca3af;font-size:11px;
-    margin-top:32px;padding-top:16px;
-    border-top:1px solid #e5e7eb}
-  .status-badge{display:inline-block;padding:3px 10px;
-    border-radius:20px;font-size:11px;font-weight:600;
-    background:${status==='paid'?'#dcfce7':
-      status==='overdue'?'#fee2e2':'#fef3c7'};
-    color:${status==='paid'?'#166534':
-      status==='overdue'?'#991b1b':'#92400e'}}
-  @media print{button{display:none}}
-</style></head><body>
-
-<div class="header">
-  <div>
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
-      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-        style="height:40px" alt="purpl">
-      <div style="width:1px;height:36px;background:#e5e7eb"></div>
-      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-        style="height:36px" alt="Lavender Fields">
-    </div>
-    <div style="font-size:12px;color:#6b7280">
-      ${fromName}<br>${fromAddr}<br>lavender@pbfwholesale.com · 603-748-3038
-    </div>
-  </div>
-  <div style="text-align:right">
-    <div class="inv-label" style="color:#2a5c3f">INVOICE</div>
-    <div class="inv-meta" style="margin-top:8px">
-      <div><strong>#${invNum}</strong></div>
-      <div>Date: ${fmtDate(inv.issued || inv.date || '')}</div>
-      <div>Due: ${fmtDate(inv.due || '')}</div>
-      <div style="margin-top:6px">
-        <span class="status-badge">${status.toUpperCase()}</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="bill-to">
-  <div>
-    <div class="section-label">Bill To</div>
-    <div style="font-weight:600;font-size:14px">${esc(ac.name || inv.accountName || '?')}</div>
-    ${ac.address ? `<div style="color:#6b7280;font-size:12px;margin-top:4px">${esc(ac.address)}</div>` : ''}
-    ${ac.email   ? `<div style="color:#6b7280;font-size:12px">${esc(ac.email)}</div>` : ''}
-  </div>
-  <div>
-    <div class="section-label">Payment Terms</div>
-    <div>Net ${s.terms || 30} days</div>
-    ${inv.deliveryDate ?
-      `<div style="font-size:12px;margin-top:4px">Delivery: <strong>${fmtDate(inv.deliveryDate)}</strong></div>` : ''}
-    ${inv.trackingNumber ?
-      `<div style="font-size:12px;margin-top:2px">Tracking: <strong>${esc(inv.trackingNumber)}</strong></div>` : ''}
-  </div>
-</div>
-
-<table>
-  <thead><tr>
-    <th>Product</th>
-    <th style="text-align:center">Units</th>
-    <th style="text-align:right">Unit Price</th>
-    <th style="text-align:right">Total</th>
-  </tr></thead>
-  <tbody>${itemRows}</tbody>
-  <tfoot>
-    <tr class="total-row">
-      <td colspan="3">Total Due</td>
-      <td style="text-align:right">$${parseFloat(inv.total || 0).toFixed(2)}</td>
-    </tr>
-  </tfoot>
-</table>
-
-<div class="payment-box">
-  <div class="section-label" style="margin-bottom:10px">Payment Options</div>
-  ${paymentHtml}
-</div>
-
-${inv.notes ? `<div style="margin-bottom:20px;font-size:13px;color:#6b7280"><strong>Notes:</strong> ${esc(inv.notes)}</div>` : ''}
-
-<div style="text-align:center;margin:20px 0">
-  <button onclick="window.print()"
-    style="background:#2a5c3f;color:#fff;border:none;
-    padding:10px 24px;border-radius:8px;font-size:14px;
-    font-weight:600;cursor:pointer">
-    🖨️ Print / Save as PDF</button>
-</div>
-
-${_legalTermsHTML() ? `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e5e7eb">${_legalTermsHTML()}</div>` : ''}
-
-<div class="footer">
-  Thank you for your business — Lavender Fields at Pumpkin Blossom Farm
-  <br>pumpkinblossomfarm.com · lavender@pbfwholesale.com
-</div>
-
-</body></html>`);
-  w.document.close();
+  const w = _openInvoiceWindow();
+  if (!w) return;
+  const payLink = inv.status === 'paid' ? null : await _getStripePayLink(inv, 'lf');
+  const html = buildLfInvoiceEmailHTML(payLink ? { ...inv, _payLink: payLink } : inv, { printButton: true });
+  _writeInvoiceWindow(w, html);
 }
 
 // ── Invoice modal helpers (v2 — iv collection) ─────────────
 
 async function saveInv(id, isNew) {
+  const rec = await _saveInvCore(id, isNew);
+  if (!rec) return;
+  closeModal('modal-add-inv');
+  if (currentPage === 'invoices') renderInvoicesPage();
+  renderInvoiceStatus();
+  toast('Invoice saved ✓');
+}
+
+// Validates + persists the purpl invoice from the modal (including
+// inventory deduction for new non-draft invoices). Returns the saved
+// record or null if validation failed (toast already shown).
+async function _saveInvCore(id, isNew) {
   const number    = qs('#iv-number')?.value?.trim() || '';
   const accountId = qs('#iv-account')?.value;
   const date      = qs('#iv-date')?.value || today();
@@ -14892,11 +14574,7 @@ async function saveInv(id, isNew) {
     updateInvoice(id, () => rec);
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
-
-  closeModal('modal-add-inv');
-  if (currentPage === 'invoices') renderInvoicesPage();
-  renderInvoiceStatus();
-  toast('Invoice saved ✓');
+  return rec;
 }
 
 function deleteInvRecord(id) {
