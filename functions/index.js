@@ -683,6 +683,59 @@ exports.stripeStatus = onCall(
   }
 );
 
+// ── 8c. Create Pay Link (v2) ─────────────────────────────
+// Fresh function name — replaces createStripePaymentLink, whose deployed
+// revision was stuck returning opaque 'internal' errors. Same never-throw
+// pattern as stripeStatus (which is proven working in production).
+exports.createPayLink = onCall(
+  {secrets: [stripeSecretKey]},
+  async (request) => {
+    if (!request.auth) return {ok: false, v: 2, error: 'Not signed in'};
+    const data = request.data || {};
+    if (!data.amount || !data.invoiceNumber) return {ok: false, v: 2, error: 'Missing amount or invoice number'};
+
+    const key = (process.env.STRIPE_SECRET_KEY || '').trim();
+    if (!key) return {ok: false, v: 2, error: 'STRIPE_SECRET_KEY is not set'};
+    if (!key.startsWith('sk_')) return {ok: false, v: 2, error: 'STRIPE_SECRET_KEY must start with sk_ (got ' + key.slice(0, 3) + '...)'};
+
+    let stripe;
+    try { stripe = require('stripe')(key); } catch (e) { return {ok: false, v: 2, error: 'Stripe SDK failed: ' + e.message}; }
+
+    const amountCents = Math.round(parseFloat(data.amount) * 100);
+    if (amountCents < 50) return {ok: false, v: 2, error: 'Amount too small (min $0.50)'};
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Invoice ${data.invoiceNumber}`,
+              description: data.accountName ? `${data.accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        metadata: {
+          invoiceNumber: data.invoiceNumber,
+          invoiceId: data.invoiceId || '',
+          invoiceType: data.invoiceType || 'retail',
+          accountId: data.accountId || '',
+        },
+        success_url: 'https://purpl-crm.web.app/order?paid=1',
+        cancel_url: 'https://purpl-crm.web.app/order?cancelled=1',
+      });
+      return {ok: true, v: 2, url: session.url, sessionId: session.id};
+    } catch (err) {
+      console.error('createPayLink Stripe error:', err.type, err.code, err.message);
+      return {ok: false, v: 2, error: 'Stripe: ' + (err.message || err.type || 'unknown error')};
+    }
+  }
+);
+
 // ── 8b. Create Stripe Payment Link ───────────────────────
 // Auth-required. Generates a unique Stripe Checkout Session link for an invoice.
 // Returns {ok, url, error} instead of throwing — Firebase v2 onCall wraps

@@ -400,10 +400,31 @@ function _stripeErrHint(e) {
   return e?.message || 'unknown error';
 }
 
+// Sticky error banner — stays on screen until dismissed, unlike toasts.
+function _stickyError(msg) {
+  let el = document.getElementById('sticky-error');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sticky-error';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:#fef3c7;color:#92400e;border-bottom:2px solid #f59e0b;padding:12px 44px 12px 16px;font-size:13px;font-weight:500;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.15)';
+    const x = document.createElement('button');
+    x.textContent = '✕';
+    x.style.cssText = 'position:absolute;top:8px;right:10px;background:none;border:none;font-size:16px;cursor:pointer;color:#92400e;padding:4px';
+    x.onclick = () => el.remove();
+    el.appendChild(x);
+    const span = document.createElement('span');
+    span.id = 'sticky-error-msg';
+    el.insertBefore(span, x);
+    document.body.appendChild(el);
+  }
+  const span = el.querySelector('#sticky-error-msg');
+  if (span) span.textContent = msg;
+}
+
 async function _getStripePayLink(invoice, type) {
   if (!invoice?.id || !parseFloat(invoice.total || invoice.amount || invoice.grandTotal)) return null;
   try {
-    const fn = firebase.functions().httpsCallable('createStripePaymentLink');
+    const fn = firebase.functions().httpsCallable('createPayLink');
     const result = await fn({
       amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
       invoiceNumber: invoice.number || invoice.invoiceNumber ||
@@ -415,14 +436,14 @@ async function _getStripePayLink(invoice, type) {
     });
     const d = result.data || {};
     if (d.ok && d.url) return d.url;
-    // Function returned structured error instead of throwing
-    const msg = d.error || 'Stripe did not return a payment link';
-    console.warn('Stripe pay link:', msg);
-    toast('⚠ ' + msg, 8000);
+    _stickyError('⚠ Stripe pay link failed: ' + (d.error || 'no link returned') + ' — the invoice will go out WITHOUT a pay button.');
     return DB.obj('invoice_settings', {}).stripeLink || null;
   } catch (e) {
     console.error('Stripe link generation failed:', e);
-    toast('⚠ Stripe pay link failed: ' + (e?.message || 'unknown error — check the Functions deploy'), 8000);
+    const hint = String(e?.code || '').includes('not-found')
+      ? 'The createPayLink function is not deployed yet — run: firebase deploy --only functions --project default'
+      : (e?.message || 'unknown error');
+    _stickyError('⚠ Stripe pay link failed: ' + hint + ' — the invoice will go out WITHOUT a pay button.');
     return DB.obj('invoice_settings', {}).stripeLink || null;
   }
 }
