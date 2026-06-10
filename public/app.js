@@ -2289,6 +2289,7 @@ function markRetailInvPaid(id) {
   if (!DB._firestoreReady) return;
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   renderInvoiceStatus();
+  if (currentPage === 'invoices') renderInvoicesPage();
   toast('Marked as paid');
 }
 
@@ -6926,6 +6927,7 @@ async function saveDistInvoice(existingId) {
 
 function markDistInvoicePaid(invId, distId) {
   DB.update('dist_invoices', invId, i => ({ ...i, status: 'paid', paidDate: today(), paidAt: new Date().toISOString() }));
+  if (currentPage === 'invoices') renderInvoicesPage();
   const d = DB.a('dist_profiles').find(x => x.id === distId);
   const pane = qs('#mdist-tab-invoices');
   if (d && pane) pane.innerHTML = renderDistInvoicesHTML(d);
@@ -14175,21 +14177,129 @@ function editInv(id) {
   openInvModal(id);
 }
 
+let _invTypeFilter = 'all';
+
+function setInvTypeFilter(t) {
+  _invTypeFilter = t;
+  document.querySelectorAll('#inv-type-pills .ac-brand-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.type === t));
+  renderInvoicesPage();
+}
+
 function renderInvoicesPage() {
+  const tbody = qs('#inv-unified-tbody');
   if (!DB._firestoreReady) {
-    ['#inv-col-purpl-compact','#inv-col-lf-compact','#inv-col-combined-compact','#inv-col-dist-compact'].forEach(sel => {
-      const el = qs(sel);
-      if (el) el.innerHTML = _dbLoadingHTML(3);
-    });
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
     return;
   }
   const actionsEl = qs('#inv-page-actions');
-  if (actionsEl) actionsEl.innerHTML = '';
+  if (actionsEl) actionsEl.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn sm primary" onclick="openInvModal()" style="font-weight:600">💜 purpl Invoice</button>
+      <button class="btn sm primary" onclick="openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">🌿 LF Invoice</button>
+      <button class="btn sm primary" onclick="openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">🤝 Combined</button>
+      <button class="btn sm" onclick="pickDistForInvoice()" style="font-weight:600">🚚 Distributor</button>
+    </div>`;
   renderInvKpis();
-  renderInvColPurpl();
-  renderInvColLf();
-  renderInvColCombined();
-  renderInvColDist();
+  renderInvUnifiedList();
+}
+
+// One list for every invoice type — replaces the four collapsible columns.
+function renderInvUnifiedList() {
+  const tbody = qs('#inv-unified-tbody');
+  if (!tbody) return;
+  const todayStr = today();
+  const q = (qs('#inv-search')?.value || '').toLowerCase().trim();
+  const statusFilter = qs('#inv-status-filter')?.value || 'all';
+
+  const effStatus = x => {
+    const st = x.status || 'draft';
+    if (['paid','draft','void'].includes(st)) return st;
+    const due = x.dueDate || x.due || '';
+    return (due && due < todayStr) ? 'overdue' : st;
+  };
+
+  const rows = [];
+  const push = (x, type, opts) => rows.push({
+    id: x.id, type,
+    num: x.number || x.invoiceNumber || '—',
+    name: opts.name,
+    issued: opts.issued || '',
+    due: opts.due || '',
+    amt: opts.amt,
+    st: effStatus(x),
+    rawSt: x.status || 'draft',
+    inv: x,
+    edit: opts.edit, print: opts.print, paidFn: opts.paidFn,
+  });
+
+  if (_invTypeFilter === 'all' || _invTypeFilter === 'purpl') {
+    _allPurplInvoices().filter(x => !x.combinedInvoiceId).forEach(x => push(x, 'purpl', {
+      name: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '—',
+      issued: x.date || '', due: x.dueDate || x.due || '',
+      amt: parseFloat(x.amount || x.total || 0),
+      edit: `openInvModal('${x.id}')`, print: `generateInvoicePrint('${x.id}')`,
+      paidFn: `markRetailInvPaid('${x.id}')`,
+    }));
+  }
+  if (_invTypeFilter === 'all' || _invTypeFilter === 'lf') {
+    DB.a('lf_invoices').filter(x => !x.combinedInvoiceId).forEach(x => push(x, 'lf', {
+      name: x.accountName || '—',
+      issued: x.issued || x.date || '', due: x.due || x.dueDate || '',
+      amt: parseFloat(x.total || 0),
+      edit: `openLfInvoiceModal('${x.id}')`, print: `generateLfInvoicePrint('${x.id}')`,
+      paidFn: `markLfInvPaid('${x.id}')`,
+    }));
+  }
+  if (_invTypeFilter === 'all' || _invTypeFilter === 'combined') {
+    DB.a('combined_invoices').forEach(x => push(x, 'combined', {
+      name: x.accountName || '—',
+      issued: x.date || (x.createdAt||'').slice(0,10), due: x.dueDate || x.due || '',
+      amt: parseFloat(x.grandTotal || 0),
+      edit: `openCombinedInvoicePreview('${x.id}')`, print: null,
+      paidFn: `markCombinedPaid('${x.id}')`,
+    }));
+  }
+  if (_invTypeFilter === 'all' || _invTypeFilter === 'dist') {
+    DB.a('dist_invoices').forEach(x => push(x, 'dist', {
+      name: x.distName || '—',
+      issued: x.dateIssued || '', due: x.dueDate || '',
+      amt: parseFloat(x.total || 0),
+      edit: `editDistInvoice('${x.id}')`, print: null,
+      paidFn: `markDistInvoicePaid('${x.id}','${x.distId||''}')`,
+    }));
+  }
+
+  let list = rows;
+  if (statusFilter === 'open')        list = list.filter(r => !['paid','void'].includes(r.st));
+  else if (statusFilter !== 'all')    list = list.filter(r => r.st === statusFilter);
+  if (q) list = list.filter(r => (r.num + ' ' + r.name).toLowerCase().includes(q));
+  list.sort((a,b) => (b.issued||'').localeCompare(a.issued||''));
+
+  const typeBadge = {
+    purpl:    '<span class="badge purple">purpl</span>',
+    lf:       '<span class="badge" style="background:#dcfce7;color:#166534">LF</span>',
+    combined: '<span class="badge amber">Combined</span>',
+    dist:     '<span class="badge gray">Dist</span>',
+  };
+  const stBadge = r => {
+    const cls = {paid:'green', draft:'gray', sent:'blue', overdue:'red', void:'red'}[r.st] || 'gray';
+    return `<span class="badge ${cls}">${r.st}</span>`;
+  };
+
+  tbody.innerHTML = list.map(r => `<tr>
+    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${_invEmailBadge(r.inv)}</td>
+    <td>${escHtml(r.name)}</td>
+    <td style="white-space:nowrap">${fmtD(r.issued)}</td>
+    <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>
+    <td style="text-align:right"><strong>${fmtC(r.amt)}</strong></td>
+    <td>${stBadge(r)}</td>
+    <td style="white-space:nowrap;text-align:right">
+      <button class="btn xs" onclick="${r.edit}">${r.type==='combined' ? 'Preview' : 'Edit'}</button>
+      ${r.print ? `<button class="btn xs" onclick="${r.print}">🖨️</button>` : ''}
+      ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
+    </td>
+  </tr>`).join('') || `<tr><td colspan="7" class="empty">No invoices match${q ? ' "' + escHtml(q) + '"' : ''}</td></tr>`;
 }
 
 function renderInvKpis() {
