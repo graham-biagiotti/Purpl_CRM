@@ -802,22 +802,33 @@ exports.stripeWebhook = onRequest(
       try {
         await db.doc(`${colPath}/${invoiceId}`).update(paidData);
       } catch (updateErr) {
-        // Invoice was deleted before payment completed — ack the webhook so
-        // Stripe stops retrying, but record the orphan payment in the audit log.
-        console.warn(`Stripe payment for missing invoice ${invoiceType}/${invoiceId}:`, updateErr.message);
-        await db.collection('workspace/main/audit_log').add({
-          timestamp: now,
-          action: 'paid_orphan',
-          entityType: invoiceType + '_invoice',
-          entityId: invoiceId,
-          entityName: meta.invoiceNumber || '',
-          changedBy: 'stripe',
-          changedByEmail: 'stripe-webhook',
-          stripeSessionId: session.id,
-          note: 'Payment received for an invoice that no longer exists',
-        }).catch(() => {});
-        res.status(200).send('invoice not found — payment logged');
-        return;
+        // Legacy purpl invoices live in workspace/main/iv — try there before
+        // declaring the payment orphaned.
+        let recovered = false;
+        if (invoiceType === 'retail') {
+          try {
+            await db.doc(`workspace/main/iv/${invoiceId}`).update(paidData);
+            recovered = true;
+          } catch (e2) { /* fall through to orphan handling */ }
+        }
+        if (!recovered) {
+          // Invoice was deleted before payment completed — ack the webhook so
+          // Stripe stops retrying, but record the orphan payment in the audit log.
+          console.warn(`Stripe payment for missing invoice ${invoiceType}/${invoiceId}:`, updateErr.message);
+          await db.collection('workspace/main/audit_log').add({
+            timestamp: now,
+            action: 'paid_orphan',
+            entityType: invoiceType + '_invoice',
+            entityId: invoiceId,
+            entityName: meta.invoiceNumber || '',
+            changedBy: 'stripe',
+            changedByEmail: 'stripe-webhook',
+            stripeSessionId: session.id,
+            note: 'Payment received for an invoice that no longer exists',
+          }).catch(() => {});
+          res.status(200).send('invoice not found — payment logged');
+          return;
+        }
       }
 
       // If combined, also mark the child invoices as paid
