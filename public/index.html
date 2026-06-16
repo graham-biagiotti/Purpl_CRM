@@ -1571,6 +1571,22 @@
 
       <!-- Tab 5: Integrations -->
       <div id="stab-integrations" class="stab-pane" style="display:none">
+        <div class="card" style="max-width:600px;margin-bottom:16px" id="shipstation-settings">
+          <div class="section-hdr"><h2>📦 ShipStation</h2></div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Push "Ship" invoices to ShipStation. Tracking numbers sync back automatically when you buy a label in ShipStation.</p>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Store ID</label>
+            <input id="set-shipstation-store" type="number" placeholder="e.g. 123456">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Settings → Selling Channels in ShipStation. Leave blank to use default store.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Ship-from address</label>
+            <input id="set-shipstation-from" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
+          </div>
+          <button class="btn primary" onclick="saveShipStationSettings()">Save ShipStation Settings</button>
+          <button class="btn sm" onclick="testShipStationConnection()" style="margin-left:8px">⚡ Test Connection</button>
+          <div id="shipstation-test-result" style="font-size:12px;margin-top:8px"></div>
+        </div>
         <div class="card" style="max-width:600px" id="integrations-admin-only">
           <div class="section-hdr"><h2>AI — Anthropic</h2></div>
           <div class="form-group" style="max-width:480px;margin-bottom:16px">
@@ -2227,10 +2243,17 @@
       </div>
       <div class="form-group"><label>External Ref (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
     </div>
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="lfi-delivery-method" onchange="lfiDeliveryMethodChange()">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="lfi-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..." readonly></div>
     </div>
+    <div id="lfi-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;font-weight:600;color:var(--fg)">Line Items</label>
@@ -2767,10 +2790,17 @@
         </select>
       </div>
     </div>
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="iv-delivery-method" onchange="ivDeliveryMethodChange()">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="iv-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..." readonly></div>
     </div>
+    <div id="iv-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
       <div id="iv-line-items"></div>
@@ -3222,9 +3252,15 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     </div>
 
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="nciv-delivery-method">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..." readonly></div>
     </div>
 
     <!-- purpl section — same pattern as separate purpl invoice -->

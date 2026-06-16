@@ -267,7 +267,7 @@ const renders = {
   projections:      renderProjectionsPage,
   reports:          renderReports,
   integrations:     renderIntegrations,
-  settings:         renderSettings,
+  settings:         () => { renderSettings(); loadShipStationSettings(); },
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   emails:           renderEmailsPage,
@@ -14288,7 +14288,7 @@ function renderInvUnifiedList() {
   };
 
   tbody.innerHTML = list.map(r => `<tr>
-    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${_invEmailBadge(r.inv)}</td>
+    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber)+'</span>':''}${_invEmailBadge(r.inv)}</td>
     <td>${escHtml(r.name)}</td>
     <td style="white-space:nowrap">${fmtD(r.issued)}</td>
     <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>

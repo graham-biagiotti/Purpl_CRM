@@ -8,6 +8,7 @@ const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
 const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
+const shipStationApiKey = defineSecret('SHIPSTATION_API_KEY');
 
 const ALLOWED_FROM = [
   'lavender@pbfwholesale.com',
@@ -920,6 +921,176 @@ exports.stripeWebhook = onRequest(
     } catch (err) {
       console.error('Stripe webhook processing error:', err);
       res.status(500).send('error');
+    }
+  }
+);
+
+
+// ── 10. ShipStation: Push Order ──────────────────────────
+// Creates an order in ShipStation when an invoice is marked "Ship".
+// Returns {ok, orderId, orderNumber} or {ok:false, error}.
+exports.pushToShipStation = onCall(
+  {secrets: [shipStationApiKey]},
+  async (request) => {
+    if (!request.auth) return {ok: false, error: 'Not signed in'};
+    const data = request.data || {};
+    if (!data.invoiceNumber || !data.shipTo) return {ok: false, error: 'Missing invoice number or shipping address'};
+
+    const key = (process.env.SHIPSTATION_API_KEY || '').trim();
+    if (!key) return {ok: false, error: 'SHIPSTATION_API_KEY not set. Run: firebase functions:secrets:set SHIPSTATION_API_KEY'};
+
+    // ShipStation V1 API uses Basic auth: base64(apiKey:apiSecret)
+    // If the key contains a colon it's key:secret format; otherwise treat whole string as key with empty secret
+    const authVal = key.includes(':') ? key : key + ':';
+    const authHeader = 'Basic ' + Buffer.from(authVal).toString('base64');
+
+    const orderPayload = {
+      orderNumber: data.invoiceNumber,
+      orderDate: new Date().toISOString(),
+      orderStatus: 'awaiting_shipment',
+      customerEmail: data.customerEmail || '',
+      billTo: {
+        name: data.accountName || data.shipTo.name || '',
+        street1: data.shipTo.street1 || '',
+        street2: data.shipTo.street2 || '',
+        city: data.shipTo.city || '',
+        state: data.shipTo.state || '',
+        postalCode: data.shipTo.zip || '',
+        country: 'US',
+        phone: data.shipTo.phone || '',
+      },
+      shipTo: {
+        name: data.shipTo.name || data.accountName || '',
+        street1: data.shipTo.street1 || '',
+        street2: data.shipTo.street2 || '',
+        city: data.shipTo.city || '',
+        state: data.shipTo.state || '',
+        postalCode: data.shipTo.zip || '',
+        country: 'US',
+        phone: data.shipTo.phone || '',
+      },
+      items: (data.items || []).map(it => ({
+        sku: it.sku || '',
+        name: it.name || it.sku || 'Item',
+        quantity: it.quantity || 1,
+        unitPrice: it.unitPrice || 0,
+      })),
+      customField1: data.invoiceNumber || '',
+      customField2: data.accountName || '',
+      customField3: data.brand || 'PBF Wholesale',
+      internalNotes: data.notes || '',
+      requestedShippingService: data.shippingService || '',
+    };
+    if (data.storeId) orderPayload.advancedOptions = { storeId: parseInt(data.storeId) };
+
+    try {
+      const resp = await fetch('https://ssapi.shipstation.com/orders/createorder', {
+        method: 'POST',
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload),
+      });
+      const body = await resp.json();
+      if (!resp.ok) {
+        console.error('ShipStation createorder error:', resp.status, JSON.stringify(body));
+        return {ok: false, error: 'ShipStation ' + resp.status + ': ' + (body.ExceptionMessage || body.Message || JSON.stringify(body))};
+      }
+      return {ok: true, orderId: body.orderId, orderNumber: body.orderNumber || data.invoiceNumber};
+    } catch (e) {
+      console.error('ShipStation push failed:', e.message);
+      return {ok: false, error: 'Network error: ' + e.message};
+    }
+  }
+);
+
+// ── 11. ShipStation: Connection Test ─────────────────────
+exports.shipStationStatus = onCall(
+  {secrets: [shipStationApiKey]},
+  async (request) => {
+    if (!request.auth) return {ok: false, error: 'Not signed in'};
+    const key = (process.env.SHIPSTATION_API_KEY || '').trim();
+    if (!key) return {ok: false, error: 'SHIPSTATION_API_KEY not set'};
+    const authVal = key.includes(':') ? key : key + ':';
+    const authHeader = 'Basic ' + Buffer.from(authVal).toString('base64');
+    try {
+      const resp = await fetch('https://ssapi.shipstation.com/stores', {
+        headers: { 'Authorization': authHeader },
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        return {ok: false, error: 'ShipStation ' + resp.status + ': ' + body.slice(0, 200)};
+      }
+      const stores = await resp.json();
+      return {ok: true, stores: (stores || []).map(st => ({id: st.storeId, name: st.storeName}))};
+    } catch (e) {
+      return {ok: false, error: 'Network error: ' + e.message};
+    }
+  }
+);
+
+// ── 12. ShipStation: Webhook (tracking sync) ─────────────
+// ShipStation posts {resource_url, resource_type} when orders ship.
+// We fetch the full shipment, extract tracking, and write it to the
+// CRM invoice. resource_url already contains auth so no key needed
+// for the fetch — but we need the key to be available for validation.
+exports.shipStationWebhook = onRequest(
+  {secrets: [shipStationApiKey], invoker: 'public'},
+  async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+    try {
+      const payload = req.body || {};
+      const resourceUrl = payload.resource_url;
+      if (!resourceUrl) { res.status(200).send('no resource_url'); return; }
+
+      const key = (process.env.SHIPSTATION_API_KEY || '').trim();
+      const authVal = key.includes(':') ? key : key + ':';
+      const authHeader = 'Basic ' + Buffer.from(authVal).toString('base64');
+
+      const resp = await fetch(resourceUrl, { headers: { 'Authorization': authHeader } });
+      if (!resp.ok) { console.warn('ShipStation webhook resource fetch failed:', resp.status); res.status(200).send('fetch failed'); return; }
+      const data = await resp.json();
+
+      // data is either a single shipment or {shipments:[...]}
+      const shipments = data.shipments || (data.trackingNumber ? [data] : []);
+      const db = admin.firestore();
+
+      for (const ship of shipments) {
+        const orderNumber = ship.orderNumber || '';
+        const tracking = ship.trackingNumber || '';
+        const carrier = ship.carrierCode || ship.serviceCode || '';
+        if (!orderNumber || !tracking) continue;
+
+        // Find the invoice by number across all collections
+        const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
+        for (const col of cols) {
+          const snap = await db.collection('workspace/main/' + col)
+            .where('number', '==', orderNumber).limit(1).get();
+          if (!snap.empty) {
+            await snap.docs[0].ref.update({
+              trackingNumber: tracking,
+              carrier: carrier,
+              shippedAt: new Date().toISOString(),
+              deliveryMethod: 'ship',
+            });
+            // Audit log
+            await db.collection('workspace/main/audit_log').add({
+              timestamp: new Date().toISOString(),
+              action: 'shipped',
+              entityType: col.replace('_invoices', '') + '_invoice',
+              entityId: snap.docs[0].id,
+              entityName: orderNumber,
+              changedBy: 'shipstation',
+              changedByEmail: 'shipstation-webhook',
+              trackingNumber: tracking,
+              carrier: carrier,
+            });
+            break;
+          }
+        }
+      }
+      res.status(200).send('ok');
+    } catch (e) {
+      console.error('ShipStation webhook error:', e.message);
+      res.status(200).send('error logged');
     }
   }
 );
