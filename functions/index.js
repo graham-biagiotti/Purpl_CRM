@@ -1030,11 +1030,11 @@ exports.shipStationStatus = onCall(
   }
 );
 
-// ── 12. ShipStation: Webhook (tracking sync) ─────────────
+// ── 12. ShipStation: Webhook (tracking + shipping cost sync) ──
 // ShipStation posts {resource_url, resource_type} when orders ship.
-// We fetch the full shipment, extract tracking, and write it to the
-// CRM invoice. resource_url already contains auth so no key needed
-// for the fetch — but we need the key to be available for validation.
+// Fetches the shipment details, extracts tracking + shipping cost,
+// adds a Shipping line item to the invoice, recalculates total,
+// updates dates, and sets readyToSend so the CRM notifies the user.
 exports.shipStationWebhook = onRequest(
   {secrets: [shipStationApiKey], invoker: 'public'},
   async (req, res) => {
@@ -1052,15 +1052,29 @@ exports.shipStationWebhook = onRequest(
       if (!resp.ok) { console.warn('ShipStation webhook resource fetch failed:', resp.status); res.status(200).send('fetch failed'); return; }
       const data = await resp.json();
 
-      // data is either a single shipment or {shipments:[...]}
       const shipments = data.shipments || (data.trackingNumber ? [data] : []);
       const db = admin.firestore();
 
+      // Group shipments by orderNumber (multiple boxes = multiple tracking numbers)
+      const byOrder = {};
       for (const ship of shipments) {
-        const orderNumber = ship.orderNumber || '';
-        const tracking = ship.trackingNumber || '';
-        const carrier = ship.carrierCode || ship.serviceCode || '';
-        if (!orderNumber || !tracking) continue;
+        const on = ship.orderNumber || '';
+        if (!on) continue;
+        if (!byOrder[on]) byOrder[on] = { trackingNumbers: [], carriers: [], totalShipCost: 0 };
+        if (ship.trackingNumber) byOrder[on].trackingNumbers.push(ship.trackingNumber);
+        byOrder[on].carriers.push(ship.carrierCode || ship.serviceCode || '');
+        byOrder[on].totalShipCost += parseFloat(ship.shipmentCost || ship.shipment_cost || 0)
+                                   + parseFloat(ship.insuranceCost || ship.insurance_cost || 0);
+      }
+
+      const now = new Date().toISOString();
+      const shipDate = now.slice(0, 10);
+
+      for (const [orderNumber, info] of Object.entries(byOrder)) {
+        if (!info.trackingNumbers.length) continue;
+        const trackingStr = info.trackingNumbers.join(', ');
+        const carrierStr  = [...new Set(info.carriers.filter(Boolean))].join(', ');
+        const shipCost    = Math.round(info.totalShipCost * 100) / 100;
 
         // Find the invoice by number across all collections
         const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
@@ -1068,23 +1082,70 @@ exports.shipStationWebhook = onRequest(
           const snap = await db.collection('workspace/main/' + col)
             .where('number', '==', orderNumber).limit(1).get();
           if (!snap.empty) {
-            await snap.docs[0].ref.update({
-              trackingNumber: tracking,
-              carrier: carrier,
-              shippedAt: new Date().toISOString(),
+            const doc = snap.docs[0];
+            const inv = doc.data();
+
+            // Build the update: tracking, carrier, dates, shipping line item
+            const existingItems = inv.lineItems || [];
+            // Remove any previous Shipping line item (idempotent for webhook retries)
+            const itemsNoShip = existingItems.filter(li => li.skuId !== '__shipping__');
+
+            const shippingLine = shipCost > 0 ? {
+              skuId: '__shipping__',
+              skuName: 'Shipping',
+              sku: 'Shipping',
+              description: carrierStr ? ('Shipping via ' + carrierStr) : 'Shipping',
+              cases: 1, qty: 1, units: 1,
+              pricePerCase: shipCost,
+              unitPrice: shipCost,
+              lineTotal: shipCost,
+              total: shipCost,
+            } : null;
+
+            const updatedItems = shippingLine ? [...itemsNoShip, shippingLine] : itemsNoShip;
+            const newTotal = updatedItems.reduce((s, li) => s + parseFloat(li.lineTotal || li.total || 0), 0);
+
+            // Recalculate due date: ship date + payment terms
+            const configSnap = await db.doc('workspace/main/config/main').get();
+            const configData = configSnap.exists ? configSnap.data() : {};
+            const terms = (configData.invoice_settings || {}).terms || (configData.settings || {}).payment_terms || 30;
+            const dueDate = new Date(Date.now() + terms * 86400000).toISOString().slice(0, 10);
+
+            const update = {
+              trackingNumber: trackingStr,
+              carrier: carrierStr,
+              shippedAt: now,
               deliveryMethod: 'ship',
-            });
+              lineItems: updatedItems,
+              date: shipDate,
+              issued: shipDate,
+              dueDate: dueDate,
+              due: dueDate,
+              readyToSend: true,
+            };
+            // Update total on the right field(s) depending on collection
+            if (col === 'combined_invoices') {
+              // For combined: shipping goes on grand total; product subtotals unchanged
+              update.grandTotal = (parseFloat(inv.purplSubtotal || 0) + parseFloat(inv.lfSubtotal || 0) + shipCost);
+            } else {
+              update.total = newTotal;
+              update.amount = newTotal;
+            }
+
+            await doc.ref.update(update);
+
             // Audit log
             await db.collection('workspace/main/audit_log').add({
-              timestamp: new Date().toISOString(),
+              timestamp: now,
               action: 'shipped',
               entityType: col.replace('_invoices', '') + '_invoice',
-              entityId: snap.docs[0].id,
+              entityId: doc.id,
               entityName: orderNumber,
               changedBy: 'shipstation',
               changedByEmail: 'shipstation-webhook',
-              trackingNumber: tracking,
-              carrier: carrier,
+              trackingNumber: trackingStr,
+              carrier: carrierStr,
+              shippingCost: shipCost,
             });
             break;
           }

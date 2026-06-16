@@ -549,6 +549,64 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   }
 }
 
+// ── Shipped-invoice notification ───────────────────────────
+// Called on every snapshot refresh. Checks for invoices that the
+// ShipStation webhook just updated (readyToSend=true) and shows a
+// sticky banner so the user can review and send.
+const _notifiedShipIds = new Set();
+function _checkShippedInvoices() {
+  const allInvs = [
+    ..._allPurplInvoices().filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
+    ...DB.a('lf_invoices').filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
+    ...DB.a('combined_invoices').filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
+  ];
+  if (!allInvs.length) return;
+  allInvs.forEach(inv => _notifiedShipIds.add(inv.id));
+  const names = allInvs.map(inv => (inv.number || inv.invoiceNumber || '—') + ' · ' + (inv.accountName || '')).join(', ');
+  _showShippedBanner(allInvs, names);
+}
+
+function _showShippedBanner(invoices, names) {
+  let el = document.getElementById('shipped-banner');
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = 'shipped-banner';
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;background:#dcfce7;color:#166534;border-bottom:2px solid #86efac;padding:14px 50px 14px 18px;font-size:13.5px;font-weight:500;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:center;gap:14px;flex-wrap:wrap';
+  const msg = document.createElement('span');
+  msg.innerHTML = '📦 <strong>Shipped!</strong> ' + escHtml(names) + ' — shipping cost + tracking added. Review and send when ready.';
+  el.appendChild(msg);
+  invoices.forEach(inv => {
+    const col = DB.a('combined_invoices').find(x => x.id === inv.id) ? 'combined_invoices'
+      : DB.a('lf_invoices').find(x => x.id === inv.id) ? 'lf_invoices' : 'retail_invoices';
+    const btn = document.createElement('button');
+    btn.className = 'btn sm primary';
+    btn.textContent = 'Open ' + (inv.number || inv.invoiceNumber || '');
+    btn.onclick = () => {
+      el.remove();
+      if (col === 'combined_invoices') { nav('invoices'); openCombinedInvoicePreview(inv.id); }
+      else if (col === 'lf_invoices')  { nav('invoices'); openLfInvoiceModal(inv.id); }
+      else                             { nav('invoices'); openInvModal(inv.id); }
+    };
+    el.appendChild(btn);
+  });
+  const x = document.createElement('button');
+  x.textContent = '✕';
+  x.style.cssText = 'position:absolute;top:10px;right:12px;background:none;border:none;font-size:18px;cursor:pointer;color:#166534;padding:4px';
+  x.onclick = () => el.remove();
+  el.appendChild(x);
+  document.body.appendChild(el);
+}
+
+// When the user sends a "readyToSend" invoice, clear the flag so the
+// banner doesn't reappear.
+function _clearReadyToSend(invoiceId, collection) {
+  DB.update(collection, invoiceId, x => {
+    const copy = { ...x };
+    delete copy.readyToSend;
+    return copy;
+  });
+}
+
 function ivDeliveryMethodChange() {
   const method = qs('#iv-delivery-method')?.value || 'deliver';
   const statusEl = qs('#iv-ship-status');
@@ -2257,7 +2315,11 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   const ivSendBtn = qs('#iv-send-btn');
   if (ivSendBtn) {
     ivSendBtn.style.display = '';
-    ivSendBtn.textContent = 'Save & Send';
+    const _ivIsShip = () => qs('#iv-delivery-method')?.value === 'ship';
+    ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
+    qs('#iv-delivery-method')?.addEventListener('change', () => {
+      ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
+    });
     ivSendBtn.onclick = async () => {
       if (ivSendBtn.disabled) return;
       ivSendBtn.disabled = true; ivSendBtn.textContent = 'Saving…';
@@ -2297,6 +2359,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
           cadence: _pushCadence(a.cadence, entry),
         }));
         closeModal('modal-add-inv');
+        _clearReadyToSend(rec.id, 'retail_invoices');
         if (currentPage === 'invoices') renderInvoicesPage();
         renderInvoiceStatus();
         renderAccounts();
@@ -11056,7 +11119,11 @@ function openLfInvoiceModal(id) {
   const lfiSendBtn = qs('#lfi-send-btn');
   if (lfiSendBtn) {
     lfiSendBtn.style.display = '';
-    lfiSendBtn.textContent = 'Save & Send';
+    const _lfiIsShip = () => qs('#lfi-delivery-method')?.value === 'ship';
+    lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
+    qs('#lfi-delivery-method')?.addEventListener('change', () => {
+      lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
+    });
     lfiSendBtn.onclick = async () => {
       if (lfiSendBtn.disabled) return;
       lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Saving…';
@@ -11099,6 +11166,7 @@ function openLfInvoiceModal(id) {
           ...a, lastContacted: today(),
           cadence: _pushCadence(a.cadence, entry),
         }));
+        _clearReadyToSend(inv.id, 'lf_invoices');
         closeModal('modal-lf-invoice');
         if (currentPage === 'invoices') renderInvoicesPage();
         renderLfDashKpis();
@@ -12764,6 +12832,7 @@ window.onAppReady = function() {
     migrateLfSkuVariants();
     restoreMyData();
     migrateAccountContacts();
+    _checkShippedInvoices();
     renders[currentPage]?.();
   };
 
@@ -14460,7 +14529,7 @@ function renderInvUnifiedList() {
   };
 
   tbody.innerHTML = list.map(r => `<tr>
-    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber)+'</span>':''}${_invEmailBadge(r.inv)}</td>
+    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${_invEmailBadge(r.inv)}</td>
     <td>${escHtml(r.name)}</td>
     <td style="white-space:nowrap">${fmtD(r.issued)}</td>
     <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>
