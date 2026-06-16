@@ -459,10 +459,24 @@ async function testShipStationConnection() {
 function _parseAddress(addr) {
   if (!addr) return {street1:'', street2:'', city:'', state:'', zip:''};
   const parts = addr.split(',').map(p => p.trim());
-  if (parts.length >= 3) {
+  // "393 Pumpkin Hill Rd, Warner, NH 03278" → 3 parts
+  // "123 Main St, Apt 4, Boston, MA 02101" → 4 parts
+  // "393 Pumpkin Hill Rd, Warner NH 03278"  → 2 parts (no comma before state)
+  if (parts.length >= 2) {
     const lastPart = parts[parts.length - 1];
+    // Try "ST 01234" at the end of the last part
     const stZip = lastPart.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-    if (stZip) return {street1: parts[0], street2: parts.length > 3 ? parts[1] : '', city: parts[parts.length - 2], state: stZip[1], zip: stZip[2]};
+    if (stZip) {
+      // Last part is "ST ZIP" — city is the part before it
+      const city = parts.length >= 3 ? parts[parts.length - 2] : '';
+      const street2 = parts.length >= 4 ? parts[1] : '';
+      return {street1: parts[0], street2, city, state: stZip[1], zip: stZip[2]};
+    }
+    // Try "City, ST ZIP" where ST ZIP is inside the last part: "Warner NH 03278"
+    const cityStZip = lastPart.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+    if (cityStZip) {
+      return {street1: parts[0], street2: parts.length >= 3 ? parts[1] : '', city: cityStZip[1], state: cityStZip[2], zip: cityStZip[3]};
+    }
   }
   return {street1: addr, street2:'', city:'', state:'', zip:''};
 }
@@ -2252,7 +2266,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
         const rec = await _saveInvCore(id, isNew);
         if (!rec) return; // validation toast already shown
         if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
-          pushInvoiceToShipStation(rec.id, 'retail_invoices');
+          await pushInvoiceToShipStation(rec.id, 'retail_invoices');
         }
         const ac = DB.a('ac').find(x => x.id === rec.accountId) || {};
         if (!ac.email) {
@@ -11052,7 +11066,7 @@ function openLfInvoiceModal(id) {
         if (!out) return; // validation toast already shown
         const inv = out.rec;
         if (inv.deliveryMethod === 'ship' && !inv.shipStationOrderId) {
-          pushInvoiceToShipStation(inv.id, 'lf_invoices');
+          await pushInvoiceToShipStation(inv.id, 'lf_invoices');
         }
         const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
         if (!ac.email) {
@@ -12248,6 +12262,9 @@ async function openCombinedInvoicePreview(combinedId) {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
     const to = account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
+    if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
+      await pushInvoiceToShipStation(combinedId, 'combined_invoices');
+    }
     const sendHtml = html;
     callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
       .then((result) => {
