@@ -935,6 +935,7 @@ exports.pushToShipStation = onCall(
     if (!request.auth) return {ok: false, error: 'Not signed in'};
     const data = request.data || {};
     if (!data.invoiceNumber || !data.shipTo) return {ok: false, error: 'Missing invoice number or shipping address'};
+    if (!data.items || !data.items.length) return {ok: false, error: 'No line items to ship'};
 
     const key = (process.env.SHIPSTATION_API_KEY || '').trim();
     if (!key) return {ok: false, error: 'SHIPSTATION_API_KEY not set. Run: firebase functions:secrets:set SHIPSTATION_API_KEY'};
@@ -981,7 +982,9 @@ exports.pushToShipStation = onCall(
       internalNotes: data.notes || '',
       requestedShippingService: data.shippingService || '',
     };
-    if (data.storeId) orderPayload.advancedOptions = { storeId: parseInt(data.storeId) };
+    if (data.storeId && !isNaN(parseInt(data.storeId))) {
+      orderPayload.advancedOptions = { storeId: parseInt(data.storeId) };
+    }
 
     try {
       const resp = await fetch('https://ssapi.shipstation.com/orders/createorder', {

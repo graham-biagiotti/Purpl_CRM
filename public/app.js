@@ -421,6 +421,145 @@ function _stickyError(msg) {
   if (span) span.textContent = msg;
 }
 
+// ── ShipStation integration ────────────────────────────────
+function saveShipStationSettings() {
+  const storeId = document.getElementById('set-shipstation-store')?.value || '';
+  const fromAddr = document.getElementById('set-shipstation-from')?.value || '';
+  DB.setObj('shipstation_settings', { ...DB.obj('shipstation_settings', {}), storeId, fromAddress: fromAddr });
+  toast('ShipStation settings saved ✓');
+}
+function loadShipStationSettings() {
+  const s2 = DB.obj('shipstation_settings', {});
+  const set = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
+  set('set-shipstation-store', s2.storeId);
+  set('set-shipstation-from', s2.fromAddress);
+}
+
+async function testShipStationConnection() {
+  const el = document.getElementById('shipstation-test-result');
+  if (!el) return;
+  el.style.color = 'var(--muted)'; el.textContent = 'Testing…';
+  try {
+    const fn = firebase.functions().httpsCallable('shipStationStatus');
+    const d = (await fn({})).data;
+    if (d.ok) {
+      const storeList = (d.stores||[]).map(st => st.name + ' (ID: ' + st.id + ')').join(', ') || 'none found';
+      el.style.color = '#16a34a';
+      el.textContent = '✓ Connected. Stores: ' + storeList;
+    } else {
+      el.style.color = '#dc2626'; el.textContent = '✗ ' + (d.error||'unknown');
+    }
+  } catch (e) {
+    el.style.color = '#dc2626';
+    el.textContent = '✗ ' + (String(e?.code||'').includes('not-found')
+      ? 'shipStationStatus not deployed — run: firebase deploy --only functions' : (e?.message||'error'));
+  }
+}
+
+function _parseAddress(addr) {
+  if (!addr) return {street1:'', street2:'', city:'', state:'', zip:''};
+  const parts = addr.split(',').map(p => p.trim());
+  if (parts.length >= 3) {
+    const lastPart = parts[parts.length - 1];
+    const stZip = lastPart.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+    if (stZip) return {street1: parts[0], street2: parts.length > 3 ? parts[1] : '', city: parts[parts.length - 2], state: stZip[1], zip: stZip[2]};
+  }
+  return {street1: addr, street2:'', city:'', state:'', zip:''};
+}
+
+async function pushInvoiceToShipStation(invoiceId, collection) {
+  const inv = collection === 'lf_invoices'
+    ? DB.a('lf_invoices').find(x => x.id === invoiceId)
+    : (collection === 'combined_invoices'
+        ? DB.a('combined_invoices').find(x => x.id === invoiceId)
+        : findInvoice(invoiceId));
+  if (!inv) { toast('Invoice not found'); return; }
+  if (inv.shipStationOrderId) { toast('Already pushed to ShipStation'); return; }
+  const ac = DB.a('ac').find(a => a.id === inv.accountId) || {};
+  if (!ac.address && !ac.shipAddress) { toast('No address on file — add one to the account first'); return; }
+
+  const addr = _parseAddress(ac.shipAddress || ac.address || '');
+  const ss = DB.obj('shipstation_settings', {});
+  const invNum = inv.number || inv.invoiceNumber || '';
+  const brand = collection === 'combined_invoices' ? 'purpl + LF' : (collection === 'lf_invoices' ? 'Lavender Fields' : 'purpl');
+
+  const items = [];
+  (inv.lineItems || []).forEach(li => {
+    if (li.hasVariants && li.variantLines) {
+      li.variantLines.forEach(vl => items.push({
+        sku: (li.skuId||li.skuName||'') + '-' + (vl.variantId||vl.variantName||''),
+        name: (li.skuName||'') + ' — ' + (vl.variantName||''),
+        quantity: vl.units || vl.cases || 1,
+        unitPrice: parseFloat(li.unitPrice || 0),
+      }));
+    } else {
+      items.push({
+        sku: li.skuId || li.sku || '',
+        name: li.skuName || li.sku || li.description || 'Item',
+        quantity: li.cases || li.qty || li.units || 1,
+        unitPrice: parseFloat(li.pricePerCase || li.unitPrice || 0),
+      });
+    }
+  });
+  if (!items.length) { toast('Invoice has no line items'); return; }
+
+  toast('Pushing to ShipStation…');
+  try {
+    const fn = firebase.functions().httpsCallable('pushToShipStation');
+    const result = await fn({
+      invoiceNumber: invNum,
+      accountName: ac.name || inv.accountName || '',
+      customerEmail: ac.email || '',
+      brand,
+      storeId: ss.storeId || null,
+      notes: inv.notes || '',
+      shipTo: { name: ac.name || '', ...addr, phone: ac.phone || '' },
+      items,
+    });
+    const d = result.data || {};
+    if (d.ok) {
+      DB.update(collection || _invoiceCol(invoiceId), invoiceId, x => ({
+        ...x,
+        deliveryMethod: 'ship',
+        shipStationOrderId: d.orderId,
+        shipStationPushedAt: new Date().toISOString(),
+      }));
+      auditLog('ship_push', collection.replace('_invoices','')+'_invoice', invoiceId, invNum, {shipStationOrderId: d.orderId});
+      toast('Pushed to ShipStation ✓ — order #' + (d.orderNumber || invNum));
+      if (currentPage === 'invoices') renderInvoicesPage();
+    } else {
+      _stickyError('ShipStation push failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) {
+    _stickyError('ShipStation push failed: ' + (e?.message || 'unknown'));
+  }
+}
+
+function ivDeliveryMethodChange() {
+  const method = qs('#iv-delivery-method')?.value || 'deliver';
+  const statusEl = qs('#iv-ship-status');
+  if (statusEl) statusEl.style.display = method === 'ship' ? '' : 'none';
+  if (method === 'ship' && statusEl) {
+    const acId = qs('#iv-account')?.value;
+    const ac = acId ? DB.a('ac').find(x => x.id === acId) : null;
+    statusEl.innerHTML = ac?.address
+      ? `<div style="font-size:12px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border)">📦 Will ship to: <strong>${escHtml(ac.address)}</strong></div>`
+      : `<div style="font-size:12px;color:#dc2626;padding:6px 0">⚠ No address on file for this account</div>`;
+  }
+}
+function lfiDeliveryMethodChange() {
+  const method = qs('#lfi-delivery-method')?.value || 'deliver';
+  const statusEl = qs('#lfi-ship-status');
+  if (statusEl) statusEl.style.display = method === 'ship' ? '' : 'none';
+  if (method === 'ship' && statusEl) {
+    const acId = qs('#lfi-account')?.value;
+    const ac = acId ? DB.a('ac').find(x => x.id === acId) : null;
+    statusEl.innerHTML = ac?.address
+      ? `<div style="font-size:12px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border)">📦 Will ship to: <strong>${escHtml(ac.address)}</strong></div>`
+      : `<div style="font-size:12px;color:#dc2626;padding:6px 0">⚠ No address on file for this account</div>`;
+  }
+}
+
 async function _getStripePayLink(invoice, type) {
   if (!invoice?.id || !parseFloat(invoice.total || invoice.amount || invoice.grandTotal)) return null;
   try {
@@ -2057,8 +2196,10 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-due'))    qs('#iv-due').value    = dueStr;
     if (qs('#iv-status')) qs('#iv-status').value = 'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = prefillNotes || '';
+    if (qs('#iv-delivery-method'))qs('#iv-delivery-method').value = 'deliver';
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = '';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = '';
+    if (qs('#iv-ship-status'))   qs('#iv-ship-status').style.display = 'none';
     if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
   } else if (inv) {
     if (qs('#iv-number')) qs('#iv-number').value = inv.number||'';
@@ -2066,8 +2207,10 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-due'))    qs('#iv-due').value    = inv.due||'';
     if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
+    if (qs('#iv-delivery-method'))qs('#iv-delivery-method').value = inv.deliveryMethod||'deliver';
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = inv.deliveryDate||'';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
+    ivDeliveryMethodChange();
     const savedTerms = inv.paymentTerms || 'net30';
     if (qs('#iv-terms')) qs('#iv-terms').value = savedTerms;
     if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = savedTerms === 'custom' ? '' : 'none';
@@ -2108,6 +2251,9 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
         // Persist first — works for brand-new invoices too (one-step send)
         const rec = await _saveInvCore(id, isNew);
         if (!rec) return; // validation toast already shown
+        if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
+          pushInvoiceToShipStation(rec.id, 'retail_invoices');
+        }
         const ac = DB.a('ac').find(x => x.id === rec.accountId) || {};
         if (!ac.email) {
           toast('Saved — but no email address on file for this account');
@@ -10846,8 +10992,10 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-status')) qs('#lfi-status').value = 'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
+    if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = 'deliver';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
+    if (qs('#lfi-ship-status'))   qs('#lfi-ship-status').style.display = 'none';
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
   } else {
     if (qs('#lfi-number')) qs('#lfi-number').value = inv.number||'';
@@ -10856,8 +11004,10 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
+    if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = inv.deliveryMethod||'deliver';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
+    lfiDeliveryMethodChange();
     if (qs('#lfi-delete-btn')) {
       qs('#lfi-delete-btn').style.display = _isAdmin() ? '' : 'none';
       qs('#lfi-delete-btn').onclick = () => deleteLfInvoice(id);
@@ -10901,6 +11051,9 @@ function openLfInvoiceModal(id) {
         const out = _saveLfInvoiceCore(id, isNew);
         if (!out) return; // validation toast already shown
         const inv = out.rec;
+        if (inv.deliveryMethod === 'ship' && !inv.shipStationOrderId) {
+          pushInvoiceToShipStation(inv.id, 'lf_invoices');
+        }
         const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
         if (!ac.email) {
           toast('Saved — but no email address on file for this account');
@@ -11191,6 +11344,7 @@ function _saveLfInvoiceCore(id, isNew) {
     issued, due, lineItems, total, status,
     wixPulled:   existing?.wixPulled   || false,
     wixPulledAt: existing?.wixPulledAt || null,
+    deliveryMethod:  qs('#lfi-delivery-method')?.value || 'deliver',
     notes, link, deliveryDate, trackingNumber,
   };
 
@@ -11616,6 +11770,7 @@ async function saveNewCombinedInvoice() {
   const status   = qs('#nciv-status')?.value || 'draft';
   const notes    = qs('#nciv-notes')?.value || '';
   const userNum  = qs('#nciv-number')?.value?.trim() || '';
+  const deliveryMethod = qs('#nciv-delivery-method')?.value || 'deliver';
   const deliveryDate   = qs('#nciv-delivery-date')?.value || '';
   const trackingNumber = qs('#nciv-tracking')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
@@ -11632,13 +11787,13 @@ async function saveNewCombinedInvoice() {
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
-    notes, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: lfSub, status,
     lineItems: lfLines,
-    notes, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   const combInv = {
     id: combId, number: combNum, invoiceNumber: combNum,
@@ -11647,7 +11802,7 @@ async function saveNewCombinedInvoice() {
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
-    notes, deliveryDate, trackingNumber, source: 'manual',
+    notes, deliveryMethod, deliveryDate, trackingNumber, source: 'manual',
   };
 
   DB.atomicUpdate(cache => {
@@ -14940,6 +15095,7 @@ async function _saveInvCore(id, isNew) {
     priceType:    tier,
     status,
     notes,
+    deliveryMethod:  qs('#iv-delivery-method')?.value || 'deliver',
     deliveryDate,
     trackingNumber,
     lineItems,
