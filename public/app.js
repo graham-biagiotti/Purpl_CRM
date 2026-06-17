@@ -12013,7 +12013,7 @@ function _normPurplLines(inv) {
 
 function _normLfLines(inv) {
   const out = [];
-  (inv.lineItems || []).forEach(li => {
+  (inv.lineItems || []).filter(li => li.skuId !== '__shipping__').forEach(li => {
     const up = parseFloat(li.unitPrice != null ? li.unitPrice : (li.pricePerUnit || 0)) || 0;
     if (li.hasVariants && li.variantLines && li.variantLines.length) {
       li.variantLines.forEach(vl => {
@@ -12237,6 +12237,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     tracking: inv.trackingNumber || '',
     purplLines: _normPurplLines(inv),
     lfLines: [],
+    shippingLines: _normShippingLines(inv),
     grandTotal: inv.amount != null ? inv.amount : (inv.total || 0),
     notes: inv.notes || '',
     payLink: inv._payLink || null,
@@ -12262,6 +12263,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     tracking: inv.trackingNumber || '',
     purplLines: [],
     lfLines: _normLfLines(inv),
+    shippingLines: _normShippingLines(inv),
     grandTotal: inv.total || 0,
     notes: inv.notes || '',
     payLink: inv._payLink || null,
