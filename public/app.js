@@ -555,6 +555,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
 // sticky banner so the user can review and send.
 const _notifiedShipIds = new Set();
 function _checkShippedInvoices() {
+  if (_notifiedShipIds.size > 500) _notifiedShipIds.clear();
   const allInvs = [
     ..._allPurplInvoices().filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
     ...DB.a('lf_invoices').filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
@@ -2327,7 +2328,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
       try {
         // Persist first — works for brand-new invoices too (one-step send)
         const rec = await _saveInvCore(id, isNew);
-        if (!rec) return; // validation toast already shown
+        if (!rec) { ivSendBtn.disabled = false; ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send'; return; }
         if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
           await pushInvoiceToShipStation(rec.id, 'retail_invoices');
         }
@@ -11132,7 +11133,7 @@ function openLfInvoiceModal(id) {
       try {
         // Persist first — works for brand-new invoices too (one-step send)
         const out = _saveLfInvoiceCore(id, isNew);
-        if (!out) return; // validation toast already shown
+        if (!out) { lfiSendBtn.disabled = false; lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send'; return; }
         const inv = out.rec;
         if (inv.deliveryMethod === 'ship' && !inv.shipStationOrderId) {
           await pushInvoiceToShipStation(inv.id, 'lf_invoices');
@@ -11983,9 +11984,19 @@ function _deliveryDetailsHTML(deliveryDate, tracking, style) {
 // channel (email + print/PDF + preview). Table-based markup only — Gmail
 // and Outlook strip flexbox, which used to scramble the Amount Due row.
 
+function _normShippingLines(inv) {
+  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__').map(li => ({
+    name: li.description || li.skuName || 'Shipping',
+    sub: li.carrier ? 'via ' + li.carrier : '',
+    qty: '', price: '',
+    total: parseFloat(li.lineTotal || li.total || li.pricePerCase || 0),
+  }));
+}
+
 function _normPurplLines(inv) {
-  const lines = (inv.lineItems && inv.lineItems.length) ? inv.lineItems
+  const raw = (inv.lineItems && inv.lineItems.length) ? inv.lineItems
     : ((inv.cases || inv.amount) ? [{ skuName: 'Classic Lavender Lemonade', cases: inv.cases || 0, pricePerCase: inv.pricePerCase || 0, lineTotal: inv.amount != null ? inv.amount : (inv.total || 0) }] : []);
+  const lines = raw.filter(li => li.skuId !== '__shipping__');
   return lines.map(li => {
     const cases = li.cases || li.qty || 0;
     const ppc = parseFloat(li.pricePerCase != null ? li.pricePerCase : (li.unitPrice || 0)) || 0;
@@ -12137,6 +12148,14 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
   ${purplLines.length ? section('purpl Lemonade', 'purpl', purplLines, o.purplSubtotal) : ''}
   ${lfLines.length ? section('Lavender Fields at Pumpkin Blossom Farm', 'LF', lfLines, o.lfSubtotal) : ''}
+  ${(o.shippingLines||[]).length ? `<tr><td style="padding:0 48px 12px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e7eb;padding-top:10px">
+      ${o.shippingLines.map(sl => `<tr>
+        <td style="font-size:13px;color:#1a1a2e;padding:4px 0">${escHtml(sl.name)}${sl.sub ? ' <span style="color:#6b7280;font-size:11px">' + escHtml(sl.sub) + '</span>' : ''}</td>
+        <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">$${sl.total.toFixed(2)}</td>
+      </tr>`).join('')}
+    </table>
+  </td></tr>` : ''}
 
   <tr><td style="padding:0 48px 24px">
     <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1a2e">
@@ -12192,6 +12211,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
     purplLines: _normPurplLines(purplInv),
     lfLines: _normLfLines(lfInv),
+    shippingLines: _normShippingLines(rec),
     purplSubtotal: rec.purplSubtotal,
     lfSubtotal: rec.lfSubtotal,
     grandTotal: rec.grandTotal,
@@ -12328,7 +12348,11 @@ async function openCombinedInvoicePreview(combinedId) {
       .then(() => toast('HTML copied'))
       .catch(() => toast('Copy failed'));
   };
-  qs('#civ-btn-gmail').onclick = async () => {
+  const _gmailBtn = qs('#civ-btn-gmail');
+  if (_gmailBtn) _gmailBtn.onclick = async () => {
+    if (_gmailBtn.disabled) return;
+    _gmailBtn.disabled = true; _gmailBtn.textContent = 'Sending…';
+    try {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
     const to = account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
@@ -12395,6 +12419,7 @@ async function openCombinedInvoicePreview(combinedId) {
       .catch(() => {
         window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       });
+    } finally { if (_gmailBtn) { _gmailBtn.disabled = false; _gmailBtn.textContent = 'Send'; } }
   };
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) voidBtn.style.display = _isAdmin() ? '' : 'none';

@@ -1103,7 +1103,7 @@ exports.shipStationWebhook = onRequest(
             } : null;
 
             const updatedItems = shippingLine ? [...itemsNoShip, shippingLine] : itemsNoShip;
-            const newTotal = updatedItems.reduce((s, li) => s + parseFloat(li.lineTotal || li.total || 0), 0);
+            const newTotal = Math.round(updatedItems.reduce((s, li) => s + parseFloat(li.lineTotal || li.total || 0), 0) * 100) / 100;
 
             // Recalculate due date: ship date + payment terms
             const configSnap = await db.doc('workspace/main/config/main').get();
