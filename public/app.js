@@ -2317,9 +2317,10 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     ivSendBtn.style.display = '';
     const _ivIsShip = () => qs('#iv-delivery-method')?.value === 'ship';
     ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
-    qs('#iv-delivery-method')?.addEventListener('change', () => {
+    const dmEl = qs('#iv-delivery-method');
+    if (dmEl) dmEl.onchange = () => {
       ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
-    });
+    };
     ivSendBtn.onclick = async () => {
       if (ivSendBtn.disabled) return;
       ivSendBtn.disabled = true; ivSendBtn.textContent = 'Saving…';
@@ -11121,9 +11122,10 @@ function openLfInvoiceModal(id) {
     lfiSendBtn.style.display = '';
     const _lfiIsShip = () => qs('#lfi-delivery-method')?.value === 'ship';
     lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
-    qs('#lfi-delivery-method')?.addEventListener('change', () => {
+    const dmLf = qs('#lfi-delivery-method');
+    if (dmLf) dmLf.onchange = () => {
       lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
-    });
+    };
     lfiSendBtn.onclick = async () => {
       if (lfiSendBtn.disabled) return;
       lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Saving…';
@@ -12345,10 +12347,11 @@ async function openCombinedInvoicePreview(combinedId) {
         let didDeduct = false;
         DB.atomicUpdate(cache => {
           const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
-          if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], status: 'sent', sentAt, sentMessageId };
+          const sendPatch = { status: 'sent', sentAt, sentMessageId, deliveryMethod: rec.deliveryMethod || 'deliver' };
+          if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...sendPatch };
           if (rec.purplInvoiceId) {
             const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-            if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'sent', sentAt, sentMessageId };
+            if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...sendPatch };
             // Re-check alreadyDeducted inside atomic block to close double-send race
             const alreadyDeducted = (cache.iv||[]).some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
             if (wasDraft && !alreadyDeducted && ri >= 0) {
@@ -12366,10 +12369,11 @@ async function openCombinedInvoicePreview(combinedId) {
           }
           if (rec.lfInvoiceId) {
             const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-            if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'sent', sentAt, sentMessageId };
+            if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...sendPatch };
           }
         });
         if (didDeduct) toast('Inventory deducted ✓', 2000);
+        _clearReadyToSend(combinedId, 'combined_invoices');
         // Log to account cadence
         const entry = { id: uid(), stage: 'invoice_sent', sentAt, sentBy: _currentUserName(), method: 'resend', invoiceId: rec.id, invoiceRef };
         if (sentMessageId) entry.sentMessageId = sentMessageId;
