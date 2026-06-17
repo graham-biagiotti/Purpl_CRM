@@ -148,7 +148,7 @@ exports.sendOrderConfirmation = onCall(
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
     <p>We received your order for <strong>${escHtml(data.accountName)}</strong> and we're on it. You'll hear from us with delivery details shortly.</p>
-    ${data.orderSummary || ''}
+    ${escHtml(data.orderSummary || '').replace(/\n/g, '<br>')}
     <p style="margin-top:20px">Questions? Reply to this email or call 603-748-3038.</p>
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
     ${data.portalLink ? `
@@ -684,8 +684,8 @@ exports.stripeStatus = onCall(
         payment_method_types: ['card'],
         line_items: [{price_data: {currency: 'usd', product_data: {name: 'Connection Test'}, unit_amount: 100}, quantity: 1}],
         mode: 'payment',
-        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
-        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=TEST',
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=TEST',
       });
       steps.push('Checkout session created: ' + session.id);
       return {ok: true, url: session.url, steps};
@@ -987,11 +987,13 @@ exports.pushToShipStation = onCall(
     }
 
     try {
+      const _ac1 = new AbortController(); const _t1 = setTimeout(() => _ac1.abort(), 30000);
       const resp = await fetch('https://ssapi.shipstation.com/orders/createorder', {
         method: 'POST',
         headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload),
-      });
+        signal: _ac1.signal,
+      }); clearTimeout(_t1);
       const body = await resp.json();
       if (!resp.ok) {
         console.error('ShipStation createorder error:', resp.status, JSON.stringify(body));
@@ -1015,9 +1017,11 @@ exports.shipStationStatus = onCall(
     const authVal = key.includes(':') ? key : key + ':';
     const authHeader = 'Basic ' + Buffer.from(authVal).toString('base64');
     try {
+      const _ac2 = new AbortController(); const _t2 = setTimeout(() => _ac2.abort(), 15000);
       const resp = await fetch('https://ssapi.shipstation.com/stores', {
         headers: { 'Authorization': authHeader },
-      });
+        signal: _ac2.signal,
+      }); clearTimeout(_t2);
       if (!resp.ok) {
         const body = await resp.text();
         return {ok: false, error: 'ShipStation ' + resp.status + ': ' + body.slice(0, 200)};
@@ -1048,7 +1052,9 @@ exports.shipStationWebhook = onRequest(
       const authVal = key.includes(':') ? key : key + ':';
       const authHeader = 'Basic ' + Buffer.from(authVal).toString('base64');
 
-      const resp = await fetch(resourceUrl, { headers: { 'Authorization': authHeader } });
+      const _ac3 = new AbortController(); const _t3 = setTimeout(() => _ac3.abort(), 20000);
+      const resp = await fetch(resourceUrl, { headers: { 'Authorization': authHeader }, signal: _ac3.signal });
+      clearTimeout(_t3);
       if (!resp.ok) { console.warn('ShipStation webhook resource fetch failed:', resp.status); res.status(200).send('fetch failed'); return; }
       const data = await resp.json();
 
