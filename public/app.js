@@ -14736,6 +14736,12 @@ function renderInvUnifiedList() {
 }
 
 function renderInvKpis() {
+  // INVARIANT: combined_invoices is intentionally excluded from these KPIs.
+  // Combined invoices' child records (purplInvoiceId → retail_invoices,
+  // lfInvoiceId → lf_invoices) carry the amounts. The combined parent's
+  // grandTotal = purplSubtotal + lfSubtotal, so including it would double-count.
+  // This works because saveNewCombinedInvoice and confirmPortalOrder always
+  // write child records to their respective collections alongside the combined.
   const todayStr = today();
   const purplInvs = _allPurplInvoices();
   const lfInvs    = DB.a('lf_invoices');

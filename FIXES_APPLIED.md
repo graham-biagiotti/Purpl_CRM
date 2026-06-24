@@ -205,3 +205,26 @@ _flushPendingSave() {
 **Why this works:** `_writeDoc` calls `collRef.doc(id).set(item, {merge:true})`. With IndexedDB persistence enabled, the Firestore SDK writes to IndexedDB FIRST (in a microtask that starts before the page unloads), then to the network on next session. The `.set()` call returns a Promise but the IndexedDB transaction is already queued — it survives tab death.
 
 **Why the old path didn't work:** `_saveCollection` did `colRef.get().then(snap => batch.commit())` — the `.get()` is a full round-trip that never completes before unload, so `batch.commit()` never fires.
+
+### 4. KPI combined-invoice invariant — comment + check
+
+**Invariant:** Combined invoices' child records MUST exist in retail_invoices / lf_invoices. The KPI math depends on this — it counts children, not combined parents.
+
+**Check run with seeded data:**
+```
+Test: 2 combined invoices
+- c1: purpl child r1 FOUND, LF child l1 FOUND → correct
+- c2: purpl child r_missing MISSING, LF child l_missing MISSING → ORPHAN
+
+KPI total (purpl + LF child records): $650.00  ← correct for c1
+Combined grandTotal sum: $600.00
+If combined ALSO added: $1250.00  ← DOUBLE COUNTED
+```
+
+**Conclusion:** Adding combined_invoices to KPIs would double-count the normal case. The math is correct WHEN children exist. Orphaned combined invoices (children deleted but parent survives) are undercounted — but this is the lesser evil vs double-counting every combined invoice.
+
+**What was added:**
+1. Comment at renderInvKpis documenting the invariant and WHY combined_invoices is excluded
+2. The invariant check script at /tmp/invariant_check.js confirms the logic with seeded data
+
+**What could cause orphans:** deleteInvoiceWithCleanup DOES cascade to combined_invoices (line 69-70), so orphans should not occur in normal use. They could occur from manual Firestore edits or data imports.
