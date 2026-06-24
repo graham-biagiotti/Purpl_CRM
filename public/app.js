@@ -14193,7 +14193,12 @@ async function confirmPortalOrder() {
       await portalRef.update({ accountId: selectedAcId, accountName: d.accountName, isUnmatched: false });
     }
 
-    const todayStr = today();
+    // For pre-orders: use the configured launch date (editable in portal settings)
+    // as the invoice date. Falls back to today if not set.
+    const portalConfig = await PortalDB.getConfig();
+    const isPreorder = d.mode === 'preorder';
+    const invoiceDate = (isPreorder && portalConfig.launchDate) ? portalConfig.launchDate : today();
+    const todayStr = invoiceDate;
     const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
     const isDistFulfilled = acct.fulfilledBy && acct.fulfilledBy !== 'direct';
 

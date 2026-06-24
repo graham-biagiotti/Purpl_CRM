@@ -1002,7 +1002,8 @@ function checkSubmitEnabled() {
   const notifyChecked = ['blueberry', 'peach']
     .some(f => document.getElementById('notify-' + f).checked);
   const lfTotal = _brandLf ? getLfTotal() : 0;
-  const hasPurpl = _brandPurpl && (cases > 0 || notifyChecked);
+  const requestSample = document.getElementById('request-sample')?.checked || false;
+  const hasPurpl = _brandPurpl && (cases > 0 || notifyChecked || requestSample);
   const hasLf    = _brandLf && lfTotal > 0;
   var variantsMismatched = _brandLf && _lfSkus.some(function(s) {
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
