@@ -1149,6 +1149,8 @@ function submitOrder() {
   const checkedFlavors = ['blueberry', 'peach']
     .filter(f => document.getElementById('notify-' + f).checked);
 
+  var requestSample = document.getElementById('request-sample')?.checked || false;
+
   var shipAddress = {
     street1: (document.getElementById('ship-street')?.value||'').trim(),
     street2: (document.getElementById('ship-street2')?.value||'').trim(),
@@ -1196,8 +1198,6 @@ function submitOrder() {
   // Collect LF items if LF section is active
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
-
-  var requestSample = document.getElementById('request-sample')?.checked || false;
   if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0 && !requestSample) {
     showError('Please add at least one item, request a sample, or select a notification.');
     return;
