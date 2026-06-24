@@ -1033,3 +1033,4 @@ body.dark [style*="background:var(--surface)"]{background:var(--surface)!importa
 /* ── Unified invoices toolbar ───────────────────────────── */
 .inv-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--card)}
 .inv-toolbar select,.inv-toolbar input[type="search"]{width:auto}
+#page-emails.active,#page-map.active{margin-left:0;padding-left:0;width:100%;box-sizing:border-box}
