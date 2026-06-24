@@ -55,7 +55,7 @@
 <div id="app-shell">
 
   <!-- SIDEBAR -->
-  <nav class="sidebar" id="main-sidebar">
+  <nav class="sidebar">
     <div class="sb-logo">
       <div class="sb-logo-row">
         <img src="/images/favicon-180.png" alt="" class="sb-logo-img">
@@ -136,10 +136,6 @@
         <span class="sync-dot synced" id="sync-dot"></span>
         <span id="sync-label">Saved</span>
       </div>
-      <button class="sb-signout" id="theme-toggle-btn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <span id="theme-toggle-label">Dark mode</span>
-      </button>
       <button class="sb-signout" id="sign-out-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Sign out
@@ -161,10 +157,7 @@
       </div>
       <div id="topbar-actions"></div>
       <div class="topbar-right">
-        <div id="global-search-wrap">
-          <input id="global-search" type="search" placeholder="Search…  ( / )" autocomplete="off" style="width:220px">
-          <div id="global-search-results" style="display:none"></div>
-        </div>
+        <input id="global-search" type="search" placeholder="Search accounts…" style="width:200px">
         <button class="btn primary" onclick="editAccount(uid())">+ Account</button>
         <button class="btn" onclick="editProspect(uid())">+ Prospect</button>
       </div>
@@ -191,9 +184,6 @@
       <div id="dash-low-stock-alert" style="display:none"></div>
       <!-- New applications alert card -->
       <div id="dash-applications-card" style="display:none"></div>
-
-      <!-- Quick actions strip -->
-      <div id="dash-quick-actions" style="display:none"></div>
 
       <!-- Row 1: Primary KPIs (large, 4 across) -->
       <div class="card-grid kpi-primary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px" id="dash-combined-kpis">
@@ -263,18 +253,6 @@
               <button class="btn sm" onclick="nav('orders-delivery')">View all →</button>
             </div>
             <div id="dash-pending-orders"></div>
-          </div>
-          <div class="card">
-            <div class="section-hdr">
-              <h2>💵 Recent Payments</h2>
-            </div>
-            <div id="dash-payments"></div>
-          </div>
-          <div class="card">
-            <div class="section-hdr">
-              <h2>🕘 Recent Activity</h2>
-            </div>
-            <div id="dash-activity"></div>
           </div>
           <div class="card" id="dash-cadence-card" style="display:none">
             <div class="section-hdr">
@@ -819,7 +797,6 @@
         <button class="tab" data-po-tab="confirmed">Confirmed</button>
         <button class="tab" data-po-tab="notify">Notify Me List</button>
         <button class="tab" data-po-tab="links">All Links</button>
-        <button class="tab" data-po-tab="samples">🧪 Sample Requests</button>
         <button class="btn sm" style="margin-left:auto" onclick="renderPreOrders(true)">↺ Refresh</button>
       </div>
       <!-- Tab panes -->
@@ -828,7 +805,6 @@
       <div id="po-pane-confirmed" style="display:none"></div>
       <div id="po-pane-notify" style="display:none"></div>
       <div id="po-pane-links" style="display:none"></div>
-      <div id="po-pane-samples" style="display:none"></div>
     </div>
 
     <!-- ═══════ PRODUCTION ═══════ -->
@@ -1367,21 +1343,12 @@
               <textarea id="inv-footer-notes" rows="2" placeholder="Thank you for your business." style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
               <div style="font-size:11px;color:var(--muted);margin-top:3px">Appears on all invoice print/PDF views</div>
             </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Legal terms / fine print</label>
-              <textarea id="inv-legal-terms" rows="8" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">Appears as fine print at the bottom of every invoice (emails + PDFs). The first line is the heading; lines like "Shipping: ..." get a bold label. Clear the box to remove fine print entirely.</div>
-            </div>
           </div>
           <div class="card">
             <div class="section-hdr"><h2>Payment Methods</h2></div>
             <div class="form-group" style="margin-bottom:12px">
-              <label>Stripe payment link (fallback only — per-invoice links are generated automatically)</label>
+              <label>Stripe payment link</label>
               <input id="inv-stripe-link" placeholder="https://buy.stripe.com/...">
-              <div style="margin-top:8px">
-                <button type="button" class="btn sm" onclick="testStripeConnection()">⚡ Test Stripe Connection</button>
-              </div>
-              <div id="stripe-test-result" style="font-size:12px;margin-top:6px"></div>
             </div>
             <div class="form-group" style="margin-bottom:12px">
               <label>ACH routing number</label>
@@ -1420,11 +1387,6 @@
               <div class="form-group" style="margin-bottom:12px">
                 <label>Classic — Price per case ($)</label>
                 <input type="number" id="portal-price-per-case" step="0.01" min="0" placeholder="Leave blank to hide price">
-              </div>
-              <div class="form-group" style="margin-bottom:12px">
-                <label>Launch Date (for pre-order invoicing)</label>
-                <input type="date" id="portal-launch-date">
-                <div style="font-size:11px;color:var(--muted);margin-top:3px">Pre-order invoices default to this date. Editable per-invoice.</div>
               </div>
               <div class="form-group" style="margin-bottom:12px">
                 <label>Portal Password</label>
@@ -1577,22 +1539,6 @@
 
       <!-- Tab 5: Integrations -->
       <div id="stab-integrations" class="stab-pane" style="display:none">
-        <div class="card" style="max-width:600px;margin-bottom:16px" id="shipstation-settings">
-          <div class="section-hdr"><h2>📦 ShipStation</h2></div>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Push "Ship" invoices to ShipStation. Tracking numbers sync back automatically when you buy a label in ShipStation.</p>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Store ID</label>
-            <input id="set-shipstation-store" type="number" placeholder="e.g. 123456">
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">Settings → Selling Channels in ShipStation. Leave blank to use default store.</div>
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Ship-from address</label>
-            <input id="set-shipstation-from" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
-          </div>
-          <button class="btn primary" onclick="saveShipStationSettings()">Save ShipStation Settings</button>
-          <button class="btn sm" onclick="testShipStationConnection()" style="margin-left:8px">⚡ Test Connection</button>
-          <div id="shipstation-test-result" style="font-size:12px;margin-top:8px"></div>
-        </div>
         <div class="card" style="max-width:600px" id="integrations-admin-only">
           <div class="section-hdr"><h2>AI — Anthropic</h2></div>
           <div class="form-group" style="max-width:480px;margin-bottom:16px">
@@ -1679,38 +1625,73 @@
       <!-- KPI row -->
       <div id="inv-page-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
 
-      <!-- Unified invoice list -->
-      <div class="card" style="padding:0;overflow:hidden">
-        <div class="inv-toolbar">
-          <div style="display:flex;gap:5px;flex-wrap:wrap" id="inv-type-pills">
-            <button class="ac-brand-btn active" data-type="all" onclick="setInvTypeFilter('all')">All</button>
-            <button class="ac-brand-btn" data-type="purpl" onclick="setInvTypeFilter('purpl')">💜 purpl</button>
-            <button class="ac-brand-btn" data-type="lf" onclick="setInvTypeFilter('lf')">🌿 Lavender Fields</button>
-            <button class="ac-brand-btn" data-type="combined" onclick="setInvTypeFilter('combined')">🤝 Combined</button>
-            <button class="ac-brand-btn" data-type="dist" onclick="setInvTypeFilter('dist')">🚚 Distributor</button>
+      <!-- Three columns -->
+      <div class="inv-three-col">
+
+        <!-- purpl column -->
+        <div class="inv-col" id="inv-col-purpl">
+          <div class="inv-col-header purpl" onclick="toggleInvCol('purpl')">
+            <div>
+              <div class="inv-col-title">💜 purpl Invoices</div>
+              <div class="inv-col-summary" id="inv-col-purpl-summary"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();openInvModal()" style="font-weight:600">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
           </div>
-          <div class="spacer" style="flex:1"></div>
-          <select id="inv-status-filter" onchange="renderInvoicesPage()" style="width:auto;min-width:130px">
-            <option value="all">All statuses</option>
-            <option value="open">Open (unpaid)</option>
-            <option value="draft">Draft</option>
-            <option value="sent">Sent</option>
-            <option value="overdue">Overdue</option>
-            <option value="paid">Paid</option>
-            <option value="void">Void</option>
-          </select>
-          <input id="inv-search" type="search" placeholder="Search invoices…" oninput="renderInvoicesPage()" style="width:190px" autocomplete="off">
+          <div class="inv-col-compact" id="inv-col-purpl-compact"></div>
+          <div class="inv-col-expanded" id="inv-col-purpl-expanded"></div>
         </div>
-        <div class="tbl-wrap" style="border:none;border-radius:0">
-          <table>
-            <thead><tr>
-              <th>Invoice</th><th>Account</th><th>Issued</th><th>Due</th>
-              <th style="text-align:right">Amount</th><th>Status</th><th></th>
-            </tr></thead>
-            <tbody id="inv-unified-tbody"></tbody>
-          </table>
+
+        <!-- LF column -->
+        <div class="inv-col" id="inv-col-lf">
+          <div class="inv-col-header lf" onclick="toggleInvCol('lf')">
+            <div>
+              <div class="inv-col-title">🌿 LF Invoices</div>
+              <div class="inv-col-summary" id="inv-col-lf-summary"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
+          </div>
+          <div class="inv-col-compact" id="inv-col-lf-compact"></div>
+          <div class="inv-col-expanded" id="inv-col-lf-expanded"></div>
         </div>
-      </div>
+
+        <!-- Combined column -->
+        <div class="inv-col" id="inv-col-combined">
+          <div class="inv-col-header combined" onclick="toggleInvCol('combined')">
+            <div>
+              <div class="inv-col-title">🤝 Combined Invoices</div>
+              <div class="inv-col-summary" id="inv-col-combined-summary"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
+          </div>
+          <div class="inv-col-compact" id="inv-col-combined-compact"></div>
+          <div class="inv-col-expanded" id="inv-col-combined-expanded"></div>
+        </div>
+
+        <!-- Distributors column -->
+        <div class="inv-col" id="inv-col-dist">
+          <div class="inv-col-header dist" onclick="toggleInvCol('dist')">
+            <div>
+              <div class="inv-col-title">🚚 Distributor Invoices</div>
+              <div class="inv-col-summary" id="inv-col-dist-summary"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="btn xs primary" onclick="event.stopPropagation();pickDistForInvoice()" style="font-weight:600;background:#6b7280;border-color:#6b7280">+ New Invoice</button>
+              <span class="inv-col-toggle">▼</span>
+            </div>
+          </div>
+          <div class="inv-col-compact" id="inv-col-dist-compact"></div>
+          <div class="inv-col-expanded" id="inv-col-dist-expanded"></div>
+        </div>
+
       </div>
     </div>
 
@@ -2017,16 +1998,12 @@
 <!-- Account view -->
 <div class="overlay" id="modal-account">
   <div class="modal" style="max-width:700px">
-    <div class="modal-hdr" style="align-items:flex-start">
-      <div style="display:flex;gap:12px;align-items:flex-start;min-width:0">
-        <div id="mac-avatar" class="mac-avatar"></div>
-        <div style="min-width:0">
-          <h2 id="mac-name">Account</h2>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-            <div id="mac-status-badge"></div>
-            <div id="mac-brand-badge"></div>
-          </div>
-          <div id="mac-quick-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px"></div>
+    <div class="modal-hdr">
+      <div>
+        <h2 id="mac-name">Account</h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+          <div id="mac-status-badge"></div>
+          <div id="mac-brand-badge"></div>
         </div>
       </div>
       <button class="modal-close btn sm">✕</button>
@@ -2110,7 +2087,6 @@
     <div id="mac-tab-samples" class="tab-pane" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <span style="font-size:13px;font-weight:600;color:var(--muted)">Sample History</span>
-        <button class="btn sm primary" id="mac-tab-ship-sample-btn">📦 Send Sample Box</button>
         <button class="btn sm" id="mac-tab-log-sample-btn">+ Log Sample</button>
       </div>
       <div id="mac-samples-tab-content"></div>
@@ -2230,37 +2206,12 @@
     <div class="modal-hdr"><h2 id="lfi-modal-title">New LF Invoice</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Invoice #</label><input id="lfi-number" placeholder="LF-001"></div>
-      <div class="form-group"><label>Account *</label>
-        <input id="lfi-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('lfi-account', this.value)">
-        <select id="lfi-account"></select>
-      </div>
+      <div class="form-group"><label>Account *</label><select id="lfi-account"></select></div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="lfi-issued"></div>
       <div class="form-group"><label>Due</label><input type="date" id="lfi-due"></div>
     </div>
-    <div class="form-row col2">
-      <div class="form-group"><label>Status</label>
-        <select id="lfi-status">
-          <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
-          <option value="paid">Paid</option>
-          <option value="void">Void</option>
-        </select>
-      </div>
-      <div class="form-group"><label>External Ref (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
-    </div>
-    <div class="form-row col3">
-      <div class="form-group"><label>Delivery method</label>
-        <select id="lfi-delivery-method" onchange="lfiDeliveryMethodChange()">
-          <option value="deliver">Deliver (local)</option>
-          <option value="ship">Ship (ShipStation)</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="lfi-delivery-date"></div>
-      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
-    </div>
-    <div id="lfi-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;font-weight:600;color:var(--fg)">Line Items</label>
@@ -2271,6 +2222,17 @@
         Total: <span id="lfi-total">$0.00</span>
       </div>
     </div>
+    <div class="form-row col2">
+      <div class="form-group"><label>Status</label>
+        <select id="lfi-status">
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="paid">Paid</option>
+          <option value="void">Void</option>
+        </select>
+      </div>
+      <div class="form-group"><label>External Ref / Invoice # (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
+    </div>
     <div class="form-group" style="margin-bottom:16px">
       <label>Notes</label>
       <textarea id="lfi-notes" rows="2" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
@@ -2279,7 +2241,7 @@
       <button class="btn red" id="lfi-delete-btn" style="display:none;margin-right:auto">Delete</button>
       <button class="modal-close btn">Cancel</button>
       <button class="btn" id="lfi-pdf-btn" style="display:none">Download PDF</button>
-      <button class="btn" id="lfi-send-btn" style="display:none">Save &amp; Send</button>
+      <button class="btn" id="lfi-send-btn" style="display:none">Send Email</button>
       <button class="btn primary" id="lfi-save-btn">Save Invoice</button>
     </div>
   </div>
@@ -2754,10 +2716,7 @@
     <div class="modal-hdr"><h2 id="iv-modal-title">New purpl Invoice</h2><button class="modal-close btn sm">✕</button></div>
     <div class="form-row col2">
       <div class="form-group"><label>Invoice #</label><input id="iv-number" placeholder="INV-001"></div>
-      <div class="form-group"><label>Account *</label>
-        <input id="iv-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('iv-account', this.value)">
-        <select id="iv-account" onchange="ivAccountChange()"></select>
-      </div>
+      <div class="form-group"><label>Account *</label><select id="iv-account" onchange="ivAccountChange()"></select></div>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="iv-date" onchange="ivTermsChange()"></div>
@@ -2791,23 +2750,12 @@
       <div class="form-group"><label>Status</label>
         <select id="iv-status">
           <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
+          <option value="unpaid">Unpaid</option>
           <option value="paid">Paid</option>
-          <option value="void">Void</option>
+          <option value="overdue">Overdue</option>
         </select>
       </div>
     </div>
-    <div class="form-row col3">
-      <div class="form-group"><label>Delivery method</label>
-        <select id="iv-delivery-method" onchange="ivDeliveryMethodChange()">
-          <option value="deliver">Deliver (local)</option>
-          <option value="ship">Ship (ShipStation)</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="iv-delivery-date"></div>
-      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
-    </div>
-    <div id="iv-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
       <div id="iv-line-items"></div>
@@ -2822,7 +2770,7 @@
       <button class="btn red" id="iv-delete-btn" style="display:none;margin-right:auto">Delete</button>
       <button class="modal-close btn">Cancel</button>
       <button class="btn" id="iv-pdf-btn" style="display:none">Download PDF</button>
-      <button class="btn" id="iv-send-btn" style="display:none">Save &amp; Send</button>
+      <button class="btn" id="iv-send-btn" style="display:none">Send Email</button>
       <button class="btn primary" id="iv-save-btn">Save Invoice</button>
     </div>
   </div>
@@ -3231,8 +3179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="form-row col2">
       <div class="form-group">
         <label>Account *</label>
-        <input id="nciv-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('nciv-account', this.value)">
-        <select id="nciv-account" onchange="ncivAccountChanged()"></select>
+        <select id="nciv-account" onchange="ncivAccountChanged()"><option value="">Select account...</option></select>
       </div>
       <div class="form-group">
         <label>Invoice Number</label>
@@ -3257,17 +3204,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <option value="paid">Paid</option>
         </select>
       </div>
-    </div>
-
-    <div class="form-row col3">
-      <div class="form-group"><label>Delivery method</label>
-        <select id="nciv-delivery-method">
-          <option value="deliver">Deliver (local)</option>
-          <option value="ship">Ship (ShipStation)</option>
-        </select>
-      </div>
-      <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
-      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
 
     <!-- purpl section — same pattern as separate purpl invoice -->
