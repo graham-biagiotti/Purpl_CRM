@@ -646,8 +646,13 @@ th{padding:11px 14px}
 
 /* ── Emails page layout ──────────────────────────────────── */
 .emails-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
-.emails-templates-col{display:flex;flex-direction:column;gap:8px}
+.emails-templates-col{display:flex;flex-direction:column;gap:8px;min-width:280px}
 .emails-preview-col{min-width:0}
+/* DEBUG — remove after fix confirmed */
+#emails-tab-compose{outline:3px solid red}
+.emails-layout{outline:3px solid blue}
+.emails-templates-col{outline:3px solid green}
+.emails-preview-col{outline:3px solid orange}
 .email-template-card{padding:12px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff}
 .email-template-card:hover{border-color:var(--purple);background:var(--purple-light)}
 .email-template-card.active{border-color:var(--purple);background:var(--purple-light)}
