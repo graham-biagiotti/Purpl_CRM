@@ -67,8 +67,7 @@ a:hover{color:var(--brand-purple-hover)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* APP SHELL */
-#app-shell{display:none}
-#app-shell.visible{display:block}
+#app-shell{display:none;width:100%}
 
 /* SIDEBAR */
 .sidebar{width:230px;min-height:100vh;background:linear-gradient(180deg, #2d1b4e 0%, #1a1025 45%, #110b1a 100%);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100;box-shadow:2px 0 20px rgba(0,0,0,0.35)}
@@ -104,7 +103,7 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;min-height:100vh;display:flex;flex-direction:column;width:calc(100% - 230px)}
+.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column;min-width:0;overflow:hidden}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
