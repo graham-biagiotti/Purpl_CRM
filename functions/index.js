@@ -861,6 +861,16 @@ exports.stripeWebhook = onRequest(
     try {
       const db = admin.firestore();
       const now = new Date().toISOString();
+
+      // Idempotency: skip if this Stripe event was already processed
+      const eventRef = db.collection('workspace/main/audit_log');
+      const alreadyProcessed = await eventRef
+        .where('stripeEventId', '==', event.id).limit(1).get();
+      if (!alreadyProcessed.empty) {
+        res.status(200).send('already processed');
+        return;
+      }
+
       const paidData = {
         status: 'paid',
         paidDate: now.slice(0, 10),
@@ -924,7 +934,7 @@ exports.stripeWebhook = onRequest(
         }
       }
 
-      // Log to audit
+      // Log to audit (includes stripeEventId for idempotency)
       await db.collection('workspace/main/audit_log').add({
         timestamp: now,
         action: 'paid',
@@ -934,6 +944,7 @@ exports.stripeWebhook = onRequest(
         changedBy: 'stripe',
         changedByEmail: 'stripe-webhook',
         stripeSessionId: session.id,
+        stripeEventId: event.id,
       });
 
       res.status(200).send('ok');
@@ -1112,6 +1123,10 @@ exports.shipStationWebhook = onRequest(
             const sampleIdx = samples.findIndex(s => s.sampleOrderNumber === orderNumber);
             if (sampleIdx >= 0) {
               sampleFound = true;
+              // Idempotency: skip if this sample was already shipped
+              if (samples[sampleIdx].status === 'shipped') {
+                break;
+              }
               // Update the sample entry with tracking
               samples[sampleIdx] = {
                 ...samples[sampleIdx],
