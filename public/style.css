@@ -103,11 +103,11 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column;min-width:0;overflow-x:hidden}
+.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column;max-width:calc(100vw - 230px);overflow-x:hidden}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
-.page{display:none;padding:28px;flex:1;width:100%;min-width:0}
+.page{display:none;padding:28px;flex:1;min-width:0}
 .page.active{display:block}
 
 /* CARDS */
