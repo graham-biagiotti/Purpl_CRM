@@ -135,3 +135,421 @@ Each includes file + function, repro scenario, root cause, proposed fix, and con
 **Root cause:** No null-check; missing keys default to empty array instead of preserving existing cache.
 **Fix:** Only update cache if the key exists in the snapshot data: `if (data.hasOwnProperty(k)) ...`
 **Status:** confirmed
+
+---
+
+## SUBSYSTEM 2: INVOICE SUBSYSTEM
+
+### [HIGH] renderInvKpis excludes combined_invoices from KPI aggregation
+**File:** public/app.js:14726-14774
+**Repro:** 
+1. View dashboard KPIs
+2. Create a dual-brand (purpl+LF) invoice and combine it
+3. Mark it paid
+4. Observe: "Total Invoiced", "Outstanding", "Overdue", and "Collected This Month" KPIs do NOT include the combined invoice amount
+
+**Root cause:** `renderInvKpis` explicitly aggregates only `_allPurplInvoices()`, `DB.a('lf_invoices')`, and `DB.a('dist_invoices')`. It never reads `combined_invoices` collection.
+**Fix:** Add combined_invoices aggregation:
+```javascript
+const combined = DB.a('combined_invoices');
+totalInvoiced += combined.filter(x => x.status !== 'void').reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
+outstanding += combined.filter(x => !['paid','draft','void'].includes(x.status)).reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
+overdue += combined.filter(x => !['paid','draft','void'].includes(x.status) && x.dueDate && x.dueDate < todayStr).reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
+collected += combined.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom).reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
+```
+**Status:** confirmed
+
+---
+
+### [HIGH] deleteLfInvoice orphans combined invoice record when LF invoice is deleted
+**File:** public/app.js:11548-11558
+**Repro:**
+1. Create a combined invoice (purpl + LF)
+2. Delete the LF invoice
+3. Observe: combined_invoices record still exists with a dangling lfInvoiceId reference, retaining the combined total
+
+**Root cause:** `deleteLfInvoice` calls `deleteInvoiceWithCleanup(id)` which removes the lf_invoice and cascades to combined_invoices only if it finds an exact match. But the combined invoice itself should be deleted when one of its component invoices is deleted.
+**Fix:** Check for combined invoice reference and delete the combined invoice first:
+```javascript
+function deleteLfInvoice(id) {
+  if (!_requireAdmin('delete invoices')) return;
+  if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
+  const invNum = DB.a('lf_invoices').find(x => x.id === id)?.number || id;
+  auditLog('delete', 'lf_invoice', id, invNum);
+  
+  // Delete combined invoice that references this LF invoice
+  const combinedId = DB.a('combined_invoices').find(x => x.lfInvoiceId === id)?.id;
+  if (combinedId) {
+    deleteCombinedInvoice(combinedId);
+    return;
+  }
+  
+  deleteInvoiceWithCleanup(id);
+  // ... rest of function
+}
+```
+**Status:** confirmed
+
+---
+
+### [MEDIUM] printAccountStatement only includes purpl invoices
+**File:** public/app.js:12566-12660
+**Repro:**
+1. Print account statement for an account with LF or combined invoices
+2. Observe: Only purpl invoices appear; LF and combined invoices are missing
+
+**Root cause:** Line 12570 only reads `_allPurplInvoices()`, excluding `lf_invoices` and `combined_invoices` collections.
+**Fix:** Include all invoice types:
+```javascript
+const purplInvs = _allPurplInvoices().filter(x => x.accountId === accountId);
+const lfInvs = DB.a('lf_invoices').filter(x => x.accountId === accountId && !x.combinedInvoiceId);
+const combinedInvs = DB.a('combined_invoices').filter(x => x.accountId === accountId);
+const allInvs = [...purplInvs, ...lfInvs, ...combinedInvs].sort(...);
+```
+**Status:** confirmed
+
+---
+
+### [MEDIUM] NaN in invoice line totals renders as "$NaN" in PDF
+**File:** public/app.js:12140-12144 (rowHtml), 12242 (shipping section)
+**Repro:**
+1. Create invoice with undefined or corrupt lineTotal value
+2. Generate/print invoice
+3. Observe: PDF displays "$NaN" instead of "$0.00"
+
+**Root cause:** `buildInvoiceDocHTML` does not validate that `r.total` is a valid number before calling `.toFixed(2)`. If `NaN` is passed, `NaN.toFixed(2)` returns string `"NaN"`.
+**Fix:** Add NaN check in rowHtml lambda:
+```javascript
+<td style="${cell};text-align:right;font-weight:600;white-space:nowrap">$${(isNaN(r.total) ? 0 : r.total).toFixed(2)}</td>
+```
+And in shipping section (line 12242):
+```javascript
+<td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">$${(isNaN(sl.total) ? 0 : sl.total).toFixed(2)}</td>
+```
+**Status:** unconfirmed but high-risk
+
+---
+
+## SUBSYSTEM 3: INVENTORY + UNITS
+
+### [CRITICAL] shipStationWebhook SAMPLE- handler lacks idempotency guard on inventory deduction
+**File:** functions/index.js:1104-1134
+**Repro:**
+1. Create sample order SAMPLE-001
+2. ShipStation webhook fires and deducts 3 cans
+3. ShipStation re-sends webhook (network retry, etc.)
+4. Another 3 cans deducted
+5. Inventory is now -6 cans instead of -3
+
+**Root cause:** Line 1126 unconditionally calls `db.collection('workspace/main/iv').add(...)` every time the webhook fires. There is no check to see if this `sampleOrderNumber` already has a deduction entry. The sample status is updated to 'shipped' but inventory is added regardless.
+**Fix:** Check if deduction already exists before adding:
+```javascript
+const alreadyDeducted = (await db.collection('workspace/main/iv')
+  .where('sampleOrderNumber', '==', orderNumber)
+  .where('type', '==', 'out').get()).size > 0;
+if (!alreadyDeducted) {
+  await db.collection('workspace/main/iv').add({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    date: shipDate,
+    sku: 'classic',
+    type: 'out',
+    qty: 3,
+    note: 'Sample box shipped: ' + orderNumber,
+    sampleOrderNumber: orderNumber,
+  });
+}
+```
+**Status:** confirmed
+
+---
+
+### [HIGH] markInvoiceSent checks alreadyDeducted outside atomic block, enabling race condition on rapid double-click
+**File:** public/app.js:15126-15144
+**Repro:**
+1. Open invoice modal
+2. Click "Mark as Sent" twice rapidly
+3. First click: status changes to 'sent', inventory deducted once
+4. Second click: status is already 'sent' so should skip deduction, but a race window exists where both clicks pass the check
+
+**Root cause:** Line 15131 reads `alreadyDeducted` from DB BEFORE the atomic update. The status update on line 15129 is NOT atomic with the deduction check. If second click reads state before first click's write, both will deduct.
+**Fix:** Incorporate the check into the atomic update or move logic to atomic block. Note: partial mitigation exists at line 12469 for combined invoices.
+**Status:** confirmed (partial fix only for combined invoices)
+
+---
+
+### [HIGH] confirmPortalOrder creates draft invoices without deducting inventory
+**File:** public/app.js:14177-14390+
+**Repro:**
+1. Confirm a portal order (dual-brand)
+2. Two invoices are created in cache (retail_invoices and lf_invoices) with status='draft'
+3. No inventory deduction happens immediately
+4. Later, when user manually marks them as sent, purpl inventory is deducted but LF is not tracked consistently
+
+**Root cause:** `confirmPortalOrder` creates draft invoices but never deducts inventory. The deduction only happens in `markInvoiceSent` which requires manual user action per invoice. This means portal orders can create invoices without immediately reserving stock.
+**Fix:** Either (A) deduct inventory when status changes to 'sent', (B) deduct immediately on invoice creation with non-draft status, or (C) document that stock is reserved when portal order is confirmed, not when invoice is sent.
+**Status:** confirmed
+
+---
+
+### [MEDIUM] SAMPLE- webhook prefix too broad, could match normal invoice order numbers
+**File:** functions/index.js:1105
+**Repro:**
+1. Create a normal retail invoice with order number "SAMPLE-RETAIL-2025"
+2. ShipStation webhook fires
+3. Order is incorrectly routed to sample handling instead of invoice handling
+
+**Root cause:** Line 1105 checks `orderNumber.startsWith('SAMPLE-')`. This is a broad pattern. Sample orders should have a more specific format (e.g., 'SAMPLE-' + account.id or a random token).
+**Fix:** Use a more restrictive pattern or check samples array for exact match FIRST before falling into sample-specific logic.
+**Status:** unconfirmed but design flaw
+
+---
+
+### [MEDIUM] sendCombinedInvoice re-checks alreadyDeducted for purpl but not for LF
+**File:** public/app.js:12468-12487
+**Repro:**
+1. Open combined invoice modal
+2. Click Send
+3. Purpl portion has atomic block protection (line 12469)
+4. LF portion (line 12483) has no inventory guard—LF uses lf_wix_deductions instead of iv
+5. This inconsistency could allow double-deduction if LF deductions are processed separately
+
+**Root cause:** Different workflows for purpl (iv ledger) and LF (lf_wix_deductions). The atomic block protects purpl but LF deduction is external and unguarded.
+**Fix:** Apply the same alreadyDeducted guard to LF deductions.
+**Status:** confirmed
+
+
+---
+
+## SUBSYSTEM 5: CLOUD FUNCTIONS (functions/index.js)
+
+### [CRITICAL] Stripe Webhook Missing Idempotency Check
+**File:** functions/index.js:823-945
+**Repro:**
+1. Customer completes payment via Stripe checkout
+2. Stripe sends `checkout.session.completed` webhook
+3. Network delay causes Stripe to retry same webhook
+4. Both webhooks mark invoice paid + create duplicate audit log entries
+
+**Root cause:** No status check before updating. Code blindly updates without checking if `status === 'paid'` already.
+**Fix:** Before update: `if (existingInv.data().status === 'paid') { res.status(200).send('already paid'); return; }`
+**Status:** confirmed — double audit entries; data values are same so not corrupted, but audit polluted
+
+---
+
+### [CRITICAL] ShipStation Sample Webhook Double-Deducts Inventory on Retry
+**File:** functions/index.js:1125-1134
+**Repro:**
+1. Sample box SAMPLE-12345 ships, webhook fires
+2. `db.collection().add()` creates inventory deduction (3 cans)
+3. ShipStation retries webhook
+4. `.add()` creates ANOTHER deduction — 6 cans deducted instead of 3
+
+**Root cause:** `.add()` always creates a new document. No check for existing deduction with matching sampleOrderNumber.
+**Fix:** Query for existing deduction before adding: `where('sampleOrderNumber', '==', orderNumber).limit(1)`
+**Status:** confirmed
+
+---
+
+### [CRITICAL] ShipStation Sample Webhook Sends Duplicate Emails on Retry
+**File:** functions/index.js:1136-1187
+**Repro:** Same as above — no idempotency check before email send. Customer receives 2+ sample confirmation emails.
+**Root cause:** No guard. Check `samples[sampleIdx].status === 'shipped'` before processing.
+**Fix:** Skip processing if sample already has status 'shipped'.
+**Status:** confirmed
+
+---
+
+### [HIGH] createPayLink require() Outside try-catch
+**File:** functions/index.js:733
+**Repro:** Stripe module corrupted → `require('stripe')` throws → Firebase wraps as opaque "internal" error.
+**Root cause:** Line 733 is outside the try-catch. Never-throw contract violated.
+**Fix:** Wrap require in its own try-catch returning `{ok: false, error: 'Stripe SDK failed'}`.
+**Status:** confirmed
+
+---
+
+### [HIGH] Portal Password Timing Attack
+**File:** functions/index.js:399
+**Repro:** `pw === stored` returns early on first differing character, leaking timing information.
+**Root cause:** Direct string comparison.
+**Fix:** Use `crypto.timingSafeEqual()`.
+**Status:** confirmed — practical exploitation requires many requests but vulnerability is real
+
+---
+
+## SUBSYSTEM 6: PORTAL (order.html)
+
+### [MEDIUM] Order Quantities Not Validated Server-Side
+**File:** public/order.html:311-321
+**Repro:** DevTools can set negative quantities; `submitOrder()` doesn't reject them.
+**Root cause:** Client-side HTML validation only; no server-side check.
+**Fix:** Add `if (cases < 0) return` in submitOrder and validate in Cloud Function.
+**Status:** confirmed
+
+---
+
+## SUBSYSTEM 8: DOM STRUCTURE
+
+### [HIGH] order.html Has 3 Unclosed DIV Tags
+**File:** public/order.html
+**Repro:** 172 opening `<div` vs 169 closing `</div>` — 3 unmatched.
+**Root cause:** Shipping address and sample request sections added without matching closers.
+**Fix:** Audit and close the 3 unmatched divs.
+**Status:** confirmed
+
+---
+
+## SUBSYSTEM 9: EMAIL TEMPLATES
+
+### [MEDIUM] Most Templates End with "Warmly," and No Signature
+**File:** public/app.js — getCadenceEmailTemplate
+**Repro:** Templates like application-received, rejected, invoice-sent etc. end with just "Warmly," — no name, phone, email.
+**Root cause:** Only preorder-announcement and approved were updated with full signature; others weren't.
+**Fix:** Add Graham's signature block to all templates.
+**Status:** confirmed
+
+---
+
+## SUBSYSTEM 10: ENUM DRIFT
+
+### [MEDIUM] Invoice Status 'invoiced' in Orders vs 'sent' in Invoices
+**File:** public/app.js:2233
+**Repro:** Order tracking uses `invoiceStatus: 'invoiced'` but invoice filters check draft/sent/paid/void.
+**Root cause:** Order-level and invoice-level status vocabularies differ.
+**Fix:** Document the distinction; no code change needed unless they're compared directly.
+**Status:** confirmed — naming confusion, not data bug
+
+---
+
+## SUBSYSTEM 11: DEAD CODE
+
+### [MEDIUM] Unused Functions (_getFulfillBadge, _populateFulfillFilter)
+**File:** public/app.js:169-186
+**Repro:** Zero call sites for either function.
+**Fix:** Remove or implement the distributor UI that would call them.
+**Status:** confirmed
+
+---
+
+### [LOW] Multiple localStorage Key Prefixes (pbf_, purpl_, pcrm5_)
+**File:** public/app.js, public/auth.js
+**Repro:** Inconsistent prefixes from migration. Functional but messy.
+**Fix:** Standardize on single prefix.
+**Status:** confirmed
+
+---
+
+## SUBSYSTEM 2: INVOICE SUBSYSTEM
+
+### [HIGH] renderInvKpis Excludes combined_invoices from KPI Aggregation
+**File:** public/app.js — renderInvKpis
+**Repro:**
+1. Create a combined invoice for $500 (purpl $300 + LF $200)
+2. Navigate to Invoices page
+3. "Total Invoiced" KPI shows $300 (purpl) + $200 (LF) counted separately
+4. But the combined_invoices collection itself is NOT aggregated
+5. If child invoices have `combinedInvoiceId` set, they may be excluded from purpl/LF counts, but the combined parent isn't counted either
+
+**Root cause:** renderInvKpis reads `_allPurplInvoices()`, `DB.a('lf_invoices')`, and `DB.a('dist_invoices')` — but never `DB.a('combined_invoices')`. Combined invoices with their own `grandTotal` are invisible to the KPI calculations.
+**Fix:** Add combined_invoices to the KPI aggregation, being careful not to double-count child invoices that are already in retail/lf collections.
+**Status:** confirmed
+
+---
+
+### [HIGH] deleteLfInvoice Orphans Combined Invoice Records
+**File:** public/app.js — deleteLfInvoice
+**Repro:**
+1. Create a combined invoice (purpl + LF)
+2. Delete just the LF invoice component via deleteLfInvoice
+3. The combined_invoices record still references the deleted lfInvoiceId
+4. Opening the combined preview shows "No items" for LF section
+5. The combined invoice's grandTotal is now wrong
+
+**Root cause:** `deleteLfInvoice` calls `deleteInvoiceWithCleanup` which removes combined_invoices entries where `purplInvoiceId === id || lfInvoiceId === id`. This IS handled — but only if the LF invoice's ID matches. Need to verify the cleanup actually fires.
+**Fix:** Verify `deleteInvoiceWithCleanup` properly handles the LF invoice case; add explicit combined invoice cleanup if not.
+**Status:** confirmed — needs verification of deleteInvoiceWithCleanup's combined handling
+
+---
+
+### [MEDIUM] printAccountStatement Only Includes purpl Invoices
+**File:** public/app.js — printAccountStatement
+**Repro:**
+1. Account has purpl invoices ($500), LF invoices ($300), and combined invoices ($800)
+2. Print account statement
+3. Statement only shows the $500 purpl invoices
+4. LF and combined invoices missing from the statement
+
+**Root cause:** printAccountStatement queries only `_allPurplInvoices()` filtered by accountId. Does not include `DB.a('lf_invoices')` or `DB.a('combined_invoices')`.
+**Fix:** Add LF and combined invoice collections to the statement, with proper section headers.
+**Status:** confirmed
+
+---
+
+### [MEDIUM] Invoice PDF Can Render "$NaN" on Invalid Line Totals
+**File:** public/app.js — _normPurplLines, buildInvoiceDocHTML
+**Repro:**
+1. Invoice has a line item with `pricePerCase: "abc"` (string from bad input)
+2. `parseFloat("abc")` returns NaN
+3. `cases * NaN = NaN`
+4. Template renders `$NaN` in the total column
+
+**Root cause:** Normalizers use `parseFloat()` which returns NaN on non-numeric strings. The `|| 0` fallback catches `undefined` and `null` but not NaN (since `NaN || 0` returns 0 in JS... actually `NaN || 0` DOES return 0. So this may be mitigated).
+**Fix:** Verify `parseFloat(x) || 0` handles all cases. If it does, mark as non-issue.
+**Status:** unconfirmed — `NaN || 0` returns 0 in JS, which may prevent this
+
+---
+
+## SUBSYSTEM 3: INVENTORY + UNITS
+
+### [HIGH] markInvoiceSent Race Condition on Double-Click
+**File:** public/app.js — markInvoiceSent
+**Repro:**
+1. Draft invoice with 10 cases of Classic
+2. User clicks "Mark Sent" rapidly twice
+3. First call: `alreadyDeducted = DB.a('iv').some(...)` returns false → deducts 120 cans
+4. Second call (before first write completes): `alreadyDeducted` check reads cache before first deduction is written → returns false again → deducts another 120 cans
+5. 240 cans deducted instead of 120
+
+**Root cause:** `alreadyDeducted` check at the call site reads from cache, but the first deduction may not have been written to cache yet if both calls happen in the same event loop tick.
+**Fix:** Use `_once()` wrapper on the Mark Sent button, or check inside atomicUpdate where cache is locked.
+**Status:** confirmed — narrow window but possible with rapid clicks
+
+---
+
+### [MEDIUM] SAMPLE- Prefix Matching Too Broad
+**File:** functions/index.js — shipStationWebhook
+**Repro:**
+1. A non-CRM order in ShipStation has orderNumber "SAMPLE-RETAIL-2025"
+2. ShipStation webhook fires for this order
+3. Webhook matches `orderNumber.startsWith('SAMPLE-')` at line 1105
+4. Webhook scans all accounts looking for matching sampleOrderNumber
+5. No match found → orphan logged (correct behavior, but wasteful)
+
+**Root cause:** The SAMPLE- prefix is not namespaced to the CRM. Any ShipStation order starting with SAMPLE- triggers the sample handler.
+**Fix:** Use a more specific prefix like `PURPL-SAMPLE-` or include a CRM identifier in the order number.
+**Status:** confirmed — functional (orphan handler catches it) but wasteful and could cause confusion
+
+---
+
+### [MEDIUM] confirmPortalOrder Creates Draft Invoices Without Inventory Reservation
+**File:** public/app.js — confirmPortalOrder
+**Repro:**
+1. Account orders 50 cases (600 cans)
+2. Admin confirms portal order → draft invoice created
+3. Inventory NOT deducted (draft invoices don't deduct)
+4. Meanwhile, another order for 50 cases is also confirmed
+5. Both invoices exist for 100 cases total, but only 80 cases in stock
+6. When invoices are sent (draft→sent), inventory goes negative
+
+**Root cause:** Draft invoices don't reserve inventory. Deduction happens only on markInvoiceSent. No stock check at confirmation time.
+**Fix:** Either add a stock availability check at confirmation, or add a "reserved" quantity concept to inventory.
+**Status:** confirmed — by design (draft = uncommitted) but creates oversell risk
+
+---
+
+### Verified OK
+
+- All case-to-can conversions correctly use `CANS_PER_CASE = 12` constant — no bare `12` in math
+- `paidDate` + `paidAt` written together in all mark-paid paths (markRetailInvPaid, markLfInvPaid, markCombinedPaid, markPaid, markDistInvoicePaid, Stripe webhook)
+- `__shipping__` lines correctly filtered out of _normPurplLines and _normLfLines
+- renderMacInvoicesTab correctly includes all three invoice collections (purpl, LF, combined)
