@@ -56,7 +56,7 @@
 <div id="app-shell">
 
   <!-- SIDEBAR -->
-  <nav class="sidebar">
+  <nav class="sidebar" id="main-sidebar">
     <div class="sb-logo">
       <div class="sb-logo-row">
         <img src="/images/favicon-180.png" alt="" class="sb-logo-img">
@@ -820,6 +820,7 @@
         <button class="tab" data-po-tab="confirmed">Confirmed</button>
         <button class="tab" data-po-tab="notify">Notify Me List</button>
         <button class="tab" data-po-tab="links">All Links</button>
+        <button class="tab" data-po-tab="samples">🧪 Sample Requests</button>
         <button class="btn sm" style="margin-left:auto" onclick="renderPreOrders(true)">↺ Refresh</button>
       </div>
       <!-- Tab panes -->
@@ -828,6 +829,7 @@
       <div id="po-pane-confirmed" style="display:none"></div>
       <div id="po-pane-notify" style="display:none"></div>
       <div id="po-pane-links" style="display:none"></div>
+      <div id="po-pane-samples" style="display:none"></div>
     </div>
 
     <!-- ═══════ PRODUCTION ═══════ -->
@@ -1421,6 +1423,11 @@
                 <input type="number" id="portal-price-per-case" step="0.01" min="0" placeholder="Leave blank to hide price">
               </div>
               <div class="form-group" style="margin-bottom:12px">
+                <label>Launch Date (for pre-order invoicing)</label>
+                <input type="date" id="portal-launch-date">
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">Pre-order invoices default to this date. Editable per-invoice.</div>
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
                 <label>Portal Password</label>
                 <input type="text" id="portal-password-setting" placeholder="Leave blank for no password">
                 <div style="font-size:11px;color:var(--muted);margin-top:3px">Customers without a personalized link need this password to access the order form.</div>
@@ -1571,6 +1578,22 @@
 
       <!-- Tab 5: Integrations -->
       <div id="stab-integrations" class="stab-pane" style="display:none">
+        <div class="card" style="max-width:600px;margin-bottom:16px" id="shipstation-settings">
+          <div class="section-hdr"><h2>📦 ShipStation</h2></div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Push "Ship" invoices to ShipStation. Tracking numbers sync back automatically when you buy a label in ShipStation.</p>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Store ID</label>
+            <input id="set-shipstation-store" type="number" placeholder="e.g. 123456">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Settings → Selling Channels in ShipStation. Leave blank to use default store.</div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Ship-from address</label>
+            <input id="set-shipstation-from" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
+          </div>
+          <button class="btn primary" onclick="saveShipStationSettings()">Save ShipStation Settings</button>
+          <button class="btn sm" onclick="testShipStationConnection()" style="margin-left:8px">⚡ Test Connection</button>
+          <div id="shipstation-test-result" style="font-size:12px;margin-top:8px"></div>
+        </div>
         <div class="card" style="max-width:600px" id="integrations-admin-only">
           <div class="section-hdr"><h2>AI — Anthropic</h2></div>
           <div class="form-group" style="max-width:480px;margin-bottom:16px">
@@ -1657,73 +1680,37 @@
       <!-- KPI row -->
       <div id="inv-page-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
 
-      <!-- Three columns -->
-      <div class="inv-three-col">
-
-        <!-- purpl column -->
-        <div class="inv-col" id="inv-col-purpl">
-          <div class="inv-col-header purpl" onclick="toggleInvCol('purpl')">
-            <div>
-              <div class="inv-col-title">💜 purpl Invoices</div>
-              <div class="inv-col-summary" id="inv-col-purpl-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openInvModal()" style="font-weight:600">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
+      <!-- Unified invoice list -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="inv-toolbar">
+          <div style="display:flex;gap:5px;flex-wrap:wrap" id="inv-type-pills">
+            <button class="ac-brand-btn active" data-type="all" onclick="setInvTypeFilter('all')">All</button>
+            <button class="ac-brand-btn" data-type="purpl" onclick="setInvTypeFilter('purpl')">💜 purpl</button>
+            <button class="ac-brand-btn" data-type="lf" onclick="setInvTypeFilter('lf')">🌿 Lavender Fields</button>
+            <button class="ac-brand-btn" data-type="combined" onclick="setInvTypeFilter('combined')">🤝 Combined</button>
+            <button class="ac-brand-btn" data-type="dist" onclick="setInvTypeFilter('dist')">🚚 Distributor</button>
           </div>
-          <div class="inv-col-compact" id="inv-col-purpl-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-purpl-expanded"></div>
+          <div class="spacer" style="flex:1"></div>
+          <select id="inv-status-filter" onchange="renderInvoicesPage()" style="width:auto;min-width:130px">
+            <option value="all">All statuses</option>
+            <option value="open">Open (unpaid)</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="overdue">Overdue</option>
+            <option value="paid">Paid</option>
+            <option value="void">Void</option>
+          </select>
+          <input id="inv-search" type="search" placeholder="Search invoices…" oninput="renderInvoicesPage()" style="width:190px" autocomplete="off">
         </div>
-
-        <!-- LF column -->
-        <div class="inv-col" id="inv-col-lf">
-          <div class="inv-col-header lf" onclick="toggleInvCol('lf')">
-            <div>
-              <div class="inv-col-title">🌿 LF Invoices</div>
-              <div class="inv-col-summary" id="inv-col-lf-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-lf-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-lf-expanded"></div>
+        <div class="tbl-wrap" style="border:none;border-radius:0">
+          <table>
+            <thead><tr>
+              <th>Invoice</th><th>Account</th><th>Issued</th><th>Due</th>
+              <th style="text-align:right">Amount</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody id="inv-unified-tbody"></tbody>
+          </table>
         </div>
-
-        <!-- Combined column -->
-        <div class="inv-col" id="inv-col-combined">
-          <div class="inv-col-header combined" onclick="toggleInvCol('combined')">
-            <div>
-              <div class="inv-col-title">🤝 Combined Invoices</div>
-              <div class="inv-col-summary" id="inv-col-combined-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-combined-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-combined-expanded"></div>
-        </div>
-
-        <!-- Distributors column -->
-        <div class="inv-col" id="inv-col-dist">
-          <div class="inv-col-header dist" onclick="toggleInvCol('dist')">
-            <div>
-              <div class="inv-col-title">🚚 Distributor Invoices</div>
-              <div class="inv-col-summary" id="inv-col-dist-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();pickDistForInvoice()" style="font-weight:600;background:#6b7280;border-color:#6b7280">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-dist-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-dist-expanded"></div>
-        </div>
-
       </div>
     </div>
 
@@ -2123,6 +2110,7 @@
     <div id="mac-tab-samples" class="tab-pane" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <span style="font-size:13px;font-weight:600;color:var(--muted)">Sample History</span>
+        <button class="btn sm primary" id="mac-tab-ship-sample-btn">📦 Send Sample Box</button>
         <button class="btn sm" id="mac-tab-log-sample-btn">+ Log Sample</button>
       </div>
       <div id="mac-samples-tab-content"></div>
@@ -2262,10 +2250,17 @@
       </div>
       <div class="form-group"><label>External Ref (optional)</label><input id="lfi-link" placeholder="Ext. ref or invoice #"></div>
     </div>
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="lfi-delivery-method" onchange="lfiDeliveryMethodChange()">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="lfi-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="lfi-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
+    <div id="lfi-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <label style="font-size:12px;font-weight:600;color:var(--fg)">Line Items</label>
@@ -2802,10 +2797,17 @@
         </select>
       </div>
     </div>
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="iv-delivery-method" onchange="ivDeliveryMethodChange()">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="iv-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="iv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
+    <div id="iv-ship-status" style="display:none"></div>
     <div style="margin-bottom:14px">
       <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
       <div id="iv-line-items"></div>
@@ -3257,9 +3259,15 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     </div>
 
-    <div class="form-row col2">
+    <div class="form-row col3">
+      <div class="form-group"><label>Delivery method</label>
+        <select id="nciv-delivery-method">
+          <option value="deliver">Deliver (local)</option>
+          <option value="ship">Ship (ShipStation)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Delivery date (optional)</label><input type="date" id="nciv-delivery-date"></div>
-      <div class="form-group"><label>Shipping / tracking # (optional)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
+      <div class="form-group"><label>Tracking # (auto-fills if shipped)</label><input id="nciv-tracking" placeholder="e.g. UPS 1Z999AA1..."></div>
     </div>
 
     <!-- purpl section — same pattern as separate purpl invoice -->
