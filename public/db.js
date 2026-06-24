@@ -342,7 +342,10 @@ const DB = {
         if (window.toast) toast('⚠️ Save failed — retrying…');
         setTimeout(() => this._doSave(key), 2000 * retries);
       } else {
-        if (window.toast) toast('⚠️ Save failed after 3 retries.');
+        // After 3 retries, re-add to dirty keys so the NEXT user
+        // action triggers another save attempt. Data stays in cache.
+        this._saveDirtyKeys.add(key);
+        if (window.toast) toast('⚠️ Save failed after 3 retries. Your changes are cached locally — they will sync when connection is restored.', 10000);
       }
     });
   },
@@ -415,12 +418,25 @@ const DB = {
   _writeDoc(key, item) {
     if (!this._db || !this._firestoreReady || !item?.id) return;
     this._collRef(key).doc(item.id).set(item, { merge: true })
-      .catch(e => console.warn(`[db] Immediate write failed for ${key}/${item.id}:`, e));
+      .then(() => this._updateSyncUI('synced'))
+      .catch(e => {
+        console.warn(`[db] Immediate write failed for ${key}/${item.id}:`, e);
+        this._updateSyncUI('error');
+        // Re-queue for debounced batch save as fallback
+        this._saveDirtyKeys.add(key);
+        this._scheduleSave(key);
+      });
   },
   _deleteDoc(key, id) {
     if (!this._db || !this._firestoreReady || !id) return;
     this._collRef(key).doc(id).delete()
-      .catch(e => console.warn(`[db] Immediate delete failed for ${key}/${id}:`, e));
+      .then(() => this._updateSyncUI('synced'))
+      .catch(e => {
+        console.warn(`[db] Immediate delete failed for ${key}/${id}:`, e);
+        this._updateSyncUI('error');
+        this._saveDirtyKeys.add(key);
+        this._scheduleSave(key);
+      });
   },
 
   // ── Public API ──
