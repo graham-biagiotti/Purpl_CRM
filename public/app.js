@@ -1014,7 +1014,10 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>If there's ever anything we can do better, please don't hesitate to let us know.</p>
-        <p>With gratitude,</p>`)
+        <p>With gratitude,</p>
+        <p>Graham Biagiotti<br>
+        Pumpkin Blossom Farm<br>
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'custom': {
       subject: `A message from Pumpkin Blossom Farm`,
