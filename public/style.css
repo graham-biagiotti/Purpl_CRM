@@ -103,7 +103,7 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;flex:1 1 0;max-width:calc(100vw - 230px);min-height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.main{position:fixed;left:230px;top:0;right:0;bottom:0;overflow-y:scroll;display:flex;flex-direction:column}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
@@ -263,7 +263,7 @@ textarea{resize:vertical;min-height:60px}
 /* PRINT */
 @media print{
   .sidebar,.topbar,.btn,.no-print{display:none!important}
-  .main{width:100%;margin-left:0}
+  .main{position:static;left:auto;right:auto;top:auto;bottom:auto;overflow:visible;margin-left:0}
   .page{display:block!important;padding:0}
   table{font-size:11px}
   th,td{padding:6px 8px}
@@ -533,7 +533,7 @@ th{padding:11px 14px}
   }
   .sidebar.mobile-open{transform:translateX(0)}
 
-  .main{width:100%;margin-left:0;padding-bottom:80px}
+  .main{position:static;left:auto;right:auto;top:auto;bottom:auto;overflow:visible;margin-left:0;padding-bottom:80px}
 
   .mobile-bottom-nav{display:flex}
   .topbar-hamburger{display:flex;align-items:center;justify-content:center}
