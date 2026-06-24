@@ -12567,20 +12567,29 @@ function printAccountStatement(accountId) {
   const a = DB.a('ac').find(x => x.id === accountId);
   if (!a) return;
 
-  const purplInvs = _allPurplInvoices().filter(x => x.accountId === accountId);
-  const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid' };
+  // Collect invoices from ALL collections for this account
+  // Exclude children that are part of a combined invoice (combined parent has the total)
+  const allInvs = [
+    ..._allPurplInvoices().filter(x => x.accountId === accountId && !x.combinedInvoiceId)
+      .map(x => ({...x, _type: 'purpl', _amt: parseFloat(x.amount||x.total||0), _date: x.date||''})),
+    ...DB.a('lf_invoices').filter(x => x.accountId === accountId && !x.combinedInvoiceId)
+      .map(x => ({...x, _type: 'LF', _amt: parseFloat(x.total||0), _date: x.issued||x.date||''})),
+    ...DB.a('combined_invoices').filter(x => x.accountId === accountId)
+      .map(x => ({...x, _type: 'Combined', _amt: parseFloat(x.grandTotal||0), _date: x.date||''})),
+  ];
+  const statuses  = { paid:'Paid', draft:'Draft', sent:'Sent', overdue:'Overdue', partial:'Partial', unpaid:'Unpaid', void:'Void' };
 
   let totalOutstanding = 0;
-  const rows = purplInvs
+  const rows = allInvs
     .slice()
-    .sort((x, y) => (x.date || '') > (y.date || '') ? -1 : 1)
+    .sort((x, y) => (x._date || '') > (y._date || '') ? -1 : 1)
     .map(iv => {
-      const balance = iv.status === 'paid' ? 0 : (iv.amount || 0);
+      const balance = (iv.status === 'paid' || iv.status === 'void') ? 0 : iv._amt;
       totalOutstanding += balance;
       return `<tr>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.number || iv.invoiceNumber || '—')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${fmtD(iv.date)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtC(iv.amount || 0)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.number || iv.invoiceNumber || '—')} <span style="font-size:10px;color:#9ca3af">${iv._type}</span></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${fmtD(iv._date)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${fmtC(iv._amt)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${statuses[iv.status] || (iv.status || 'Unpaid')}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:${balance > 0 ? '600' : '400'}">${balance > 0 ? fmtC(balance) : '—'}</td>
       </tr>`;

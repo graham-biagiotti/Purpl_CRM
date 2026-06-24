@@ -58,3 +58,17 @@ Tracks each BUG_SWEEP.md finding → what changed → risk/assumptions.
 
 ### localStorage key prefix inconsistency (LOW)
 **Not fixed, skipped.** The mixed prefixes (pbf_, purpl_, pcrm5_) are a legacy artifact but functionally harmless — each key is read with its specific prefix. Standardizing would require a migration step and risk losing user preferences.
+
+---
+
+## BATCH 4: Invoice Aggregation Completeness
+
+### renderInvKpis excludes combined_invoices (HIGH)
+**Not reproduced, skipped.** On closer inspection, combined invoices' child records (purpl + LF) are ALREADY in retail_invoices and lf_invoices with `combinedInvoiceId` set. The KPIs correctly count these child records. Adding combined_invoices would DOUBLE-COUNT the amounts. The existing behavior is correct.
+
+### deleteLfInvoice orphans combined records (HIGH)
+**Not reproduced, skipped.** `deleteInvoiceWithCleanup` (line 59-77) already handles this: line 69-70 checks if the deleted invoice is a `purplInvoiceId` or `lfInvoiceId` of any combined_invoices record and removes it. The cascade is correct.
+
+### printAccountStatement missing LF/combined invoices (MEDIUM)
+**Fix:** Rewrote the invoice collection in `printAccountStatement` to gather from all four collections: `_allPurplInvoices()` (excluding combined children), `lf_invoices` (excluding combined children), `combined_invoices` (with grandTotal), and dist_invoices (if account matches). Each row shows the invoice type badge (purpl/LF/Combined). Void invoices excluded from outstanding balance.
+**Risk:** Low — additive change, doesn't affect existing data or writes.
