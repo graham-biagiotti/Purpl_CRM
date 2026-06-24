@@ -1105,11 +1105,13 @@ exports.shipStationWebhook = onRequest(
         if (orderNumber.startsWith('SAMPLE-')) {
           // Find the account that has this sample order number
           const acSnap = await db.collection('workspace/main/ac').get();
+          let sampleFound = false;
           for (const acDoc of acSnap.docs) {
             const ac = acDoc.data();
             const samples = ac.samples || [];
             const sampleIdx = samples.findIndex(s => s.sampleOrderNumber === orderNumber);
             if (sampleIdx >= 0) {
+              sampleFound = true;
               // Update the sample entry with tracking
               samples[sampleIdx] = {
                 ...samples[sampleIdx],
@@ -1194,6 +1196,16 @@ exports.shipStationWebhook = onRequest(
               });
               break;
             }
+          }
+          if (!sampleFound) {
+            console.warn('Sample shipment orphaned — no matching account:', orderNumber);
+            await db.collection('workspace/main/audit_log').add({
+              timestamp: now, action: 'sample_orphaned',
+              entityType: 'shipment', entityName: orderNumber,
+              changedBy: 'shipstation', changedByEmail: 'shipstation-webhook',
+              trackingNumber: trackingStr, carrier: carrierStr,
+              note: 'ShipStation shipped a sample box but no matching account record was found',
+            }).catch(() => {});
           }
           continue; // Don't process sample orders as invoice orders
         }
