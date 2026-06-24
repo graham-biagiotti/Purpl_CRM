@@ -148,3 +148,28 @@ function markInvoiceSent(id) {
 ```
 
 **Control flow:** The Set guard is synchronous and checked BEFORE any cache mutation or deduction. A second call with the same ID during the same event loop tick (or from a rapid async double-fire at line 2394) returns immediately. The guard is cleared after deductions are written. Structurally impossible to double-deduct regardless of timing.
+
+### 2. Failed-write requeue — permanent vs transient distinction
+
+**Current requeue code (after fix):**
+```javascript
+}).catch(e => {
+  const code = e?.code || '';
+  const permanent = ['permission-denied','not-found','invalid-argument',
+    'failed-precondition','already-exists','resource-exhausted',
+    'unimplemented'].includes(code);
+  if (permanent) {
+    toast('⚠️ Save rejected by server: ' + (e.message || code));
+    return;  // ← NO requeue, NO retry. Hard stop.
+  }
+  // Transient: retry up to 3 times, then requeue for next user action
+  const retries = (this._saveRetries?.[key] || 0) + 1;
+  ...
+```
+
+**Failure types and behavior:**
+- `permission-denied` (Firestore rules rejection): **permanent** — stop immediately, show error. No requeue.
+- `not-found`, `invalid-argument`, `failed-precondition`, `already-exists`, `resource-exhausted`, `unimplemented`: **permanent** — same.
+- `unavailable`, `deadline-exceeded`, `cancelled`, `aborted`, `internal`, `data-loss`, `unknown`, no code (offline): **transient** — retry 3x, then requeue for next user action.
+
+**Risk:** If a write is permanently rejected, the cache and Firestore will diverge until the page is refreshed (snapshot will re-sync). The toast tells the user their changes were NOT saved. This is the correct behavior — retrying a rules rejection forever would be worse.

@@ -339,6 +339,14 @@ const DB = {
     }).catch(e => {
       console.error(`[db] Save error for ${key}:`, e);
       this._updateSyncUI('error');
+      // Permanent failures (rules/permission) should not retry endlessly
+      const code = e?.code || '';
+      const permanent = ['permission-denied','not-found','invalid-argument','failed-precondition','already-exists','resource-exhausted','unimplemented'].includes(code);
+      if (permanent) {
+        if (window.toast) toast('⚠️ Save rejected by server: ' + (e.message || code) + '. Changes NOT saved.', 10000);
+        return;
+      }
+      // Transient failures (offline, timeout) — retry
       const retries = (this._saveRetries?.[key] || 0) + 1;
       if (!this._saveRetries) this._saveRetries = {};
       this._saveRetries[key] = retries;
@@ -346,8 +354,6 @@ const DB = {
         if (window.toast) toast('⚠️ Save failed — retrying…');
         setTimeout(() => this._doSave(key), 2000 * retries);
       } else {
-        // After 3 retries, re-add to dirty keys so the NEXT user
-        // action triggers another save attempt. Data stays in cache.
         this._saveDirtyKeys.add(key);
         if (window.toast) toast('⚠️ Save failed after 3 retries. Your changes are cached locally — they will sync when connection is restored.', 10000);
       }
