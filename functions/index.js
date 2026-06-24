@@ -148,7 +148,7 @@ exports.sendOrderConfirmation = onCall(
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
     <p style="line-height:1.7">Thanks for your ${data.mode === 'preorder' ? 'pre-order' : 'order'} for <strong>${escHtml(data.accountName)}</strong>. I've got it and I'm on it personally.</p>
-    ${escHtml(data.orderSummary || '').replace(/\n/g, '<br>')}
+    ${data.orderSummary || ''}
     ${data.shipAddress && data.shipAddress.street1 ? `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0">
       <tr><td style="padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;font-size:13px;color:#374151">
@@ -168,10 +168,10 @@ exports.sendOrderConfirmation = onCall(
     </table>
     <p style="line-height:1.7;font-size:14px;margin-top:16px">I'm your direct contact for this account — reply to this email, call, or text anytime.</p>
     <p>Graham Biagiotti<br>Pumpkin Blossom Farm<br>603-748-3038 · graham@pumpkinblossomfarm.com</p>
-    ${data.portalLink ? `
-    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center">
-      <a href="${escHtml(data.portalLink)}" style="color:${accentColor};font-size:13px;text-decoration:none">Place another order →</a>
-    </div>` : ''}
+    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#6b7280">
+      ${data.portalLink ? `<a href="${escHtml(data.portalLink)}" style="color:${accentColor};text-decoration:none">Place another order →</a><br>` : ''}
+      Wholesale info: <a href="https://pbfwholesale.com" style="color:${accentColor};text-decoration:none">pbfwholesale.com</a>
+    </div>
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>

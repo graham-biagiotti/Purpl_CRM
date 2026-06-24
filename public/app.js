@@ -4053,7 +4053,7 @@ function selectEmailsAccount(accountId) {
   _renderEmailsRightCol();
 }
 
-function _renderEmailsRightCol() {
+async function _renderEmailsRightCol() {
   const el = document.getElementById('emails-preview-col');
   if (!el) return;
 
@@ -4084,6 +4084,13 @@ function _renderEmailsRightCol() {
         extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
         extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
       }
+    }
+    // Fetch portal password for templates that need it
+    if (['preorder-announcement', 'approved'].includes(_emailsSelectedTemplate)) {
+      try {
+        const _cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
+        extra.portalPassword = _cfg.exists ? (_cfg.data().portalPassword || '') : '';
+      } catch(e) { console.warn('Portal password fetch failed:', e); }
     }
     const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
     if (tpl) {
@@ -13662,7 +13669,7 @@ function _renderPoAll() {
       return `<tr>
         <td style="white-space:nowrap;font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
         <td>${acLink}</td>
-        <td>${brandBadges}</td>
+        <td>${brandBadges}${o.requestSample ? ' <span class="badge" style="font-size:10px;background:#faf5ff;color:#7B4FA0;border:1px solid #e9d5ff">🧪 Sample</span>' : ''}</td>
         <td>${o.isMatched ? '<span class="badge green">✓ Matched</span>' : '<span class="badge red">? Unmatched</span>'}</td>
         <td>${cases||'—'}</td>
         <td>${cans||'—'}</td>
@@ -14413,39 +14420,22 @@ async function confirmPortalOrder() {
       toast('✓ Order confirmed · Invoice draft created');
     }
 
-    // Send confirmation email and log cadence
-    const emailTo = d.billingEmail || acct.email;
-    if (emailTo && d.accountId && !d.isProspect) {
-      const contacts = acct.contacts || [];
-      const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
-      const contactName = primary.name || acct.contact || 'there';
-      const portalLink = acct.orderPortalToken
-        ? `https://purpl-crm.web.app/order?t=${acct.orderPortalToken}`
-        : null;
-      let summaryParts = '';
-      if (hasPurpl) summaryParts += purplItems.map(i => `${escHtml(i.label||i.sku)}: ${i.qty} cases`).join(', ');
-      if (hasLf) {
-        if (summaryParts) summaryParts += '<br>';
-        summaryParts += lfItems.map(i => `${escHtml(i.skuName)}: ${i.cases} cases`).join(', ');
-      }
-      const orderSummary = `<p style="margin:12px 0 4px"><strong>Order confirmed</strong></p><p style="margin:4px 0">${summaryParts}</p>`;
-      callSendOrderConfirmation(emailTo, acct.name || d.accountName, contactName, orderSummary, portalLink, !!hasLf, _portalOrderId, d.accountId, d.shipAddress, d.requestSample, d.mode)
-        .then(result => {
-          const entry = {
-            id: uid(),
-            stage: 'order_confirmation',
-            sentAt: new Date().toISOString(),
-            sentBy: _currentUserName(),
-            method: 'resend',
-          };
-          if (result?.id) entry.sentMessageId = result.id;
-          DB.update('ac', d.accountId, a => ({
-            ...a,
-            lastContacted: today(),
-            cadence: _pushCadence(a.cadence, entry),
-          }));
-        })
-        .catch(err => console.warn('Order confirmation email failed:', err));
+    // Note: confirmation email is NOT sent here — the customer already
+    // received one from the portal at submit time. This avoid duplicates.
+    // Log the confirmation to the account's cadence instead.
+    if (d.accountId && !d.isProspect) {
+      const entry = {
+        id: uid(),
+        stage: 'order_confirmation',
+        sentAt: new Date().toISOString(),
+        sentBy: _currentUserName(),
+        method: 'crm_confirm',
+      };
+      DB.update('ac', d.accountId, a => ({
+        ...a,
+        lastContacted: today(),
+        cadence: _pushCadence(a.cadence, entry),
+      }));
     }
 
     // If prospect — prompt to convert
@@ -14729,6 +14719,7 @@ function renderInvUnifiedList() {
       <button class="btn xs" onclick="${r.edit}">${r.type==='combined' ? 'Preview' : 'Edit'}</button>
       ${r.print ? `<button class="btn xs" onclick="${r.print}">🖨️</button>` : ''}
       ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
+      ${r.inv.deliveryMethod==='ship' && !r.inv.shipStationOrderId ? `<button class="btn xs" onclick="pushInvoiceToShipStation('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">📦 Ship</button>` : ''}
     </td>
   </tr>`).join('') || `<tr><td colspan="7" class="empty">No invoices match${q ? ' "' + escHtml(q) + '"' : ''}</td></tr>`;
 }
