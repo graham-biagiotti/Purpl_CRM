@@ -103,11 +103,11 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.main{margin-left:230px;min-height:100vh}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
-.page{display:none;padding:28px;flex:1;min-width:0}
+.page{display:none;padding:28px}
 .page.active{display:block}
 
 /* CARDS */
@@ -873,8 +873,8 @@ body.offline-mode #app-shell { padding-top: 40px; }
 ::-webkit-scrollbar-thumb:hover { background: #b9a8d6; background-clip: content-box; }
 
 /* ── Page enters with a soft fade ────────────────────────── */
-@keyframes pageIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.page.active { animation: pageIn .18s ease-out; }
+@keyframes pageIn { from { opacity: 0; } to { opacity: 1; } }
+.page.active { animation: pageIn .15s ease-out; }
 
 /* ── Modals ease in instead of snapping ──────────────────── */
 @keyframes overlayIn { from { background: rgba(0,0,0,0); } to { background: rgba(0,0,0,.45); } }
