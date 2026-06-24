@@ -106,3 +106,45 @@ Tracks each BUG_SWEEP.md finding → what changed → risk/assumptions.
 ### Dead code removal (MEDIUM)
 **Fix:** Removed `_getFulfillBadge()` and `_populateFulfillFilter()` — both defined but never called from any render function or onclick handler.
 **Risk:** None — zero call sites confirmed via grep.
+
+---
+
+## REOPENED FINDINGS
+
+### 1. markInvoiceSent double-deduction — in-flight guard added
+
+**Before:**
+```javascript
+function markInvoiceSent(id) {
+  const inv = findInvoice(id);
+  const col = _invoiceCol(id);
+  DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
+  const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
+  if (inv && inv.status === 'draft' && !alreadyDeducted) {
+    // ... deduct inventory
+  }
+  renderInvoicesPage();
+  toast('Marked as sent ✓');
+}
+```
+
+**After:**
+```javascript
+const _markSentInFlight = new Set();
+function markInvoiceSent(id) {
+  if (_markSentInFlight.has(id)) return;      // ← guard: no-op if already in flight
+  _markSentInFlight.add(id);                  // ← lock before any mutation
+  const inv = findInvoice(id);
+  const col = _invoiceCol(id);
+  DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
+  const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
+  if (inv && inv.status === 'draft' && !alreadyDeducted) {
+    // ... deduct inventory
+  }
+  _markSentInFlight.delete(id);               // ← release after all mutations
+  renderInvoicesPage();
+  toast('Marked as sent ✓');
+}
+```
+
+**Control flow:** The Set guard is synchronous and checked BEFORE any cache mutation or deduction. A second call with the same ID during the same event loop tick (or from a rapid async double-fire at line 2394) returns immediately. The guard is cleared after deductions are written. Structurally impossible to double-deduct regardless of timing.

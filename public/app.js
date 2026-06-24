@@ -15135,7 +15135,10 @@ function _sendDistInvoiceReminder(invId) {
   }).catch(()=>toast('Failed to send reminder'));
 }
 
+const _markSentInFlight = new Set();
 function markInvoiceSent(id) {
+  if (_markSentInFlight.has(id)) return;
+  _markSentInFlight.add(id);
   const inv = findInvoice(id);
   const col = _invoiceCol(id);
   DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
@@ -15151,6 +15154,7 @@ function markInvoiceSent(id) {
       }
     });
   }
+  _markSentInFlight.delete(id);
   renderInvoicesPage();
   toast('Marked as sent ✓');
 }
