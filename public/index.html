@@ -267,6 +267,12 @@
           </div>
           <div class="card">
             <div class="section-hdr">
+              <h2>💵 Recent Payments</h2>
+            </div>
+            <div id="dash-payments"></div>
+          </div>
+          <div class="card">
+            <div class="section-hdr">
               <h2>🕘 Recent Activity</h2>
             </div>
             <div id="dash-activity"></div>
@@ -1651,73 +1657,38 @@
       <!-- KPI row -->
       <div id="inv-page-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"></div>
 
-      <!-- Three columns -->
-      <div class="inv-three-col">
-
-        <!-- purpl column -->
-        <div class="inv-col" id="inv-col-purpl">
-          <div class="inv-col-header purpl" onclick="toggleInvCol('purpl')">
-            <div>
-              <div class="inv-col-title">💜 purpl Invoices</div>
-              <div class="inv-col-summary" id="inv-col-purpl-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openInvModal()" style="font-weight:600">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
+      <!-- Unified invoice list -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="inv-toolbar">
+          <div style="display:flex;gap:5px;flex-wrap:wrap" id="inv-type-pills">
+            <button class="ac-brand-btn active" data-type="all" onclick="setInvTypeFilter('all')">All</button>
+            <button class="ac-brand-btn" data-type="purpl" onclick="setInvTypeFilter('purpl')">💜 purpl</button>
+            <button class="ac-brand-btn" data-type="lf" onclick="setInvTypeFilter('lf')">🌿 Lavender Fields</button>
+            <button class="ac-brand-btn" data-type="combined" onclick="setInvTypeFilter('combined')">🤝 Combined</button>
+            <button class="ac-brand-btn" data-type="dist" onclick="setInvTypeFilter('dist')">🚚 Distributor</button>
           </div>
-          <div class="inv-col-compact" id="inv-col-purpl-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-purpl-expanded"></div>
+          <div class="spacer" style="flex:1"></div>
+          <select id="inv-status-filter" onchange="renderInvoicesPage()" style="width:auto;min-width:130px">
+            <option value="all">All statuses</option>
+            <option value="open">Open (unpaid)</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="overdue">Overdue</option>
+            <option value="paid">Paid</option>
+            <option value="void">Void</option>
+          </select>
+          <input id="inv-search" type="search" placeholder="Search invoices…" oninput="renderInvoicesPage()" style="width:190px" autocomplete="off">
         </div>
-
-        <!-- LF column -->
-        <div class="inv-col" id="inv-col-lf">
-          <div class="inv-col-header lf" onclick="toggleInvCol('lf')">
-            <div>
-              <div class="inv-col-title">🌿 LF Invoices</div>
-              <div class="inv-col-summary" id="inv-col-lf-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-lf-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-lf-expanded"></div>
+        <div class="tbl-wrap" style="border:none;border-radius:0">
+          <table>
+            <thead><tr>
+              <th>Invoice</th><th>Account</th><th>Issued</th><th>Due</th>
+              <th style="text-align:right">Amount</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody id="inv-unified-tbody"></tbody>
+          </table>
         </div>
-
-        <!-- Combined column -->
-        <div class="inv-col" id="inv-col-combined">
-          <div class="inv-col-header combined" onclick="toggleInvCol('combined')">
-            <div>
-              <div class="inv-col-title">🤝 Combined Invoices</div>
-              <div class="inv-col-summary" id="inv-col-combined-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-combined-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-combined-expanded"></div>
-        </div>
-
-        <!-- Distributors column -->
-        <div class="inv-col" id="inv-col-dist">
-          <div class="inv-col-header dist" onclick="toggleInvCol('dist')">
-            <div>
-              <div class="inv-col-title">🚚 Distributor Invoices</div>
-              <div class="inv-col-summary" id="inv-col-dist-summary"></div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <button class="btn xs primary" onclick="event.stopPropagation();pickDistForInvoice()" style="font-weight:600;background:#6b7280;border-color:#6b7280">+ New Invoice</button>
-              <span class="inv-col-toggle">▼</span>
-            </div>
-          </div>
-          <div class="inv-col-compact" id="inv-col-dist-compact"></div>
-          <div class="inv-col-expanded" id="inv-col-dist-expanded"></div>
-        </div>
-
+      </div>
       </div>
     </div>
 
