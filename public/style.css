@@ -107,8 +107,8 @@ a:hover{color:var(--brand-purple-hover)}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
-.page{display:none;padding:28px;flex:1;min-width:0}
-.page.active{display:block}
+.page{display:none;padding:28px;flex:1;min-width:0;align-self:stretch}
+.page.active{display:flex;flex-direction:column}
 
 /* CARDS */
 .card{background:var(--card);border:1px solid #e9d5ff;border-radius:12px;padding:20px;box-shadow:0 2px 10px rgba(123,79,160,0.07),0 1px 3px rgba(0,0,0,0.04);transition:box-shadow .2s}
@@ -644,8 +644,8 @@ th{padding:11px 14px}
 }
 
 /* ── Emails page layout ──────────────────────────────────── */
-.emails-layout{display:flex;flex-direction:column;gap:16px}
-.emails-templates-col{display:flex;flex-wrap:wrap;gap:8px}
+.emails-layout{display:block}
+.emails-templates-col{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .email-template-card{padding:10px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff;flex:0 0 auto}
 .email-template-card:hover{border-color:var(--purple);background:var(--purple-light)}
 .email-template-card.active{border-color:var(--purple);background:var(--purple-light)}
