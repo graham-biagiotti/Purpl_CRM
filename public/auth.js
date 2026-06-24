@@ -94,7 +94,7 @@ async function bootApp() {
     if (user) {
       authScreen.style.display = 'none';
       loadingScreen.style.display = 'flex';
-      appShell.style.display = 'none';
+      appShell.classList.remove('visible');
 
       const slowTimer = setTimeout(() => {
         const el = loadingScreen.querySelector('p') || loadingScreen;
@@ -140,14 +140,14 @@ async function bootApp() {
       checkMigration();
 
       loadingScreen.style.display = 'none';
-      appShell.style.display = 'flex';
+      appShell.classList.add('visible');
 
       window.onAppReady();
 
     } else {
       authScreen.style.display = 'flex';
       loadingScreen.style.display = 'none';
-      appShell.style.display = 'none';
+      appShell.classList.remove('visible');
       authStatus.textContent = '';
       signInBtn.disabled = false;
     }
