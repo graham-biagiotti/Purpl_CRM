@@ -382,8 +382,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <h2>Delivery &amp; Timing</h2>
 
       <div class="info-note">
-        Min. 1 case &nbsp;·&nbsp; Lead time 1–2 weeks &nbsp;·&nbsp; Direct delivery in New England and surrounding states.
-        Questions? <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
+        Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont.
+        Other areas are served via scheduled routes or parcel shipping.<br>
+        Orders below 8 cases are available for warehouse pickup or parcel shipment (USPS, UPS, FedEx) — shipping will be billed at cost.<br>
+        Please allow 7 business days lead time for delivery.<br><br>
+        Questions? Contact Graham directly — <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> · <a href="tel:6037483038">603-748-3038</a>
       </div>
 
       <div class="form-group" style="margin-bottom:12px">
@@ -428,10 +431,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     <div class="terms-block">
       <strong>Wholesale Terms</strong>
       <div style="font-size:12px;color:#374151;line-height:1.8;margin-top:6px">
-        <strong>Payment:</strong> Net 30 from invoice date. 2% monthly finance charge on late payments.<br>
-        <strong>Shipping:</strong> Free delivery on 8+ cases in New England. Under 8 cases ship via carrier at cost.<br>
-        <strong>Order Issues:</strong> Inspect on arrival. Report within 48 hours.<br>
-        <strong>Pricing:</strong> Subject to change with 30 days' notice.
+        <strong>Payment:</strong> Net 30 days from invoice date. A 2% monthly finance charge may apply to late payments.<br>
+        <strong>Delivery:</strong> Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont. Other areas served via scheduled routes or parcel. Orders below 8 cases available for warehouse pickup or parcel shipment — shipping billed at cost.<br>
+        <strong>Lead Time:</strong> Please allow 7 business days for delivery.<br>
+        <strong>Damaged/Short Shipments:</strong> Please inspect your shipment upon arrival and report any issues within 48 hours of receipt.<br>
+        <strong>Pricing:</strong> We reserve the right to update pricing with 30 days' notice.
       </div>
       <div style="margin:12px 0">
         <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#374151">
@@ -479,13 +483,16 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       🖨️ Print Confirmation
     </button>
     <p class="ty-note" style="margin-top:20px">
-      Your invoice will come from <strong style="color:var(--purpl)">lavender@pbfwholesale.com</strong> once delivery is confirmed (Net 30).
+      Your invoice will come from <strong style="color:var(--purpl)">lavender@pbfwholesale.com</strong> — payment is Net 30 from the invoice date.
     </p>
     <p class="ty-note">
-      Questions? <a href="mailto:graham@pumpkinblossomfarm.com" style="color:var(--purpl)">graham@pumpkinblossomfarm.com</a>
+      I'm your direct contact — <a href="mailto:graham@pumpkinblossomfarm.com" style="color:var(--purpl)">graham@pumpkinblossomfarm.com</a>
       &nbsp;·&nbsp; <a href="tel:6037483038" style="color:var(--purpl)">603-748-3038</a>
     </p>
-    <p class="ty-small">Need to make changes? Resubmit via your portal link.</p>
+    <p class="ty-note" style="font-size:12px">
+      Wholesale info: <a href="https://pbfwholesale.com" style="color:var(--purpl)">pbfwholesale.com</a>
+    </p>
+    <p class="ty-small">Need to make changes? Resubmit via your portal link or reply to the confirmation email.</p>
   </div>
 
 </div><!-- /.container -->
@@ -493,8 +500,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 <!-- Footer -->
 <div class="op-footer">
   <p>Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</p>
-  <p><a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a> &nbsp;·&nbsp; <a href="https://pumpkinblossomfarm.com" target="_blank">pumpkinblossomfarm.com</a></p>
-  <p>Questions? <a href="mailto:lavender@pumpkinblossomfarm.com">lavender@pumpkinblossomfarm.com</a></p>
+  <p><a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a> &nbsp;·&nbsp; <a href="https://pbfwholesale.com" target="_blank">pbfwholesale.com</a> &nbsp;·&nbsp; <a href="https://pumpkinblossomfarm.com" target="_blank">pumpkinblossomfarm.com</a></p>
+  <p>Graham Biagiotti &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a></p>
 </div>
 
 <script>
@@ -862,12 +869,18 @@ function init() {
   }).catch(function() {});
 
   if (token) {
-    // Token present — bypass password gate, show form directly
-    document.getElementById('order-form').style.display = '';
+    // Token present — show loading state, then reveal form after lookup completes
+    document.getElementById('order-form').style.display = 'none';
     document.getElementById('password-gate').style.display = 'none';
+    var loadingEl = document.createElement('div');
+    loadingEl.id = 'token-loading';
+    loadingEl.style.cssText = 'max-width:400px;margin:60px auto;text-align:center;color:#6b7280;font-size:14px';
+    loadingEl.innerHTML = '<div style="margin-bottom:12px">Loading your account...</div><div class="loading-spinner" style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#7B4FA0;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto"></div>';
+    document.querySelector('.container').insertBefore(loadingEl, document.getElementById('order-form'));
 
     firebase.functions().httpsCallable('lookupPortalToken')({ token: token })
       .then(function(result) {
+        if (loadingEl) loadingEl.remove();
         var d = result.data;
         if (d.found) {
           accountId = d.accountId;
@@ -876,17 +889,21 @@ function init() {
           isPbf = d.isPbf || false;
           isMatched = true;
           isProspect = d.isProspect || false;
+          document.getElementById('order-form').style.display = '';
           _applyMatchedAccount(d);
         } else {
+          document.getElementById('order-form').style.display = '';
           var errEl = document.getElementById('error-msg');
           if (errEl) {
-            errEl.textContent = 'This order link has expired or is invalid. Please contact us for a new link.';
+            errEl.textContent = 'This order link may have expired. Please contact graham@pumpkinblossomfarm.com for a new link.';
             errEl.style.display = 'block';
           }
         }
       })
       .catch(function(e) {
         console.error('Token lookup error:', e);
+        if (loadingEl) loadingEl.remove();
+        document.getElementById('order-form').style.display = '';
       });
   } else {
     // No token — show password gate

@@ -786,73 +786,76 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>Warmly,</p>`)
     },
     'preorder-announcement': {
-      subject: `purpl Lavender Lemonade — now accepting pre-orders`,
+      subject: `Introducing purpl — lavender lemonade wholesale`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p>We're excited to introduce <strong>purpl</strong> — a classic lemonade balanced with gentle lavender, crafted on our farm in Warner, New Hampshire.</p>
+        <p style="line-height:1.7">I'm Graham from Pumpkin Blossom Farm in Warner, NH. I wanted to reach out personally because we're launching <strong>purpl</strong> — our lavender lemonade made with real lavender from our farm — and I think it would be a great fit for ${businessName}.</p>
+        <p style="line-height:1.7">It's a classic lemonade with a gentle lavender twist. Clean ingredients, nothing artificial. The kind of thing customers pick up once and come back for.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
-          <tr><td style="padding:20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff;text-align:center">
-            <div style="font-size:20px;font-weight:700;color:#4B2082;margin-bottom:6px">Classic Lavender Lemonade</div>
-            <div style="font-size:14px;color:#6b7280">12 fl oz · 12 cans per case · $2.30/can wholesale</div>
-            <div style="font-size:13px;color:#6b7280;margin-top:4px">MSRP $3.29 · Case of 12: $27.60</div>
+          <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
+            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
+              <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
+              <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
+              <tr><td style="padding-right:24px">Suggested retail</td><td style="font-weight:600">$3.29</td></tr>
+              <tr><td style="padding-right:24px">Format</td><td>12 fl oz cans</td></tr>
+            </table>
           </td></tr>
         </table>
-        <p>We're now accepting pre-orders so you can be first in line when we launch. No commitment until we confirm availability and schedule your delivery.</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+        <p style="line-height:1.7">We're taking pre-orders now ahead of launch. No commitment — just let us know you're interested and we'll reach out to confirm availability and delivery.</p>
+        <p style="line-height:1.7">I've set up a wholesale account for you. You can place your pre-order through the link below, or just reply to this email and tell me what you'd like.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR PERSONALIZED ORDER PORTAL</div>
-            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Place a Pre-Order →</a>
-            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link — it's your dedicated wholesale portal</div>
-            ${extra.portalPassword ? `<div style="font-size:12px;color:#374151;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
+            <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
+            ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
+            <div style="font-size:12px;color:#9ca3af;margin-top:8px">This is your personalized link — bookmark it for future orders</div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
-          <tr><td style="padding:16px 20px;background:#f0f7f1;border-radius:8px;border:1px solid #b8d4c0">
-            <div style="font-size:13px;font-weight:600;color:#166534;margin-bottom:8px">What to expect:</div>
-            <div style="font-size:13px;color:#374151;line-height:1.7">
-              1. Place your pre-order through the link above<br>
-              2. We'll confirm availability and delivery timing<br>
-              3. Free delivery on 8+ cases throughout New England<br>
-              4. Payment: Net 30 from delivery<br>
-              5. You can also request a free 3-can sample box on the order form
+          <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #1a1a2e">
+            <div style="font-size:13px;color:#374151;line-height:1.8">
+              <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
+              <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>Payment:</strong> Net 30 from invoice date.<br>
+              <strong>Samples:</strong> Request a free 3-can taster on the order form — no obligation.<br>
+              <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
             </div>
           </td></tr>
         </table>
-        <p style="font-size:14px;color:#6b7280;line-height:1.7">Questions? Reply to this email or call 603-748-3038. We'd love to have purpl on your shelves.</p>
-        <p>Warmly,</p>`)
+        <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything — ordering, delivery, questions, whatever you need. Just reply to this email or give me a call.</p>
+        <p>Graham Biagiotti<br>
+        Pumpkin Blossom Farm<br>
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'approved': {
-      subject: `Welcome to the wholesale program — your retailer portal is ready`,
+      subject: `Your wholesale account is ready — ${businessName}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p>We're thrilled to welcome <strong>${businessName}</strong> as a retail partner. Your wholesale account has been approved!</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+        <p style="line-height:1.7">Great news — your wholesale account for <strong>${businessName}</strong> has been approved. You're all set to start ordering.</p>
+        <p style="line-height:1.7">I've set up a personalized order portal for you below. You can also visit <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a> for product info and our sell sheet.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR RETAILER ORDER PORTAL</div>
-            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Place Your First Order →</a>
-            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link — it's your personalized portal</div>
-            <div style="font-size:12px;color:#374151;margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb">
-              You can also order at <a href="https://purpl-crm.web.app/order" style="color:${accentColor}">purpl-crm.web.app/order</a>
-              ${extra.portalPassword ? `<br>Portal password: <strong>${extra.portalPassword}</strong>` : ''}
-            </div>
+            <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place Your First Order</a>
+            ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
+            <div style="font-size:12px;color:#9ca3af;margin-top:8px">Bookmark this link — it's your personalized portal for all future orders</div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
-          <tr><td style="padding:16px 20px;background:#f0f7f1;border-radius:8px;border:1px solid #b8d4c0">
-            <div style="font-size:13px;font-weight:600;color:#166534;margin-bottom:8px">How to order:</div>
-            <div style="font-size:13px;color:#374151;line-height:1.7">
-              1. Click the portal link above<br>
-              2. Select your products and quantities<br>
-              3. Submit — we'll confirm and schedule delivery<br><br>
-              Or just reply to this email with what you need and we'll take care of it!
+          <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #1a1a2e">
+            <div style="font-size:13px;color:#374151;line-height:1.8">
+              <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
+              <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>Payment:</strong> Net 30 from invoice date. Invoices from lavender@pbfwholesale.com.<br>
+              <strong>Lead time:</strong> Please allow 7 business days.
             </div>
           </td></tr>
         </table>
-        <p style="font-size:14px">Payment terms: <strong>Net 30</strong> from delivery. Invoices from <strong>lavender@pbfwholesale.com</strong>.</p>
-        <p>Questions? Reply to this email or call 603-748-3038 anytime.</p>
-        <p>Warmly,</p>`)
+        <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text — whatever's easiest.</p>
+        <p>Graham Biagiotti<br>
+        Pumpkin Blossom Farm<br>
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'rejected': {
       subject: `Re: Your wholesale application — Pumpkin Blossom Farm`,
