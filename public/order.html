@@ -1037,6 +1037,8 @@ function showThankYou(data) {
   var ty = document.getElementById('thankyou');
   ty.style.display = 'block';
   document.getElementById('ty-heading').textContent = 'Thank you, ' + data.accountName + '!';
+  var subEl = document.getElementById('ty-subtext');
+  if (subEl && portalMode === 'preorder') subEl.textContent = 'Pre-order received! We\'ll confirm availability and delivery timing soon.';
 
   var orderData = data.orderData || {};
   var summaryHtml = '';
@@ -1074,6 +1076,17 @@ function showThankYou(data) {
   if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + escHtml(data.poNumber) + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + escHtml(data.billingEmail) + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from delivery</span></div>';
+
+  // Shipping address
+  var sa = data.orderData?.shipAddress || {};
+  if (sa.street1) {
+    summaryHtml += '<div class="summary-row"><span>Ships To</span><span>' + escHtml(sa.street1) + (sa.street2 ? ', ' + escHtml(sa.street2) : '') + '<br>' + escHtml(sa.city || '') + (sa.state ? ', ' + escHtml(sa.state) : '') + ' ' + escHtml(sa.zip || '') + '</span></div>';
+  }
+
+  // Sample request
+  if (data.orderData?.requestSample) {
+    summaryHtml += '<div style="background:#faf5ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#4B2082">🧪 <strong>Sample box requested</strong> — 3 cans of Classic Lavender Lemonade. We\'ll review and ship it with tracking.</div>';
+  }
 
   if (data.bothBrands) {
     summaryHtml += '<div style="background:#eff6ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#1e40af">You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.</div>';

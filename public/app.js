@@ -3016,7 +3016,7 @@ function _acCardHTML(a, muted) {
         ${a.type?`<span class="badge gray">${a.type}</span>`:''}
         ${statusBadge(AC_STATUS,a.status)}
         ${needsAttn?`<span class="badge amber">⚠ Needs Attention</span>`:''}
-        ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
+        ${(()=>{const ls=(a.samples||[]).slice().sort((x,y)=>y.date>x.date?1:-1)[0];if(!ls)return '';if(ls.status==='shipped'&&!ls.followUpDone)return `<span class="badge green" style="font-size:10px">📦 Sample shipped</span>`;if(ls.shipStationOrderId&&!ls.status)return `<span class="badge blue" style="font-size:10px">🧪 Sample pending ship</span>`;const pending=ls&&!ls.followUpDone&&ls.followUpDate;if(pending&&ls.followUpDate<today())return `<span class="badge red" style="font-size:10px">🧪 Follow-up overdue</span>`;if(pending)return `<span class="badge amber" style="font-size:10px">🧪 Sample sent</span>`;return `<span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:10px">🧪 ${fmtD(ls.date)}</span>`;})()}
         ${a.emailOptOut?`<span class="badge gray" style="font-size:10px">✉ Unsubscribed</span>`:''}
       </div>
     </div>

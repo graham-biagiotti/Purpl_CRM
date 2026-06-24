@@ -1059,7 +1059,7 @@ exports.shipStationStatus = onCall(
 // adds a Shipping line item to the invoice, recalculates total,
 // updates dates, and sets readyToSend so the CRM notifies the user.
 exports.shipStationWebhook = onRequest(
-  {secrets: [shipStationApiKey], invoker: 'public'},
+  {secrets: [shipStationApiKey, resendApiKey], invoker: 'public'},
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
     try {
@@ -1101,6 +1101,104 @@ exports.shipStationWebhook = onRequest(
         const carrierStr  = [...new Set(info.carriers.filter(Boolean))].join(', ');
         const shipCost    = Math.round(info.totalShipCost * 100) / 100;
 
+        // ── Sample box shipments (SAMPLE- prefix) ─────────────
+        if (orderNumber.startsWith('SAMPLE-')) {
+          // Find the account that has this sample order number
+          const acSnap = await db.collection('workspace/main/ac').get();
+          for (const acDoc of acSnap.docs) {
+            const ac = acDoc.data();
+            const samples = ac.samples || [];
+            const sampleIdx = samples.findIndex(s => s.sampleOrderNumber === orderNumber);
+            if (sampleIdx >= 0) {
+              // Update the sample entry with tracking
+              samples[sampleIdx] = {
+                ...samples[sampleIdx],
+                trackingNumber: trackingStr,
+                carrier: carrierStr,
+                shippedAt: now,
+                status: 'shipped',
+              };
+              await acDoc.ref.update({ samples });
+
+              // Deduct 3 cans of Classic from inventory
+              await db.collection('workspace/main/iv').add({
+                id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+                date: shipDate,
+                sku: 'classic',
+                type: 'out',
+                qty: 3,
+                note: 'Sample box shipped: ' + orderNumber,
+                sampleOrderNumber: orderNumber,
+              });
+
+              // Send sample-shipped confirmation email to the account
+              const email = ac.email;
+              if (email) {
+                const {Resend} = require('resend');
+                const resend = new Resend(process.env.RESEND_API_KEY);
+                const contactName = (ac.contacts && ac.contacts.length) ? (ac.contacts[0].name || 'there') : 'there';
+                const sampleHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:28px 40px;text-align:center">
+    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+      alt="purpl" width="120" height="48" style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+    <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
+  </td></tr>
+  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+    <p>Hi ${escHtml(contactName)},</p>
+    <p>Your <strong>purpl sample box</strong> is on its way! Here are the details:</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
+      <tr><td style="padding:16px 20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
+        <div style="font-size:13px;color:#6b7280;margin-bottom:8px"><strong>What's inside:</strong> 3 cans of Classic Lavender Lemonade</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:8px"><strong>Carrier:</strong> ${escHtml(carrierStr || 'See tracking link')}</div>
+        <div style="font-size:13px;color:#6b7280"><strong>Tracking:</strong> ${escHtml(trackingStr)}</div>
+      </td></tr>
+    </table>
+    <p>We hope you love it! Once you've tried it, we'd love to hear what you think — and when you're ready to order, your personalized portal link is below.</p>
+    ${ac.orderPortalToken ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
+      <tr><td align="center">
+        <a href="https://purpl-crm.web.app/order?t=${ac.orderPortalToken}" style="display:inline-block;background:#7B4FA0;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order →</a>
+      </td></tr>
+    </table>` : ''}
+    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    lavender@pbfwholesale.com · 603-748-3038
+  </td></tr>
+</table></td></tr></table></body></html>`;
+                try {
+                  await resend.emails.send({
+                    from: 'lavender@pbfwholesale.com',
+                    to: email,
+                    subject: 'Your purpl sample box has shipped!',
+                    html: sampleHtml,
+                  });
+                } catch (emailErr) {
+                  console.warn('Sample confirmation email failed:', emailErr.message);
+                }
+              }
+
+              // Audit log
+              await db.collection('workspace/main/audit_log').add({
+                timestamp: now, action: 'sample_shipped',
+                entityType: 'account', entityId: acDoc.id,
+                entityName: ac.name || '', changedBy: 'shipstation',
+                changedByEmail: 'shipstation-webhook',
+                trackingNumber: trackingStr, carrier: carrierStr,
+              });
+              break;
+            }
+          }
+          continue; // Don't process sample orders as invoice orders
+        }
+
+        // ── Regular invoice shipments ─────────────────────────
         // Find the invoice by number across all collections
         const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
         for (const col of cols) {
