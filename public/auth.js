@@ -153,9 +153,11 @@ async function bootApp() {
     }
   });
 
-  window.addEventListener('beforeunload', () => {
+  const _flushOnExit = () => {
     if (typeof DB !== 'undefined' && DB._flushPendingSave) DB._flushPendingSave();
-  });
+  };
+  window.addEventListener('beforeunload', _flushOnExit);
+  window.addEventListener('pagehide', _flushOnExit);
 }
 
 function checkMigration() {

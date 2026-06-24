@@ -173,3 +173,35 @@ function markInvoiceSent(id) {
 - `unavailable`, `deadline-exceeded`, `cancelled`, `aborted`, `internal`, `data-loss`, `unknown`, no code (offline): **transient** — retry 3x, then requeue for next user action.
 
 **Risk:** If a write is permanently rejected, the cache and Firestore will diverge until the page is refreshed (snapshot will re-sync). The toast tells the user their changes were NOT saved. This is the correct behavior — retrying a rules rejection forever would be worse.
+
+### 3. beforeunload flush — rewritten for synchronous fire-and-forget
+
+**Problem:** `_flushPendingSave()` called `_doSave(key)` → `_saveCollection(key)` which starts with `colRef.get()` — an async read that won't complete before the page dies. The entire pending write was lost on tab close.
+
+**Events bound:** Now both `beforeunload` AND `pagehide` (more reliable on mobile/Safari). Handler is a shared function `_flushOnExit`.
+
+**New flush behavior:**
+```javascript
+_flushPendingSave() {
+  // Skip async batch-save path. Instead, fire immediate .set()
+  // calls per dirty doc — starts IndexedDB write that survives
+  // tab close via Firestore persistence.
+  this._saveDirtyKeys.forEach(key => {
+    if (this._saveTimers[key]) {
+      clearTimeout(this._saveTimers[key]);
+      this._saveTimers[key] = null;
+    }
+    if (COLLECTION_KEYS.includes(key)) {
+      (this._cache[key] || []).forEach(item => {
+        if (item?.id) this._writeDoc(key, item);
+      });
+    }
+  });
+  if (this._saveDirtyKeys.size > 0) this._saveConfig();
+  this._saveDirtyKeys.clear();
+}
+```
+
+**Why this works:** `_writeDoc` calls `collRef.doc(id).set(item, {merge:true})`. With IndexedDB persistence enabled, the Firestore SDK writes to IndexedDB FIRST (in a microtask that starts before the page unloads), then to the network on next session. The `.set()` call returns a Promise but the IndexedDB transaction is already queued — it survives tab death.
+
+**Why the old path didn't work:** `_saveCollection` did `colRef.get().then(snap => batch.commit())` — the `.get()` is a full round-trip that never completes before unload, so `batch.commit()` never fires.

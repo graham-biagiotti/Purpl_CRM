@@ -289,13 +289,24 @@ const DB = {
   },
 
   _flushPendingSave() {
+    // On page unload, skip the async batch-save path (it does a .get()
+    // that won't complete before the page dies). Instead, fire immediate
+    // .set() calls for each dirty doc — these start an IndexedDB write
+    // that survives tab close via Firestore's persistence layer.
     this._saveDirtyKeys.forEach(key => {
       if (this._saveTimers[key]) {
         clearTimeout(this._saveTimers[key]);
         this._saveTimers[key] = null;
-        this._doSave(key);
+      }
+      if (COLLECTION_KEYS.includes(key)) {
+        (this._cache[key] || []).forEach(item => {
+          if (item?.id) this._writeDoc(key, item);
+        });
       }
     });
+    // Config is a single doc — flush it directly
+    if (this._saveDirtyKeys.size > 0) this._saveConfig();
+    this._saveDirtyKeys.clear();
   },
 
   _doSave(key) {
