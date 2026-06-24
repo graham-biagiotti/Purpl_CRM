@@ -11,7 +11,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --purpl:#8B5FBF; --purpl-dark:#2D1B4E;
+  --purpl:#8B5FBF; --purpl-dark:#6B4F9A;
   --purpl-mid:#6B3FA0; --purpl-soft:#F0EBF8;
   --purpl-border:#D4B8F0;
   --lf-green:#4a7c59; --lf-soft:#f0f7f1; --lf-border:#b8d4c0;
@@ -20,11 +20,11 @@
 body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);margin:0;padding:0;min-height:100vh}
 
 /* ── HEADER ── */
-.op-header{background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 50%,#6B3FA0 100%);padding:40px 24px 48px;text-align:center}
+.op-header{background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:40px 24px 48px;text-align:center}
 .op-header-logos{display:flex;gap:32px;align-items:center;justify-content:center;margin-bottom:24px}
-.op-header-divider{width:1px;height:48px;background:rgba(255,255,255,0.25);flex-shrink:0}
+.op-header-divider{width:1px;height:44px;background:rgba(255,255,255,0.5);flex-shrink:0}
 .op-header h1{font-family:'Playfair Display',serif;font-size:28px;color:white;font-weight:400;margin-bottom:8px}
-.op-header-sub{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.65);font-weight:300}
+.op-header-sub{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.85);font-weight:300}
 
 /* ── CONTAINER ── */
 .container{max-width:600px;margin:0 auto;padding:32px 16px}
@@ -135,7 +135,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
 /* ── FOOTER ── */
 .op-footer{background:var(--purpl-dark);padding:24px;text-align:center}
-.op-footer,.op-footer p,.op-footer span{font-family:'Inter',sans-serif;color:rgba(255,255,255,0.5);font-size:12px;line-height:2}
+.op-footer,.op-footer p,.op-footer span{font-family:'Inter',sans-serif;color:rgba(255,255,255,0.7);font-size:12px;line-height:2}
 .op-footer a{color:rgba(255,255,255,0.7);text-decoration:none;transition:color 0.15s}
 .op-footer a:hover{color:rgba(255,255,255,0.9)}
 
@@ -177,10 +177,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 <div class="op-header">
   <div class="op-header-logos">
     <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      alt="purpl" style="max-width:110px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
+      alt="purpl" style="max-width:120px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
     <div class="op-header-divider"></div>
     <img src="/images/lf-logo-circle-transparent.png"
-      alt="Lavender Fields" style="max-width:52px;filter:brightness(0) invert(1);opacity:0.9" onerror="this.style.display='none'">
+      alt="Lavender Fields" style="max-width:48px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
   </div>
   <h1>Wholesale Order Portal</h1>
   <p class="op-header-sub">Net 30 payment terms &nbsp;·&nbsp; Invoiced from Pumpkin Blossom Farm</p>
@@ -1483,20 +1483,20 @@ function printPortalOrder(orderId) {
         '<title>Order &mdash; ' + _e(o.accountName||'') + '</title>' +
         '<style>' +
         'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
-        '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #2D1B4E;margin-bottom:28px}' +
+        '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #6B4F9A;margin-bottom:28px}' +
         '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
-        '.hdr h1{font-size:22px;font-weight:700;color:#2D1B4E;margin:0 0 4px}' +
+        '.hdr h1{font-size:22px;font-weight:700;color:#6B4F9A;margin:0 0 4px}' +
         '.hdr .sub{font-size:13px;color:#6b7280}' +
         '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
-        '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:3px}' +
+        '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:3px}' +
         '.val{font-size:14px;font-weight:600}' +
         '.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e}' +
         'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
-        'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+        'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
         'th:last-child,td:last-child{text-align:right}' +
         'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
         '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
-        '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#9ca3af;font-size:11px;line-height:1.8}' +
+        '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
         '@media print{button{display:none!important}}' +
         '</style></head><body>' +
         '<div class="hdr">' +
@@ -1522,7 +1522,7 @@ function printPortalOrder(orderId) {
         'We\'ll be in touch to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> — payment is Net 30 from invoice date.' +
         '</div>' +
         '<div style="text-align:center;margin:20px 0">' +
-        '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+        '<button onclick="window.print()" style="background:#6B4F9A;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
         '</div>' +
         '<div class="footer">' +
         'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +
@@ -1589,19 +1589,19 @@ function printCurrentOrder() {
     '<title>Order Confirmation &mdash; ' + _e(data.accountName) + '</title>' +
     '<style>' +
     'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
-    '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #2D1B4E;margin-bottom:28px}' +
+    '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #6B4F9A;margin-bottom:28px}' +
     '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
-    '.hdr h1{font-size:22px;font-weight:700;color:#2D1B4E;margin:0 0 4px}' +
+    '.hdr h1{font-size:22px;font-weight:700;color:#6B4F9A;margin:0 0 4px}' +
     '.hdr .sub{font-size:13px;color:#6b7280}' +
     '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
-    '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:3px}' +
+    '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:3px}' +
     '.val{font-size:14px;font-weight:600}' +
     'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
-    'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+    'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
     'th:last-child,td:last-child{text-align:right}' +
     'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
     '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
-    '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#9ca3af;font-size:11px;line-height:1.8}' +
+    '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
     '@media print{button{display:none!important}}' +
     '</style></head><body>' +
     '<div class="hdr">' +
@@ -1631,7 +1631,7 @@ function printCurrentOrder() {
     (data.bothBrands ? '<br><br>You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.' : '') +
     '</div>' +
     '<div style="text-align:center;margin:20px 0">' +
-    '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+    '<button onclick="window.print()" style="background:#6B4F9A;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
     '</div>' +
     '<div class="footer">' +
     'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +

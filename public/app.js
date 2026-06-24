@@ -326,24 +326,24 @@ function _signatureHTML() {
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
-  style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);border-radius:8px 8px 0 0">
+  style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);border-radius:8px 8px 0 0">
   <tr>
-    <td style="padding:36px 40px;text-align:center">
+    <td style="padding:32px 40px;text-align:center">
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr><td align="center">
           <table cellpadding="0" cellspacing="0" width="auto">
             <tr>
               <td width="auto" valign="middle" style="padding-right:16px">
                 <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                  alt="purpl" width="110" height="44"
+                  alt="purpl" width="120" height="48"
                   style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
               </td>
               <td width="1px" valign="middle">
-                <div style="width:1px;height:48px;background:rgba(255,255,255,0.4)"></div>
+                <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
               </td>
               <td width="auto" valign="middle" style="padding-left:16px">
                 <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                  alt="Lavender Fields" width="52" height="52"
+                  alt="Lavender Fields" width="48" height="48"
                   style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
               </td>
             </tr>
@@ -351,7 +351,7 @@ const PBF_HEADER_HTML = `
         </td></tr>
       </table>
       <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;
-        color:rgba(255,255,255,0.75);letter-spacing:0.15em;
+        color:rgba(255,255,255,0.9);letter-spacing:0.15em;
         text-transform:uppercase;margin-top:10px">
         Pumpkin Blossom Farm · Wholesale
       </div>
@@ -695,9 +695,9 @@ function buildEmailHTML(headerHTML, accentColor, bodyHTML, unsubscribeAccountId)
   const unsubRow = unsubscribeAccountId
     ? `<tr><td style="background:#f9fafb;padding:10px 40px 16px;
         border-top:1px solid #e5e7eb;text-align:center;
-        font-size:11px;color:#9ca3af">
+        font-size:11px;color:#6b7280">
         <a href="https://purpl-crm.web.app/?optout=${encodeURIComponent(unsubscribeAccountId)}"
-          style="color:#9ca3af">Unsubscribe from marketing emails</a>
+          style="color:#6b7280">Unsubscribe from marketing emails</a>
       </td></tr>`
     : '';
   return `<!DOCTYPE html><html><head>
@@ -721,17 +721,17 @@ font-family:Inter,Arial,sans-serif">
       </td></tr>
       <tr><td style="background:#f9fafb;padding:20px 40px;
         border-top:1px solid #e5e7eb;text-align:center;
-        font-size:11px;color:#9ca3af;line-height:1.6">
+        font-size:11px;color:#6b7280;line-height:1.6">
         Pumpkin Blossom Farm LLC<br>
         393 Pumpkin Hill Rd · Warner, NH 03278<br>
         <a href="mailto:lavender@pbfwholesale.com"
-          style="color:#9ca3af">lavender@pbfwholesale.com</a>
+          style="color:#6b7280">lavender@pbfwholesale.com</a>
         &nbsp;·&nbsp;603-748-3038<br>
         <a href="https://drinkpurpl.com"
-          style="color:#9ca3af">drinkpurpl.com</a>
+          style="color:#6b7280">drinkpurpl.com</a>
         &nbsp;·&nbsp;
         <a href="https://pumpkinblossomfarm.com"
-          style="color:#9ca3af">pumpkinblossomfarm.com</a>
+          style="color:#6b7280">pumpkinblossomfarm.com</a>
       </td></tr>
       ${unsubRow}
     </table>
@@ -792,7 +792,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
             ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
-            <div style="font-size:12px;color:#9ca3af;margin-top:8px">Your personalized link — bookmark it for both purpl and Lavender Fields orders</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:8px">Your personalized link — bookmark it for both purpl and Lavender Fields orders</div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
@@ -822,7 +822,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place Your First Order</a>
             ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
-            <div style="font-size:12px;color:#9ca3af;margin-top:8px">Bookmark this link — it's your personalized portal for all future orders</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:8px">Bookmark this link — it's your personalized portal for all future orders</div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
@@ -2183,29 +2183,29 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const invSettings = DB.obj('invoice_settings') || {};
   const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
   const isLf = collection === 'lf_invoices';
-  const accentColor = isLf ? '#4a7c59' : '#2D1B4E';
+  const accentColor = isLf ? '#4a7c59' : '#6B4F9A';
   const accentLight = isLf ? '#dcfce7' : '#ede4f5';
   const headerGrad = isLf
-    ? 'background:linear-gradient(135deg,#2d5a3d 0%,#4a7c59 100%)'
-    : 'background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%)';
+    ? 'background:linear-gradient(135deg,#3d6b4d 0%,#5a8c69 100%)'
+    : 'background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%)';
   const contacts = ac.contacts || [];
   const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
   const contactName = primary.name || ac.contact || 'there';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="${headerGrad};padding:24px 40px">
+  <tr><td style="${headerGrad};padding:32px 40px">
     <table width="100%"><tr>
       <td>
         <table cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle" style="padding-right:12px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="90" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
-          <td valign="middle" style="padding:0 12px"><div style="width:1px;height:32px;background:rgba(255,255,255,0.3)"></div></td>
-          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="36" height="36" style="display:block;filter:brightness(0) invert(1)"></td>
+          <td valign="middle" style="padding-right:16px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="120" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+          <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
+          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="48" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
         </tr></table>
-        <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
       </td>
       <td align="right"><div style="color:#fff;font-size:22px;font-weight:700">${isOverdue ? 'Payment Overdue' : 'Invoice Due Soon'}</div></td>
     </tr></table>
@@ -2221,13 +2221,13 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
     <div style="background:${accentLight};border-radius:8px;padding:20px 24px;margin:20px 0;text-align:center">
       <div style="font-size:13px;color:#6b7280;margin-bottom:4px">Amount Due</div>
       <div style="font-size:30px;font-weight:700;color:${accentColor}">$${parseFloat(amount).toFixed(2)}</div>
-      <div style="font-size:12px;color:#9ca3af;margin-top:4px">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:4px">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
     </div>
     ${inv._payLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
     <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
     <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb">
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280;border-top:1px solid #e5e7eb">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     lavender@pbfwholesale.com · 603-748-3038
   </td></tr>
@@ -12062,8 +12062,8 @@ function _legalTermsHTML() {
       ? `<div style="margin-top:3px"><strong style="color:#6b7280">${escHtml(m[1])}:</strong> ${escHtml(m[2])}</div>`
       : `<div style="margin-top:3px">${escHtml(l)}</div>`;
   }).join('');
-  return `<div style="font-size:10px;color:#9ca3af;line-height:1.6;text-align:left">
-    <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;font-size:10px;margin-bottom:3px">${escHtml(title)}</div>
+  return `<div style="font-size:10px;color:#6b7280;line-height:1.6;text-align:left">
+    <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#4b5563;font-size:10px;margin-bottom:3px">${escHtml(title)}</div>
     ${body}
   </div>`;
 }
@@ -12209,11 +12209,11 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
                 alt="purpl" width="140" height="56" style="display:block">
             </td>
             <td style="vertical-align:middle;padding:0 4px">
-              <div style="width:1px;height:48px;background:#d1d5db"></div>
+              <div style="width:1px;height:44px;background:#d1d5db"></div>
             </td>
             <td style="vertical-align:middle;padding-left:18px">
               <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="56" height="56" style="display:block">
+                alt="Lavender Fields" width="52" height="52" style="display:block">
             </td>
           </tr>
         </table>
@@ -12278,9 +12278,9 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
   ${_legalTermsHTML() ? `<tr><td style="padding:0 48px 24px">${_legalTermsHTML()}</td></tr>` : ''}
 
-  <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#6b7280;line-height:1.8">
+  <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#4b5563;line-height:1.8">
     <strong style="color:#1a1a2e">Pumpkin Blossom Farm LLC</strong> · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    <a href="mailto:lavender@pbfwholesale.com" style="color:#6b7280;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#4b5563;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038
   </td></tr>
 
 </table></td></tr></table></body></html>`;

@@ -115,34 +115,34 @@ exports.sendOrderConfirmation = onCall(
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:36px 40px;text-align:center">
+  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr><td align="center">
         <table cellpadding="0" cellspacing="0" width="auto">
           <tr>
             <td width="auto" valign="middle" style="padding-right:16px">
               <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                alt="purpl" width="110" height="44"
+                alt="purpl" width="120" height="48"
                 style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
             </td>
             <td width="1px" valign="middle">
-              <div style="width:1px;height:48px;background:rgba(255,255,255,0.4)"></div>
+              <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
             </td>
             <td width="auto" valign="middle" style="padding-left:16px">
               <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="52" height="52"
+                alt="Lavender Fields" width="48" height="48"
                 style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
             </td>
           </tr>
         </table>
       </td></tr>
     </table>
-    <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;color:rgba(255,255,255,0.75);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
+    <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
@@ -173,7 +173,7 @@ exports.sendOrderConfirmation = onCall(
       Wholesale info: <a href="https://pbfwholesale.com" style="color:${accentColor};text-decoration:none">pbfwholesale.com</a>
     </div>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     lavender@pbfwholesale.com
   </td></tr>
@@ -248,18 +248,18 @@ exports.sendApplicationConfirmation = onCall(
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:14px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="100" height="40" style="display:block;filter:brightness(0) invert(1)"></td>
-      <td valign="middle" style="padding:0 14px"><div style="width:1px;height:36px;background:rgba(255,255,255,0.3)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="40" height="40" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle" style="padding-right:16px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="120" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
+      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="48" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
     </tr></table>
-    <div style="font-size:10px;color:rgba(255,255,255,0.7);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
@@ -274,7 +274,7 @@ exports.sendApplicationConfirmation = onCall(
     <p>In the meantime, feel free to reach out with any questions.</p>
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm<br>603-748-3038</p>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     lavender@pbfwholesale.com
   </td></tr>
@@ -638,24 +638,24 @@ exports.inviteEmployee = onCall(
         subject: 'You\'re invited to purpl CRM — Pumpkin Blossom Farm',
         html: `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="500" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#4a2d7a 0%,#7B4FA0 100%);padding:28px 32px;text-align:center">
+  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:28px 32px;text-align:center">
     <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px">purpl CRM</div>
-    <div style="color:rgba(255,255,255,0.7);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Pumpkin Blossom Farm</div>
+    <div style="color:rgba(255,255,255,0.9);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Pumpkin Blossom Farm</div>
   </td></tr>
   <tr><td style="padding:28px 32px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(displayName || email.split('@')[0])},</p>
     <p>You've been invited to join the <strong>purpl CRM</strong> team as ${assignRole === 'admin' ? 'an admin' : 'an employee'}.</p>
     <p>Click the button below to set your password and sign in:</p>
     <div style="text-align:center;margin:24px 0">
-      <a href="${link}" style="display:inline-block;background:#4a2d7a;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
+      <a href="${link}" style="display:inline-block;background:#6B4F9A;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
     </div>
-    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#4a2d7a">purpl-crm.web.app</a> to sign in.</p>
+    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#6B4F9A">purpl-crm.web.app</a> to sign in.</p>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+  <tr><td style="background:#f9fafb;padding:14px 32px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · Warner, NH
   </td></tr>
 </table>
@@ -1155,14 +1155,17 @@ exports.shipStationWebhook = onRequest(
                 const resend = new Resend(process.env.RESEND_API_KEY);
                 const contactName = (ac.contacts && ac.contacts.length) ? (ac.contacts[0].name || 'there') : 'there';
                 const sampleHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f0eff4;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0eff4;padding:32px 16px">
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#2D1B4E 0%,#4a2d7a 100%);padding:28px 40px;text-align:center">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-      alt="purpl" width="120" height="48" style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
-    <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:0.12em;text-transform:uppercase;margin-top:8px">Pumpkin Blossom Farm · Wholesale</div>
+  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+    <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
+      <td valign="middle" style="padding-right:16px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="120" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
+      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="48" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+    </tr></table>
+    <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
@@ -1184,7 +1187,7 @@ exports.shipStationWebhook = onRequest(
     </table>` : ''}
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#9ca3af">
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     lavender@pbfwholesale.com · 603-748-3038
   </td></tr>
