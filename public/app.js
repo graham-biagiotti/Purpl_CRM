@@ -1194,7 +1194,16 @@ function renderDashQuickActions() {
   const drafts = _allPurplInvoices().filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
     + DB.a('lf_invoices').filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
     + DB.a('combined_invoices').filter(x => (x.status||'draft') === 'draft').length;
-  const pendingOrders = DB.a('orders').filter(o => o.status === 'pending').length;
+  const pendingOrders = (() => {
+    const pending = DB.a('orders').filter(o => o.status === 'pending');
+    const seen = new Set();
+    let n = 0;
+    for (const o of pending) {
+      const key = o.combinedOrderGroupId || o.id;
+      if (!seen.has(key)) { seen.add(key); n++; }
+    }
+    return n;
+  })();
   const wix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   const cards = [];
   if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
@@ -13078,6 +13087,9 @@ window.onAppReady = function() {
     history.replaceState(null, '', window.location.pathname);
   }
 
+  // ── Real-time listener for portal orders ────────────────
+  _listenPortalOrders();
+
   // Navigate to dashboard
   nav('dashboard');
 };
@@ -14318,6 +14330,7 @@ async function confirmPortalOrder() {
           created: todayStr, dueDate: todayStr, items: purplItems,
           cases: purplCases, cans: purplCans, status: 'pending', source: 'portal', brand: 'purpl',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
+          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : undefined,
           notes: d.notes || '', deliveryWindow: d.deliveryWindow || purplDoc.deliveryWindow || '',
         }];
       }
@@ -14327,6 +14340,7 @@ async function confirmPortalOrder() {
           created: todayStr, dueDate: todayStr, items: lfItems.map(li => ({ sku: li.skuId, label: li.skuName, qty: li.cases })),
           cases: lfItems.reduce((s,li)=>s+(li.cases||0),0), cans: 0, status: 'pending', source: 'portal', brand: 'lf',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
+          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : undefined,
           notes: d.notes || '', deliveryWindow: d.deliveryWindow || lfDoc?.deliveryWindow || '',
         }];
       }
@@ -15593,6 +15607,63 @@ function _updateApplicationsBadge(count) {
           <div style="font-size:13px;color:#7f1d1d">New retailers have applied through your wholesale page.</div>
         </div>
         <button class="btn xs" style="background:#dc2626;color:#fff;border:none;flex-shrink:0" onclick="nav('prospects')">Review Applications</button>
+      </div>`;
+    } else {
+      card.style.display = 'none';
+      card.innerHTML = '';
+    }
+  }
+}
+
+let _portalOrderIds = new Set();
+function _listenPortalOrders() {
+  try {
+    firebase.firestore().collection('portal_orders')
+      .orderBy('submittedAt', 'desc')
+      .limit(50)
+      .onSnapshot(snap => {
+        let newCount = 0;
+        const unconfirmed = [];
+        snap.docs.forEach(doc => {
+          const d = doc.data();
+          if (d.status !== 'confirmed' && d.status !== 'rejected') unconfirmed.push(doc.id);
+          if (!_portalOrderIds.has(doc.id) && _portalOrderIds.size > 0) {
+            newCount++;
+          }
+        });
+        if (newCount > 0) {
+          toast(`New portal order${newCount > 1 ? 's' : ''} received!`, 5000);
+          if (currentPage === 'preorders') renderPreOrders(true);
+          renderDashQuickActions();
+        }
+        _portalOrderIds = new Set(snap.docs.map(d => d.id));
+        _updatePortalOrdersBadge(unconfirmed.length);
+        PortalDB._orders = snap.docs.map(d => {
+          const data = d.data();
+          return { ...data, id: d.id, submittedAt: data.submittedAt?.toDate?.() || null };
+        });
+        PortalDB._orders.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
+        PortalDB._loaded = true;
+      }, err => console.warn('Portal orders listener error:', err));
+  } catch(e) { console.warn('Could not start portal orders listener:', e); }
+}
+
+function _updatePortalOrdersBadge(count) {
+  const badge = qs('#nav-portal-orders-badge');
+  if (badge) {
+    if (count > 0) { badge.textContent = count; badge.style.display = 'inline'; }
+    else { badge.style.display = 'none'; }
+  }
+  const card = qs('#dash-portal-orders-card');
+  if (card) {
+    if (count > 0) {
+      card.style.display = '';
+      card.innerHTML = `<div style="background:#f5f0ff;border:1.5px solid #D4B8F0;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:600;font-size:14px;color:#6B4F9A;margin-bottom:2px">${count} new portal order${count !== 1 ? 's' : ''} waiting</div>
+          <div style="font-size:13px;color:#4b5563">Review and confirm incoming wholesale orders.</div>
+        </div>
+        <button class="btn xs" style="background:#8B5FBF;color:#fff;border:none;flex-shrink:0" onclick="nav('pre-orders')">Review Orders</button>
       </div>`;
     } else {
       card.style.display = 'none';
