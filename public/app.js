@@ -4009,6 +4009,7 @@ function _renderEmailsTemplatesCol() {
   const el = document.getElementById('emails-templates-col');
   if (!el) return;
   const TEMPLATES = [
+    {id:'preorder-announcement', name:'Pre-Order Announcement', desc:'Introduce purpl + personalized order link'},
     {id:'application-received', name:'Application Received',    desc:'Thank you for applying'},
     {id:'approved',             name:'Approved — Welcome',      desc:'Portal link + password + catalog'},
     {id:'rejected',             name:'Rejected — Decline',      desc:'Polite decline email'},
