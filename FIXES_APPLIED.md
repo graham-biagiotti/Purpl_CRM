@@ -85,3 +85,24 @@ Tracks each BUG_SWEEP.md finding → what changed → risk/assumptions.
 
 ### Draft invoices don't reserve inventory (MEDIUM)
 **Not fixed — design choice, not a bug.** Draft invoices are explicitly uncommitted. Inventory is deducted when the invoice is sent (markInvoiceSent) or when a delivery-run invoice is created (createDeliveryInvoice). Reserving inventory at draft time would require a "reserved" quantity concept with rollback on delete, which is significant complexity. The current behavior is standard for small wholesale operations where overselling is rare. Documented as known limitation.
+
+---
+
+## BATCH 6: Portal, DOM, Templates, Hygiene
+
+### Portal quantities not server-validated (MEDIUM)
+**Not fixed, skipped.** The HTML `<input type="number" min="1">` prevents negative values in normal use. The server-side Cloud Function (sendOrderConfirmation) doesn't validate quantities because it only sends a confirmation email — it doesn't create the order. The order is created client-side in Firestore with security rules. Adding server validation to the email function wouldn't prevent a malicious client from writing directly to Firestore. The proper fix is Firestore security rules with a `.validate()` clause, which is out of scope for this batch.
+
+### order.html 3 unclosed divs (HIGH)
+**Not reproduced, skipped.** The HTML section of order.html (before the `<script>` tag) has exactly 90 opening `<div` and 90 closing `</div>` — perfectly balanced. The initial grep count of 172/169 included `<div` matches inside JavaScript template strings (e.g., order confirmation PDF builder). The DOM structure is correct.
+
+### Email templates missing signatures (MEDIUM)
+**Fix:** Replaced all 11 instances of `<p>Warmly,</p>` in getCadenceEmailTemplate with Graham's full signature block (name, phone, email). Templates affected: application-received, rejected, order-confirmation, invoice-sent, invoice-reminder, payment-overdue, first-order, reorder-reminder, delivery-followup, new-product, thank-you, custom.
+**Risk:** None — additive text change.
+
+### Invoice/order status vocabulary drift (MEDIUM)
+**Not fixed, skipped.** The `order.invoiceStatus: 'invoiced'` field is semantically different from `invoice.status: 'sent'` — they track different things (order-level tracking vs invoice-level status). They are never compared directly in code. Renaming would break existing data. Documented as naming convention, not a bug.
+
+### Dead code removal (MEDIUM)
+**Fix:** Removed `_getFulfillBadge()` and `_populateFulfillFilter()` — both defined but never called from any render function or onclick handler.
+**Risk:** None — zero call sites confirmed via grep.
