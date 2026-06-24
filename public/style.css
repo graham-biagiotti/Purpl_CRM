@@ -355,7 +355,7 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 /* ── Territory Map ──────────────────────────────────────── */
 .map-controls-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
 #page-map.active{display:flex;flex-direction:column;height:100%}
-#map-canvas{flex:1;min-height:400px;width:100%}
+#map-canvas{flex:1;min-height:400px}
 .btn.green{background:#10b981;color:#fff;border-color:#10b981}
 .btn.green:hover{background:#059669}
 
@@ -523,8 +523,8 @@ th{padding:11px 14px}
 .mobile-bottom-nav a.active,.mobile-bottom-nav a:active{color:#fff}
 .mobile-bottom-nav a svg{width:22px;height:22px}
 
-/* ── RESPONSIVE — MOBILE (≤480px) ──────────────────────── */
-@media(max-width:480px){
+/* ── RESPONSIVE — MOBILE (≤767px) ──────────────────────── */
+@media(max-width:767px){
 
   .sidebar{
     transform:translateX(-100%);
@@ -622,22 +622,12 @@ th{padding:11px 14px}
 /* ── LF SKU table ───────────────────────────────────────── */
 .lf-sku-archived td { opacity: 0.45; }
 
-/* ── Unified invoice modal line items ───────────────────── */
-/* Block container for line items with stacked content (SKU header +
-   variant rows + case note). Plain flex containers break this layout. */
-.inv-line-block{display:block;padding:8px 2px;border-bottom:1px solid var(--border)}
-.inv-line-block:last-child{border-bottom:none}
-.inv-line-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.inv-line-head .inv-line-name{flex:1;min-width:140px;font-size:13px;font-weight:500}
-.inv-line-unit{font-size:11px;color:var(--muted);white-space:nowrap}
-.inv-line-total{min-width:74px;text-align:right;font-size:13px;font-weight:600}
-.inv-qty-input{width:64px;text-align:center}
-.inv-price-input{width:76px;text-align:center}
-.inv-variant-row{display:flex;align-items:center;gap:8px;padding:4px 0 4px 18px;font-size:12.5px}
-.inv-variant-row .inv-variant-name{flex:1;min-width:0}
-.inv-case-note{text-align:right;font-size:11px;color:var(--muted);padding-top:3px}
-.inv-sku-row{grid-template-columns:104px 1fr}
-.inv-sku-row .inv-sku-inputs{display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* ── LF Invoice line item rows ──────────────────────────── */
+.lfi-item-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.lfi-item-row .lfi-sku-sel{flex:1;min-width:180px}
+.lfi-item-row .lfi-cases-label{font-size:12px;color:var(--muted)}
+.lfi-item-row .lfi-units-display{font-size:12px;color:var(--muted);min-width:80px}
+.lfi-item-row .lfi-line-amt{font-weight:600;min-width:70px;text-align:right}
 
 /* ── Mass Email page ─────────────────────────────────────── */
 @media (max-width:700px){
@@ -647,13 +637,13 @@ th{padding:11px 14px}
 /* ── Emails page layout ──────────────────────────────────── */
 .emails-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
 .emails-templates-col{display:flex;flex-direction:column;gap:8px}
-.email-template-card{padding:10px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff;flex:0 0 auto}
+.emails-preview-col{min-width:0}
+.email-template-card{padding:12px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff}
 .email-template-card:hover{border-color:var(--purple);background:var(--purple-light)}
 .email-template-card.active{border-color:var(--purple);background:var(--purple-light)}
-.email-template-card .etc-name{font-weight:600;font-size:13px}
-.email-template-card .etc-desc{font-size:11px;color:var(--muted)}
+.email-template-card .etc-name{font-weight:600;font-size:14px;margin-bottom:2px}
+.email-template-card .etc-desc{font-size:12px;color:var(--muted)}
 .email-template-card .etc-from{font-size:11px;color:var(--purple2);margin-top:4px}
-.emails-preview-col{min-width:0}
 .emails-preview-frame{width:100%;height:480px;border:1px solid var(--border);border-radius:8px;background:#fff;display:block}
 .emails-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:480px;border:2px dashed var(--border);border-radius:8px;color:var(--muted);gap:8px;font-size:14px;text-align:center}
 @media(max-width:900px){.emails-layout{grid-template-columns:1fr}}
@@ -857,180 +847,3 @@ td { padding: 9px 12px; font-size: 13px; }
 }
 #offline-banner.visible { display: block; }
 body.offline-mode #app-shell { padding-top: 40px; }
-
-/* ══════════════════════════════════════════════════════════
-   POLISH PASS 3 — micro-interactions & consistency
-   ══════════════════════════════════════════════════════════ */
-
-/* ── Text selection in brand color ───────────────────────── */
-::selection { background: #e4d5f5; color: #2d1b4e; }
-
-/* ── Thin, subtle scrollbars everywhere ──────────────────── */
-* { scrollbar-width: thin; scrollbar-color: #d6cce6 transparent; }
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d6cce6; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #b9a8d6; background-clip: content-box; }
-
-/* ── Page enters with a soft fade ────────────────────────── */
-/* page transition removed — caused layout issues */
-
-/* ── Modals ease in instead of snapping ──────────────────── */
-@keyframes overlayIn { from { background: rgba(0,0,0,0); } to { background: rgba(0,0,0,.45); } }
-@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
-.overlay.open { animation: overlayIn .16s ease-out; }
-.overlay.open .modal { animation: modalIn .2s cubic-bezier(.2,.9,.3,1); }
-
-/* ── Softer input focus ring (was a hard outline) ────────── */
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: #b794d4;
-  box-shadow: 0 0 0 3px rgba(123,79,160,.14);
-}
-input, select, textarea { transition: border-color .12s, box-shadow .12s; }
-
-/* ── Button micro-interactions ───────────────────────────── */
-.btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
-.btn.red:hover { background: #dc2626; border-color: #dc2626; }
-.btn.green:hover { background: #059669; border-color: #059669; }
-
-/* ── Table rows: brand-tinted hover ──────────────────────── */
-tr:hover td { background: #faf8fe; }
-td, th { transition: background .1s; }
-th { cursor: default; }
-th[onclick] { cursor: pointer; }
-th[onclick]:hover { color: var(--text); background: #f3eefa; }
-
-/* ── Tabs: hover + smooth underline ──────────────────────── */
-.tab { transition: color .12s, border-color .12s; border-radius: 6px 6px 0 0; }
-.tab:hover { color: var(--text); background: #faf8fe; }
-.tab.active:hover { color: #7B4FA0; background: none; }
-
-/* ── KPI cards: gentle lift on hover ─────────────────────── */
-.kpi { transition: box-shadow .15s, transform .15s; }
-.kpi:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(123,79,160,.1); }
-
-/* ── Invoice columns: lift like cards ────────────────────── */
-.inv-col { transition: box-shadow .15s; }
-.inv-col:hover { box-shadow: 0 3px 12px rgba(123,79,160,.08); }
-
-/* ── Status badges read like labels ──────────────────────── */
-.badge { text-transform: capitalize; }
-
-/* ── Empty states: quieter ───────────────────────────────── */
-.empty { color: #9ca3af; }
-
-/* ── Topbar: hairline depth over content ─────────────────── */
-.topbar { box-shadow: 0 1px 3px rgba(45,27,78,.05); }
-
-/* ── Respect reduced-motion preference ───────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  .overlay.open, .overlay.open .modal { animation: none; }
-  .kpi, .btn, .sb-nav a { transition: none; }
-  .kpi:hover { transform: none; }
-  .btn:active { transform: none; }
-}
-
-/* ══════════════════════════════════════════════════════════
-   GLOBAL SEARCH / QUICK ACTIONS / ACTIVITY / AVATAR
-   ══════════════════════════════════════════════════════════ */
-:root{--surface:#f9fafb}
-#global-search-wrap{position:relative}
-#global-search-results{position:absolute;top:calc(100% + 6px);right:0;width:340px;max-height:420px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(20,10,40,.18);z-index:300;padding:4px}
-.gs-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer}
-.gs-item:hover,.gs-item.gs-active{background:var(--purple-light)}
-.gs-label{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gs-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gs-empty{padding:14px;text-align:center;font-size:12.5px;color:var(--muted)}
-
-#dash-quick-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-.qa-card{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--card);cursor:pointer;font-family:inherit;font-size:13px;transition:transform .12s,box-shadow .12s}
-.qa-card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(123,79,160,.14)}
-.qa-num{font-size:20px;font-weight:800;line-height:1}
-.qa-label{font-weight:500;color:var(--text)}
-.qa-go{color:var(--muted)}
-.qa-red{border-color:#fca5a5;background:#fff5f5}.qa-red .qa-num{color:#dc2626}
-.qa-amber{border-color:#fcd34d;background:#fffdf3}.qa-amber .qa-num{color:#d97706}
-.qa-blue{border-color:#93c5fd;background:#f4f8ff}.qa-blue .qa-num{color:#2563eb}
-.qa-green{border-color:#86efac;background:#f3fdf6}.qa-green .qa-num{color:#16a34a}
-
-.act-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
-.act-row:last-child{border-bottom:none}
-.act-icon{width:22px;text-align:center;flex-shrink:0}
-.act-body{flex:1;min-width:0;line-height:1.45}
-.act-time{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0;padding-top:2px}
-
-.mac-avatar{width:46px;height:46px;border-radius:12px;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0;letter-spacing:.02em;background:var(--purple)}
-
-/* ══════════════════════════════════════════════════════════
-   DARK MODE
-   ══════════════════════════════════════════════════════════ */
-body.dark{--bg:#13101c;--card:#1c1729;--surface:#241d33;--border:#332a49;--text:#ece8f5;--muted:#9b91b3;--purple-light:#2a2140;--purple-border:#4a3b6e;background:var(--bg);color:var(--text)}
-body.dark .card{background:var(--card);border-color:var(--border)}
-body.dark .card:hover{box-shadow:0 4px 16px rgba(0,0,0,.4)}
-body.dark .kpi,body.dark .kpi.purple,body.dark .kpi.green,body.dark .kpi.red,body.dark .kpi.amber,body.dark .kpi.blue,body.dark .kpi.gray{background:var(--card);border-color:var(--border)}
-body.dark .kpi:hover{box-shadow:0 4px 14px rgba(0,0,0,.45)}
-body.dark .topbar{background:var(--card);border-bottom-color:var(--border);box-shadow:none}
-body.dark .topbar h1{color:var(--text)}
-body.dark table{background:var(--card)}
-body.dark th{background:var(--surface);color:var(--muted);border-bottom-color:var(--border)}
-body.dark td{border-bottom-color:var(--border)}
-body.dark tr:hover td{background:rgba(155,109,192,.08)}
-body.dark th[onclick]:hover{background:rgba(155,109,192,.14);color:var(--text)}
-body.dark .tbl-wrap{border-color:var(--border)}
-body.dark .modal{background:var(--card);color:var(--text)}
-body.dark .modal-hdr{border-bottom-color:var(--border)}
-body.dark .modal-footer{border-top-color:var(--border)}
-body.dark .modal-hdr h2{color:var(--text)}
-body.dark input,body.dark select,body.dark textarea{background:var(--surface);color:var(--text);border-color:var(--border)}
-body.dark .btn{background:var(--surface);color:var(--text);border-color:var(--border)}
-body.dark .btn:hover{background:#2e2542}
-body.dark .btn.primary{background:#7B4FA0;border-color:#7B4FA0;color:#fff}
-body.dark .btn.primary:hover{background:#8d5fb5}
-body.dark .btn.green{background:#0f9e6e;border-color:#0f9e6e;color:#fff}
-body.dark .btn.red{background:#dc2626;border-color:#dc2626;color:#fff}
-body.dark .tab{color:var(--muted)}
-body.dark .tab:hover{background:rgba(155,109,192,.08);color:var(--text)}
-body.dark .tabs{border-bottom-color:var(--border)}
-body.dark .section-hdr{border-bottom-color:var(--border)}
-body.dark .section-hdr h2{color:var(--text)}
-body.dark .ac-card,body.dark .pr-card,body.dark .attn-item,body.dark .order-card,body.dark .qn-item,body.dark .email-template-card,body.dark .ac-suggestions,body.dark .map-controls-panel{background:var(--card);border-color:var(--border)}
-body.dark .ac-suggestions div:hover{background:var(--surface)}
-body.dark .inv-col{background:var(--card);border-color:var(--border)}
-body.dark .inv-col-header:hover{background:var(--surface)}
-body.dark .inv-col-compact-row{border-bottom-color:var(--border)}
-body.dark .ac-group-hdr{background:var(--surface)}
-body.dark .ac-group-hdr:not(.ac-group-hdr-direct):hover{background:#2e2542}
-body.dark .ac-brand-btn{background:var(--card);color:var(--text);border-color:var(--border)}
-body.dark .ac-brand-btn:hover{background:var(--surface)}
-body.dark .sku-row.classic-bg{background:#2a2140}
-body.dark .sku-row.blueberry-bg{background:#1c2742}
-body.dark .sku-row.peach-bg{background:#3a2a1c}
-body.dark .sku-row.variety-bg{background:#15333a}
-body.dark .sku-row.raspberry-bg{background:#3a1c28}
-body.dark .highlight-box{background:var(--surface);border-color:var(--purple-border)}
-body.dark .gauge-bar{background:var(--border)}
-body.dark .dist-pipeline-count{background:var(--surface)}
-body.dark .empty{color:var(--muted)}
-body.dark .page-filter-bar input[type="search"]{background:var(--surface)}
-body.dark .loading-skeleton{background:linear-gradient(90deg,#241d33 25%,#2e2542 50%,#241d33 75%);background-size:800px 100%}
-body.dark ::-webkit-scrollbar-thumb{background:#3b3154;border:2px solid transparent;background-clip:content-box}
-body.dark ::selection{background:#4a3b6e;color:#fff}
-body.dark .qa-red,body.dark .qa-amber,body.dark .qa-blue,body.dark .qa-green{background:var(--card)}
-body.dark .gs-item:hover,body.dark .gs-item.gs-active{background:var(--surface)}
-body.dark .tab.active{color:#b88ae0;border-bottom-color:#b88ae0}
-/* common hardcoded inline light backgrounds in generated markup */
-body.dark [style*="background:#f9fafb"],
-body.dark [style*="background:#fafaf8"],
-body.dark [style*="background:#f5f4f0"],
-body.dark [style*="background:#f3f4f6"],
-body.dark [style*="background:#f5f0ff"],
-body.dark [style*="background:#eff6ff"],
-body.dark [style*="background:#faf5ff"],
-body.dark [style*="background:#ecfeff"],
-body.dark [style*="background:var(--surface)"]{background:var(--surface)!important;color:var(--text)!important}
-
-/* ── Unified invoices toolbar ───────────────────────────── */
-.inv-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--card)}
-.inv-toolbar select,.inv-toolbar input[type="search"]{width:auto}
