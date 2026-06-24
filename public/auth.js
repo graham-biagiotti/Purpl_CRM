@@ -140,7 +140,7 @@ async function bootApp() {
       checkMigration();
 
       loadingScreen.style.display = 'none';
-      appShell.style.display = 'block';
+      appShell.style.display = 'flex';
 
       window.onAppReady();
 
