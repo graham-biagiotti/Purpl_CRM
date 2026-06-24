@@ -774,7 +774,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm. I hope this finds you well — I wanted to share something we've been working on that I'm really excited about.</p>
-        <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade made with lavender we grow and hand-harvest right here on the farm in Warner, NH. If you've visited us or carried our Lavender Fields products, you already know the quality of our lavender — this is the same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
+        <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade crafted with real lavender — born out of our love for lavender here at Pumpkin Blossom Farm. If you've carried our Lavender Fields products, you already know our commitment to quality — purpl is that same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
