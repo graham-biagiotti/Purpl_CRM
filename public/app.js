@@ -769,12 +769,12 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'preorder-announcement': {
-      subject: `Introducing purpl — lavender lemonade wholesale`,
+      subject: `Something new from the farm — purpl lavender lemonade`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">I'm Graham from Pumpkin Blossom Farm in Warner, NH. I wanted to reach out personally because we're launching <strong>purpl</strong> — our lavender lemonade made with real lavender from our farm — and I think it would be a great fit for ${businessName}.</p>
-        <p style="line-height:1.7">It's a classic lemonade with a gentle lavender twist. Clean ingredients, nothing artificial. The kind of thing customers pick up once and come back for.</p>
+        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm. I hope this finds you well — I wanted to share something we've been working on that I'm really excited about.</p>
+        <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade made with lavender we grow and hand-harvest right here on the farm in Warner, NH. If you've visited us or carried our Lavender Fields products, you already know the quality of our lavender — this is the same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
@@ -786,13 +786,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </table>
           </td></tr>
         </table>
-        <p style="line-height:1.7">We're taking pre-orders now ahead of launch. No commitment — just let us know you're interested and we'll reach out to confirm availability and delivery.</p>
-        <p style="line-height:1.7">I've set up a wholesale account for you. You can place your pre-order through the link below, or just reply to this email and tell me what you'd like.</p>
+        <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment at this point — just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
+        <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well — one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
             ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
-            <div style="font-size:12px;color:#9ca3af;margin-top:8px">This is your personalized link — bookmark it for future orders</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:8px">Your personalized link — bookmark it for both purpl and Lavender Fields orders</div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
@@ -801,12 +801,12 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
               <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
               <strong>Payment:</strong> Net 30 from invoice date.<br>
-              <strong>Samples:</strong> Request a free 3-can taster on the order form — no obligation.<br>
+              <strong>Samples:</strong> Request a free 3-can taster right on the order form — no obligation.<br>
               <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
             </div>
           </td></tr>
         </table>
-        <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything — ordering, delivery, questions, whatever you need. Just reply to this email or give me a call.</p>
+        <p style="line-height:1.7;font-size:14px">I'd love to have purpl on your shelves. Reply to this email, give me a call, or just click the link above — whatever's easiest. I'm here for anything you need.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
