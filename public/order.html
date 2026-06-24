@@ -1138,6 +1138,10 @@ function submitOrder() {
     state: (document.getElementById('ship-state')?.value||'').trim().toUpperCase(),
     zip: (document.getElementById('ship-zip')?.value||'').trim(),
   };
+  if (!shipAddress.street1 || !shipAddress.city || !shipAddress.state || !shipAddress.zip) {
+    showError('Please enter a complete shipping address.');
+    return;
+  }
 
   const orderData = {
     submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1206,6 +1210,9 @@ function submitOrder() {
         deliveryWindow: deliveryWindow,
         poNumber: poNumber,
         notes: notes,
+        shipAddress: shipAddress,
+        requestSample: requestSample,
+        agreedToTerms: true,
         status: 'new',
         source: 'portal',
         isMatched: isMatched,
