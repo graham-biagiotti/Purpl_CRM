@@ -173,7 +173,7 @@ const DB = {
         const remoteChanges = snap.docChanges().filter(c => !c.doc.metadata.hasPendingWrites);
         if (!remoteChanges.length) return;
 
-        if (this._dirty || (this._saveDirtyKeys && this._saveDirtyKeys.has(key))) {
+        if (this._dirty || this._atomicInProgress || (this._saveDirtyKeys && this._saveDirtyKeys.has(key))) {
           this._pendingRemoteChanges = true;
           if (this._dirty) this._showRemoteChangeWarning();
         } else {
@@ -202,10 +202,14 @@ const DB = {
       } else {
         const data = snap.data();
         CONFIG_ARRAY_KEYS.forEach(k => {
-          this._cache[k] = Array.isArray(data[k]) ? data[k] : [];
+          if (data.hasOwnProperty(k)) {
+            this._cache[k] = Array.isArray(data[k]) ? data[k] : (this._cache[k] || []);
+          }
         });
         OBJ_KEYS.forEach(k => {
-          this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
+          if (data.hasOwnProperty(k)) {
+            this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
+          }
         });
         if (window.refreshCurrentPage) window.refreshCurrentPage();
       }
@@ -468,6 +472,8 @@ const DB = {
   },
 
   atomicUpdate(fn) {
+    // Block snapshots during atomic update to prevent the 50ms race
+    this._atomicInProgress = true;
     const before = {};
     COLLECTION_KEYS.forEach(k => { before[k] = new Set((this._cache[k]||[]).map(x => x?.id).filter(Boolean)); });
     fn(this._cache);
@@ -490,9 +496,9 @@ const DB = {
           this._saveTimers[k] = null;
         }
       });
-      // Save collections that have data
       COLLECTION_KEYS.forEach(k => this._saveCollection(k));
       this._saveConfig();
+      this._atomicInProgress = false;
     }, 50);
   },
 

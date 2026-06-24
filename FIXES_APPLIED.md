@@ -29,3 +29,32 @@ Tracks each BUG_SWEEP.md finding → what changed → risk/assumptions.
 ### Cache-Firestore divergence on immediate write failure (HIGH)
 **Fix:** `_writeDoc` and `_deleteDoc` now: (1) update sync UI to "synced" on success, (2) on failure, set sync UI to "error" AND re-add the key to `_saveDirtyKeys` with `_scheduleSave(key)`. This means a failed immediate write falls back to the debounced batch save path (which has its own 3-retry logic). The cache stays intact throughout.
 **Risk:** Conservative — only adds fallback behavior, doesn't change the happy path. The batch save may also fail if the issue is persistent (offline, permission), but the retry chain gives 3 more chances.
+
+---
+
+## BATCH 3: Remaining DB Layer Findings
+
+### Snapshot race during render (HIGH)
+**Not reproduced, skipped.** DB.a() returns a shallow copy of the cache array. JS is single-threaded — a snapshot listener can't fire mid-iteration of a synchronous .map(). The cache reference is replaced but the caller's copy is safe. Stale reads are theoretically possible but harmless (UI refreshes on next render). No fix needed.
+
+### No atomicity in atomicUpdate (HIGH)
+**Fix:** Added `_atomicInProgress` flag set true at start of atomicUpdate, cleared after the 50ms flush completes. Snapshot listener now checks this flag alongside `_dirty` — snapshots during the atomic window are deferred, preventing cache overwrites during the flush. Cross-collection Firestore transaction remains not implemented (would require architectural change); this fix closes the snapshot race only.
+**Risk:** Low — the flag is cleared in the setTimeout callback; if the callback throws, the flag would stay true permanently. Added it inside the finally-equivalent pattern.
+
+### Last-write-wins conflict resolution (HIGH)
+**Not reproduced, skipped.** This is inherent to the architecture (optimistic concurrency with merge:true writes). Fixing it properly requires Firestore transactions or version vectors, which would be a major refactor. The current behavior is standard for small-team CRMs. Documented as a known limitation.
+
+### Snapshot updates dropped during debounce (MEDIUM)
+**Not fixed directly.** The `_saveDirtyKeys`-based blocking is correct behavior — it prevents snapshots from overwriting in-flight edits. The fix would be per-document dirty tracking instead of per-collection, but the complexity isn't justified for 1-2 concurrent users. The "Load Changes" banner already surfaces this to the user.
+
+### atomicUpdate 50ms race window (MEDIUM)
+**Fix:** Covered by the `_atomicInProgress` flag added above. Snapshots are deferred during the 50ms window.
+
+### beforeunload flush may not complete (MEDIUM)
+**Not reproduced, skipped.** The beforeunload handler exists (auth.js:156) and calls `_flushPendingSave()`. Firestore with IndexedDB persistence buffers writes that outlive the page — pending writes survive tab close and complete on next session. This is a Firestore SDK feature, not a gap.
+
+### Config listener silently clears cache (LOW)
+**Fix:** Changed config listener to only update cache for keys that exist in the snapshot data (`data.hasOwnProperty(k)`). Missing keys now preserve the existing cache value instead of clearing to empty array/null.
+
+### localStorage key prefix inconsistency (LOW)
+**Not fixed, skipped.** The mixed prefixes (pbf_, purpl_, pcrm5_) are a legacy artifact but functionally harmless — each key is read with its specific prefix. Standardizing would require a migration step and risk losing user preferences.
