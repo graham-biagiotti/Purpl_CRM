@@ -53,10 +53,8 @@
 <div id="offline-banner">You&rsquo;re offline &mdash; changes will sync when reconnected.</div>
 
 <!-- ══════════════════════════ APP SHELL ════════════════════════════ -->
-<div id="app-shell">
-
-  <!-- SIDEBAR -->
-  <nav class="sidebar">
+<!-- SIDEBAR (outside app-shell to avoid flex item treatment) -->
+<nav class="sidebar" id="main-sidebar">
     <div class="sb-logo">
       <div class="sb-logo-row">
         <img src="/images/favicon-180.png" alt="" class="sb-logo-img">
@@ -148,6 +146,7 @@
     </div>
   </nav>
 
+<div id="app-shell">
   <!-- MAIN CONTENT -->
   <div class="main">
     <!-- TOP BAR -->
