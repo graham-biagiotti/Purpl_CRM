@@ -67,7 +67,7 @@ a:hover{color:var(--brand-purple-hover)}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* APP SHELL */
-#app-shell{display:none;width:100%}
+#app-shell{display:none}
 
 /* SIDEBAR */
 .sidebar{width:230px;min-height:100vh;background:linear-gradient(180deg, #2d1b4e 0%, #1a1025 45%, #110b1a 100%);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:100;box-shadow:2px 0 20px rgba(0,0,0,0.35)}
@@ -103,11 +103,11 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;min-height:100vh;display:flex;flex-direction:column;width:calc(100vw - 230px);max-width:calc(100vw - 230px);overflow-x:hidden}
+.main{margin-left:230px;min-height:100vh;display:flex;flex-direction:column}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
-.page{display:none;padding:28px;flex:1;min-width:0}
+.page{display:none;padding:28px;flex:1}
 .page.active{display:block}
 
 /* CARDS */
@@ -354,7 +354,7 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 
 /* ── Territory Map ──────────────────────────────────────── */
 .map-controls-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
-#page-map.active{display:flex;flex-direction:column;height:100%;min-height:0;width:100%}
+#page-map.active{display:flex;flex-direction:column;height:100%}
 #map-canvas{flex:1;min-height:400px;width:100%}
 .btn.green{background:#10b981;color:#fff;border-color:#10b981}
 .btn.green:hover{background:#059669}
@@ -645,7 +645,7 @@ th{padding:11px 14px}
 }
 
 /* ── Emails page layout ──────────────────────────────────── */
-.emails-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;width:100%}
+.emails-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
 .emails-templates-col{display:flex;flex-direction:column;gap:8px}
 .emails-preview-col{min-width:0}
 .email-template-card{padding:12px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff}
