@@ -166,6 +166,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 }
 @media(max-width:480px){.container{padding:20px 16px}}
 @media print{button{display:none !important}body{background:white}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon-180.png">
@@ -445,7 +446,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
       <hr class="divider">
       <strong>Payment</strong>
-      Net 30 from delivery. Invoices from <span style="color:var(--purpl)">lavender@pbfwholesale.com</span>.
+      Net 30 from invoice date. Invoices from <span style="color:var(--purpl)">lavender@pbfwholesale.com</span>.
       <hr class="divider">
       <div class="contact-line">
         Questions — Graham &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a> &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
@@ -1092,7 +1093,7 @@ function showThankYou(data) {
   if (data.deliveryWindow) summaryHtml += '<div class="summary-row"><span>Delivery Window</span><span>' + escHtml(data.deliveryWindow) + '</span></div>';
   if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + escHtml(data.poNumber) + '</span></div>';
   summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + escHtml(data.billingEmail) + '</span></div>';
-  summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from delivery</span></div>';
+  summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from invoice date</span></div>';
 
   // Shipping address
   var sa = data.orderData?.shipAddress || {};
@@ -1509,7 +1510,7 @@ function printPortalOrder(orderId) {
           '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(o.billingEmail||'—') + '</div></div>' +
           '<div><div class="lbl">Status</div><div class="val"><span class="badge">' + _e((o.status||'new').toUpperCase()) + '</span></div></div>' +
           (o.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(o.deliveryWindow) + '</div></div>' : '') +
-          '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from delivery</div></div>' +
+          '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from invoice date</div></div>' +
         '</div>' +
         '<table>' +
         '<thead><tr><th>Item</th><th>Brand</th><th>Qty / Amount</th></tr></thead>' +
@@ -1518,7 +1519,7 @@ function printPortalOrder(orderId) {
         '</table>' +
         '<div class="confirm">' +
         '<strong>Order received — thank you!</strong><br>' +
-        'We\'ll be in touch to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
+        'We\'ll be in touch to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> — payment is Net 30 from invoice date.' +
         '</div>' +
         '<div style="text-align:center;margin:20px 0">' +
         '<button onclick="window.print()" style="background:#2D1B4E;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
@@ -1616,7 +1617,7 @@ function printCurrentOrder() {
       '<div><div class="lbl">Account</div><div class="val">' + _e(data.accountName) + '</div></div>' +
       (data.poNumber ? '<div><div class="lbl">PO Number</div><div class="val">' + _e(data.poNumber) + '</div></div>' : '<div></div>') +
       '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(data.billingEmail) + '</div></div>' +
-      '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from delivery</div></div>' +
+      '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from invoice date</div></div>' +
       (data.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(data.deliveryWindow) + '</div></div>' : '') +
     '</div>' +
     '<table>' +
@@ -1626,7 +1627,7 @@ function printCurrentOrder() {
     '</table>' +
     '<div class="confirm">' +
     '<strong>Order received &mdash; thank you!</strong><br>' +
-    'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> upon delivery (Net 30).' +
+    'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> — payment is Net 30 from invoice date.' +
     (data.bothBrands ? '<br><br>You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.' : '') +
     '</div>' +
     '<div style="text-align:center;margin:20px 0">' +
