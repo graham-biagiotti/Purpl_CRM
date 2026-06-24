@@ -147,9 +147,26 @@ exports.sendOrderConfirmation = onCall(
   <tr><td style="background:#8B5FBF;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
-    <p>We received your order for <strong>${escHtml(data.accountName)}</strong> and we're on it. You'll hear from us with delivery details shortly.</p>
+    <p>We received your ${data.mode === 'preorder' ? 'pre-order' : 'order'} for <strong>${escHtml(data.accountName)}</strong>${data.requestSample ? ' (including a sample box request)' : ''}. We're on it!</p>
     ${escHtml(data.orderSummary || '').replace(/\n/g, '<br>')}
-    <p style="margin-top:20px">Questions? Reply to this email or call 603-748-3038.</p>
+    ${data.shipAddress && data.shipAddress.street1 ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0">
+      <tr><td style="padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;font-size:13px;color:#374151">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;font-weight:600">Shipping To</div>
+        ${escHtml(data.shipAddress.street1)}${data.shipAddress.street2 ? '<br>' + escHtml(data.shipAddress.street2) : ''}<br>
+        ${escHtml(data.shipAddress.city || '')}${data.shipAddress.state ? ', ' + escHtml(data.shipAddress.state) : ''} ${escHtml(data.shipAddress.zip || '')}
+      </td></tr>
+    </table>` : ''}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0">
+      <tr><td style="padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;font-size:13px;color:#374151">
+        <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;font-weight:600">What Happens Next</div>
+        ${data.mode === 'preorder'
+          ? 'We\'ll confirm availability and reach out with delivery timing. Your invoice will be sent closer to the ship date (Net 30 from delivery).'
+          : 'We\'ll confirm your order and schedule delivery. Your invoice arrives from lavender@pbfwholesale.com (Net 30 from delivery).'}
+        ${data.requestSample ? '<br><br><strong>Sample box:</strong> We\'ll review your request and ship a 3-can taster. You\'ll receive a tracking number once it goes out.' : ''}
+      </td></tr>
+    </table>
+    <p style="margin-top:16px">Questions? Reply to this email or call 603-748-3038.</p>
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
     ${data.portalLink ? `
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center">
@@ -406,6 +423,7 @@ exports.lookupPortalToken = onCall(async (request) => {
       accountName: d.name || '',
       accountEmail: d.email || '',
       isPbf: d.isPbf || false,
+      address: d.address || d.shipAddress || '',
       portalPrefs: d.portalPrefs || {},
     };
   }
@@ -438,6 +456,7 @@ exports.lookupPortalToken = onCall(async (request) => {
       accountName: d.name || '',
       accountEmail: d.email || '',
       isPbf: d.isPbf || false,
+      address: d.address || d.shipAddress || '',
       portalPrefs: d.portalPrefs || {},
     };
   }

@@ -785,6 +785,43 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </table>
         <p>Warmly,</p>`)
     },
+    'preorder-announcement': {
+      subject: `purpl Lavender Lemonade — now accepting pre-orders`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>We're excited to introduce <strong>purpl</strong> — a classic lemonade balanced with gentle lavender, crafted on our farm in Warner, New Hampshire.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
+          <tr><td style="padding:20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:#4B2082;margin-bottom:6px">Classic Lavender Lemonade</div>
+            <div style="font-size:14px;color:#6b7280">12 fl oz · 12 cans per case · $2.30/can wholesale</div>
+            <div style="font-size:13px;color:#6b7280;margin-top:4px">MSRP $3.29 · Case of 12: $27.60</div>
+          </td></tr>
+        </table>
+        <p>We're now accepting pre-orders so you can be first in line when we launch. No commitment until we confirm availability and schedule your delivery.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
+          <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px">YOUR PERSONALIZED ORDER PORTAL</div>
+            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:14px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Place a Pre-Order →</a>
+            <div style="font-size:12px;color:#9ca3af;margin-top:12px">Bookmark this link — it's your dedicated wholesale portal</div>
+            ${extra.portalPassword ? `<div style="font-size:12px;color:#374151;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
+          </td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
+          <tr><td style="padding:16px 20px;background:#f0f7f1;border-radius:8px;border:1px solid #b8d4c0">
+            <div style="font-size:13px;font-weight:600;color:#166534;margin-bottom:8px">What to expect:</div>
+            <div style="font-size:13px;color:#374151;line-height:1.7">
+              1. Place your pre-order through the link above<br>
+              2. We'll confirm availability and delivery timing<br>
+              3. Free delivery on 8+ cases throughout New England<br>
+              4. Payment: Net 30 from delivery<br>
+              5. You can also request a free 3-can sample box on the order form
+            </div>
+          </td></tr>
+        </table>
+        <p style="font-size:14px;color:#6b7280;line-height:1.7">Questions? Reply to this email or call 603-748-3038. We'd love to have purpl on your shelves.</p>
+        <p>Warmly,</p>`)
+    },
     'approved': {
       subject: `Welcome to the wholesale program — your retailer portal is ready`,
       from: 'lavender@pbfwholesale.com',
@@ -3509,9 +3546,13 @@ function renderMacSamplesTab(accountId) {
   const el  = qs('#mac-samples-tab-content');
   if (!el || !a) return;
 
-  // Wire + Log Sample button
+  // Wire + Log Sample / Send Sample buttons
   const btn = qs('#mac-tab-log-sample-btn');
   if (btn) btn.onclick = () => openLogSampleModal('ac', accountId);
+  const shipSampleBtn = qs('#mac-tab-ship-sample-btn');
+  if (shipSampleBtn) shipSampleBtn.onclick = () => {
+    if (confirm2('Push a 3-can sample box to ShipStation for ' + (a.name || 'this account') + '?')) pushSampleToShipStation(accountId);
+  };
 
   const samples = (a.samples || []).slice().sort((x, y) => (x.date > y.date ? -1 : 1));
   if (!samples.length) {
@@ -5733,6 +5774,48 @@ function saveLogSample() {
   if (type === 'pr') renderProspects();
   else openAccount(id);
   toast('Sample logged');
+}
+
+async function pushSampleToShipStation(accountId) {
+  const ac = DB.a('ac').find(a => a.id === accountId);
+  if (!ac) { toast('Account not found'); return; }
+  if (!ac.address && !ac.shipAddress) { toast('No address on file — add one first'); return; }
+  const addr = _parseAddress(ac.shipAddress || ac.address || '');
+  const ss = DB.obj('shipstation_settings', {});
+  const sampleNum = 'SAMPLE-' + (ac.name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() + '-' + Date.now().toString(36).slice(-4);
+
+  toast('Pushing sample to ShipStation…');
+  try {
+    const fn = firebase.functions().httpsCallable('pushToShipStation');
+    const result = await fn({
+      invoiceNumber: sampleNum,
+      accountName: ac.name || '',
+      customerEmail: ac.email || '',
+      brand: 'purpl',
+      storeId: ss.storeId || null,
+      notes: 'SAMPLE BOX — 3 cans Classic Lavender Lemonade',
+      shipTo: { name: ac.name || '', ...addr, phone: ac.phone || '' },
+      items: [{ sku: 'classic-sample', name: 'Sample Box — Classic Lavender Lemonade', quantity: 3, unitPrice: 0 }],
+    });
+    const d = result.data || {};
+    if (d.ok) {
+      const sample = {
+        id: uid(), date: today(), sku: 'classic', qty: 3,
+        contact: '', notes: 'Sample box pushed to ShipStation: ' + sampleNum,
+        followUpDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        followUpDone: false, shipStationOrderId: d.orderId, sampleOrderNumber: sampleNum,
+        type: 'sample_box',
+      };
+      DB.update('ac', accountId, r => ({ ...r, samples: [...(r.samples || []), sample] }));
+      auditLog('sample_push', 'account', accountId, ac.name, { shipStationOrderId: d.orderId, sampleNum });
+      toast('Sample pushed to ShipStation ✓ — ' + sampleNum);
+      openAccount(accountId);
+    } else {
+      _stickyError('Sample push failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) {
+    _stickyError('Sample push failed: ' + (e?.message || 'unknown'));
+  }
 }
 
 function markSampleFollowUpDone(type, id, sampleId) {
@@ -13430,7 +13513,7 @@ function _renderPoTabs() {
 }
 
 function _switchPoTab(tab) {
-  ['all','unmatched','confirmed','notify','links'].forEach(id => {
+  ['all','unmatched','confirmed','notify','links','samples'].forEach(id => {
     const el = qs(`#po-pane-${id}`);
     if (el) el.style.display = id === tab ? '' : 'none';
   });
@@ -13439,6 +13522,60 @@ function _switchPoTab(tab) {
   if (tab === 'confirmed') _renderPoConfirmed();
   if (tab === 'notify')    _renderPoNotify();
   if (tab === 'links')     _renderPoLinks();
+  if (tab === 'samples')   _renderPoSampleRequests();
+}
+
+function _renderPoSampleRequests() {
+  const el = qs('#po-pane-samples');
+  if (!el) return;
+  const orders = PortalDB.getAll().filter(o => o.requestSample && o.brand === 'purpl');
+  if (!orders.length) { el.innerHTML = '<div class="empty">No sample requests</div>'; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Submitted</th><th>Account</th><th>Email</th><th>Address</th><th>Status</th><th></th></tr></thead>
+    <tbody>${orders.map(o => {
+      const addr = o.shipAddress || {};
+      const addrStr = [addr.street1, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+      const sampled = o.sampleApproved ? '<span class="badge green">Approved</span>'
+        : o.sampleDeclined ? '<span class="badge red">Declined</span>'
+        : '<span class="badge amber">Pending</span>';
+      return `<tr>
+        <td>${_fmtPoDate(o.submittedAt)}</td>
+        <td><strong>${escHtml(o.accountName||'—')}</strong>${o.isMatched?' <span class="badge green" style="font-size:10px">Matched</span>':''}</td>
+        <td>${escHtml(o.billingEmail||o.contactEmail||'—')}</td>
+        <td style="font-size:12px">${escHtml(addrStr||'No address')}</td>
+        <td>${sampled}</td>
+        <td style="white-space:nowrap">
+          ${!o.sampleApproved && !o.sampleDeclined ? `
+            <button class="btn xs primary" onclick="_approveSampleRequest('${o.id}')">✓ Approve & Ship</button>
+            <button class="btn xs" onclick="_declineSampleRequest('${o.id}')">✗ Decline</button>
+          ` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+async function _approveSampleRequest(portalOrderId) {
+  const order = PortalDB.getAll().find(o => o.id === portalOrderId);
+  if (!order) return;
+  const accountId = order.accountId;
+  if (accountId) {
+    // Push sample to ShipStation via the account
+    await pushSampleToShipStation(accountId);
+    // Mark the portal order as approved
+    try { await firebase.firestore().collection('portal_orders').doc(portalOrderId).update({ sampleApproved: true, sampleApprovedAt: new Date().toISOString() }); } catch(e) {}
+  } else {
+    toast('No matched account — match this order to an account first');
+    return;
+  }
+  renderPreOrders(true);
+}
+
+function _declineSampleRequest(portalOrderId) {
+  if (!confirm2('Decline this sample request?')) return;
+  firebase.firestore().collection('portal_orders').doc(portalOrderId).update({ sampleDeclined: true }).catch(() => {});
+  renderPreOrders(true);
+  toast('Sample request declined');
 }
 
 const PO_STATUS_LABELS = {
@@ -14327,6 +14464,8 @@ async function renderPortalSettings() {
   if (dlEnabled) { dlEnabled.checked = !!config.deadlineEnabled; togglePortalDeadline(); }
   const dlDate = qs('#portal-deadline');
   if (dlDate) dlDate.value = config.deadline || '';
+  const ldEl = qs('#portal-launch-date');
+  if (ldEl) ldEl.value = config.launchDate || '';
 
   // Status card
   await _renderPortalStatusCard(config);
@@ -14357,7 +14496,8 @@ async function savePortalSettings() {
   const dlEnabled = qs('#portal-deadline-enabled')?.checked || false;
   const deadline  = qs('#portal-deadline')?.value || null;
   const portalPassword = qs('#portal-password-setting')?.value?.trim() || '';
-  const config    = { mode, pricePerCase: price, portalPassword, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null };
+  const launchDate = qs('#portal-launch-date')?.value || null;
+  const config    = { mode, pricePerCase: price, portalPassword, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null, launchDate };
   try {
     await PortalDB.saveConfig(config);
     toast('Portal settings saved ✓');

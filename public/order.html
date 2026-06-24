@@ -278,6 +278,25 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
     </div>
 
+    <!-- Shipping Address -->
+    <div class="card" id="shipping-section">
+      <h2>Shipping Address</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Confirm or update your shipping address for orders and samples.</p>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Street Address *</label>
+        <input type="text" id="ship-street" placeholder="123 Main St">
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Suite / Unit <span class="opt">(optional)</span></label>
+        <input type="text" id="ship-street2" placeholder="Suite 200">
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">
+        <div class="form-group"><label>City *</label><input type="text" id="ship-city" placeholder="Warner"></div>
+        <div class="form-group"><label>State *</label><input type="text" id="ship-state" placeholder="NH" maxlength="2" style="text-transform:uppercase"></div>
+        <div class="form-group"><label>Zip *</label><input type="text" id="ship-zip" placeholder="03278" maxlength="10"></div>
+      </div>
+    </div>
+
     <!-- Section 2: Order -->
     <div class="card" id="purpl-order-section">
       <h2>💜 purpl Lemonade Order</h2>
@@ -325,6 +344,19 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         </div>
       </div>
 
+      <!-- Sample Box Request -->
+      <div class="product-card" id="sample-request-card" style="border:2px dashed #c4b5fd;background:#faf8ff">
+        <div class="product-name" style="color:#7B4FA0">🧪 Request a Sample Box
+          <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px">Free · 3-can taster</span></div>
+        <div class="product-desc">3 cans of Classic Lavender Lemonade — try before you commit.</div>
+        <div class="notify-row" style="margin-top:10px">
+          <input type="checkbox" id="request-sample" onchange="checkSubmitEnabled()">
+          <label for="request-sample" style="font-weight:500;color:#7B4FA0">Yes, send me a sample box</label>
+        </div>
+        <div id="sample-note" style="display:none;font-size:12px;color:var(--muted);margin-top:8px;padding:8px 12px;background:#f3f0fa;border-radius:6px">
+          We'll review your request and ship samples to the address above. You'll get a tracking number once it ships.
+        </div>
+      </div>
     </div>
 
     <!-- Dual-brand notice -->
@@ -383,9 +415,32 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
     </div>
 
-    <!-- Section 5: Terms & Contact -->
+    <!-- Distribution Note -->
+    <div class="card sm" style="margin-bottom:16px;background:#f4f8ff;border-color:#93c5fd">
+      <div style="font-size:13px;color:#1e40af;line-height:1.7">
+        <strong>Distribution Partners:</strong> purpl is also available through select distributors.
+        If you'd prefer to order through your existing distributor, let us know.
+        <a href="mailto:graham@pumpkinblossomfarm.com" style="color:#1e40af">graham@pumpkinblossomfarm.com</a>
+      </div>
+    </div>
+
+    <!-- Terms & Agreement -->
     <div class="terms-block">
-      <strong>Payment Terms</strong>
+      <strong>Wholesale Terms</strong>
+      <div style="font-size:12px;color:#374151;line-height:1.8;margin-top:6px">
+        <strong>Payment:</strong> Net 30 from invoice date. 2% monthly finance charge on late payments.<br>
+        <strong>Shipping:</strong> Free delivery on 8+ cases in New England. Under 8 cases ship via carrier at cost.<br>
+        <strong>Order Issues:</strong> Inspect on arrival. Report within 48 hours.<br>
+        <strong>Pricing:</strong> Subject to change with 30 days' notice.
+      </div>
+      <div style="margin:12px 0">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+          <input type="checkbox" id="agree-terms" onchange="checkSubmitEnabled()" style="margin-top:3px;flex-shrink:0">
+          <span>I agree to the wholesale terms above.</span>
+        </label>
+      </div>
+      <hr class="divider">
+      <strong>Payment</strong>
       Net 30 from delivery. Invoices from <span style="color:var(--purpl)">lavender@pbfwholesale.com</span>.
       <hr class="divider">
       <div class="contact-line">
@@ -855,6 +910,32 @@ function init() {
       loadOutstandingInvoices(accountId);
     }
 
+    // Pre-fill shipping from account
+    var addr = data.address || data.shipAddress || '';
+    if (typeof addr === 'object' && addr.street1) {
+      document.getElementById('ship-street').value = addr.street1 || '';
+      document.getElementById('ship-street2').value = addr.street2 || '';
+      document.getElementById('ship-city').value = addr.city || '';
+      document.getElementById('ship-state').value = addr.state || '';
+      document.getElementById('ship-zip').value = addr.zip || '';
+    } else if (typeof addr === 'string' && addr) {
+      var parts = addr.split(',').map(function(p){return p.trim();});
+      document.getElementById('ship-street').value = parts[0] || '';
+      if (parts.length >= 2) {
+        var last = parts[parts.length - 1];
+        var m = last.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+        if (m) {
+          if (parts.length >= 3) document.getElementById('ship-city').value = parts[parts.length - 2];
+          document.getElementById('ship-state').value = m[1];
+          document.getElementById('ship-zip').value = m[2];
+        } else {
+          var m2 = last.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+          if (m2) { document.getElementById('ship-city').value = m2[1]; document.getElementById('ship-state').value = m2[2]; document.getElementById('ship-zip').value = m2[3]; }
+        }
+        if (parts.length > 3) document.getElementById('ship-street2').value = parts[1];
+      }
+    }
+
     var prefs = data.portalPrefs || {};
     if (prefs.billingEmail) {
       var be = document.getElementById('billing-email');
@@ -906,7 +987,17 @@ function updateCans() {
   checkSubmitEnabled();
 }
 
+document.getElementById('request-sample')?.addEventListener('change', function() {
+  var note = document.getElementById('sample-note');
+  if (note) note.style.display = this.checked ? '' : 'none';
+});
+
 function checkSubmitEnabled() {
+  var agreeEl = document.getElementById('agree-terms');
+  if (agreeEl && !agreeEl.checked) {
+    document.getElementById('submit-btn').disabled = true;
+    return;
+  }
   const cases = parseInt(document.getElementById('classic-cases').value) || 0;
   const notifyChecked = ['blueberry', 'peach']
     .some(f => document.getElementById('notify-' + f).checked);
@@ -1026,6 +1117,14 @@ function submitOrder() {
   const checkedFlavors = ['blueberry', 'peach']
     .filter(f => document.getElementById('notify-' + f).checked);
 
+  var shipAddress = {
+    street1: (document.getElementById('ship-street')?.value||'').trim(),
+    street2: (document.getElementById('ship-street2')?.value||'').trim(),
+    city: (document.getElementById('ship-city')?.value||'').trim(),
+    state: (document.getElementById('ship-state')?.value||'').trim().toUpperCase(),
+    zip: (document.getElementById('ship-zip')?.value||'').trim(),
+  };
+
   const orderData = {
     submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
     mode: portalMode,
@@ -1040,6 +1139,9 @@ function submitOrder() {
     distributorContactOk: document.getElementById('distributor-contact-ok')?.checked||false,
     leadTimeNeeded: document.getElementById('lead-time-needed')?.value||'',
     socialHandle: (document.getElementById('social-handle')?.value||'').trim(),
+    shipAddress: shipAddress,
+    requestSample: requestSample,
+    agreedToTerms: true,
     items: cases > 0 ? [{
       sku: 'classic',
       label: 'Classic Lavender Lemonade',
@@ -1059,8 +1161,13 @@ function submitOrder() {
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
 
-  if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0) {
-    showError('Please add at least one item or select a flavor notification.');
+  var requestSample = document.getElementById('request-sample')?.checked || false;
+  if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0 && !requestSample) {
+    showError('Please add at least one item, request a sample, or select a notification.');
+    return;
+  }
+  if (!document.getElementById('agree-terms')?.checked) {
+    showError('Please agree to the wholesale terms.');
     return;
   }
 
@@ -1164,6 +1271,9 @@ function submitOrder() {
         isPbf: _brandLf,
         portalLink: window.location.href,
         orderSummary: _oSummary,
+        mode: portalMode,
+        requestSample: requestSample,
+        shipAddress: shipAddress,
       }).catch(function(err) {
         console.error('Confirmation email failed:', err);
       });
