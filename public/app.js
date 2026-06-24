@@ -1626,7 +1626,6 @@ function dashFilterBrand(val) {
 
 function dashFilterFulfill(val) {
   nav('accounts');
-  _populateFulfillFilter();
   const el = qs('#ac-fulfill-filter');
   if (el) {
     // 'dist' means show all distributor-linked; pick first distributor or leave as ''
@@ -3009,7 +3008,7 @@ function _acCardHTML(a, muted) {
           <span class="ac-card-name">${escHtml(a.name)}</span>
           ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
           ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
-          ${muted ? _getFulfillBadge(a) : ''}
+          
         </div>
         <div class="ac-card-sub">${[a.type, locs.length===1&&locs[0].address ? locs[0].address : ''].filter(Boolean).map(escHtml).join(' · ')}</div>
         ${a.contact||a.phone?`<div class="ac-card-sub">${[a.contact,a.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
@@ -3059,7 +3058,6 @@ function _acCardHTML(a, muted) {
 }
 
 function renderAccounts() {
-  _populateFulfillFilter();
   let list = DB.a('ac');
   const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
   const typeFilter    = qs('#ac-type-filter')?.value || '';
