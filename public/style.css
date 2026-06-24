@@ -34,7 +34,7 @@
   --font-brand:'Playfair Display', Georgia, 'Times New Roman', serif;
   --font-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
-body{font-family:var(--font-body);background:var(--bg);color:var(--text);display:flex;min-height:100vh;font-size:14px}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
 a{color:var(--brand-purple)}
 a:hover{color:var(--brand-purple-hover)}
 
@@ -103,7 +103,7 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-signout svg{flex-shrink:0}
 
 /* MAIN */
-.main{margin-left:230px;flex:1;min-height:100vh;display:flex;flex-direction:column}
+.main{margin-left:230px;min-height:100vh;display:flex;flex-direction:column}
 .topbar{background:linear-gradient(180deg,#fdfbff,#fff);border-bottom:2px solid #e9d5ff;padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar h1{font-size:19px;font-weight:700;font-family:var(--font-brand);color:var(--brand-purple)}
 .topbar-right{display:flex;gap:8px;align-items:center}
