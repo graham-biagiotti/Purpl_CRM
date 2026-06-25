@@ -1723,6 +1723,7 @@
         <button class="tab" onclick="switchEmailsTab('overview')">📋 Overview</button>
         <button class="tab" onclick="switchEmailsTab('history')">📬 History</button>
         <button class="tab" onclick="switchEmailsTab('mass')">📢 Mass Email</button>
+        <button class="tab" onclick="switchEmailsTab('samples')">🧪 Samples</button>
       </div>
       <div id="emails-tab-compose">
         <div id="emails-auto-sends"></div>
@@ -1880,6 +1881,12 @@
         </div>
       </div>
     </div>
+      <div id="emails-tab-samples" style="display:none">
+        <div class="card" style="padding:16px">
+          <div class="section-hdr" style="margin-bottom:12px"><h3>Sample Requests</h3></div>
+          <div id="emails-samples-list"><div class="empty">Loading...</div></div>
+        </div>
+      </div>
 
     <!-- ═══════ TERRITORY MAP ═══════ -->
     <div class="page" id="page-map">

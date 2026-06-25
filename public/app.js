@@ -4448,7 +4448,7 @@ function renderEmailsTabHistory(accounts) {
 }
 
 function switchEmailsTab(tab) {
-  ['compose','overview','history','mass'].forEach(t => {
+  ['compose','overview','history','mass','samples'].forEach(t => {
     const el = document.getElementById('emails-tab-'+t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -4456,6 +4456,37 @@ function switchEmailsTab(tab) {
     btn.classList.toggle('active', btn.textContent.toLowerCase().includes(tab));
   });
   if (tab === 'mass') renderMassEmail();
+  if (tab === 'samples') renderEmailsSamples();
+}
+
+function renderEmailsSamples() {
+  const el = qs('#emails-samples-list');
+  if (!el) return;
+  const orders = PortalDB.getOrders().filter(o => o.requestSample);
+  if (!orders.length) { el.innerHTML = '<div class="empty">No sample requests yet</div>'; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Date</th><th>Account</th><th>Email</th><th>Address</th><th>Status</th><th></th></tr></thead>
+    <tbody>${orders.map(o => {
+      const addr = o.shipAddress || {};
+      const addrStr = [addr.street1, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
+      const status = o.sampleApproved ? '<span class="badge green">Approved</span>'
+        : o.sampleDeclined ? '<span class="badge red">Declined</span>'
+        : '<span class="badge amber">Pending</span>';
+      return `<tr>
+        <td>${_fmtPoDate(o.submittedAt)}</td>
+        <td><strong>${escHtml(o.accountName||'—')}</strong></td>
+        <td>${escHtml(o.billingEmail||o.contactEmail||'—')}</td>
+        <td style="font-size:12px">${escHtml(addrStr||'No address')}</td>
+        <td>${status}</td>
+        <td style="white-space:nowrap">
+          ${!o.sampleApproved && !o.sampleDeclined ? `
+            <button class="btn xs primary" onclick="_approveSampleRequest('${o.id}')">Approve & Ship</button>
+            <button class="btn xs" onclick="_declineSampleRequest('${o.id}')">Decline</button>
+          ` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
 }
 
 let _meBatchQueue  = [];
