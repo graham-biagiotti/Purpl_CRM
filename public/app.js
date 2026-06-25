@@ -8249,6 +8249,12 @@ function poolTransfer() {
   _poolTransferInFlight.add(key);
   const fromPool = dir === 'wh-farm' ? 'warehouse' : 'farm';
   const toPool   = dir === 'wh-farm' ? 'farm' : 'warehouse';
+  const available = _onHand(sku, fromPool);
+  if (qty > available) {
+    _poolTransferInFlight.delete(key);
+    toast(`Not enough stock — ${fromPool} has ${available} cans of ${SKU_MAP[sku]?.label || sku}`);
+    return;
+  }
   const xferId = uid();
   DB.atomicUpdate(cache => {
     cache.iv = [...(cache.iv || []),
