@@ -3639,7 +3639,8 @@ function renderMacEmailsTab(id) {
     const rows = cadence.slice().sort((a,b)=>b.sentAt>a.sentAt?1:-1).map(c=>{
       const s = CADENCE_STAGES.find(x=>x.id===c.stage);
       const status = ['Sent ✓', c.opened ? `👁 Opened ${fmtD(c.openedAt)}` : '', c.clicked ? `🔗 Clicked ${fmtD(c.clickedAt)}` : ''].filter(Boolean).join(' · ');
-      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}</td><td>${c.method||'—'}</td><td>${c.sentBy||'—'}</td><td>${status}</td></tr>`;
+      const toLabel = c.to ? `<div style="font-size:11px;color:var(--muted)">${escHtml(c.to)}</div>` : '';
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}${toLabel}</td><td>${c.method||'—'}</td><td>${c.sentBy||'—'}</td><td>${status}</td></tr>`;
     }).join('');
     logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
       <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -4087,6 +4088,23 @@ async function _renderEmailsRightCol() {
     ? accounts.find(x => x.id === _emailsSelectedAccountId)
     : null;
 
+  let contactPickerHtml = '';
+  if (account) {
+    const cts = (account.contacts || []).filter(c => c.email);
+    if (cts.length > 1) {
+      const opts = cts.map(c => `<option value="${escHtml(c.email)}"${c.isPrimary ? ' selected' : ''}>${escHtml(c.name || 'Contact')} — ${escHtml(c.email)}${c.role ? ' (' + escHtml(c.role) + ')' : ''}${c.isPrimary ? ' ★' : ''}</option>`).join('');
+      contactPickerHtml = `<div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">SEND TO</label>
+        <select id="emails-contact-pick" style="width:100%">
+          ${opts}
+          <option value="__all__">All contacts (${cts.length})</option>
+        </select>
+      </div>`;
+    } else if (cts.length === 1) {
+      contactPickerHtml = `<div style="margin-bottom:8px;font-size:12px;color:var(--muted)">To: ${escHtml(cts[0].name || '')} — ${escHtml(cts[0].email)}</div>`;
+    }
+  }
+
   let previewHtml = '';
   if (account) {
     const extra = {};
@@ -4122,11 +4140,12 @@ async function _renderEmailsRightCol() {
           <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Subject</div>
           <div style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">${escHtml(tpl.subject)}</div>
         </div>
+        ${contactPickerHtml}
         <iframe class="emails-preview-frame" srcdoc="${tpl.body.replace(/"/g,'&quot;')}"></iframe>
         ${tokenUi}
         <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
-          <button class="btn xs" onclick="emailsPageCopyHTML()">📋 Copy HTML</button>
-          <button class="btn xs" onclick="emailsPageOpenGmail()">✉️ Open in Gmail</button>
+          <button class="btn xs" onclick="emailsPageCopyHTML()">Copy HTML</button>
+          <button class="btn xs" onclick="emailsPageOpenGmail()">Open in Gmail</button>
           <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()"${isApproved && !hasToken ? ' disabled' : ''}>Send Email</button>
         </div>`;
     } else {
@@ -4172,7 +4191,19 @@ function emailsPageOpenGmail() {
   const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
   if (!account) return;
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
-  if (tpl) window.open(`mailto:${encodeURIComponent(account.email||'')}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+  const addrs = _getEmailsRecipients(account);
+  if (tpl) window.open(`mailto:${encodeURIComponent(addrs.join(','))}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+}
+
+function _getEmailsRecipients(account) {
+  const pick = qs('#emails-contact-pick');
+  if (pick && pick.value === '__all__') {
+    return (account.contacts || []).filter(c => c.email).map(c => c.email);
+  }
+  if (pick && pick.value) return [pick.value];
+  const contacts = account.contacts || [];
+  const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
+  return [primary.email || account.email || ''].filter(Boolean);
 }
 
 function emailsPageSendEmail() {
@@ -4190,39 +4221,48 @@ function emailsPageSendEmail() {
   }
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
   if (!tpl) return;
-  const contacts = account.contacts || [];
-  const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
-  const toEmail = primary.email || account.email || '';
+  const toEmails = _getEmailsRecipients(account);
+  const toEmail = toEmails[0] || '';
   if (!toEmail) { toast('No recipient email on file'); return; }
   if (account.emailOptOut && !confirm2(`${account.name} has unsubscribed from emails. Send anyway?`)) return;
 
   const btn = document.getElementById('emails-page-send-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
-  callSendEmail(toEmail, 'lavender@pbfwholesale.com', tpl.subject, tpl.body)
-    .then((result) => {
+  const _sendOne = async (addr) => {
+    try {
+      const result = await callSendEmail(addr, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
-      const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend'};
+      const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', to: addr};
       if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
         cadence: _pushCadence(a.cadence, entry)
       }));
-      toast('Email sent ✓');
-      renderEmailsPage();
-    })
-    .catch(() => {
-      toast('Resend unavailable — opening Gmail');
-      window.open(`mailto:${encodeURIComponent(toEmail)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+      return true;
+    } catch(_) {
+      window.open(`mailto:${encodeURIComponent(addr)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
       DB.update('ac', account.id, a => ({
         ...a,
         lastContacted: today(),
-        cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail'})
+        cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail', to: addr})
       }));
-      if (btn) { btn.disabled = false; btn.textContent = 'Send Email'; }
-    });
+      return false;
+    }
+  };
+
+  (async () => {
+    let ok = 0, fail = 0;
+    for (const addr of toEmails) {
+      if (await _sendOne(addr)) ok++; else fail++;
+      if (toEmails.length > 1) await new Promise(r => setTimeout(r, 300));
+    }
+    const msg = toEmails.length > 1 ? `Sent to ${ok} contact${ok > 1 ? 's' : ''}${fail ? `, ${fail} via Gmail` : ''}` : 'Email sent ✓';
+    toast(msg);
+    renderEmailsPage();
+  })();
 }
 
 function emailsPageMarkSent() {
@@ -4658,15 +4698,17 @@ async function meTemplateSend() {
     } catch(e) {}
   }
 
+  const allContacts = qs('#me-template-all-contacts')?.checked || false;
+
   for (let i = 0; i < accounts.length; i++) {
     const a = accounts[i];
-    const contacts = a.contacts || [];
+    const contacts = (a.contacts || []).filter(c => c.email);
     const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
-    const email = primary.email || a.email || '';
+    const recipients = allContacts ? contacts.map(c => c.email) : [primary.email || a.email || ''].filter(Boolean);
     if (statusEl) statusEl.textContent = `Sending ${i + 1} of ${accounts.length}…`;
 
     if (a.emailOptOut) { skipped++; continue; }
-    if (!email) { failed++; continue; }
+    if (!recipients.length) { failed++; continue; }
 
     const extra = { portalPassword };
     if (tplId === 'invoice-sent') {
@@ -4677,16 +4719,17 @@ async function meTemplateSend() {
     const tpl = getCadenceEmailTemplate(tplId, a, extra);
     if (!tpl) { failed++; continue; }
 
-    try {
-      const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
-      const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
-      const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend' };
-      if (result?.id) entry.sentMessageId = result.id;
-      DB.update('ac', a.id, ac => ({ ...ac, lastContacted: today(), cadence: _pushCadence(ac.cadence, entry) }));
-      sent++;
-    } catch(_) { failed++; }
-
-    if (i < accounts.length - 1) await new Promise(r => setTimeout(r, 300));
+    for (const email of recipients) {
+      try {
+        const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+        const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
+        const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', to: email };
+        if (result?.id) entry.sentMessageId = result.id;
+        DB.update('ac', a.id, ac => ({ ...ac, lastContacted: today(), cadence: _pushCadence(ac.cadence, entry) }));
+        sent++;
+      } catch(_) { failed++; }
+      await new Promise(r => setTimeout(r, 300));
+    }
   }
 
   const summary = `Template send complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;

@@ -1797,6 +1797,12 @@
                 </select>
               </div>
               <div id="me-template-preview" style="display:none;margin-bottom:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary)"></div>
+              <div style="margin-bottom:8px">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                  <input type="checkbox" id="me-template-all-contacts" style="width:14px;height:14px">
+                  Send to all contacts per account (not just primary)
+                </label>
+              </div>
               <div id="me-template-status" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
               <button class="btn primary" id="me-template-send-btn" onclick="meTemplateSend()">Send Template (<span id="me-template-send-count">0</span> accounts)</button>
             </div>
