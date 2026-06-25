@@ -420,7 +420,16 @@
       <div id="inv-pane-summary">
         <div class="card-grid grid-4" id="inv-stock-cards" style="margin-bottom:16px"></div>
         <div class="card">
-          <div class="section-hdr"><h2>Stock by SKU</h2></div>
+          <div class="section-hdr" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <h2>Stock by SKU</h2>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+              <label style="color:var(--muted);font-weight:600">Adjust pool:</label>
+              <select id="inv-adj-pool" style="font-size:12px;padding:4px 8px;border-radius:4px;border:1px solid var(--border)">
+                <option value="warehouse">Warehouse</option>
+                <option value="farm">Farm</option>
+              </select>
+            </div>
+          </div>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>SKU</th><th>Warehouse</th><th>Farm</th><th>Total</th><th>Loose</th><th>Pallets</th><th>COGS</th><th>Status</th><th>Actions</th></tr></thead>

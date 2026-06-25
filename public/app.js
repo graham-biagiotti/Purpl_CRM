@@ -8139,8 +8139,7 @@ function invAdjust(sku, type) {
   const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
   if (!qty || qty <= 0) return;
   const note = prompt('Note (optional):') || '';
-  const adjPool = prompt('Pool (warehouse / farm):', 'warehouse') || 'warehouse';
-  const pool = adjPool.toLowerCase().startsWith('f') ? 'farm' : 'warehouse';
+  const pool = qs('#inv-adj-pool')?.value || 'warehouse';
   DB.push('iv', {id:uid(), date:today(), sku:skuVal, type, qty, pool, note});
   _invSummary();
   toast('Inventory updated');
