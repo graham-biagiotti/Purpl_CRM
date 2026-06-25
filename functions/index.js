@@ -431,54 +431,55 @@ exports.lookupPortalToken = onCall(async (request) => {
 
   const db = admin.firestore();
 
-  // Check accounts first
+  // DM-3 FIX: find token in top-level collections (fast indexed query),
+  // then read fresh data from workspace (always up-to-date).
+  // Top-level accounts/prospects only store the token for lookup.
+
+  // Check accounts token index
   const acSnap = await db.collection('accounts')
     .where('orderPortalToken', '==', token).limit(1).get();
   if (!acSnap.empty) {
-    const d = acSnap.docs[0].data();
+    const acId = acSnap.docs[0].id;
+    const wsDoc = await db.collection('workspace/main/ac').doc(acId).get();
+    const d = wsDoc.exists ? wsDoc.data() : acSnap.docs[0].data();
     return {
-      found: true,
-      isProspect: false,
-      accountId: acSnap.docs[0].id,
-      accountName: d.name || '',
-      accountEmail: d.email || '',
+      found: true, isProspect: false, accountId: acId,
+      accountName: d.name || '', accountEmail: d.email || '',
       isPbf: d.isPbf || false,
       address: d.address || d.shipAddress || '',
       portalPrefs: d.portalPrefs || {},
     };
   }
 
-  // Check prospects
+  // Check prospects token index
   const prSnap = await db.collection('prospects')
     .where('orderPortalToken', '==', token).limit(1).get();
   if (!prSnap.empty) {
-    const d = prSnap.docs[0].data();
+    const prId = prSnap.docs[0].id;
+    const wsDoc = await db.collection('workspace/main/pr').doc(prId).get();
+    const d = wsDoc.exists ? wsDoc.data() : prSnap.docs[0].data();
     return {
-      found: true,
-      isProspect: true,
-      accountId: prSnap.docs[0].id,
-      accountName: d.name || '',
-      accountEmail: d.email || '',
-      isPbf: false,
-      portalPrefs: {},
+      found: true, isProspect: true, accountId: prId,
+      accountName: d.name || '', accountEmail: d.email || '',
+      isPbf: d.isPbf || false, portalPrefs: d.portalPrefs || {},
     };
   }
 
-  // Fallback: check workspace/main/ac (token may exist here if external write failed)
-  const wsSnap = await db.collection('workspace/main/ac')
-    .where('orderPortalToken', '==', token).limit(1).get();
-  if (!wsSnap.empty) {
-    const d = wsSnap.docs[0].data();
-    return {
-      found: true,
-      isProspect: false,
-      accountId: wsSnap.docs[0].id,
-      accountName: d.name || '',
-      accountEmail: d.email || '',
-      isPbf: d.isPbf || false,
-      address: d.address || d.shipAddress || '',
-      portalPrefs: d.portalPrefs || {},
-    };
+  // Fallback: check workspace directly (token may only exist here)
+  for (const col of ['workspace/main/ac', 'workspace/main/pr']) {
+    const wsSnap = await db.collection(col)
+      .where('orderPortalToken', '==', token).limit(1).get();
+    if (!wsSnap.empty) {
+      const d = wsSnap.docs[0].data();
+      return {
+        found: true, isProspect: col.endsWith('/pr'),
+        accountId: wsSnap.docs[0].id,
+        accountName: d.name || '', accountEmail: d.email || '',
+        isPbf: d.isPbf || false,
+        address: d.address || d.shipAddress || '',
+        portalPrefs: d.portalPrefs || {},
+      };
+    }
   }
 
   return { found: false };
