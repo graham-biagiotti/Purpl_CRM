@@ -1286,13 +1286,14 @@ exports.shipStationWebhook = onRequest(
               };
               await acDoc.ref.update({ samples });
 
-              // Deduct 3 cans of Classic from inventory
+              // Deduct 3 cans of Classic from farm pool
               await db.collection('workspace/main/iv').add({
                 id: Date.now().toString(36) + Math.random().toString(36).slice(2),
                 date: shipDate,
                 sku: 'classic',
                 type: 'out',
                 qty: 3,
+                pool: 'farm',
                 note: 'Sample box shipped: ' + orderNumber,
                 sampleOrderNumber: orderNumber,
               });

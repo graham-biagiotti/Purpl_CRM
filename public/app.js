@@ -8103,9 +8103,11 @@ function saveReturn() {
     skuId, cans, reason, notes,
     creditIssued, creditAmount,
   };
+  const returnPool = qs('#ret-pool')?.value || 'warehouse';
   const ivEntry = {
     id: uid(), date, sku: skuId,
     type: 'return', qty: cans,
+    pool: returnPool,
     note: `Return from ${account?.name||accountId}: ${reason}`,
   };
 
@@ -8137,7 +8139,9 @@ function invAdjust(sku, type) {
   const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
   if (!qty || qty <= 0) return;
   const note = prompt('Note (optional):') || '';
-  DB.push('iv', {id:uid(), date:today(), sku:skuVal, type, qty, note});
+  const adjPool = prompt('Pool (warehouse / farm):', 'warehouse') || 'warehouse';
+  const pool = adjPool.toLowerCase().startsWith('f') ? 'farm' : 'warehouse';
+  DB.push('iv', {id:uid(), date:today(), sku:skuVal, type, qty, pool, note});
   _invSummary();
   toast('Inventory updated');
 }
