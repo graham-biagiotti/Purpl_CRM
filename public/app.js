@@ -14422,6 +14422,7 @@ async function confirmPortalOrder() {
 
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
+    const deliveryMethod = qs('#mcpo-delivery-method')?.value || 'deliver';
 
     // Create order record(s)
     const purplOrderId = hasPurpl ? uid() : null;
@@ -14490,7 +14491,7 @@ async function confirmPortalOrder() {
             total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
           })),
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.',
+          notes: 'Auto-drafted from portal order.', deliveryMethod,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
         }];
@@ -14501,7 +14502,7 @@ async function confirmPortalOrder() {
           total: lfTotal, amount: lfTotal, status: 'draft',
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.',
+          notes: 'Auto-drafted from portal order.', deliveryMethod,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
@@ -14509,7 +14510,7 @@ async function confirmPortalOrder() {
           id: combId, number: combNum, invoiceNumber: combNum,
           purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
           accountId: d.accountId, accountName: d.accountName, status: 'draft',
-          date: todayStr, dueDate: dueDateStr,
+          date: todayStr, dueDate: dueDateStr, deliveryMethod,
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
           notes: 'Auto-drafted from portal order.', source: 'portal',
@@ -14523,7 +14524,7 @@ async function confirmPortalOrder() {
           cases: purplCases, cans: purplCans,
           pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
           priceType: isDistFulfilled ? 'dist' : 'direct',
-          status: 'draft', source: 'portal', brand: 'purpl',
+          status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod,
           billingEmail: d.billingEmail || acct.email || '',
           notes: 'Auto-drafted from portal order.',
           linkedPortalOrderId: _portalOrderId,
@@ -14533,7 +14534,7 @@ async function confirmPortalOrder() {
           id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
           accountId: d.accountId, accountName: d.accountName,
           orderId: lfOrderId, date: todayStr, dueDate: dueDateStr,
-          total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal',
+          total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal', deliveryMethod,
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
           notes: 'Auto-drafted from portal order.',
@@ -14554,12 +14555,19 @@ async function confirmPortalOrder() {
       }).catch(e => console.warn('Paired order status update failed:', e));
     }
 
+    // Auto-push to ShipStation if delivery method is 'ship'
+    if (deliveryMethod === 'ship') {
+      const pushInvId = isDual ? combId : singleInvId;
+      const pushCol = isDual ? 'combined_invoices' : (hasPurpl ? 'retail_invoices' : 'lf_invoices');
+      try { await pushInvoiceToShipStation(pushInvId, pushCol); } catch(e) { console.warn('ShipStation push failed:', e); }
+    }
+
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     if (isDual) {
-      toast('✓ Order confirmed · Combined invoice draft created');
+      toast('✓ Order confirmed · Combined invoice draft created' + (deliveryMethod === 'ship' ? ' · Pushed to ShipStation' : ''));
     } else {
-      toast('✓ Order confirmed · Invoice draft created');
+      toast('✓ Order confirmed · Invoice draft created' + (deliveryMethod === 'ship' ? ' · Pushed to ShipStation' : ''));
     }
 
     // Note: confirmation email is NOT sent here — the customer already
