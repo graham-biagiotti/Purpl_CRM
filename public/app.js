@@ -9039,10 +9039,13 @@ function offerDeliveryInvoice(stop, ac, ordId) {
   if (page) page.insertBefore(banner, page.firstChild);
 }
 
+const _deliveryInvInFlight = new Set();
 async function createDeliveryInvoice(accountId, ordId) {
+  if (_deliveryInvInFlight.has(ordId)) return;
+  _deliveryInvInFlight.add(ordId);
   const ac      = DB.a('ac').find(a=>a.id===accountId);
   const ord     = DB.a('orders').find(o=>o.id===ordId);
-  if (!ac || !ord) return;
+  if (!ac || !ord) { _deliveryInvInFlight.delete(ordId); return; }
 
   const terms   = _payTerms();
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
@@ -9074,6 +9077,7 @@ async function createDeliveryInvoice(accountId, ordId) {
     const ivEntries = lineItems.map(li => ({
       id: uid(), date: today(), sku: li.sku, type: 'out',
       qty: li.cases * CANS_PER_CASE,
+      pool: 'farm',
       note: 'Invoice ' + invoiceNumber, invoiceId: invoice.id,
     }));
     cache['iv'] = [...(cache['iv']||[]), ...ivEntries];
@@ -9083,6 +9087,7 @@ async function createDeliveryInvoice(accountId, ordId) {
     );
   });
 
+  _deliveryInvInFlight.delete(ordId);
   document.getElementById('del-invoice-offer')?.remove();
   toast(`Invoice ${invoiceNumber} created for ${ac.name}`);
 }
@@ -12101,9 +12106,13 @@ function _ncivCalcTotals() {
   document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
 }
 
+let _saveCombInFlight = false;
 async function saveNewCombinedInvoice() {
+  if (_saveCombInFlight) return;
+  _saveCombInFlight = true;
+  setTimeout(() => { _saveCombInFlight = false; }, 2000);
   const accountId = document.getElementById('nciv-account').value;
-  if (!accountId) { toast('Select an account'); return; }
+  if (!accountId) { _saveCombInFlight = false; toast('Select an account'); return; }
 
   // Collect purpl lines from SKU rows
   const purplLines = [];
@@ -12203,6 +12212,7 @@ async function saveNewCombinedInvoice() {
       const purplIvEntries = purplLines.map(li => ({
         id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
         qty: (li.cases || 0) * CANS_PER_CASE,
+        pool: 'farm',
         note: 'Invoice ' + combNum, invoiceId: purplId,
       })).filter(e => e.qty > 0);
       if (purplIvEntries.length) {
@@ -12690,7 +12700,7 @@ async function openCombinedInvoicePreview(combinedId) {
                 const cases = li.cases || li.qty || 0;
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
-                  cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
+                  cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
                   didDeduct = true;
                 }
               });
@@ -15360,7 +15370,7 @@ function markInvoiceSent(id) {
     lines.forEach(li => {
       const cases = li.cases || li.qty || 0;
       if (cases > 0) {
-        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, note: 'Invoice ' + invNum, invoiceId: id });
+        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + invNum, invoiceId: id });
       }
     });
   }
@@ -15522,7 +15532,11 @@ async function saveInv(id, isNew) {
 // Validates + persists the purpl invoice from the modal (including
 // inventory deduction for new non-draft invoices). Returns the saved
 // record or null if validation failed (toast already shown).
+let _saveInvInFlight = false;
 async function _saveInvCore(id, isNew) {
+  if (_saveInvInFlight) return;
+  _saveInvInFlight = true;
+  setTimeout(() => { _saveInvInFlight = false; }, 2000);
   const number    = qs('#iv-number')?.value?.trim() || '';
   const accountId = qs('#iv-account')?.value;
   const date      = qs('#iv-date')?.value || today();
@@ -15604,7 +15618,7 @@ async function _saveInvCore(id, isNew) {
     if (status !== 'draft') {
       lineItems.forEach(li => {
         if (li.cases > 0) {
-          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
+          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
         }
       });
     }
