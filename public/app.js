@@ -6953,7 +6953,11 @@ function openDistShipmentModal(distId) {
   openModal('modal-dist-shipment');
 }
 
+let _distShipInFlight = false;
 function saveDistShipment() {
+  if (_distShipInFlight) return;
+  _distShipInFlight = true;
+  setTimeout(() => { _distShipInFlight = false; }, 2000);
   const distId  = qs('#dship-dist-id').value;
   const date    = qs('#dship-date').value || today();
   const poRef   = qs('#dship-po-ref').value.trim();
@@ -6993,7 +6997,7 @@ function saveDistShipment() {
   };
   DB.push('dist_pos', poRec);
 
-  // 2. Deduct inventory (one inv entry per SKU)
+  // 2. Deduct inventory (one iv entry per SKU) — always warehouse pool
   items.forEach(item=>{
     DB.push('iv', {
       id: uid(),
@@ -7001,6 +7005,7 @@ function saveDistShipment() {
       type: 'out',
       qty: item.cases * CANS_PER_CASE,
       date,
+      pool: 'warehouse',
       source: 'dist_shipment',
       ref: shipId,
       note: `Shipment to ${dist?.name||'distributor'}${poRef?' — '+poRef:''}`,
@@ -7766,14 +7771,19 @@ function receiveLooseCans() {
   toast('Loose cans logged');
 }
 
+let _recvPacksInFlight = false;
 function receiveFinishedPacks() {
   if (!DB._firestoreReady) return;
+  if (_recvPacksInFlight) return;
+  _recvPacksInFlight = true;
+  setTimeout(() => { _recvPacksInFlight = false; }, 2000);
   const sku = qs('#recv-pack-sku')?.value;
   const qty = parseInt(qs('#recv-pack-qty')?.value);
   const packType = qs('#recv-pack-type')?.value||'6pack';
   if (!sku) { toast('Select a SKU'); return; }
   if (!qty||qty<=0) { toast('Enter a valid quantity'); return; }
-  DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, note:`${packType} receipt — ${qs('#recv-pack-note')?.value?.trim()||''}`});
+  const recvPool = qs('#recv-pack-pool')?.value || 'warehouse';
+  DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, pool: recvPool, note:`${packType} receipt — ${qs('#recv-pack-note')?.value?.trim()||''}`});
   qs('#recv-pack-qty').value=''; qs('#recv-pack-note').value='';
   _invReceive();
   toast('Finished packs logged');
@@ -7823,7 +7833,11 @@ function openRepackModal() {
   openModal('modal-repack');
 }
 
+let _repackInFlight = false;
 function saveRepackJob() {
+  if (_repackInFlight) return;
+  _repackInFlight = true;
+  setTimeout(() => { _repackInFlight = false; }, 2000);
   const date = qs('#repack-date')?.value || today();
   const outSku = qs('#repack-out-sku')?.value;
   const outQty = parseInt(qs('#repack-out-qty')?.value);
@@ -7848,7 +7862,7 @@ function saveRepackJob() {
     });
   });
   // Add to finished packs inventory (tagged with repackId so deletion can reverse it)
-  DB.push('iv', {id:uid(), date, sku:outSku, type:'in', qty:outQty, repackId: job.id, note:`Repack job — ${Object.entries(inputs).map(([s,q])=>`${q} ${s}`).join(', ')}`});
+  DB.push('iv', {id:uid(), date, sku:outSku, type:'in', qty:outQty, pool:'warehouse', repackId: job.id, note:`Repack job — ${Object.entries(inputs).map(([s,q])=>`${q} ${s}`).join(', ')}`});
   closeModal('modal-repack');
   _invRepack();
   toast('Repack job saved');
@@ -7934,7 +7948,7 @@ function shipPallet(palletId) {
   DB.update('pallets', palletId, p=>({...p, status:'shipped', shipTo:dest||p.shipTo, shipDate}));
   // Pallet contents are entered in CASES; the iv ledger is in cans
   Object.entries(p?.contents||{}).forEach(([sku,cases])=>{
-    DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty: cases * CANS_PER_CASE, palletId, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
+    DB.push('iv', {id:uid(), date:shipDate, sku, type:'out', qty: cases * CANS_PER_CASE, pool:'warehouse', palletId, note:`Pallet ${p.label||palletId} shipped to ${dest||p.shipTo}`});
   });
   _invPallets();
   toast('Pallet marked as shipped');
@@ -8645,7 +8659,11 @@ function renderTodaySchedule() {
     </div>`).join('');
 }
 
+let _prodRunInFlight = false;
 function saveTodayRun() {
+  if (_prodRunInFlight) return;
+  _prodRunInFlight = true;
+  setTimeout(() => { _prodRunInFlight = false; }, 2000);
   const items = {};
   SKUS.forEach(s=>{ const v=parseInt(qs('#sched-'+s.id)?.value)||0; if(v>0) items[s.id]=v; });
   if (!Object.keys(items).length) { toast('Enter at least one quantity'); return; }
@@ -8654,7 +8672,7 @@ function saveTodayRun() {
   DB.push('prod_hist', entry);
   // Also update inventory — store prodId so we can clean up on delete
   Object.entries(items).forEach(([sku, qty])=>{
-    DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, note:'Production run', prodId:entry.id});
+    DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, pool:'warehouse', note:'Production run', prodId:entry.id});
   });
   if(qs('#sched-notes')) qs('#sched-notes').value='';
   renderProduction();
