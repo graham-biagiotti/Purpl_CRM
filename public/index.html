@@ -3408,14 +3408,23 @@ document.addEventListener('DOMContentLoaded', () => {
             <label style="font-size:11px">Notes</label>
             <textarea id="civ-edit-notes" rows="3" placeholder="Custom terms, PO reference, etc." style="width:100%;padding:6px 8px;font-size:13px;resize:vertical"></textarea>
           </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label style="font-size:11px">Delivery Method</label>
+            <select id="civ-edit-delivery" style="width:100%;padding:6px 8px;font-size:13px">
+              <option value="deliver">Deliver (local)</option>
+              <option value="ship">Ship (ShipStation)</option>
+              <option value="pickup">Customer Pickup</option>
+            </select>
+          </div>
           <button class="btn sm primary" id="civ-btn-save" style="width:100%;justify-content:center">Save Changes</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn primary" id="civ-btn-gmail" style="justify-content:center;font-weight:600">📧 Send Invoice to Customer</button>
+          <button class="btn primary" id="civ-btn-gmail" style="justify-content:center;font-weight:600">Send Invoice to Customer</button>
+          <button class="btn blue" id="civ-btn-ship" style="display:none;justify-content:center">📦 Push to ShipStation</button>
           <button class="btn" id="civ-btn-newtab" style="justify-content:center">Open Full View ↗</button>
-          <button class="btn primary green" id="civ-btn-paid" style="justify-content:center">✓ Mark Both Paid</button>
-          <button class="btn" id="civ-btn-void" style="justify-content:center;color:var(--red);border-color:var(--red)">⊘ Void Invoice</button>
-          <button class="btn" id="civ-btn-delete" style="justify-content:center;color:var(--red);border-color:var(--red)">🗑 Delete Invoice</button>
+          <button class="btn primary green" id="civ-btn-paid" style="justify-content:center">Mark Both Paid</button>
+          <button class="btn" id="civ-btn-void" style="justify-content:center;color:var(--red);border-color:var(--red)">Void Invoice</button>
+          <button class="btn" id="civ-btn-delete" style="justify-content:center;color:var(--red);border-color:var(--red)">Delete Invoice</button>
         </div>
       </div>
     </div>

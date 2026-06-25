@@ -12574,6 +12574,25 @@ async function openCombinedInvoicePreview(combinedId) {
   qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
   qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
   qs('#civ-edit-notes').value = rec.notes || '';
+  const delivSel = qs('#civ-edit-delivery');
+  if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
+  const shipBtn = qs('#civ-btn-ship');
+  const _updateShipBtn = () => {
+    if (!shipBtn) return;
+    const isShip = delivSel?.value === 'ship';
+    shipBtn.style.display = isShip ? '' : 'none';
+    if (rec.shipStationOrderId) { shipBtn.textContent = '✓ Pushed to ShipStation'; shipBtn.disabled = true; }
+  };
+  _updateShipBtn();
+  if (delivSel) delivSel.onchange = _updateShipBtn;
+  if (shipBtn) shipBtn.onclick = async () => {
+    shipBtn.disabled = true; shipBtn.textContent = 'Pushing…';
+    try {
+      await pushInvoiceToShipStation(combinedId, 'combined_invoices');
+      toast('Pushed to ShipStation ✓');
+      setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
+    } catch(e) { toast('ShipStation push failed'); shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
+  };
 
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
@@ -12581,7 +12600,8 @@ async function openCombinedInvoicePreview(combinedId) {
     const newDue = qs('#civ-edit-due').value;
     const newTerms = qs('#civ-edit-terms').value;
     const newNotes = qs('#civ-edit-notes').value;
-    const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes };
+    const newDelivery = qs('#civ-edit-delivery')?.value || 'deliver';
+    const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery };
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
