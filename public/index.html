@@ -423,49 +423,33 @@
           <div class="section-hdr"><h2>Stock by SKU</h2></div>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>SKU</th><th>Loose Cans</th><th>Finished Packs</th><th>On Pallets</th><th>COGS Value</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Warehouse</th><th>Farm</th><th>Total</th><th>Loose</th><th>Pallets</th><th>COGS</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="inv-table-body"></tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- Locations -->
+      <!-- Pool Transfer -->
       <div id="inv-pane-locations" style="display:none">
-        <div class="card-grid grid-2" style="margin-bottom:16px">
-          <!-- Add Location form -->
-          <div class="card">
-            <div class="section-hdr"><h2>Add Location</h2></div>
-            <div class="form-group"><label>Name *</label><input type="text" id="loc-name" placeholder="e.g. Main Warehouse, Event Trailer"></div>
-            <div class="form-group"><label>Address</label><input type="text" id="loc-address" placeholder="Optional"></div>
-            <div class="form-group"><label>Notes</label><input type="text" id="loc-notes" placeholder="Optional"></div>
-            <button class="btn primary" onclick="addStockLocation()">Add Location</button>
+        <div class="card" style="max-width:480px;margin-bottom:16px">
+          <div class="section-hdr"><h2>Transfer Between Pools</h2></div>
+          <div class="form-group"><label>Direction</label>
+            <select id="pool-xfer-dir">
+              <option value="wh-farm">Warehouse → Farm</option>
+              <option value="farm-wh">Farm → Warehouse</option>
+            </select>
           </div>
-          <!-- Transfer stock -->
-          <div class="card">
-            <div class="section-hdr"><h2>Transfer Stock</h2></div>
-            <div class="form-group"><label>From location</label>
-              <select id="xfer-from"></select>
-            </div>
-            <div class="form-group"><label>To location</label>
-              <select id="xfer-to"></select>
-            </div>
-            <div class="form-group"><label>SKU</label>
-              <select id="xfer-sku"></select>
-            </div>
-            <div class="form-group"><label>Quantity (cases)</label>
-              <input type="number" id="xfer-qty" min="1" placeholder="Cases">
-            </div>
-            <div class="form-group"><label>Note</label>
-              <input type="text" id="xfer-note" placeholder="Optional">
-            </div>
-            <button class="btn primary" onclick="transferStock()">Transfer</button>
+          <div class="form-group"><label>SKU</label>
+            <select id="pool-xfer-sku"></select>
           </div>
-        </div>
-        <!-- Stock by location table -->
-        <div class="card">
-          <div class="section-hdr"><h2>Stock by Location</h2></div>
-          <div id="inv-locations-table"></div>
+          <div class="form-group"><label>Quantity (cans)</label>
+            <input type="number" id="pool-xfer-qty" min="1" placeholder="Cans">
+          </div>
+          <div class="form-group"><label>Note</label>
+            <input type="text" id="pool-xfer-note" placeholder="Optional">
+          </div>
+          <button class="btn primary" onclick="poolTransfer()">Transfer</button>
         </div>
       </div>
 

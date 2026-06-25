@@ -103,6 +103,14 @@ function deleteInvoiceWithCleanup(id) {
 
 function _invAmt(inv) { return parseFloat(inv.grandTotal || inv.amount || inv.total || 0); }
 
+function _onHand(skuId, pool) {
+  const iv = DB.a('iv');
+  const match = i => i.sku === skuId && (pool ? (i.pool || 'warehouse') === pool : true);
+  const ins  = iv.filter(i => match(i) && (i.type === 'in' || i.type === 'return')).reduce((t, i) => t + i.qty, 0);
+  const outs = iv.filter(i => match(i) && i.type === 'out').reduce((t, i) => t + i.qty, 0);
+  return Math.max(0, ins - outs);
+}
+
 // Look up email tracking status for an invoice from the account's cadence array
 // Returns a small HTML badge string or '' if no send event
 function _invEmailBadge(inv) {
@@ -7688,45 +7696,41 @@ function _invSummary() {
   // KPI cards
   const cards = qs('#inv-stock-cards');
   if (cards) {
-    const totalPacks = SKUS.reduce((s,sk)=>{
-      const ins  = iv.filter(i=>i.sku===sk.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
-      const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-      return s + Math.max(0, ins-outs);
-    },0);
+    const totalPacks = SKUS.reduce((s,sk) => s + _onHand(sk.id, null), 0);
+    const whTotal = SKUS.reduce((s,sk) => s + _onHand(sk.id, 'warehouse'), 0);
+    const farmTotal = SKUS.reduce((s,sk) => s + _onHand(sk.id, 'farm'), 0);
     const totalLoose = SKUS.reduce((s,sk)=>s+loose.filter(l=>l.sku===sk.id).reduce((t,l)=>t+l.qty,0),0);
     const activePallets = pallets.filter(p=>p.status==='ready').length;
-    const totalVal = SKUS.reduce((s,sk)=>{
-      const ins  = iv.filter(i=>i.sku===sk.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
-      const outs = iv.filter(i=>i.sku===sk.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-      return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15);
-    },0);
+    const totalVal = SKUS.reduce((s,sk) => s + _onHand(sk.id, null) * (costs.cogs[sk.id]||2.15), 0);
     cards.innerHTML = `
-      <div>${kpiHtml('Finished Packs', fmt(totalPacks)+' units', 'green')}</div>
-      <div>${kpiHtml('Loose Cans', fmt(totalLoose), 'purple')}</div>
-      <div>${kpiHtml('Ready Pallets', activePallets, 'blue')}</div>
+      <div>${kpiHtml('Total Stock', fmt(totalPacks)+' cans', 'green')}</div>
+      <div>${kpiHtml('Warehouse', fmt(whTotal)+' cans', 'blue')}</div>
+      <div>${kpiHtml('Farm', fmt(farmTotal)+' cans', 'purple')}</div>
       <div>${kpiHtml('Stock Value (COGS)', fmtC(totalVal), 'amber')}</div>`;
   }
 
   const el = qs('#inv-table-body');
   if (!el) return;
   el.innerHTML = SKUS.map(s=>{
-    const ins      = iv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
-    const outs     = iv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    const packs    = Math.max(0, ins-outs);
+    const total    = _onHand(s.id, null);
+    const whStock  = _onHand(s.id, 'warehouse');
+    const farmStock= _onHand(s.id, 'farm');
     const looseCt  = loose.filter(l=>l.sku===s.id).reduce((t,l)=>t+l.qty,0);
     const palletCt = pallets.filter(p=>p.status==='ready').reduce((t,p)=>t+(p.contents?.[s.id]||0),0);
-    const val      = packs*(costs.cogs[s.id]||2.15);
-    const status   = packs<24?{label:'Critical',cls:'red'}:packs<48?{label:'Low',cls:'amber'}:{label:'OK',cls:'green'};
+    const val      = total*(costs.cogs[s.id]||2.15);
+    const status   = total<24?{label:'Critical',cls:'red'}:total<48?{label:'Low',cls:'amber'}:{label:'OK',cls:'green'};
     return `<tr>
       <td>${skuBadge(s.id)}</td>
+      <td>${fmt(whStock)}</td>
+      <td>${fmt(farmStock)}</td>
+      <td><strong>${fmt(total)}</strong></td>
       <td>${fmt(looseCt)}</td>
-      <td><strong>${fmt(packs)}</strong></td>
       <td>${fmt(palletCt)}</td>
       <td>${fmtC(val)}</td>
       <td><span class="badge ${status.cls}">${status.label}</span></td>
       <td>
         <button class="btn xs primary" onclick="invAdjust('${s.id}','in')">+ Add</button>
-        <button class="btn xs" onclick="invAdjust('${s.id}','out')">− Use</button>
+        <button class="btn xs" onclick="invAdjust('${s.id}','out')">- Use</button>
       </td>
     </tr>`;
   }).join('');
@@ -8131,15 +8135,10 @@ function delInvEntry(id) {
   toast('Entry removed');
 }
 
-// ── Stock Locations (Phase 5) ─────────────────────────────
+// ── Pool Transfers ────────────────────────────────────────
 function _invLocations() {
-  // Ensure Warehouse default location exists
-  const locs = DB.a('stock_locations');
-  if (!locs.find(l=>l.name==='Warehouse')) {
-    DB.push('stock_locations', {id:uid(), name:'Warehouse', address:'', notes:'Default', created:today()});
-  }
-  _renderLocationsTable();
-  _populateXferSelects();
+  const skuEl = qs('#pool-xfer-sku');
+  if (skuEl) skuEl.innerHTML = SKUS.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 }
 
 function _renderLocationsTable() {
@@ -8221,19 +8220,30 @@ function deleteStockLocation(id) {
   toast('Location deleted');
 }
 
-function transferStock() {
-  const fromId = qs('#xfer-from')?.value;
-  const toId   = qs('#xfer-to')?.value;
-  const sku    = qs('#xfer-sku')?.value;
-  const qty    = parseInt(qs('#xfer-qty')?.value||'0');
-  const note   = (qs('#xfer-note')?.value||'').trim();
-  if (!fromId||!toId||!sku||!qty||qty<1) { toast('Fill all transfer fields'); return; }
-  if (fromId===toId) { toast('From and To must be different'); return; }
-  DB.push('stock_transfers', {id:uid(), fromId, toId, sku, qty, note, date:today()});
-  qs('#xfer-qty').value = '';
-  qs('#xfer-note').value = '';
-  _renderLocationsTable();
-  toast('Transfer logged');
+const _poolTransferInFlight = new Set();
+function poolTransfer() {
+  const dir  = qs('#pool-xfer-dir')?.value || 'wh-farm';
+  const sku  = qs('#pool-xfer-sku')?.value;
+  const qty  = parseInt(qs('#pool-xfer-qty')?.value || '0');
+  const note = (qs('#pool-xfer-note')?.value || '').trim();
+  if (!sku || !qty || qty < 1) { toast('Select SKU and enter quantity'); return; }
+  const key = `${sku}-${qty}-${dir}`;
+  if (_poolTransferInFlight.has(key)) return;
+  _poolTransferInFlight.add(key);
+  const fromPool = dir === 'wh-farm' ? 'warehouse' : 'farm';
+  const toPool   = dir === 'wh-farm' ? 'farm' : 'warehouse';
+  const xferId = uid();
+  DB.atomicUpdate(cache => {
+    cache.iv = [...(cache.iv || []),
+      { id: uid(), date: today(), sku, type: 'out', qty, pool: fromPool, note: `Transfer to ${toPool}${note ? ' — ' + note : ''}`, transferId: xferId },
+      { id: uid(), date: today(), sku, type: 'in',  qty, pool: toPool,   note: `Transfer from ${fromPool}${note ? ' — ' + note : ''}`, transferId: xferId },
+    ];
+  });
+  _poolTransferInFlight.delete(key);
+  qs('#pool-xfer-qty').value = '';
+  qs('#pool-xfer-note').value = '';
+  renderInventory();
+  toast(`Transferred ${qty} cans ${fromPool} → ${toPool}`);
 }
 
 // ══════════════════════════════════════════════════════════
