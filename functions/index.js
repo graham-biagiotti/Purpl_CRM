@@ -485,6 +485,40 @@ exports.lookupPortalToken = onCall(async (request) => {
   return { found: false };
 });
 
+// ── 4b. Get Portal Order History ─────────────────────────
+// Public callable — portal uses token to prove account ownership,
+// then fetches order history server-side (portal can't read portal_orders directly).
+exports.getPortalOrderHistory = onCall(async (request) => {
+  const accountId = request.data?.accountId;
+  const token = request.data?.token;
+  if (!accountId || !token) return { orders: [] };
+  const db = admin.firestore();
+  const valid = await db.collection('accounts').where('orderPortalToken', '==', token).limit(1).get()
+    .then(s => !s.empty && s.docs[0].id === accountId);
+  if (!valid) {
+    const wsValid = await db.collection('workspace/main/ac').where('orderPortalToken', '==', token).limit(1).get()
+      .then(s => !s.empty && s.docs[0].id === accountId);
+    if (!wsValid) return { orders: [] };
+  }
+  const snap = await db.collection('portal_orders')
+    .where('accountId', '==', accountId)
+    .orderBy('submittedAt', 'desc')
+    .limit(10)
+    .get();
+  return {
+    orders: snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id, status: data.status || 'new',
+        accountName: data.accountName || '',
+        items: data.items || [], lineItems: data.lineItems || [],
+        submittedAt: data.submittedAt?.toDate?.()?.toISOString() || null,
+        brand: data.brand || '', total: data.total || 0,
+      };
+    }),
+  };
+});
+
 // ── 4c. Init User Role ──────────────────────────────────
 // Called on first sign-in to create the users/{uid} doc with the correct role.
 // Uses Admin SDK so it bypasses security rules (client can't set role directly).
