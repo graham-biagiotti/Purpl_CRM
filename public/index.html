@@ -325,7 +325,7 @@
         <div id="ac-brand-btns" class="ac-brand-btns">
           <button class="ac-brand-btn active" data-brand="" onclick="setAcBrandFilter('')">All</button>
           <button class="ac-brand-btn" data-brand="purpl" onclick="setAcBrandFilter('purpl')">💜 purpl only</button>
-          <button class="ac-brand-btn" data-brand="lf" onclick="setAcBrandFilter('lf')">🌿 LF only</button>
+          <button class="ac-brand-btn" data-brand="lf" onclick="setAcBrandFilter('lf')">🪻 LF only</button>
           <button class="ac-brand-btn" data-brand="both" onclick="setAcBrandFilter('both')">Both lines</button>
         </div>
         <select id="ac-fulfill-filter">
@@ -359,7 +359,7 @@
         </select>
         <select id="pr-brand-filter">
           <option value="">All Brands</option>
-          <option value="lf">🌿 Lavender Fields + purpl</option>
+          <option value="lf">🪻 Lavender Fields + purpl</option>
           <option value="purpl">purpl Only</option>
         </select>
         <select id="pr-sort">
@@ -791,9 +791,9 @@
             </div>
             <!-- LF Items -->
             <div style="margin-bottom:12px">
-              <button type="button" class="btn secondary" style="font-size:12px;padding:4px 10px;margin-bottom:8px" onclick="toggleDelLfSection()">🌿 Add LF Items</button>
+              <button type="button" class="btn secondary" style="font-size:12px;padding:4px 10px;margin-bottom:8px" onclick="toggleDelLfSection()">🪻 Add LF Items</button>
               <div id="del-lf-section" style="display:none">
-                <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">🌿 Lavender Fields Items (cases)</label>
+                <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px">🪻 Lavender Fields Items (cases)</label>
                 <div id="del-lf-inputs"><!-- filled by JS --></div>
               </div>
             </div>
@@ -953,7 +953,7 @@
       <!-- Brand tab bar -->
       <div class="ac-brand-btns" id="rep-brand-btns" style="margin-bottom:16px">
         <button class="ac-brand-btn active" data-val="purpl" onclick="setRepBrand('purpl')">💜 purpl</button>
-        <button class="ac-brand-btn" data-val="lf" onclick="setRepBrand('lf')">🌿 Lavender Fields</button>
+        <button class="ac-brand-btn" data-val="lf" onclick="setRepBrand('lf')">🪻 Lavender Fields</button>
       </div>
       <!-- purpl section -->
       <div id="rep-purpl-section">
@@ -1549,7 +1549,7 @@
         <!-- LF SKU Catalog -->
         <div class="card" style="margin-bottom:16px">
           <div class="section-hdr">
-            <h2>🌿 Lavender Fields SKUs</h2>
+            <h2>🪻 Lavender Fields SKUs</h2>
             <div style="display:flex;gap:8px;align-items:center">
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
                 <input type="checkbox" id="lf-sku-show-archived" onchange="renderLfSkuSettings()"> Show archived
@@ -1687,7 +1687,7 @@
           <div style="display:flex;gap:5px;flex-wrap:wrap" id="inv-type-pills">
             <button class="ac-brand-btn active" data-type="all" onclick="setInvTypeFilter('all')">All</button>
             <button class="ac-brand-btn" data-type="purpl" onclick="setInvTypeFilter('purpl')">💜 purpl</button>
-            <button class="ac-brand-btn" data-type="lf" onclick="setInvTypeFilter('lf')">🌿 Lavender Fields</button>
+            <button class="ac-brand-btn" data-type="lf" onclick="setInvTypeFilter('lf')">🪻 Lavender Fields</button>
             <button class="ac-brand-btn" data-type="combined" onclick="setInvTypeFilter('combined')">🤝 Combined</button>
             <button class="ac-brand-btn" data-type="dist" onclick="setInvTypeFilter('dist')">🚚 Distributor</button>
           </div>
@@ -1751,7 +1751,7 @@
               <div class="ac-brand-btns" id="me-brand-btns">
                 <button class="ac-brand-btn active" data-val="" onclick="setMeFilter()">All</button>
                 <button class="ac-brand-btn" data-val="purpl" onclick="setMeFilter()">💜 purpl</button>
-                <button class="ac-brand-btn" data-val="lf" onclick="setMeFilter()">🌿 LF</button>
+                <button class="ac-brand-btn" data-val="lf" onclick="setMeFilter()">🪻 LF</button>
               </div>
             </div>
             <div style="margin-bottom:10px">
@@ -1816,7 +1816,7 @@
               <label>Regarding</label>
               <div class="ac-brand-btns" id="me-regarding-btns" style="margin-top:4px">
                 <button type="button" class="ac-brand-btn active" data-val="purpl" onclick="setMeRegarding('purpl')">💜 purpl</button>
-                <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMeRegarding('lf')">🌿 LF</button>
+                <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMeRegarding('lf')">🪻 LF</button>
                 <button type="button" class="ac-brand-btn" data-val="both" onclick="setMeRegarding('both')">Both</button>
               </div>
             </div>
@@ -1833,7 +1833,7 @@
               <label>Send from</label>
               <div class="ac-brand-btns" id="me-from-btns" style="margin-top:4px">
                 <button type="button" class="ac-brand-btn active" data-val="sales@drinkpurpl.com" onclick="setMeFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
-                <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMeFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
+                <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMeFrom('graham@pumpkinblossomfarm.com')">🪻 graham@pumpkinblossomfarm.com</button>
               </div>
             </div>
             <div id="me-broadcast-status" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
@@ -1852,7 +1852,7 @@
                 <div class="ac-brand-btns" id="me-batch-brand-btns">
                   <button class="ac-brand-btn active" data-val="" onclick="setMeBatchFilter()">All</button>
                   <button class="ac-brand-btn" data-val="purpl" onclick="setMeBatchFilter()">💜 purpl</button>
-                  <button class="ac-brand-btn" data-val="lf" onclick="setMeBatchFilter()">🌿 LF</button>
+                  <button class="ac-brand-btn" data-val="lf" onclick="setMeBatchFilter()">🪻 LF</button>
                 </div>
               </div>
               <div style="margin-bottom:10px">
@@ -1946,7 +1946,7 @@
       <label>Regarding</label>
       <div class="ac-brand-btns" id="mlo-regarding-btns" style="margin-top:4px">
         <button type="button" class="ac-brand-btn active" data-val="purpl" onclick="setMloRegarding('purpl')">💜 purpl</button>
-        <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMloRegarding('lf')">🌿 LF</button>
+        <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMloRegarding('lf')">🪻 LF</button>
         <button type="button" class="ac-brand-btn" data-val="both" onclick="setMloRegarding('both')">Both</button>
       </div>
     </div>
@@ -2000,7 +2000,7 @@
       <label>Regarding</label>
       <div class="ac-brand-btns" id="mdo-regarding-btns" style="margin-top:4px">
         <button type="button" class="ac-brand-btn active" data-val="purpl" onclick="setMdoRegarding('purpl')">💜 purpl</button>
-        <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMdoRegarding('lf')">🌿 LF</button>
+        <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMdoRegarding('lf')">🪻 LF</button>
         <button type="button" class="ac-brand-btn" data-val="both" onclick="setMdoRegarding('both')">Both</button>
       </div>
     </div>
@@ -2024,7 +2024,7 @@
       <label>Send from</label>
       <div class="ac-brand-btns" id="mdo-from-btns" style="margin-top:4px">
         <button type="button" class="ac-brand-btn active" data-val="sales@drinkpurpl.com" onclick="setMdoFrom('sales@drinkpurpl.com')">💜 sales@drinkpurpl.com</button>
-        <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMdoFrom('graham@pumpkinblossomfarm.com')">🌿 graham@pumpkinblossomfarm.com</button>
+        <button type="button" class="ac-brand-btn" data-val="graham@pumpkinblossomfarm.com" onclick="setMdoFrom('graham@pumpkinblossomfarm.com')">🪻 graham@pumpkinblossomfarm.com</button>
       </div>
     </div>
     <!-- Generate button -->
@@ -3358,7 +3358,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     <!-- LF section — same pattern but with LF SKUs -->
     <div style="margin-bottom:16px">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#4a7c59;padding:8px 0 6px;border-bottom:2px solid #4a7c59;margin-bottom:10px">🌿 Lavender Fields</div>
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#4a7c59;padding:8px 0 6px;border-bottom:2px solid #4a7c59;margin-bottom:10px">🪻 Lavender Fields</div>
       <div id="nciv-lf-skus"></div>
       <div style="text-align:right;font-size:14px;font-weight:700;color:#4a7c59;margin-top:8px">
         LF Subtotal: <span id="nciv-lf-sub">$0.00</span>

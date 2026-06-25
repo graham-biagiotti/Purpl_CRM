@@ -824,7 +824,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well — one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
+            <a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
             ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
             <div style="font-size:12px;color:#6b7280;margin-top:8px">Your personalized link — bookmark it for both purpl and Lavender Fields orders</div>
           </td></tr>
@@ -854,7 +854,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7">I've set up a personalized order portal for you below. You can also visit <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a> for product info and our sell sheet.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <a href="${portalLink}" style="display:inline-block;background:#1a1a2e;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place Your First Order</a>
+            <a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place Your First Order</a>
             ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
             <div style="font-size:12px;color:#6b7280;margin-top:8px">Bookmark this link — it's your personalized portal for all future orders</div>
           </td></tr>
@@ -1044,7 +1044,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>We just wanted to take a moment to say <strong>thank you</strong> for being a valued retail partner. Your support of <strong>${businessName}</strong> carrying our products means the world to our small farm.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td style="background:#f0f7f1;border-radius:8px;padding:20px 24px;text-align:center">
-            <div style="font-size:15px;color:#166534;font-weight:500">🌿 Every can sold supports a family farm in Warner, NH</div>
+            <div style="font-size:15px;color:#166534;font-weight:500">🪻 Every can sold supports a family farm in Warner, NH</div>
           </td></tr>
         </table>
         <p>If there's ever anything we can do better, please don't hesitate to let us know.</p>
@@ -1369,7 +1369,7 @@ function renderDash() {
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
   if (qs('#dash-kpi-purpl-ac'))             qs('#dash-kpi-purpl-ac').innerHTML             = kpiHtml('💜 purpl', purplAcCount, 'purple');
-  if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🌿 LF', lfAcCount, 'green');
+  if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🪻 LF', lfAcCount, 'green');
   if (qs('#dash-kpi-combined-outstanding')) qs('#dash-kpi-combined-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(combinedOutstanding), combinedOutstanding > 0 ? 'amber' : 'gray');
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
   if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('LF Deductions', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
@@ -1408,14 +1408,14 @@ function renderDash() {
   const prDueCount   = allPr.filter(p => !['won','lost'].includes(p.status) && p.nextDate && p.nextDate <= today()).length;
   if (qs('#dash-kpi-pr-total')) qs('#dash-kpi-pr-total').innerHTML = kpiHtml('Prospects', allPr.length, 'blue');
   if (qs('#dash-kpi-pr-purpl')) qs('#dash-kpi-pr-purpl').innerHTML = kpiHtml('💜 purpl Prospects', prPurplCount, 'purple');
-  if (qs('#dash-kpi-pr-lf'))    qs('#dash-kpi-pr-lf').innerHTML    = kpiHtml('🌿 LF Prospects', prLfCount, 'green');
+  if (qs('#dash-kpi-pr-lf'))    qs('#dash-kpi-pr-lf').innerHTML    = kpiHtml('🪻 LF Prospects', prLfCount, 'green');
   if (qs('#dash-kpi-pr-due'))   qs('#dash-kpi-pr-due').innerHTML   = kpiHtml('Follow-up Due', prDueCount, prDueCount > 0 ? 'red' : 'gray');
 
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
     `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
       <div class="dash-brand-stat" onclick="dashFilterBrand('lf')" title="View Lavender Fields + purpl accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#166534;background:#dcfce7;border-radius:6px;padding:3px 8px">
-        <span>🌿</span><span><strong>${lfCount}</strong> carry both purpl + Lavender Fields</span>
+        <span>🪻</span><span><strong>${lfCount}</strong> carry both purpl + Lavender Fields</span>
       </div>
       <div class="dash-brand-stat" onclick="dashFilterBrand('purpl')" title="View purpl-only accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
         <span>🟣</span><span><strong>${purplOnly}</strong> carry purpl only</span>
@@ -3040,7 +3040,7 @@ function _acCardHTML(a, muted) {
       <div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
           <span class="ac-card-name">${escHtml(a.name)}</span>
-          ${a.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
+          ${a.isPbf?`<span class="badge green" style="font-size:10px">🪻 LF</span>`:''}
           ${(a.skus||[]).map(s=>`<span class="badge ${SKU_MAP[s]?.cls||'gray'}" style="font-size:10px">${SKU_MAP[s]?.label||s}</span>`).join('')}
           
         </div>
@@ -3225,7 +3225,7 @@ function openAccount(id) {
   const brandBadgeEl = qs('#mac-brand-badge');
   if (brandBadgeEl) {
     brandBadgeEl.innerHTML = a.isPbf
-      ? `<span class="badge green">🌿 Lavender Fields wholesaler + purpl</span>`
+      ? `<span class="badge green">🪻 Lavender Fields wholesaler + purpl</span>`
       : `<span class="badge purple">purpl only</span>`;
   }
   const avEl = qs('#mac-avatar');
@@ -3420,7 +3420,7 @@ function renderAccountOutreach(a) {
   const TYPE_LABELS = {call:'Call',email:'Email','in-person':'In Person',text:'Text',other:'Other',Call:'Call',Email:'Email',Visit:'Visit',Text:'Text',Social:'Social'};
   const TYPE_CLS    = {call:'blue',email:'green','in-person':'purple',text:'gray',other:'gray',Call:'blue',Email:'green',Visit:'purple',Text:'gray',Social:'gray'};
   const OUT_CLS     = {'Interested':'green','Ordered':'green','Needs Follow-Up':'amber','No Response':'gray','Not Interested':'red','Left Voicemail':'gray','Other':'gray'};
-  const REG_LABEL   = {purpl:'💜 purpl', lf:'🌿 LF', both:'Both'};
+  const REG_LABEL   = {purpl:'💜 purpl', lf:'🪻 LF', both:'Both'};
   const REG_CLS     = {purpl:'purple', lf:'green', both:'blue'};
   ol.innerHTML = entries.map(e=>`
     <div class="note-item">
@@ -4381,7 +4381,7 @@ function renderEmailsTabOverview(accounts) {
       return `<td style="text-align:center"><span style="color:#d1d5db;font-size:16px">○</span></td>`;
     }).join('');
     const brand = a.isPbf
-      ? '<span class="badge green">🌿 LF</span>'
+      ? '<span class="badge green">🪻 LF</span>'
       : '<span class="badge purple">💜 purpl</span>';
     return `<tr>
       <td><strong>${escHtml(a.name)}</strong></td>
@@ -4834,7 +4834,7 @@ function _renderBatchWorker() {
       <label>Regarding</label>
       <div class="ac-brand-btns" id="mebw-regarding-btns">
         <button type="button" class="ac-brand-btn ${defaultReg==='purpl'?'active':''}" data-val="purpl" onclick="setMebwRegarding('purpl')">💜 purpl</button>
-        <button type="button" class="ac-brand-btn ${defaultReg==='lf'?'active':''}" data-val="lf" onclick="setMebwRegarding('lf')">🌿 LF</button>
+        <button type="button" class="ac-brand-btn ${defaultReg==='lf'?'active':''}" data-val="lf" onclick="setMebwRegarding('lf')">🪻 LF</button>
         <button type="button" class="ac-brand-btn" data-val="both" onclick="setMebwRegarding('both')">Both</button>
       </div>
     </div>
@@ -5363,7 +5363,7 @@ function renderProspects() {
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
             <span class="pr-card-name">${escHtml(p.name)}</span>
-            ${p.isPbf?`<span class="badge green" style="font-size:10px">🌿 LF</span>`:''}
+            ${p.isPbf?`<span class="badge green" style="font-size:10px">🪻 LF</span>`:''}
           </div>
           <div class="ac-card-sub">${[p.type,p.address||p.territory].filter(Boolean).map(escHtml).join(' · ')}</div>
           ${p.contact||p.phone?`<div class="ac-card-sub">${[p.contact,p.phone].filter(Boolean).map(escHtml).join(' · ')}</div>`:''}
@@ -8782,7 +8782,7 @@ function renderDelivery() {
           </div>` : ''}
           <div style="font-size:12px;color:var(--muted)">${escHtml(s.address||'')}</div>
           <div style="margin-top:6px">${SKUS.map(sk=>s[sk.id]>0?`${skuBadge(sk.id)} ×${s[sk.id]} cs`:'').filter(Boolean).join(' ')}</div>
-          ${(s.lfItems||[]).length?`<div style="margin-top:4px;font-size:12px;color:#15803d">🌿 ${(s.lfItems).map(it=>`${escHtml(it.skuName)} ×${it.cases} cs`).join(' · ')}</div>`:''}
+          ${(s.lfItems||[]).length?`<div style="margin-top:4px;font-size:12px;color:#15803d">🪻 ${(s.lfItems).map(it=>`${escHtml(it.skuName)} ×${it.cases} cs`).join(' · ')}</div>`:''}
           ${s.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px">${escHtml(s.notes)}</div>`:''}
         </div>
         <button class="btn xs red no-print" onclick="removeStop(${i})">✕</button>
@@ -13058,7 +13058,7 @@ function renderLfDashKpis() {
   const lfOverdue  = lfInvs.filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
   const pendingWix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
 
-  if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🌿 LF Accounts', lfAc, 'green');
+  if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🪻 LF Accounts', lfAc, 'green');
   if (qs('#dash-kpi-lf-outstanding')) qs('#dash-kpi-lf-outstanding').innerHTML = kpiHtml('LF Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray');
   if (qs('#dash-kpi-lf-overdue'))     qs('#dash-kpi-lf-overdue').innerHTML     = kpiHtml('LF Overdue', lfOverdue, lfOverdue > 0 ? 'red' : 'gray');
   if (qs('#dash-kpi-lf-wix'))         qs('#dash-kpi-lf-wix').innerHTML         = kpiHtml('Pending LF Deductions', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
@@ -13873,7 +13873,7 @@ function _renderPoAll() {
       const cans  = purplCases * CANS_PER_CASE;
       const brandBadges = [
         g.purpl ? '<span class="badge purple" style="font-size:10px">💜 purpl</span>' : '',
-        g.lf ? '<span class="badge green" style="font-size:10px">🌿 LF</span>' : '',
+        g.lf ? '<span class="badge green" style="font-size:10px">🪻 LF</span>' : '',
       ].filter(Boolean).join(' ');
       const acLink = o.isMatched && o.accountId
         ? `<strong style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</strong>`
@@ -14052,7 +14052,7 @@ function _renderPoLf() {
         return;
       }
       el.innerHTML = `<div class="card">
-        <div class="section-hdr" style="margin-bottom:12px"><h2>🌿 LF Form Submissions</h2></div>
+        <div class="section-hdr" style="margin-bottom:12px"><h2>🪻 LF Form Submissions</h2></div>
         <div class="tbl-wrap"><table>
           <thead><tr><th>Date</th><th>Account</th><th>Items</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>${orders.map(o => {
@@ -14184,7 +14184,7 @@ async function reviewPortalOrder(id) {
     const lfItems = lfOrd.lineItems || [];
     if (lfItems.length) {
       lfHtml = `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:700;color:#4a7c59;margin-bottom:8px">🌿 Lavender Fields Items</div>
+        <div style="font-size:12px;font-weight:700;color:#4a7c59;margin-bottom:8px">🪻 Lavender Fields Items</div>
         ${lfItems.map(li => {
           if (li.hasVariants && li.variantLines) {
             return `<div style="margin-bottom:6px"><strong>${escHtml(li.skuName||'')}</strong>
@@ -14204,7 +14204,7 @@ async function reviewPortalOrder(id) {
       <div><div style="font-size:11px;color:var(--muted)">Business</div><div style="font-weight:600">${escHtml(o.accountName||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted)">Billing Email</div><div>${escHtml(o.billingEmail||o.contactEmail||'—')}</div></div>
       <div><div style="font-size:11px;color:var(--muted)">Submitted</div><div style="font-size:13px">${_fmtPoDate(o.submittedAt)}</div></div>
-      <div><div style="font-size:11px;color:var(--muted)">Brands</div><div>${purplOrd ? '<span class="badge purple" style="font-size:10px">💜 purpl</span> ' : ''}${lfOrd ? '<span class="badge green" style="font-size:10px">🌿 LF</span>' : ''}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Brands</div><div>${purplOrd ? '<span class="badge purple" style="font-size:10px">💜 purpl</span> ' : ''}${lfOrd ? '<span class="badge green" style="font-size:10px">🪻 LF</span>' : ''}</div></div>
     </div>
     ${purplOrd && cases > 0 ? `<div style="padding:10px 0;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:700;color:#8B5FBF;margin-bottom:6px">💜 purpl Lemonade</div>
@@ -14362,7 +14362,7 @@ function openConfirmPortalOrder(id) {
     const lfItems = lfDoc.lineItems || [];
     const lfTotal = lfDoc.total || lfItems.reduce((s,li)=>s+(li.lineTotal||0),0);
     brandSummary += `<div style="margin-top:8px;padding:8px 10px;background:#f0f7f1;border-radius:6px;border:1px solid #b8d4c0">
-      <div style="font-size:11px;font-weight:700;color:#4a7c59;margin-bottom:4px">🌿 Lavender Fields</div>
+      <div style="font-size:11px;font-weight:700;color:#4a7c59;margin-bottom:4px">🪻 Lavender Fields</div>
       ${lfItems.map(li => `<div style="font-size:13px">${escHtml(li.skuName||'')} — ${li.cases||0} case${(li.cases||0)!==1?'s':''} · $${(li.lineTotal||0).toFixed(2)}</div>`).join('')}
       <div style="font-size:13px;font-weight:600;color:#4a7c59;margin-top:4px">LF Total: $${lfTotal.toFixed(2)}</div>
     </div>`;
@@ -14840,7 +14840,7 @@ function renderInvoicesPage() {
   if (actionsEl) actionsEl.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn sm primary" onclick="openInvModal()" style="font-weight:600">💜 purpl Invoice</button>
-      <button class="btn sm primary" onclick="openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">🌿 LF Invoice</button>
+      <button class="btn sm primary" onclick="openLfInvoiceModal(null)" style="font-weight:600;background:#4a7c59;border-color:#4a7c59">🪻 LF Invoice</button>
       <button class="btn sm primary" onclick="openNewCombinedModal()" style="font-weight:600;background:#d97706;border-color:#d97706">🤝 Combined</button>
       <button class="btn sm" onclick="pickDistForInvoice()" style="font-weight:600">🚚 Distributor</button>
     </div>`;
