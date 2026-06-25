@@ -1780,7 +1780,28 @@
           </div>
           <!-- Right: composer -->
           <div class="card" style="padding:16px">
-            <div class="section-hdr" style="margin-bottom:12px"><h3>Compose</h3></div>
+            <!-- Template send -->
+            <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+              <div class="section-hdr" style="margin-bottom:10px"><h3>Send Template</h3></div>
+              <div class="form-row" style="margin-bottom:8px">
+                <label>Template</label>
+                <select id="me-template-select" class="input" style="width:100%;font-size:13px" onchange="meTemplatePreview()">
+                  <option value="">Choose a template...</option>
+                  <option value="preorder-announcement">Pre-Order Announcement</option>
+                  <option value="approved">Account Approved</option>
+                  <option value="new-product">New Product Launch</option>
+                  <option value="reorder-reminder">Reorder Reminder</option>
+                  <option value="delivery-followup">Delivery Follow-Up</option>
+                  <option value="thank-you">Thank You</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div id="me-template-preview" style="display:none;margin-bottom:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-secondary)"></div>
+              <div id="me-template-status" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
+              <button class="btn primary" id="me-template-send-btn" onclick="meTemplateSend()">Send Template (<span id="me-template-send-count">0</span> accounts)</button>
+            </div>
+            <!-- Custom compose -->
+            <div class="section-hdr" style="margin-bottom:12px"><h3>Or Compose Custom</h3></div>
             <div class="form-row" style="margin-bottom:10px">
               <label>Goal / context <span style="color:var(--muted);font-weight:400">(optional)</span></label>
               <input type="text" id="me-goal" placeholder="e.g. Re-engagement after summer, new flavors available">
@@ -1793,7 +1814,7 @@
                 <button type="button" class="ac-brand-btn" data-val="both" onclick="setMeRegarding('both')">Both</button>
               </div>
             </div>
-            <button class="btn secondary" style="margin-bottom:12px" onclick="meBroadcastGenerate()">✨ Generate with AI</button>
+            <button class="btn secondary" style="margin-bottom:12px" onclick="meBroadcastGenerate()">Generate with AI</button>
             <div class="form-row" style="margin-bottom:8px">
               <label>Subject</label>
               <input type="text" id="me-subject" placeholder="Subject line...">
@@ -1810,7 +1831,7 @@
               </div>
             </div>
             <div id="me-broadcast-status" style="font-size:13px;color:var(--muted);margin-bottom:8px"></div>
-            <button class="btn primary" id="me-send-btn" onclick="meBroadcastSend()">📧 Send Broadcast (<span id="me-send-count">0</span> accounts)</button>
+            <button class="btn primary" id="me-send-btn" onclick="meBroadcastSend()">Send Broadcast (<span id="me-send-count">0</span> accounts)</button>
           </div>
         </div>
 

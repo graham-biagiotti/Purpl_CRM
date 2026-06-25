@@ -109,9 +109,10 @@ const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 const today = () => new Date().toISOString().slice(0,10);
 const fmt   = (n, d=0) => (+n||0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
 const fmtC  = (n) => '$' + fmt(n,2);
-const fmtD  = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-const fmtDLong = (s) => s ? new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '—';
-const daysAgo = (s) => s ? Math.floor((Date.now()-new Date(s+'T12:00:00'))/(864e5)) : 999;
+const _parseD = (s) => { if (!s) return NaN; return s.includes('T') ? new Date(s) : new Date(s+'T12:00:00'); };
+const fmtD  = (s) => { const d = _parseD(s); return isNaN(d) ? '—' : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+const fmtDLong = (s) => { const d = _parseD(s); return isNaN(d) ? '—' : d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); };
+const daysAgo = (s) => { const d = _parseD(s); return isNaN(d) ? 999 : Math.floor((Date.now()-d)/(864e5)); };
 
 function _currentUserName() {
   const u = window._currentUser;
@@ -4141,12 +4142,21 @@ async function _renderEmailsRightCol() {
   el.innerHTML = `
     <div style="margin-bottom:12px">
       <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">ACCOUNT</label>
-      <select onchange="selectEmailsAccount(this.value)" style="width:100%">
+      <input id="emails-account-search" type="search" placeholder="Type to search accounts…"
+        autocomplete="off" oninput="filterAccountSelect('emails-account',this.value)"
+        style="width:100%;margin-bottom:4px">
+      <select id="emails-account" onchange="selectEmailsAccount(this.value)" style="width:100%">
         <option value="">Select account...</option>
         ${acctOptions}
       </select>
     </div>
     ${previewHtml}`;
+  const _eSel = document.getElementById('emails-account');
+  if (_eSel) {
+    _eSel._accounts = accounts.map(a => ({ id: a.id, name: a.name }));
+    _eSel._placeholder = 'Select account...';
+    if (_emailsSelectedAccountId) _eSel.value = _emailsSelectedAccountId;
+  }
 }
 
 function emailsPageCopyHTML() {
@@ -4505,6 +4515,7 @@ function _updateMeCount() {
   const n = _meSelectedIds.size;
   const countEl = qs('#me-selected-count'); if (countEl) countEl.textContent = `${n} selected`;
   const sendEl  = qs('#me-send-count');     if (sendEl)  sendEl.textContent  = n;
+  const tplEl   = qs('#me-template-send-count'); if (tplEl)  tplEl.textContent = n;
 }
 function _updateMeBatchCount() {
   const el = qs('#me-batch-count'); if (el) el.textContent = `${_meSelectedIds.size} selected`;
@@ -4601,6 +4612,86 @@ async function meBroadcastSend() {
   const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meBroadcastInFlight = false;
+  if (sendBtn) sendBtn.disabled = false;
+  toast(summary, 5000);
+}
+
+// ── Mass Template Send ────────────────────────────────────
+function meTemplatePreview() {
+  const tplId = qs('#me-template-select')?.value || '';
+  const preview = qs('#me-template-preview');
+  if (!preview) return;
+  if (!tplId) { preview.style.display = 'none'; return; }
+  const sampleAccount = DB.a('ac')[0] || {name:'Sample Account', contacts:[{name:'there'}]};
+  const tpl = getCadenceEmailTemplate(tplId, sampleAccount);
+  if (tpl) {
+    preview.style.display = '';
+    preview.innerHTML = `<div style="font-weight:600;margin-bottom:4px">${escHtml(tpl.subject)}</div>
+      <div style="color:var(--muted)">Each email is personalized per account (name, portal link, etc.)</div>`;
+  } else {
+    preview.style.display = 'none';
+  }
+  const countEl = qs('#me-template-send-count');
+  if (countEl) countEl.textContent = _meSelectedIds.size;
+}
+
+let _meTemplateInFlight = false;
+async function meTemplateSend() {
+  if (_meTemplateInFlight) { toast('Send already in progress'); return; }
+  const tplId = qs('#me-template-select')?.value || '';
+  if (!tplId) { toast('Select a template first'); return; }
+  const accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));
+  if (!accounts.length) { toast('No accounts selected'); return; }
+  if (!confirm2(`Send "${tplId}" template to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`)) return;
+
+  _meTemplateInFlight = true;
+  const statusEl = qs('#me-template-status');
+  const sendBtn = qs('#me-template-send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+  let sent = 0, failed = 0, skipped = 0;
+
+  let portalPassword = '';
+  if (['preorder-announcement', 'approved'].includes(tplId)) {
+    try {
+      const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
+      portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
+    } catch(e) {}
+  }
+
+  for (let i = 0; i < accounts.length; i++) {
+    const a = accounts[i];
+    const contacts = a.contacts || [];
+    const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
+    const email = primary.email || a.email || '';
+    if (statusEl) statusEl.textContent = `Sending ${i + 1} of ${accounts.length}…`;
+
+    if (a.emailOptOut) { skipped++; continue; }
+    if (!email) { failed++; continue; }
+
+    const extra = { portalPassword };
+    if (tplId === 'invoice-sent') {
+      const invId = _latestAccountInvoiceId(a.id);
+      const inv = invId ? findInvoice(invId) : null;
+      if (inv) { extra.invoiceNumber = inv.number || inv.invoiceNumber || ''; extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0); }
+    }
+    const tpl = getCadenceEmailTemplate(tplId, a, extra);
+    if (!tpl) { failed++; continue; }
+
+    try {
+      const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
+      const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
+      const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend' };
+      if (result?.id) entry.sentMessageId = result.id;
+      DB.update('ac', a.id, ac => ({ ...ac, lastContacted: today(), cadence: _pushCadence(ac.cadence, entry) }));
+      sent++;
+    } catch(_) { failed++; }
+
+    if (i < accounts.length - 1) await new Promise(r => setTimeout(r, 300));
+  }
+
+  const summary = `Template send complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
+  if (statusEl) statusEl.textContent = `✓ ${summary}`;
+  _meTemplateInFlight = false;
   if (sendBtn) sendBtn.disabled = false;
   toast(summary, 5000);
 }
