@@ -25,7 +25,13 @@ Each entry: finding → confirmed → what changed → risk of the fix.
 
 **Where the allowlist lives:** Firestore doc `app_config/access_control`, field `allowedEmails` (string array). To add someone manually: add their email to this array in the Firebase console. Or use `inviteEmployee` from the CRM (auto-adds).
 
-**Risk:** If the `app_config/access_control` doc is deleted, the next sign-in bootstraps a new one with their own email. This is contained by Layer 3 (admin can't be re-won).
+**Lockout protection:** `grahambiagiotti@gmail.com` is hardcoded as a permanent fallback admin in `FALLBACK_ADMIN_EMAILS` (functions/index.js line 498-500). This email:
+- Always passes the allowlist check, even if the allowlist doc is missing, empty, or doesn't include it
+- Always receives `admin` role on user doc creation
+- Auto-adds itself to the allowlist on first pass so subsequent checks are fast
+- If the allowlist doc doesn't exist, seeds it with only the fallback admin email (strangers still rejected)
+
+**Risk:** None — the fallback cannot be locked out. If the `app_config/access_control` doc is deleted, graham's next sign-in re-seeds it. Strangers are rejected even during bootstrap.
 
 ---
 

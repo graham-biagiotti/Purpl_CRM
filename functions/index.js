@@ -494,12 +494,18 @@ exports.lookupPortalToken = onCall(async (request) => {
 // Allowlist lives in Firestore: app_config/access_control { allowedEmails: [...] }
 // To add a new employee: use inviteEmployee (auto-adds to allowlist),
 // or manually add their email to the allowedEmails array in that doc.
+// Permanent fallback admin — can never be locked out regardless of allowlist state
+const FALLBACK_ADMIN_EMAILS = [
+  'grahambiagiotti@gmail.com',
+];
+
 exports.initUserRole = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
   const uid = request.auth.uid;
   const email = (request.auth.token.email || '').toLowerCase().trim();
   if (!email) throw new HttpsError('permission-denied', 'No email on account');
 
+  const isFallbackAdmin = FALLBACK_ADMIN_EMAILS.includes(email);
   const db = admin.firestore();
 
   // Existing user — return stored role (skip allowlist check; they were already approved)
@@ -515,15 +521,25 @@ exports.initUserRole = onCall(async (request) => {
   const config = configSnap.exists ? configSnap.data() : {};
   const allowedEmails = (config.allowedEmails || []).map(e => String(e).toLowerCase().trim());
 
-  // Bootstrap: if no access_control doc exists yet, seed it with this caller
-  // (first-ever sign-in bootstraps the allowlist with their own email)
   if (!configSnap.exists) {
-    await configRef.set({ allowedEmails: [email], bootstrapAdminAssigned: false });
+    // No allowlist doc yet — seed it with fallback admins only
+    await configRef.set({ allowedEmails: [...FALLBACK_ADMIN_EMAILS], bootstrapAdminAssigned: false });
+    if (!isFallbackAdmin) {
+      throw new HttpsError('permission-denied', 'Access not authorized — contact your admin');
+    }
   } else if (!allowedEmails.includes(email)) {
-    throw new HttpsError('permission-denied', 'Access not authorized — contact your admin');
+    // Not on the list — fallback admins always get through
+    if (!isFallbackAdmin) {
+      throw new HttpsError('permission-denied', 'Access not authorized — contact your admin');
+    }
+    // Fallback admin: add self to allowlist so future checks pass directly
+    await configRef.update({
+      allowedEmails: admin.firestore.FieldValue.arrayUnion(email),
+    });
   }
 
   // LAYER 3: first-admin assignment in a transaction with persistent flag
+  // Fallback admins always get admin role regardless of first-user check
   const role = await db.runTransaction(async (tx) => {
     const cfgSnap = await tx.get(configRef);
     const cfgData = cfgSnap.exists ? cfgSnap.data() : {};
@@ -531,7 +547,7 @@ exports.initUserRole = onCall(async (request) => {
     const usersSnap = await db.collection('users').limit(1).get();
     const isFirstUser = usersSnap.empty && !alreadyBootstrapped;
 
-    const assignedRole = isFirstUser ? 'admin' : 'employee';
+    const assignedRole = (isFirstUser || isFallbackAdmin) ? 'admin' : 'employee';
     tx.set(userRef, {
       email,
       displayName: request.auth.token.name || email.split('@')[0] || '',
