@@ -2392,11 +2392,15 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   if (ivSendBtn) {
     ivSendBtn.style.display = '';
     const _ivIsShip = () => qs('#iv-delivery-method')?.value === 'ship';
-    ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
-    const dmEl = qs('#iv-delivery-method');
-    if (dmEl) dmEl.onchange = () => {
+    const _ivIsWh = () => qs('#iv-fulfillment')?.value === 'warehouse';
+    const _updateIvBtnText = () => {
       ivSendBtn.textContent = _ivIsShip() ? 'Save & Push to ShipStation' : 'Save & Send';
     };
+    _updateIvBtnText();
+    const dmEl = qs('#iv-delivery-method');
+    if (dmEl) dmEl.onchange = _updateIvBtnText;
+    const ffEl = qs('#iv-fulfillment');
+    if (ffEl) ffEl.onchange = _updateIvBtnText;
     ivSendBtn.onclick = async () => {
       if (ivSendBtn.disabled) return;
       ivSendBtn.disabled = true; ivSendBtn.textContent = 'Saving…';
@@ -12606,8 +12610,7 @@ async function openCombinedInvoicePreview(combinedId) {
     } catch(e) { toast('ShipStation push failed'); shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
   };
   if (whBtn) whBtn.onclick = () => {
-    DB.update('combined_invoices', combinedId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
-    toast('Marked for warehouse fulfillment ✓');
+    pushToWarehouse(combinedId, 'combined_invoices');
     setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
   };
 
@@ -14929,7 +14932,7 @@ function renderInvUnifiedList() {
   };
 
   tbody.innerHTML = list.map(r => `<tr>
-    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${_invEmailBadge(r.inv)}</td>
+    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.fulfillmentSource==='warehouse'?' <span class="badge" style="font-size:10px;background:#e0f2fe;color:#0369a1">🏭 Warehouse'+(r.inv.warehousePushedAt?' ✓':'')+'</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${_invEmailBadge(r.inv)}</td>
     <td>${escHtml(r.name)}</td>
     <td style="white-space:nowrap">${fmtD(r.issued)}</td>
     <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>
@@ -14940,8 +14943,15 @@ function renderInvUnifiedList() {
       ${r.print ? `<button class="btn xs" onclick="${r.print}">🖨️</button>` : ''}
       ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
       ${r.inv.deliveryMethod==='ship' && !r.inv.shipStationOrderId ? `<button class="btn xs" onclick="pushInvoiceToShipStation('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">📦 Ship</button>` : ''}
+      ${r.inv.fulfillmentSource==='warehouse' && !r.inv.warehousePushedAt && r.rawSt!=='paid' && r.rawSt!=='void' ? `<button class="btn xs" style="color:#0891b2;border-color:#0891b2" onclick="pushToWarehouse('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">🏭 Warehouse</button>` : ''}
     </td>
   </tr>`).join('') || `<tr><td colspan="7" class="empty">No invoices match${q ? ' "' + escHtml(q) + '"' : ''}</td></tr>`;
+}
+
+function pushToWarehouse(invoiceId, collection) {
+  DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
+  toast('Marked for warehouse fulfillment ✓');
+  renderInvoicesPage();
 }
 
 function renderInvKpis() {
