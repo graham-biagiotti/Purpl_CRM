@@ -1345,11 +1345,7 @@ function renderDash() {
     .reduce((s,o)=>s+calcOrderValue(o), 0);
   const pipeline  = pr.filter(x=>!['won','lost'].includes(x.status)).length;
   const overdue   = ord.filter(o=>o.status==='pending'&&o.dueDate<today()).length;
-  const lowStock  = SKUS.filter(s=>{
-    const oh = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0)
-             - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    return oh < 48;
-  }).length;
+  const lowStock  = SKUS.filter(s => _onHand(s.id, null) < 48).length;
 
   const allAc  = DB.a('ac');
   const lfCount      = allAc.filter(a=>!!a.isPbf).length;
@@ -1379,11 +1375,7 @@ function renderDash() {
   if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('LF Deductions', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
   // Low inventory KPI
-  const totalCans = SKUS.reduce((sum, sk) => {
-    const oh = inv.filter(i => i.sku === sk.id && (i.type === 'in' || i.type === 'return')).reduce((t, i) => t + i.qty, 0)
-             - inv.filter(i => i.sku === sk.id && i.type === 'out').reduce((t, i) => t + i.qty, 0);
-    return sum + Math.max(0, oh);
-  }, 0);
+  const totalCans = SKUS.reduce((sum, sk) => sum + _onHand(sk.id, null), 0);
   const lowStockThreshold = DB.obj('settings', {}).lowStockThreshold || 500;
   const kpiInvEl = qs('#dash-kpi-inv-cans');
   if (kpiInvEl) {
@@ -1709,10 +1701,10 @@ function renderAttention() {
   });
 
   SKUS.forEach(s=>{
-    const inv = DB.a('iv');
-    const oh = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0)
-             - inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    if (oh < 48) items.push({icon:'📦', name:`${s.label} — Low Stock`, reason:`${oh} units on hand`, action:`nav('inventory')`, borderColor:'#d97706'});
+    const whOh = _onHand(s.id, 'warehouse');
+    const fmOh = _onHand(s.id, 'farm');
+    if (whOh < 48) items.push({icon:'📦', name:`${s.label} — Low (Warehouse)`, reason:`${whOh} cans in warehouse`, action:`nav('inventory')`, borderColor:'#d97706'});
+    if (fmOh < 48) items.push({icon:'📦', name:`${s.label} — Low (Farm)`, reason:`${fmOh} cans at farm`, action:`nav('inventory')`, borderColor:'#d97706'});
   });
 
   DB.a('pr').filter(p=>p.nextDate&&p.nextDate<todayStr&&!['won','lost'].includes(p.status)).forEach(p=>{
@@ -2807,12 +2799,7 @@ function renderProjectionsPage() {
   const weeklyBySku = Object.fromEntries(SKUS.map(s=>[s.id,0]));
   velocities.forEach(v=>{ SKUS.forEach(s=>{ weeklyBySku[s.id] += (v.weeklyUnits[s.id]||0); }); });
 
-  const inv = DB.a('iv');
-  function stockFor(skuId) {
-    const ins  = inv.filter(i=>i.sku===skuId&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
-    const outs = inv.filter(i=>i.sku===skuId&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    return Math.max(0, ins-outs);
-  }
+  function stockFor(skuId) { return _onHand(skuId, null); }
 
   const skuTbody = qs('#proj-sku-body');
   if (skuTbody) {
