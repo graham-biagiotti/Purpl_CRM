@@ -228,3 +228,44 @@ If combined ALSO added: $1250.00  ← DOUBLE COUNTED
 2. The invariant check script at /tmp/invariant_check.js confirms the logic with seeded data
 
 **What could cause orphans:** deleteInvoiceWithCleanup DOES cascade to combined_invoices (line 69-70), so orphans should not occur in normal use. They could occur from manual Firestore edits or data imports.
+
+---
+
+## Wave 2 — Data Model + Account Reconciliation (FOUNDATION_REVIEW.md)
+
+### STEP 1+2: Unified invoice helper + omission fixes
+
+**Root fix:** Created `_allInvoices(opts)` helper (app.js line 49) that unions ALL 5 invoice collections with optional filters: `{brand, status, accountId, excludeChildren}`. Defined `_INV_COLS` constant listing all collections.
+
+**Refactored call sites:**
+| Function | Was | Now |
+|----------|-----|-----|
+| `findInvoice(id)` | retail, lf, iv (missed combined, dist) | All 5 via `_INV_COLS` loop |
+| `_invoiceCol(id)` | retail, lf, fallback iv (missed combined, dist) | All 5 via `_INV_COLS` loop |
+| `deleteInvoiceWithCleanup(id)` | retail, lf, iv (missed combined, dist) | All 5 via `_INV_COLS` |
+| `_invAmt(inv)` | `amount \|\| total` | `grandTotal \|\| amount \|\| total` (combined uses grandTotal) |
+| Dashboard overdue | Hand-assembled 4 collections | `_allInvoices({excludeChildren:true}).filter(od)` |
+| Dashboard drafts | Hand-assembled 3 collections (missed dist) | `_allInvoices({status:'draft', excludeChildren:true})` |
+
+**Omission fixes (STEP 2):**
+| Finding | Fix |
+|---------|-----|
+| DM-1 (CRITICAL) | `exportYearEnd` now includes `dist_invoices` with brand='Dist', type='Distributor' |
+| DM-2 (CRITICAL) | `markInvoiceSent` now works for combined/dist — `findInvoice` and `_invoiceCol` search all 5 |
+| DM-5 | Dashboard draft badge now counts dist drafts |
+| DM-6 | Reports "Total Invoiced" includes dist; label updated to "purpl + LF + distributor" |
+| DM-7 | Going Cold report checks outstanding across ALL brands via `_allInvoices` |
+
+### STEP 3: Account detail reconciliation
+
+| Finding | Fix |
+|---------|-----|
+| Outstanding balance | Replaced order-based count ("2 unpaid") with invoice-dollar sum (e.g. "$1,240.00") via `_allInvoices({accountId, excludeChildren:true})`. Matches Statement computation. |
+| lastOrder stale on delete | Order deletion now recalculates `lastOrder` from remaining orders |
+| quickNote misses lastContacted | `quickNote` now sets `lastContacted: today()` matching `addAccountNote` |
+
+### STEP 4: DM-3 — Token lookup mirror divergence
+
+**Tradeoff:** Option A (sync on every workspace update) adds writes on every account save. Option B (read workspace directly in Cloud Function) adds one extra Firestore read per lookup. Chose Option B.
+
+**Fix:** `lookupPortalToken` now uses top-level collections only as a token index (fast `where` query), then reads fresh name/email/address from `workspace/main/ac` or `workspace/main/pr`. Falls back to top-level doc data if workspace doc doesn't exist. Portal links now always show current account names.
