@@ -5,7 +5,65 @@ Each entry: finding → confirmed → what changed → risk of the fix.
 
 ---
 
-## SR-1 + SR-3: User self-elevation + catch-all rule
+## SR-1 + SR-3: User self-elevation + catch-all rule (SUPERSEDED)
+
+**Note:** The initial fix (field validation on create, catch-all removed) was superseded by the three-layer fix below. The field validation and catch-all removal are retained, but the real closure is Layers 1-3.
+
+---
+
+## LAYER 1: Sign-in allowlist (front door)
+
+**Problem:** Any Google account could sign in and receive `employee` role with full CRM access. No invitation or approval required.
+
+**Changed:**
+- `initUserRole` Cloud Function now checks caller email against `app_config/access_control.allowedEmails` in Firestore
+- Non-listed emails get `permission-denied` error, no user doc created
+- `inviteEmployee` auto-adds invited email to the allowlist via `arrayUnion`
+- `auth.js`: on permission-denied from initUserRole, signs user out and shows "Access not authorized — contact your admin to be added"
+- Removed the `graham@pumpkinblossomfarm.com` email fallback that bypassed server validation
+- First-ever sign-in bootstraps the access_control doc with that caller's email (so the admin isn't locked out on fresh deploy)
+
+**Where the allowlist lives:** Firestore doc `app_config/access_control`, field `allowedEmails` (string array). To add someone manually: add their email to this array in the Firebase console. Or use `inviteEmployee` from the CRM (auto-adds).
+
+**Risk:** If the `app_config/access_control` doc is deleted, the next sign-in bootstraps a new one with their own email. This is contained by Layer 3 (admin can't be re-won).
+
+---
+
+## LAYER 2: Workspace data gated on role
+
+**Problem:** `match /workspace/{path=**}` used `request.auth != null` — any authenticated user (even one with no user doc or no role) could read/write all CRM data.
+
+**Changed:** Every rule for CRM data now requires `isStaff()`:
+- `workspace/{path=**}`: `isStaff()` for read and write
+- `accounts/{accountId}`: `isStaff()`
+- `prospects/{prospectId}`: `isStaff()`
+- `portal_orders`: read/update require `isStaff()`
+- `portal_notify`, `portal_inquiries`: read/update/delete require `isStaff()`
+- `portal_settings`, `portal_config`, `portal_tokens`: read requires `isStaff()`
+- `app_config`: read requires `isStaff()`, write requires `isAdmin()`
+
+A user with no users/{uid} doc or a doc with no recognized role gets DENY on everything except their own user doc read and the public portal create rules.
+
+**Note for your decision:** All workspace writes are `isStaff()` — meaning employees can do everything admins can within CRM data (create/edit/delete invoices, orders, accounts, etc.). If you want admin-only restrictions on specific operations (e.g., invoice deletion, settings changes), let me know and I'll add sub-match rules.
+
+**Risk:** If graham's user doc is missing or has a corrupted role, he'll be locked out of CRM data. The user doc must exist with `role: 'admin'`.
+
+---
+
+## LAYER 3: First-admin race + re-trigger fix
+
+**Problem:** Two simultaneous first sign-ins could both get admin (no transaction). Deleting user docs could re-trigger admin assignment when the collection was momentarily empty.
+
+**Changed:**
+- First-admin assignment wrapped in `db.runTransaction()` — only one caller can ever win
+- `bootstrapAdminAssigned: true` flag persisted in `app_config/access_control` — checked inside the transaction
+- Even if all user docs are deleted, `bootstrapAdminAssigned` prevents re-acquisition of admin via initUserRole
+
+**Risk:** None. The flag is write-once. Only way to reset it is manually deleting or editing the `app_config/access_control` doc in Firebase console.
+
+---
+
+## SR-1 + SR-3 original fix (retained)
 
 **Confirmed:** Line 15 `allow create` had no field validation — any new Google sign-in could write `{role:'admin'}` to their own user doc. Line 85-86 catch-all `match /{document=**}` granted full CRUD on `portal_tokens`, `portal_config`, and any future collection to any authed user.
 
