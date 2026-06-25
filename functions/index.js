@@ -746,7 +746,21 @@ exports.createPayLink = onCall(
   async (request) => {
     if (!request.auth) return {ok: false, v: 2, error: 'Not signed in'};
     const data = request.data || {};
-    if (!data.amount || !data.invoiceNumber) return {ok: false, v: 2, error: 'Missing amount or invoice number'};
+    if (!data.invoiceId || !data.invoiceType) return {ok: false, v: 2, error: 'Missing invoiceId or invoiceType'};
+
+    // TB-2 FIX: look up the invoice server-side — never trust client-supplied amount
+    const db = admin.firestore();
+    const colMap = { retail: 'workspace/main/retail_invoices', lf: 'workspace/main/lf_invoices',
+      combined: 'workspace/main/combined_invoices', dist: 'workspace/main/dist_invoices', iv: 'workspace/main/iv' };
+    const col = colMap[data.invoiceType] || colMap.retail;
+    let invoiceSnap;
+    try { invoiceSnap = await db.collection(col).doc(data.invoiceId).get(); } catch(e) {}
+    if (!invoiceSnap || !invoiceSnap.exists) return {ok: false, v: 2, error: 'Invoice not found'};
+    const inv = invoiceSnap.data();
+    const serverTotal = parseFloat(inv.grandTotal || inv.total || inv.amount || 0);
+    if (!serverTotal || serverTotal < 0.50) return {ok: false, v: 2, error: 'Invoice total too small or zero'};
+    const invoiceNumber = inv.number || inv.invoiceNumber || data.invoiceNumber || '';
+    const accountName = inv.accountName || data.accountName || '';
 
     const key = (process.env.STRIPE_SECRET_KEY || '').trim();
     if (!key) return {ok: false, v: 2, error: 'STRIPE_SECRET_KEY is not set'};
@@ -755,8 +769,7 @@ exports.createPayLink = onCall(
     let stripe;
     try { stripe = require('stripe')(key); } catch (e) { return {ok: false, v: 2, error: 'Stripe SDK failed: ' + e.message}; }
 
-    const amountCents = Math.round(parseFloat(data.amount) * 100);
-    if (amountCents < 50) return {ok: false, v: 2, error: 'Amount too small (min $0.50)'};
+    const amountCents = Math.round(serverTotal * 100);
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -765,8 +778,8 @@ exports.createPayLink = onCall(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Invoice ${data.invoiceNumber}`,
-              description: data.accountName ? `${data.accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
+              name: `Invoice ${invoiceNumber}`,
+              description: accountName ? `${accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
             },
             unit_amount: amountCents,
           },
@@ -774,13 +787,13 @@ exports.createPayLink = onCall(
         }],
         mode: 'payment',
         metadata: {
-          invoiceNumber: data.invoiceNumber,
-          invoiceId: data.invoiceId || '',
-          invoiceType: data.invoiceType || 'retail',
-          accountId: data.accountId || '',
+          invoiceNumber,
+          invoiceId: data.invoiceId,
+          invoiceType: data.invoiceType,
+          accountId: inv.accountId || data.accountId || '',
         },
-        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
-        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(invoiceNumber),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(invoiceNumber),
       });
       return {ok: true, v: 2, url: session.url, sessionId: session.id};
     } catch (err) {
@@ -799,7 +812,21 @@ exports.createStripePaymentLink = onCall(
   async (request) => {
     if (!request.auth) return {ok: false, error: 'Not signed in'};
     const data = request.data;
-    if (!data.amount || !data.invoiceNumber) return {ok: false, error: 'Missing amount or invoice number'};
+    if (!data.invoiceId || !data.invoiceType) return {ok: false, error: 'Missing invoiceId or invoiceType'};
+
+    // TB-2 FIX: server-side invoice lookup — never trust client amount
+    const db = admin.firestore();
+    const colMap = { retail: 'workspace/main/retail_invoices', lf: 'workspace/main/lf_invoices',
+      combined: 'workspace/main/combined_invoices', dist: 'workspace/main/dist_invoices', iv: 'workspace/main/iv' };
+    const col = colMap[data.invoiceType] || colMap.retail;
+    let invoiceSnap;
+    try { invoiceSnap = await db.collection(col).doc(data.invoiceId).get(); } catch(e) {}
+    if (!invoiceSnap || !invoiceSnap.exists) return {ok: false, error: 'Invoice not found'};
+    const inv = invoiceSnap.data();
+    const serverTotal = parseFloat(inv.grandTotal || inv.total || inv.amount || 0);
+    if (!serverTotal || serverTotal < 0.50) return {ok: false, error: 'Invoice total too small or zero'};
+    const invoiceNumber = inv.number || inv.invoiceNumber || data.invoiceNumber || '';
+    const accountName = inv.accountName || data.accountName || '';
 
     const key = (process.env.STRIPE_SECRET_KEY || '').trim();
     if (!key) return {ok: false, error: 'STRIPE_SECRET_KEY is not set. Run: firebase functions:secrets:set STRIPE_SECRET_KEY'};
@@ -808,8 +835,7 @@ exports.createStripePaymentLink = onCall(
     let stripe;
     try { stripe = require('stripe')(key); } catch (e) { return {ok: false, error: 'Stripe SDK failed: ' + e.message}; }
 
-    const amountCents = Math.round(parseFloat(data.amount) * 100);
-    if (amountCents < 50) return {ok: false, error: 'Amount too small (min $0.50)'};
+    const amountCents = Math.round(serverTotal * 100);
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -818,8 +844,8 @@ exports.createStripePaymentLink = onCall(
           price_data: {
             currency: 'usd',
             product_data: {
-              name: `Invoice ${data.invoiceNumber}`,
-              description: data.accountName ? `${data.accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
+              name: `Invoice ${invoiceNumber}`,
+              description: accountName ? `${accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
             },
             unit_amount: amountCents,
           },
@@ -827,13 +853,13 @@ exports.createStripePaymentLink = onCall(
         }],
         mode: 'payment',
         metadata: {
-          invoiceNumber: data.invoiceNumber,
-          invoiceId: data.invoiceId || '',
-          invoiceType: data.invoiceType || 'retail',
-          accountId: data.accountId || '',
+          invoiceNumber,
+          invoiceId: data.invoiceId,
+          invoiceType: data.invoiceType,
+          accountId: inv.accountId || data.accountId || '',
         },
-        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(data.invoiceNumber || ''),
-        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(data.invoiceNumber || ''),
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(invoiceNumber),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(invoiceNumber),
       });
       return { ok: true, url: session.url, sessionId: session.id };
     } catch (err) {

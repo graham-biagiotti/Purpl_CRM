@@ -21,3 +21,42 @@ Each entry: finding → confirmed → what changed → risk of the fix.
 
 ---
 
+## SR-2: portal_orders public read
+
+**Confirmed:** Line 41 `allow read: if true` — any unauthenticated user could enumerate all portal orders with customer PII (names, emails, addresses, order items).
+
+**Changed:** `firestore.rules`: `allow read: if request.auth != null` — requires authentication. Create validation (field checks, size limits) retained unchanged.
+
+**Risk:** None. The portal (order.html) never reads portal_orders from the client — it only creates them. All reads happen server-side via Cloud Functions (Admin SDK bypasses rules). The real-time listener in app.js runs under authenticated context.
+
+**Note:** Included in the SR-1+SR-3 commit since it's the same file.
+
+---
+
+## SR-4: audit_log writable by any user
+
+**Confirmed:** `workspace/main/audit_log` fell under `match /workspace/{path=**}` — any authed user could create, modify, or delete audit entries.
+
+**Changed:** Added explicit `match /workspace/main/audit_log/{docId}` with `allow write: if false`. Firestore evaluates the most specific match first, so this blocks all client writes. Admin SDK (Cloud Functions) bypasses rules and can still write.
+
+**Risk:** None. All audit writes already go through Cloud Functions (stripeWebhook, shipStationWebhook). No client-side code writes to audit_log.
+
+**Note:** Included in the SR-1+SR-3 commit.
+
+---
+
+## TB-2: Stripe payment link trusts client-supplied amount
+
+**Confirmed:** `createPayLink` (line 735) and `createStripePaymentLink` (line 788) both used `data.amount` directly as the Stripe `unit_amount`. Any authenticated user could create a $0.50 payment link on a $5,000 invoice, complete payment, and the webhook would mark it fully paid.
+
+**Changed:** Both functions now:
+1. Require `data.invoiceId` + `data.invoiceType` instead of `data.amount`
+2. Look up the invoice in Firestore using Admin SDK
+3. Use `inv.grandTotal || inv.total || inv.amount` as the server-side amount
+4. Derive `invoiceNumber` and `accountName` from the server-side record
+5. Reject if invoice not found or total < $0.50
+
+The client still sends `amount` in the request but the server ignores it.
+
+**Risk:** Low. The client already sends `invoiceId` and `invoiceType`. The only behavioral change is that the amount is now authoritative from Firestore. If a draft invoice total is $0 (no line items yet), the function returns an error instead of creating a $0 pay link — which is correct behavior.
+
