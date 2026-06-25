@@ -16,24 +16,26 @@ Every iv record gets a `pool` field at write time. The value is one of: `'wareho
 
 | # | Path | Pool | Signal | Reasoning |
 |---|---|---|---|---|
-| 1 | Distributor shipment | `warehouse` | Always — distributor orders ship from warehouse | Distributors are served via warehouse/3PL. The existing `stock_transfers` code at line 7003 already assumes `fromLocation: 'Warehouse'`. |
-| 2 | Receive finished packs | **User selects** | New dropdown in Receive form: "Receiving at: Warehouse / Farm" | Finished packs could arrive at either location. Production might happen at farm but packs might ship from co-packer to warehouse. Can't assume. Default: `warehouse`. |
-| 3 | Repack job output | `farm` | Always — repacking happens at the farm | Repack is a hands-on farm operation. If this changes, it can be overridden via manual adjustment. |
-| 4 | Pallet shipment | `warehouse` | Always — pallets ship from warehouse | Pallets are a warehouse/fulfillment concept. |
-| 5 | Manual adjustment | **User selects** | New dropdown in adjustment form: "Pool: Warehouse / Farm" | The whole point of manual adjustments is to correct either pool. Must be explicit. |
-| 6 | Production run | `farm` | Always — production happens at the farm | Cans come off the production line at the farm. They later get transferred to warehouse. |
-| 7 | Delivery invoice (route stop) | `farm` | Always — delivery routes are local hand-delivery from the farm | Graham loads the van at the farm and delivers. This is the defining characteristic of "farm pool." |
-| 8 | Retail invoice save (non-draft) | `deliveryMethod` on the invoice | `'ship'` → `warehouse`; anything else → `farm` | Shipped orders are fulfilled from warehouse/3PL. Hand-delivered or picked-up orders come from farm stock. |
-| 9 | Invoice mark sent (draft→sent) | Same as #8 | Read `deliveryMethod` from the invoice record | Same logic — the invoice already has `deliveryMethod` set before send. |
-| 10 | Combined invoice create (non-draft) | Same as #8 | Read `deliveryMethod` from the combined invoice | Combined invoices can be shipped or delivered. |
-| 11 | Combined invoice send (draft→sent) | Same as #8 | Read `deliveryMethod` from the combined invoice | Same. |
-| 12 | Customer return | **User selects** | New dropdown in return form: "Return to: Warehouse / Farm" | Returns could go to either location. Default: `farm` (most returns happen locally). |
+| 1 | Distributor shipment | `warehouse` | Always | Distributors are served via warehouse. |
+| 2 | Receive finished packs | `warehouse` (default) | Form dropdown, farm override | New stock typically arrives at warehouse. Farm override for local receipts. |
+| 3 | Repack job output | `warehouse` | Always | Repack output enters the warehouse pool. |
+| 4 | Pallet shipment | `warehouse` | Always | Pallets ship from warehouse. |
+| 5 | Manual adjustment | **User selects** | Prompt: warehouse or farm | Must be explicit — adjustments can correct either pool. |
+| 6 | Production run | `warehouse` | Always | All new production lands at warehouse, then transferred to farm as needed. |
+| 7 | Delivery invoice (route stop) | `farm` | Always | Delivery routes are local hand-delivery from the farm. |
+| 8 | Retail invoice save (non-draft) | `farm` | Always | All retail/portal invoices deduct from farm — Graham picks, packs, and ships everything from the farm. |
+| 9 | Invoice mark sent (draft→sent) | `farm` | Always | Same as #8. |
+| 10 | Combined invoice create (non-draft) | `farm` | Always | Same as #8. |
+| 11 | Combined invoice send (draft→sent) | `farm` | Always | Same as #8. |
+| 12 | Customer return | **User selects** | Form dropdown, default warehouse | Returns could go to either location. |
 
 **Server-side path (ShipStation sample webhook):**
 
 | Path | Pool | Signal |
 |---|---|---|
-| SAMPLE- webhook (3 cans deduction) | `warehouse` | Always — sample boxes ship from warehouse/3PL |
+| SAMPLE- webhook (3 cans deduction) | `farm` | Always — samples ship from farm |
+
+**Historical records with no pool field default to `'warehouse'`.**
 
 ### Edge Cases
 
@@ -79,18 +81,14 @@ _onHand('classic', null)         // global total (backward-compatible)
 
 Existing iv records have no `pool` field. Two options:
 
-**Option A (recommended): Default missing pool to `'farm'`.**
-The `_onHand` function treats `!i.pool` as matching any pool filter (for backward compatibility in `_onHand(sku, null)`). For pool-specific queries, treat records without `pool` as `'farm'` since historically all stock was managed from the farm.
+**Approach: Default missing pool to `'warehouse'`.**
+The `_onHand` function treats records without a `pool` field as `'warehouse'` since historically all stock lived in a single undifferentiated pool that was conceptually the warehouse.
 
 ```javascript
-const effectivePool = i.pool || 'farm';
+const effectivePool = i.pool || 'warehouse';
 ```
 
-No Firestore migration needed. New records get stamped; old records default to farm.
-
-**Option B: Backfill migration.** Write a one-time migration that stamps `pool: 'farm'` on every existing iv record. Cleaner data but ~N Firestore writes (could be hundreds/thousands depending on history).
-
-**Recommendation:** Option A — no migration, default to farm. Simpler, no risk of corrupting existing data. The on-hand function handles both stamped and unstamped records.
+No Firestore migration needed. New records get stamped; old records default to warehouse.
 
 ---
 
