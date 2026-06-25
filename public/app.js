@@ -13689,7 +13689,7 @@ function _switchPoTab(tab) {
 function _renderPoSampleRequests() {
   const el = qs('#po-pane-samples');
   if (!el) return;
-  const orders = PortalDB.getAll().filter(o => o.requestSample && o.brand === 'purpl');
+  const orders = PortalDB.getOrders().filter(o => o.requestSample);
   if (!orders.length) { el.innerHTML = '<div class="empty">No sample requests</div>'; return; }
   el.innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Submitted</th><th>Account</th><th>Email</th><th>Address</th><th>Status</th><th></th></tr></thead>
@@ -13717,7 +13717,7 @@ function _renderPoSampleRequests() {
 }
 
 async function _approveSampleRequest(portalOrderId) {
-  const order = PortalDB.getAll().find(o => o.id === portalOrderId);
+  const order = PortalDB.getOrders().find(o => o.id === portalOrderId);
   if (!order) return;
   const accountId = order.accountId;
   if (accountId) {
