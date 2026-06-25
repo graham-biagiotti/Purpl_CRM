@@ -487,23 +487,63 @@ exports.lookupPortalToken = onCall(async (request) => {
 // ── 4c. Init User Role ──────────────────────────────────
 // Called on first sign-in to create the users/{uid} doc with the correct role.
 // Uses Admin SDK so it bypasses security rules (client can't set role directly).
+//
+// LAYER 1: Allowlist check — rejects callers not on the list.
+// LAYER 3: First-admin in transaction with bootstrapAdminAssigned flag.
+//
+// Allowlist lives in Firestore: app_config/access_control { allowedEmails: [...] }
+// To add a new employee: use inviteEmployee (auto-adds to allowlist),
+// or manually add their email to the allowedEmails array in that doc.
 exports.initUserRole = onCall(async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
   const uid = request.auth.uid;
+  const email = (request.auth.token.email || '').toLowerCase().trim();
+  if (!email) throw new HttpsError('permission-denied', 'No email on account');
+
   const db = admin.firestore();
+
+  // Existing user — return stored role (skip allowlist check; they were already approved)
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   if (userSnap.exists) {
     return { role: userSnap.data().role || 'employee' };
   }
-  const usersSnap = await db.collection('users').limit(1).get();
-  const role = usersSnap.empty ? 'admin' : 'employee';
-  await userRef.set({
-    email: request.auth.token.email || '',
-    displayName: request.auth.token.name || request.auth.token.email?.split('@')[0] || '',
-    role,
-    createdAt: new Date().toISOString(),
+
+  // LAYER 1: check allowlist before creating any user doc
+  const configRef = db.collection('app_config').doc('access_control');
+  const configSnap = await configRef.get();
+  const config = configSnap.exists ? configSnap.data() : {};
+  const allowedEmails = (config.allowedEmails || []).map(e => String(e).toLowerCase().trim());
+
+  // Bootstrap: if no access_control doc exists yet, seed it with this caller
+  // (first-ever sign-in bootstraps the allowlist with their own email)
+  if (!configSnap.exists) {
+    await configRef.set({ allowedEmails: [email], bootstrapAdminAssigned: false });
+  } else if (!allowedEmails.includes(email)) {
+    throw new HttpsError('permission-denied', 'Access not authorized — contact your admin');
+  }
+
+  // LAYER 3: first-admin assignment in a transaction with persistent flag
+  const role = await db.runTransaction(async (tx) => {
+    const cfgSnap = await tx.get(configRef);
+    const cfgData = cfgSnap.exists ? cfgSnap.data() : {};
+    const alreadyBootstrapped = cfgData.bootstrapAdminAssigned === true;
+    const usersSnap = await db.collection('users').limit(1).get();
+    const isFirstUser = usersSnap.empty && !alreadyBootstrapped;
+
+    const assignedRole = isFirstUser ? 'admin' : 'employee';
+    tx.set(userRef, {
+      email,
+      displayName: request.auth.token.name || email.split('@')[0] || '',
+      role: assignedRole,
+      createdAt: new Date().toISOString(),
+    });
+    if (isFirstUser) {
+      tx.update(configRef, { bootstrapAdminAssigned: true });
+    }
+    return assignedRole;
   });
+
   return { role };
 });
 
@@ -669,6 +709,13 @@ exports.inviteEmployee = onCall(
       invitedBy: request.auth.token.email || request.auth.uid,
       ...(existingDoc.exists ? {} : { createdAt: new Date().toISOString() }),
     }, { merge: true });
+
+    // LAYER 1: add invited email to allowlist so they can sign in
+    const _acRef = db.collection('app_config').doc('access_control');
+    await _acRef.set({
+      allowedEmails: admin.firestore.FieldValue.arrayUnion(email.toLowerCase().trim()),
+    }, { merge: true });
+
     const link = await admin.auth().generatePasswordResetLink(email);
 
     // Send invite email via Resend

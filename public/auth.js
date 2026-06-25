@@ -114,7 +114,8 @@ async function bootApp() {
 
       // Ensure a users/{uid} doc exists for role-based access control.
       // Role assignment happens server-side (initUserRole Cloud Function)
-      // so the client can never set its own role — SR-1 fix.
+      // so the client can never set its own role.
+      // If the server rejects (not on allowlist), sign out immediately.
       try {
         const userRef = firebase.firestore().collection('users').doc(user.uid);
         const userSnap = await userRef.get();
@@ -125,8 +126,17 @@ async function bootApp() {
           window._userRole = userSnap.data().role || 'employee';
         }
       } catch(e) {
+        clearTimeout(slowTimer);
         console.warn('User role init failed:', e);
-        window._userRole = (user.email === 'graham@pumpkinblossomfarm.com') ? 'admin' : 'employee';
+        const code = e?.code || e?.message || '';
+        if (code.includes('permission-denied') || code.includes('not-authorized')) {
+          await signOut(auth);
+          loadingScreen.style.display = 'none';
+          authScreen.style.display = 'flex';
+          authStatus.textContent = 'Access not authorized — contact your admin to be added.';
+          return;
+        }
+        window._userRole = 'employee';
       }
 
       checkMigration();
