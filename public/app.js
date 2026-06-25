@@ -3015,9 +3015,11 @@ function _acCardHTML(a, muted) {
     }
   }
 
-  const outstanding = DB.a('orders').filter(o=>o.accountId===a.id&&o.status==='delivered'&&(o.invoiceStatus||'none')!=='paid');
-  const outstandingHtml = outstanding.length
-    ? `<span class="ac-metric-val red">${outstanding.length} unpaid</span>`
+  const outstandingAmt = _allInvoices({accountId: a.id, excludeChildren: true})
+    .filter(x => !['paid','draft','void'].includes(x.status))
+    .reduce((s, x) => s + _invAmt(x), 0);
+  const outstandingHtml = outstandingAmt > 0
+    ? `<span class="ac-metric-val red">${fmtC(outstandingAmt)}</span>`
     : `<span class="ac-metric-val green">Clear</span>`;
 
   const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
@@ -5677,7 +5679,7 @@ function quickNote(id) {
   const next = prompt('Next action (leave blank to skip):') || '';
   const nextDate = next ? prompt('Next action date (YYYY-MM-DD):') || '' : '';
   const note = {id:uid(), date:today(), text:text.trim(), author:'you', nextAction:next.trim(), nextDate};
-  DB.update('ac', id, a=>({...a, notes:[...(a.notes||[]),note]}));
+  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]),note]}));
   renderAccounts();
   toast('Note saved');
 }
@@ -8471,9 +8473,13 @@ function openOrderDetail(id) {
   qs('#mod-delete-btn').onclick = ()=>{
     if (!confirm2('Delete this order?')) return;
     const ordAcName = DB.a('ac').find(x=>x.id===o.accountId)?.name || o.accountId;
-    // Remove linked inventory out-entries (from run delivery or manual delivery)
     DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
     DB.remove('orders', id);
+    if (o.accountId) {
+      const remaining = DB.a('orders').filter(x => x.id !== id && x.accountId === o.accountId && x.status !== 'cancelled');
+      const newest = remaining.sort((a,b) => (b.created || b.date || '') > (a.created || a.date || '') ? 1 : -1)[0];
+      DB.update('ac', o.accountId, a => ({...a, lastOrder: newest?.created || newest?.date || ''}));
+    }
     auditLog('delete', 'order', id, ordAcName);
     closeModal('modal-order-detail');
     renderOrders();
