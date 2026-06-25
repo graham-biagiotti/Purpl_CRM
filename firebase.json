@@ -35,7 +35,13 @@
       "ignore": [
         "firebase.json",
         "**/.*",
-        "**/node_modules/**"
+        "**/node_modules/**",
+        "index.html",
+        "app.js",
+        "db.js",
+        "auth.js",
+        "sw.js",
+        "manifest.json"
       ],
       "rewrites": [
         { "source": "/order", "destination": "/order.html" },
