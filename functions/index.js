@@ -1123,9 +1123,25 @@ exports.shipStationWebhook = onRequest(
   async (req, res) => {
     if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
     try {
+      // TB-1 FIX: validate shared secret before processing
+      const webhookSecret = req.query.secret || '';
+      const expectedSecret = (process.env.SHIPSTATION_API_KEY || '').trim().slice(-8);
+      if (!webhookSecret || webhookSecret !== expectedSecret) {
+        console.warn('ShipStation webhook: invalid or missing secret');
+        res.status(403).send('Forbidden');
+        return;
+      }
+
       const payload = req.body || {};
       const resourceUrl = payload.resource_url;
       if (!resourceUrl) { res.status(200).send('no resource_url'); return; }
+
+      // TB-1 FIX: validate resource_url origin before sending credentials
+      if (!resourceUrl.startsWith('https://ssapi.shipstation.com/')) {
+        console.warn('ShipStation webhook: rejected non-ShipStation resource_url:', resourceUrl);
+        res.status(400).send('Invalid resource_url origin');
+        return;
+      }
 
       const key = (process.env.SHIPSTATION_API_KEY || '').trim();
       const authVal = key.includes(':') ? key : key + ':';
