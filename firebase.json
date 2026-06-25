@@ -29,7 +29,7 @@
     },
     {
       "site": "pbf-wholesale",
-      "public": "public",
+      "public": "public-wholesale",
       "cleanUrls": true,
       "trailingSlash": false,
       "ignore": [
@@ -42,7 +42,6 @@
         { "source": "/order.html", "destination": "/order.html" },
         { "source": "/privacy.html", "destination": "/privacy.html" },
         { "source": "/terms.html", "destination": "/terms.html" },
-        { "source": "/", "destination": "/wholesale.html" },
         { "source": "/404.html", "destination": "/404.html" }
       ]
     }

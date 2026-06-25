@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>purpl — Wholesale Order Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --purpl:#8B5FBF; --purpl-dark:#6B4F9A;
+  --purpl-mid:#6B3FA0; --purpl-soft:#F0EBF8;
+  --purpl-border:#D4B8F0;
+  --lf-green:#4a7c59; --lf-soft:#f0f7f1; --lf-border:#b8d4c0;
+  --cream:#faf9f6; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb;
+}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);margin:0;padding:0;min-height:100vh}
+
+/* ── HEADER ── */
+.op-header{background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:40px 24px 48px;text-align:center}
+.op-header-logos{display:flex;gap:32px;align-items:center;justify-content:center;margin-bottom:24px}
+.op-header-divider{width:1px;height:44px;background:rgba(255,255,255,0.5);flex-shrink:0}
+.op-header h1{font-family:'Playfair Display',serif;font-size:28px;color:white;font-weight:400;margin-bottom:8px}
+.op-header-sub{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.85);font-weight:300}
+
+/* ── CONTAINER ── */
+.container{max-width:600px;margin:0 auto;padding:32px 16px}
+
+/* ── PREORDER BANNER ── */
+.banner{background:linear-gradient(135deg,var(--purpl-soft),white);border:1px solid var(--purpl-border);border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:14px;color:var(--purpl-dark);display:none}
+
+/* ── RETURNING BUYER BANNER ── */
+#returning-banner{background:linear-gradient(135deg,var(--purpl-soft),white);border:1px solid var(--purpl-border);border-radius:10px;padding:20px 24px;margin-bottom:20px;font-size:13px;color:var(--purpl-dark)}
+
+/* ── CARDS ── */
+.card{background:white;border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.card h2{font-family:'Playfair Display',serif;font-size:22px;font-weight:400;color:var(--text);margin-bottom:20px}
+
+/* ── FORM ── */
+.form-group{margin-bottom:16px}
+label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;font-family:'Inter',sans-serif}
+input[type=text],input[type=email],input[type=number],textarea,select{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:'Inter',sans-serif;background:white;color:var(--text);transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);box-shadow:0 0 0 3px rgba(139,95,191,0.1)}
+.locked-field{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:6px;padding:10px 14px;font-size:14px;font-weight:600;color:var(--purpl-mid);min-height:40px}
+.hint{font-size:11px;color:var(--muted);margin-top:4px;font-family:'Inter',sans-serif}
+
+/* ── PRODUCT CARDS ── */
+.product-card{border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.product-card.active{border-color:var(--purpl);background:#fdf9ff}
+.product-card.coming-soon{opacity:.5;background:#f9fafb}
+.product-name{font-size:15px;font-weight:600;margin-bottom:2px;font-family:'Inter',sans-serif}
+.product-desc{font-size:12px;color:var(--muted);margin-bottom:12px}
+.coming-soon-badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:500;margin-left:8px;vertical-align:middle}
+.price-display{font-size:13px;color:var(--purpl);font-weight:600;margin-bottom:10px;display:none}
+.cans-calc{font-size:12px;color:var(--purpl);font-weight:500;margin-top:6px;min-height:18px}
+.preorder-note{font-size:12px;color:var(--muted);margin-top:8px;display:none}
+.notify-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.notify-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--purpl);cursor:pointer}
+.notify-row label{margin:0;font-size:13px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;cursor:pointer}
+
+/* ── TERMS BLOCK ── */
+.terms-block{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:var(--purpl-dark);line-height:1.7}
+.terms-block strong{display:block;font-size:12px;font-weight:600;color:var(--purpl-dark);margin-bottom:2px}
+.divider{border:none;border-top:1px solid var(--purpl-border);margin:12px 0}
+.contact-line{font-size:13px;color:var(--purpl-dark)}
+.contact-line a{color:var(--purpl);text-decoration:none}
+.contact-line a:hover{text-decoration:underline}
+
+/* ── ERROR / SUBMIT ── */
+.error-msg{background:#fee2e2;color:#991b1b;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;display:none}
+.submit-btn{width:100%;padding:14px 32px;background:var(--purpl);color:white;border:none;border-radius:6px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer;transition:background .2s;margin-bottom:24px}
+.submit-btn:hover:not(:disabled){background:var(--purpl-mid)}
+.submit-btn:disabled{background:var(--purpl-border);cursor:not-allowed}
+
+/* ── THANK YOU ── */
+.thankyou{display:none;text-align:center;padding:40px 20px}
+.thankyou h2{font-size:24px;font-weight:700;color:var(--purpl);margin-bottom:8px}
+.thankyou p{font-size:15px;color:var(--muted);margin-bottom:16px}
+.summary-card{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:10px;padding:16px;text-align:left;margin-bottom:20px}
+.summary-row{display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--purpl-border);font-size:13px;gap:12px}
+.summary-row:last-child{border-bottom:none;font-weight:600}
+.summary-row span:first-child{color:var(--muted);white-space:nowrap}
+.summary-row span:last-child{text-align:right;color:var(--text)}
+.ty-note{font-size:13px;color:var(--muted);margin-bottom:8px;line-height:1.6}
+.ty-small{font-size:12px;color:var(--muted);margin-top:16px;opacity:0.7}
+
+/* ── BRAND SELECTOR ── */
+.brand-card{border:2px solid var(--border);border-radius:10px;padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.2s;background:white;position:relative;user-select:none}
+.brand-card:hover{border-color:var(--purpl-border);background:var(--purpl-soft)}
+.brand-card.sel-purpl{border-color:var(--purpl);background:var(--purpl-soft)}
+.brand-card.sel-lf{border-color:var(--lf-green);background:var(--lf-soft)}
+.brand-checkmark{position:absolute;top:8px;right:10px;font-size:16px;display:none}
+.brand-card.sel-purpl .bck-purpl{display:block;color:var(--purpl)}
+.brand-card.sel-lf .bck-lf{display:block;color:var(--lf-green)}
+
+/* ── DUAL BRAND NOTICE ── */
+.dual-brand-notice{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--purpl-dark);line-height:1.5;display:none}
+
+/* ── LF SKU ROWS ── */
+.lf-sku-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.lf-sku-row:last-child{border-bottom:none}
+.lf-sku-info{flex:1;min-width:0}
+.lf-sku-name{font-size:14px;font-weight:600}
+.lf-sku-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.lf-sku-price{font-size:12px;color:var(--lf-green);font-weight:600;margin-top:2px}
+.lf-sku-qty{display:flex;flex-direction:column;align-items:center;gap:3px}
+.lf-sku-qty input{width:64px;text-align:center}
+.lf-sku-qty span{font-size:10px;color:var(--muted);text-align:center}
+.lf-line-total{min-width:72px;text-align:right;font-size:13px;font-weight:600;color:var(--lf-green)}
+.lf-prev-note{font-size:11px;color:var(--muted);margin-top:3px;font-style:italic}
+.lf-subtotal-row{display:flex;justify-content:space-between;padding:14px 0 0;font-size:15px;font-weight:700;color:var(--lf-green);border-top:2px solid var(--border);margin-top:4px}
+
+/* ── LF VARIANT PICKER ── */
+.lf-variant-picker{padding:8px 0 0}
+.lf-variant-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+.lf-variant-row:last-child{border-bottom:none}
+.lf-variant-name{flex:1;font-size:13px;color:var(--text)}
+.lf-variant-input{width:64px;text-align:center}
+.lf-variant-total{min-width:72px;text-align:right;font-size:12px;font-weight:600;color:var(--lf-green)}
+
+/* ── LF VARIANT FLOW (cases-first) ── */
+.lf-sku-has-variants{flex-wrap:wrap;align-items:flex-start}
+.lf-sku-has-variants .lf-sku-qty{padding-top:4px}
+.lf-vpicker{width:100%;margin-top:10px;padding:12px 14px;background:#f6fdf8;border-radius:8px;border:1px solid var(--lf-border)}
+.lf-vheader{font-size:12px;font-weight:600;color:#166534;margin-bottom:10px}
+.lf-vtally{font-size:12px;font-weight:600;color:var(--lf-green);margin-top:10px;padding-top:8px;border-top:1px solid var(--lf-border)}
+.lf-vtally.mismatch{color:#dc2626}
+.lf-verr{font-size:12px;color:#dc2626;margin-top:4px;display:none}
+
+/* ── PAYMENT TERMS NOTE ── */
+.payment-terms-note{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--purpl-dark);line-height:1.6}
+
+/* ── FOOTER ── */
+.op-footer{background:var(--purpl-dark);padding:24px;text-align:center}
+.op-footer,.op-footer p,.op-footer span{font-family:'Inter',sans-serif;color:rgba(255,255,255,0.7);font-size:12px;line-height:2}
+.op-footer a{color:rgba(255,255,255,0.7);text-decoration:none;transition:color 0.15s}
+.op-footer a:hover{color:rgba(255,255,255,0.9)}
+
+/* ── SECONDARY CARD HEADINGS ── */
+.card.sm h2{font-family:'Inter',sans-serif;font-size:15px;font-weight:600;letter-spacing:-0.01em;margin-bottom:16px;color:var(--text)}
+
+/* ── INFO NOTE BLOCKS ── */
+.info-note{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--purpl-dark);line-height:1.6;margin-bottom:16px}
+.info-note a{color:var(--purpl);font-weight:500;text-decoration:none}
+.info-note a:hover{text-decoration:underline}
+
+/* ── UTILITY BUTTONS ── */
+.add-btn{background:var(--purpl-soft);border:1px solid var(--purpl-border);color:var(--purpl-mid);border-radius:8px;padding:8px 14px;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s;display:inline-block}
+.add-btn:hover{background:#e0d4f5}
+.remove-btn{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:6px;padding:0 12px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0;height:40px;display:flex;align-items:center}
+
+/* ── OPTIONAL LABEL SUFFIX ── */
+.opt{font-weight:400;color:#9ca3af;font-size:11px;text-transform:none;letter-spacing:0;margin-left:4px}
+
+/* ── SUBMIT AREA ── */
+.submit-area{margin-top:4px}
+
+/* ── MOBILE ── */
+@media(max-width:768px){
+  .op-header{padding:32px 16px 40px}
+  .card{padding:20px 16px}
+  .op-header-logos{gap:20px}
+}
+@media(max-width:480px){.container{padding:20px 16px}}
+@media print{button{display:none !important}body{background:white}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+</style>
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/images/favicon-180.png">
+</head>
+<body>
+
+<!-- Header -->
+<div class="op-header">
+  <div class="op-header-logos">
+    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+      alt="purpl" style="max-width:120px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
+    <div class="op-header-divider"></div>
+    <img src="/images/lf-logo-circle-transparent.png"
+      alt="Lavender Fields" style="max-width:48px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
+  </div>
+  <h1>Wholesale Order Portal</h1>
+  <p class="op-header-sub">Net 30 payment terms &nbsp;·&nbsp; Invoiced from Pumpkin Blossom Farm</p>
+</div>
+
+<div class="container">
+
+  <!-- Past order history (shown only for matched accounts with history) -->
+  <div id="order-history" style="display:none"></div>
+
+  <!-- Outstanding invoices (shown only for matched accounts with unpaid invoices) -->
+  <div id="outstanding-invoices-section" style="display:none"></div>
+
+  <!-- Pre-order banner -->
+  <div class="banner" id="preorder-banner">
+    ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
+  </div>
+
+  <!-- Password gate (hidden when token is present or password entered) -->
+  <div id="password-gate" style="display:none">
+    <div class="card" style="max-width:400px;margin:40px auto;text-align:center">
+      <h2 style="font-family:'Playfair Display',serif;font-size:22px;font-weight:400;margin-bottom:8px">Retailer Access</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Enter the wholesale portal password to place an order.</p>
+      <div class="form-group" style="margin-bottom:16px">
+        <input type="password" id="portal-password" placeholder="Enter password" style="text-align:center;font-size:16px;padding:12px" onkeydown="if(event.key==='Enter')checkPortalPassword()">
+      </div>
+      <div id="pw-error" style="color:#dc2626;font-size:13px;margin-bottom:12px;display:none">Incorrect password. Please try again.</div>
+      <button onclick="checkPortalPassword()" style="background:var(--purpl);color:#fff;border:none;padding:12px 32px;border-radius:6px;font-size:15px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif">Enter</button>
+      <p style="font-size:12px;color:var(--muted);margin-top:20px">Don't have the password? <a href="/" style="color:var(--purpl)">Apply for a wholesale account</a></p>
+    </div>
+  </div>
+
+  <!-- Main form (hidden until password or token) -->
+  <div id="order-form" style="display:none">
+
+    <!-- Brand selector -->
+    <div id="brand-selector" style="margin-bottom:20px">
+      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:12px;font-weight:500">What would you like to carry?</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="brand-card sel-purpl" id="brand-card-purpl" onclick="toggleBrand('purpl')">
+          <div class="brand-checkmark bck-purpl">✓</div>
+          <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+            alt="purpl" style="max-width:110px;height:auto;margin:0 auto 10px;display:block" onerror="this.style.display='none'">
+          <div style="font-family:'Playfair Display',Georgia,serif;font-size:15px;font-weight:500;color:var(--text)">purpl lemonade</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;font-family:Inter,sans-serif">Lavender-infused lemonade · 12-pack cases</div>
+          <div id="bc-add-hint-purpl" style="display:none;font-size:12px;color:#8B5FBF;margin-top:8px;font-style:italic">+ Add this line too</div>
+        </div>
+        <div class="brand-card" id="brand-card-lf" onclick="toggleBrand('lf')">
+          <div class="brand-checkmark bck-lf">✓</div>
+          <img src="/images/lf-logo-circle-transparent.png"
+            alt="Lavender Fields at Pumpkin Blossom Farm" style="max-width:72px;height:auto;margin:0 auto 10px;display:block" onerror="this.style.display='none'">
+          <div style="font-family:'Playfair Display',Georgia,serif;font-size:15px;font-weight:500;color:var(--text)">Lavender Fields</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;font-family:Inter,sans-serif">Farm products &amp; gifts wholesale</div>
+          <div id="bc-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:8px;font-style:italic">+ Add this line too</div>
+        </div>
+      </div>
+      <div id="bc-both-badge" style="display:none;text-align:center;color:#15803d;font-size:13px;font-weight:600;margin-top:10px">Both lines selected ✓</div>
+    </div>
+
+    <div id="returning-banner" style="display:none">
+      Welcome back — your details are pre-filled from your last order. Update quantities as needed.
+    </div>
+
+    <!-- Section 1: Account Info -->
+    <div class="card">
+      <h2>Account Information</h2>
+
+      <!-- Matched account -->
+      <div id="matched-section" style="display:none">
+        <div class="form-group">
+          <label>Ordering for</label>
+          <div class="locked-field" id="locked-name"></div>
+        </div>
+        <div class="form-group">
+          <label>Billing / Invoice Email</label>
+          <input type="email" id="billing-email" placeholder="Email for your invoice">
+          <p class="hint">Invoices come from lavender@pbfwholesale.com</p>
+        </div>
+      </div>
+
+      <!-- Unmatched account -->
+      <div id="unmatched-section">
+        <div class="form-group">
+          <label>Business Name *</label>
+          <input type="text" id="business-name" placeholder="Your store or business name">
+        </div>
+        <div class="form-group">
+          <label>Contact Name *</label>
+          <input type="text" id="contact-name" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label>Billing / Invoice Email *</label>
+          <input type="email" id="billing-email-unmatched" placeholder="Email for your invoice">
+          <p class="hint">Invoices come from lavender@pbfwholesale.com</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shipping Address -->
+    <div class="card" id="shipping-section">
+      <h2>Shipping Address</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Confirm or update your shipping address for orders and samples.</p>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Street Address *</label>
+        <input type="text" id="ship-street" placeholder="123 Main St">
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Suite / Unit <span class="opt">(optional)</span></label>
+        <input type="text" id="ship-street2" placeholder="Suite 200">
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">
+        <div class="form-group"><label>City *</label><input type="text" id="ship-city" placeholder="Warner"></div>
+        <div class="form-group"><label>State *</label><input type="text" id="ship-state" placeholder="NH" maxlength="2" style="text-transform:uppercase"></div>
+        <div class="form-group"><label>Zip *</label><input type="text" id="ship-zip" placeholder="03278" maxlength="10"></div>
+      </div>
+    </div>
+
+    <!-- Section 2: Order -->
+    <div class="card" id="purpl-order-section">
+      <h2>💜 purpl Lemonade Order</h2>
+
+      <!-- Classic — active -->
+      <div class="product-card active">
+        <div class="product-name">Classic Lavender Lemonade</div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <div class="price-display" id="price-display"></div>
+        <div class="form-group" style="margin-bottom:4px">
+          <label>Cases (12 cans per case)</label>
+          <input type="number" id="classic-cases" min="1" step="1" placeholder="0"
+            oninput="updateCans()">
+        </div>
+        <div class="cans-calc" id="cans-calc"></div>
+        <div id="purpl-prefill-note" style="display:none;font-size:11px;color:var(--purpl);margin-top:4px;font-style:italic">
+          Pre-filled from your last order — adjust as needed.
+        </div>
+        <div class="preorder-note" id="preorder-note">
+          Pricing and delivery details confirmed at launch.
+        </div>
+      </div>
+
+      <!-- Blueberry — coming soon -->
+      <div class="product-card coming-soon">
+        <div class="product-name">Blueberry Lavender Lemonade
+          <span class="coming-soon-badge">Coming Soon</span></div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
+        <div class="notify-row">
+          <input type="checkbox" id="notify-blueberry" onchange="checkSubmitEnabled()">
+          <label for="notify-blueberry">Notify me when available</label>
+        </div>
+      </div>
+
+      <!-- Peach — coming soon -->
+      <div class="product-card coming-soon">
+        <div class="product-name">Peach Lavender Lemonade
+          <span class="coming-soon-badge">Coming Soon</span></div>
+        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
+        <div class="notify-row">
+          <input type="checkbox" id="notify-peach" onchange="checkSubmitEnabled()">
+          <label for="notify-peach">Notify me when available</label>
+        </div>
+      </div>
+
+      <!-- Sample Box Request -->
+      <div class="product-card" id="sample-request-card" style="border:2px dashed #c4b5fd;background:#faf8ff">
+        <div class="product-name" style="color:#7B4FA0">🧪 Request a Sample Box
+          <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px">Free · 3-can taster</span></div>
+        <div class="product-desc">3 cans of Classic Lavender Lemonade — try before you commit.</div>
+        <div class="notify-row" style="margin-top:10px">
+          <input type="checkbox" id="request-sample" onchange="checkSubmitEnabled()">
+          <label for="request-sample" style="font-weight:500;color:#7B4FA0">Yes, send me a sample box</label>
+        </div>
+        <div id="sample-note" style="display:none;font-size:12px;color:var(--muted);margin-top:8px;padding:8px 12px;background:#f3f0fa;border-radius:6px">
+          We'll review your request and ship samples to the address above. You'll get a tracking number once it ships.
+        </div>
+      </div>
+    </div>
+
+    <!-- Dual-brand notice -->
+    <div class="dual-brand-notice" id="dual-brand-notice">
+      Orders with both brands are invoiced separately — one invoice per line.
+    </div>
+
+    <!-- LF Order Section -->
+    <div class="card" id="lf-order-section" style="display:none">
+      <h2>🌿 Lavender Fields</h2>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Handcrafted farm goods &nbsp;·&nbsp; Minimum order per item noted below &nbsp;·&nbsp; Net 30</p>
+      <div id="lf-sku-list">
+        <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Loading products…</div>
+      </div>
+      <div class="lf-subtotal-row">
+        <span>Subtotal</span>
+        <span id="lf-subtotal-display">$0.00</span>
+      </div>
+    </div>
+
+    <!-- Section 3: Delivery & Notes -->
+    <div class="card sm" style="margin-bottom:16px">
+      <h2>Delivery &amp; Timing</h2>
+
+      <div class="info-note">
+        Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont.
+        Other areas are served via scheduled routes or parcel shipping.<br>
+        Orders below 8 cases are available for warehouse pickup or parcel shipment (USPS, UPS, FedEx) — shipping will be billed at cost.<br>
+        Please allow 7 business days lead time for delivery.<br><br>
+        Questions? Contact Graham directly — <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> · <a href="tel:6037483038">603-748-3038</a>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Preferred delivery window <span class="opt">(optional)</span></label>
+        <input type="text" id="delivery-window" placeholder="e.g. First week of May, ASAP, flexible">
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Typical lead time needed</label>
+        <select id="lead-time-needed">
+          <option value="">Select…</option>
+          <option value="asap">ASAP</option>
+          <option value="1week">Within 1 week</option>
+          <option value="2weeks">1–2 weeks</option>
+          <option value="month">Within a month</option>
+          <option value="flexible">Flexible</option>
+        </select>
+      </div>
+
+      <input type="hidden" id="po-number" value="">
+    </div>
+
+    <!-- Notes -->
+    <div class="card sm" style="margin-bottom:16px">
+      <h2>Notes</h2>
+      <div class="form-group">
+        <label>Order Notes <span class="opt">(optional)</span></label>
+        <textarea id="order-notes" rows="3" placeholder="Delivery instructions, on-site contact, or anything we should know"></textarea>
+      </div>
+    </div>
+
+    <!-- Distribution Note -->
+    <div class="card sm" style="margin-bottom:16px;background:#f4f8ff;border-color:#93c5fd">
+      <div style="font-size:13px;color:#1e40af;line-height:1.7">
+        <strong>Distribution Partners:</strong> purpl is also available through select distributors.
+        If you'd prefer to order through your existing distributor, let us know.
+        <a href="mailto:graham@pumpkinblossomfarm.com" style="color:#1e40af">graham@pumpkinblossomfarm.com</a>
+      </div>
+    </div>
+
+    <!-- Terms & Agreement -->
+    <div class="terms-block">
+      <strong>Wholesale Terms</strong>
+      <div style="font-size:12px;color:#374151;line-height:1.8;margin-top:6px">
+        <strong>Payment:</strong> Net 30 days from invoice date. A 2% monthly finance charge may apply to late payments.<br>
+        <strong>Delivery:</strong> Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont. Other areas served via scheduled routes or parcel. Orders below 8 cases available for warehouse pickup or parcel shipment — shipping billed at cost.<br>
+        <strong>Lead Time:</strong> Please allow 7 business days for delivery.<br>
+        <strong>Damaged/Short Shipments:</strong> Please inspect your shipment upon arrival and report any issues within 48 hours of receipt.<br>
+        <strong>Pricing:</strong> We reserve the right to update pricing with 30 days' notice.
+      </div>
+      <div style="margin:12px 0">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#374151">
+          <input type="checkbox" id="agree-terms" onchange="checkSubmitEnabled()" style="margin-top:3px;flex-shrink:0">
+          <span>I agree to the wholesale terms above.</span>
+        </label>
+      </div>
+      <hr class="divider">
+      <strong>Payment</strong>
+      Net 30 from invoice date. Invoices from <span style="color:var(--purpl)">lavender@pbfwholesale.com</span>.
+      <hr class="divider">
+      <div class="contact-line">
+        Questions — Graham &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a> &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a>
+      </div>
+    </div>
+
+    <div class="error-msg" id="error-msg"></div>
+    <button class="submit-btn" id="submit-btn" disabled onclick="submitOrder()">
+      Place Order
+    </button>
+
+    <div id="past-orders-section" style="display:none;margin-top:24px">
+      <div class="card sm">
+        <h2>Order History</h2>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Previous orders on file. Click View PDF on any order to download a copy.</p>
+        <div id="past-orders-list"></div>
+      </div>
+    </div>
+
+  </div><!-- /#order-form -->
+
+  <!-- Thank You state -->
+  <div class="thankyou" id="thankyou">
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px">
+      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+        alt="purpl" style="height:40px">
+      <div style="width:1px;height:36px;background:#e5e7eb"></div>
+      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
+        alt="Lavender Fields" style="height:36px">
+    </div>
+    <h2 id="ty-heading">Order received!</h2>
+    <p style="margin-bottom:20px">We'll be in touch shortly to confirm your delivery window.</p>
+    <div class="summary-card" id="ty-summary"></div>
+    <button onclick="printCurrentOrder()" style="margin-top:8px;padding:10px 24px;background:var(--purpl-dark);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif">
+      🖨️ Print Confirmation
+    </button>
+    <p class="ty-note" style="margin-top:20px">
+      Your invoice will come from <strong style="color:var(--purpl)">lavender@pbfwholesale.com</strong> — payment is Net 30 from the invoice date.
+    </p>
+    <p class="ty-note">
+      I'm your direct contact — <a href="mailto:graham@pumpkinblossomfarm.com" style="color:var(--purpl)">graham@pumpkinblossomfarm.com</a>
+      &nbsp;·&nbsp; <a href="tel:6037483038" style="color:var(--purpl)">603-748-3038</a>
+    </p>
+    <p class="ty-note" style="font-size:12px">
+      Wholesale info: <a href="https://pbfwholesale.com" style="color:var(--purpl)">pbfwholesale.com</a>
+    </p>
+    <p class="ty-small">Need to make changes? Resubmit via your portal link or reply to the confirmation email.</p>
+  </div>
+
+</div><!-- /.container -->
+
+<!-- Footer -->
+<div class="op-footer">
+  <p>Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</p>
+  <p><a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a> &nbsp;·&nbsp; <a href="https://pbfwholesale.com" target="_blank">pbfwholesale.com</a> &nbsp;·&nbsp; <a href="https://pumpkinblossomfarm.com" target="_blank">pumpkinblossomfarm.com</a></p>
+  <p>Graham Biagiotti &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a></p>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBbEQ1wV7MwJJjSC9_EalYxHMvTjHklwFY",
+  authDomain: "purpl-crm.firebaseapp.com",
+  projectId: "purpl-crm",
+  storageBucket: "purpl-crm.firebasestorage.app",
+  messagingSenderId: "805074818841",
+  appId: "1:805074818841:web:69655531888bd5904d5788"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const CANS_PER_CASE = 12;
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+let isMatched = false;
+let isProspect = false;
+let accountId = null;
+let accountName = '';
+let accountEmail = '';
+let isPbf = false;
+let portalMode = 'preorder';
+let pricePerCase = null;
+let _brandPurpl = true;
+let _brandLf = false;
+let _lfSkus = [];
+let _lfSkusLoaded = false;
+const LF_SKU_FALLBACK = [
+  {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
+  {id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null},
+  {id:'lf-scrunchie', name:'Aromatherapy Scrunchie', wholesalePrice:7.49, caseSize:6, msrp:14.99, variants:[
+    {id:'blossom-satin',    name:'Blossom Satin'},
+    {id:'blossom-corduroy', name:'Blossom Corduroy'},
+    {id:'blossom-velvet',   name:'Blossom Velvet'},
+    {id:'sage-satin',       name:'Sage Satin'},
+    {id:'sage-corduroy',    name:'Sage Corduroy'},
+    {id:'sage-velvet',      name:'Sage Velvet'},
+    {id:'dusk-satin',       name:'Dusk Satin'},
+    {id:'dusk-corduroy',    name:'Dusk Corduroy'},
+    {id:'dusk-velvet',      name:'Dusk Velvet'},
+    {id:'chai-satin',       name:'Chai Satin'},
+    {id:'chai-corduroy',    name:'Chai Corduroy'},
+    {id:'chai-velvet',      name:'Chai Velvet'},
+  ]},
+  {id:'lf-sachet', name:'Seatbelt Sachet', wholesalePrice:4.99, caseSize:12, msrp:9.99, variants:[
+    {id:'sage-corduroy',  name:'Sage Corduroy'},
+    {id:'blue-floral',    name:'Blue Floral'},
+    {id:'chai-corduroy',  name:'Chai Corduroy'},
+    {id:'purple-floral',  name:'Purple Floral'},
+  ]},
+  {id:'lf-candle', name:'Soy Candle', wholesalePrice:14.99, caseSize:12, msrp:24.99, variants:[
+    {id:'simply-lavender',        name:'Simply Lavender'},
+    {id:'lavender-lemonade',      name:'Lavender Lemonade'},
+    {id:'lavender-white-birch',   name:'Lavender White Birch'},
+  ]},
+  {id:'lf-refresh-powder',  name:'Lavender Refresh Powder',       wholesalePrice:4.99,  caseSize:12, msrp:9.99},
+  {id:'lf-roll-on',         name:'Aromatherapy Roll-On',          wholesalePrice:9.99,  caseSize:24, msrp:19.99},
+  {id:'lf-dryer-sachet',    name:'Dryer Sachet 2-Pack',           wholesalePrice:5.49,  caseSize:12, msrp:9.99},
+];
+
+function _isRefillable(name) { return /satin/i.test(name || ''); }
+
+function toggleBrand(brand) {
+  if (brand === 'purpl') {
+    _brandPurpl = !_brandPurpl;
+    // At least one must be selected
+    if (!_brandPurpl && !_brandLf) _brandLf = true;
+  } else {
+    _brandLf = !_brandLf;
+    if (!_brandPurpl && !_brandLf) _brandPurpl = true;
+  }
+  updateBrandVisibility();
+  checkSubmitEnabled();
+}
+
+function updateBrandVisibility() {
+  var cardP = document.getElementById('brand-card-purpl');
+  var cardL = document.getElementById('brand-card-lf');
+  if (cardP) { cardP.classList.toggle('sel-purpl', _brandPurpl); }
+  if (cardL) { cardL.classList.toggle('sel-lf', _brandLf); }
+  var purplSec = document.getElementById('purpl-order-section');
+  var lfSec    = document.getElementById('lf-order-section');
+  var notice   = document.getElementById('dual-brand-notice');
+  if (purplSec) purplSec.style.display = _brandPurpl ? '' : 'none';
+  if (lfSec)    lfSec.style.display    = _brandLf    ? '' : 'none';
+  if (notice)   notice.style.display   = (_brandPurpl && _brandLf) ? '' : 'none';
+  if (_brandLf && !_lfSkusLoaded) loadLfSkus(null);
+  // Selection affordance hints
+  var both     = _brandPurpl && _brandLf;
+  var hintP = document.getElementById('bc-add-hint-purpl');
+  var hintL = document.getElementById('bc-add-hint-lf');
+  var badge = document.getElementById('bc-both-badge');
+  if (hintP) hintP.style.display = (!_brandPurpl && _brandLf)  ? '' : 'none';
+  if (hintL) hintL.style.display = (!_brandLf   && _brandPurpl) ? '' : 'none';
+  if (badge) badge.style.display = both ? '' : 'none';
+}
+
+function renderLfSkus(skus, prevOrder) {
+  _lfSkus = skus;
+  _lfSkusLoaded = true;
+  var container = document.getElementById('lf-sku-list');
+  if (!container) return;
+  if (!skus.length) {
+    container.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:8px">No products available at this time.</div>';
+    return;
+  }
+  container.innerHTML = skus.map(function(s) {
+    var msrpText = s.msrp ? ' · MSRP $' + parseFloat(s.msrp).toFixed(2) : '';
+    var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
+
+    if (activeVariants.length > 0) {
+      var prevVariants = prevOrder ? (prevOrder['variants_'+s.id] || {}) : {};
+      var totalPrevUnits = activeVariants.reduce(function(sum,v){return sum+(prevVariants[v.id]||0)*s.caseSize;},0);
+      var totalPrevCases = totalPrevUnits / s.caseSize;
+      var initRequiredUnits = totalPrevCases * s.caseSize;
+
+      var variantHtml = activeVariants.map(function(v) {
+        var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
+        return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
+          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : '')+'</span>' +
+          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
+          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
+          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
+        '</div>';
+      }).join('');
+
+      var initTallyText = totalPrevCases > 0
+        ? totalPrevUnits+' of '+initRequiredUnits+' units assigned'
+        : '0 of 0 units assigned';
+      var initTallyCls = (totalPrevCases > 0 && totalPrevUnits === initRequiredUnits)
+        ? 'lf-vtally' : 'lf-vtally mismatch';
+      var initLineTotal = totalPrevCases > 0
+        ? '$'+(totalPrevCases*s.caseSize*parseFloat(s.wholesalePrice)).toFixed(2) : '';
+      var pickerDisplay = totalPrevCases > 0 ? 'block' : 'none';
+      var prevNoteHtml = totalPrevCases > 0
+        ? '<div class="lf-prev-note">Last order: '+totalPrevCases+' case'+(totalPrevCases!==1?'s':'')+'</div>' : '';
+
+      return '<div class="lf-sku-row lf-sku-has-variants" id="lf-row-'+s.id+'">' +
+        '<div class="lf-sku-info">' +
+          '<div class="lf-sku-name">'+s.name+'</div>' +
+          '<div class="lf-sku-meta">Case of '+s.caseSize+' · '+activeVariants.length+' variants'+msrpText+'</div>' +
+          '<div class="lf-sku-price">$'+parseFloat(s.wholesalePrice).toFixed(2)+'/unit · $'+(parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2)+'/case</div>' +
+          prevNoteHtml +
+        '</div>' +
+        '<div class="lf-sku-qty">' +
+          '<input type="number" id="lf-qty-'+s.id+'" min="0" step="1" value="'+(totalPrevCases||0)+'" placeholder="0" oninput="updateLfVariantCases(\''+s.id+'\')">' +
+          '<span>cases</span>' +
+        '</div>' +
+        '<div class="lf-line-total" id="lf-total-'+s.id+'">'+initLineTotal+'</div>' +
+        '<div id="lf-vpicker-'+s.id+'" class="lf-vpicker" style="display:'+pickerDisplay+'">' +
+          '<div class="lf-vheader" id="lf-vheader-'+s.id+'">Assign '+initRequiredUnits+' units across variants:</div>' +
+          variantHtml +
+          '<div class="'+initTallyCls+'" id="lf-vtally-'+s.id+'">'+initTallyText+'</div>' +
+          '<div class="lf-verr" id="lf-verr-'+s.id+'">Please assign all '+initRequiredUnits+' units before submitting.</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Non-variant SKU
+    var prev = prevOrder ? (prevOrder[s.id] || 0) : 0;
+    var prevNote = prev > 0 ? '<div class="lf-prev-note">Last order: ' + prev + ' case' + (prev!==1?'s':'') + '</div>' : '';
+    return '<div class="lf-sku-row" id="lf-row-' + s.id + '">' +
+      '<div class="lf-sku-info">' +
+        '<div class="lf-sku-name">' + s.name + '</div>' +
+        '<div class="lf-sku-meta">Case of ' + s.caseSize + msrpText + '</div>' +
+        '<div class="lf-sku-price">$' + parseFloat(s.wholesalePrice).toFixed(2) + '/unit · $' + (parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2) + '/case</div>' +
+        prevNote +
+      '</div>' +
+      '<div class="lf-sku-qty">' +
+        '<input type="number" id="lf-qty-' + s.id + '" min="0" step="1" value="' + (prev||0) + '" ' +
+          'placeholder="0" oninput="updateLfCalc(\'' + s.id + '\')">' +
+        '<span>cases</span>' +
+      '</div>' +
+      '<div class="lf-line-total" id="lf-total-' + s.id + '">' +
+        (prev > 0 ? '$' + (prev * s.caseSize * parseFloat(s.wholesalePrice)).toFixed(2) : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  updateLfSubtotal();
+}
+
+function updateLfCalc(skuId) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!sku) return;
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var total = cases * sku.caseSize * parseFloat(sku.wholesalePrice);
+  var el = document.getElementById('lf-total-'+skuId);
+  if (el) el.textContent = cases > 0 ? '$'+total.toFixed(2) : '';
+  updateLfSubtotal();
+  checkSubmitEnabled();
+}
+
+function toggleLfVariantPicker(skuId) {
+  var picker = document.getElementById('lf-vpicker-'+skuId);
+  if (!picker) return;
+  picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
+// Called when cases input changes on a variant SKU
+function updateLfVariantCases(skuId) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!sku) return;
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var picker  = document.getElementById('lf-vpicker-'+skuId);
+  var header  = document.getElementById('lf-vheader-'+skuId);
+  var ltEl    = document.getElementById('lf-total-'+skuId);
+  var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
+
+  if (cases <= 0) {
+    if (picker) picker.style.display = 'none';
+    activeVariants.forEach(function(v) {
+      var el = document.getElementById('lf-vqty-'+skuId+'-'+v.id);
+      if (el) el.value = 0;
+    });
+    if (ltEl) ltEl.textContent = '';
+    updateLfSubtotal();
+    checkSubmitEnabled();
+    return;
+  }
+
+  var requiredUnits = cases * sku.caseSize;
+  if (picker) picker.style.display = 'block';
+  if (header) header.textContent = 'Assign '+requiredUnits+' units across variants:';
+  if (ltEl) ltEl.textContent = '$'+(cases*sku.caseSize*parseFloat(sku.wholesalePrice)).toFixed(2);
+  updateLfVariantCalc(skuId);
+}
+
+function stepLfUnit(skuId, varId, delta) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  var el = document.getElementById('lf-vqty-'+skuId+'-'+varId);
+  if (!el) return;
+  var current = parseInt(el.value)||0;
+  if (delta > 0 && sku) {
+    // Cap at remaining unassigned units so you can't over-assign via +
+    var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
+    var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+    var requiredUnits = cases * sku.caseSize;
+    var assignedOthers = activeVariants.reduce(function(sum,v){
+      if (v.id === varId) return sum;
+      return sum + (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0);
+    },0);
+    el.value = Math.min(current + delta, Math.max(0, requiredUnits - assignedOthers));
+  } else {
+    el.value = Math.max(0, current + delta);
+  }
+  updateLfVariantCalc(skuId);
+}
+
+function updateLfVariantCalc(skuId) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!sku) return;
+  var activeVariants = (sku.variants||[]).filter(function(v){return !v.archived;});
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var requiredUnits = cases * sku.caseSize;
+  var assignedUnits = activeVariants.reduce(function(sum,v){
+    return sum + (parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0);
+  },0);
+
+  var tallyEl = document.getElementById('lf-vtally-'+skuId);
+  var errEl   = document.getElementById('lf-verr-'+skuId);
+  var matched = requiredUnits > 0 && assignedUnits === requiredUnits;
+
+  if (tallyEl) {
+    tallyEl.textContent = assignedUnits+' of '+requiredUnits+' units assigned';
+    tallyEl.className = matched ? 'lf-vtally' : 'lf-vtally mismatch';
+  }
+  if (errEl) {
+    errEl.style.display = (requiredUnits > 0 && !matched) ? 'block' : 'none';
+    errEl.textContent = 'Please assign all '+requiredUnits+' units before submitting.';
+  }
+
+  updateLfSubtotal();
+  checkSubmitEnabled();
+}
+
+function updateLfSubtotal() {
+  var total = getLfTotal();
+  var el = document.getElementById('lf-subtotal-display');
+  if (el) el.textContent = '$'+total.toFixed(2);
+}
+
+function getLfItems() {
+  return _lfSkus.map(function(s) {
+    var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
+    if (activeVariants.length > 0) {
+      var variantLines = activeVariants.map(function(v){
+        var units = parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0;
+        if (units <= 0) return null;
+        return {variantId:v.id, variantName:v.name, units:units, cases: units / s.caseSize};
+      }).filter(Boolean);
+      if (!variantLines.length) return null;
+      var totalUnits = variantLines.reduce(function(acc,v){return acc+v.units;},0);
+      var totalCases = totalUnits / s.caseSize;
+      var totalLine  = totalUnits * parseFloat(s.wholesalePrice);
+      return {skuId:s.id, skuName:s.name, hasVariants:true, variantLines:variantLines,
+              cases:totalCases, units:totalUnits, unitPrice:parseFloat(s.wholesalePrice), lineTotal:totalLine};
+    }
+    var cases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
+    if (cases <= 0) return null;
+    var units = cases * s.caseSize;
+    var lineTotal = units * parseFloat(s.wholesalePrice);
+    return {skuId:s.id, skuName:s.name, cases:cases, units:units, unitPrice:parseFloat(s.wholesalePrice), lineTotal:lineTotal};
+  }).filter(Boolean);
+}
+
+function getLfTotal() {
+  return _lfSkus.reduce(function(sum,s){
+    var cases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
+    if (cases <= 0) return sum;
+    return sum + cases * s.caseSize * parseFloat(s.wholesalePrice);
+  },0);
+}
+
+function loadLfSkus(prevOrder) {
+  db.collection('workspace').doc('main').collection('config').doc('main').get()
+    .then(function(doc) {
+      var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
+      if (skus.length) {
+        console.log('LF SKUs loaded from Firestore: ' + skus.length + ' skus');
+        renderLfSkus(skus, prevOrder);
+      } else {
+        console.log('LF SKUs: Firestore returned 0 skus (doc.exists=' + doc.exists + ') — using fallback');
+        renderLfSkus(LF_SKU_FALLBACK, prevOrder);
+      }
+    })
+    .catch(function(err) {
+      console.error('LF SKU load error — using fallback:', err);
+      renderLfSkus(LF_SKU_FALLBACK, prevOrder);
+    });
+}
+
+function init() {
+  const params = new URLSearchParams(window.location.search);
+  var token = params.get('t');
+  if (token) {
+    try { sessionStorage.setItem('pbf_portal_token', token); } catch(e) {}
+  } else {
+    try { token = sessionStorage.getItem('pbf_portal_token'); } catch(e) {}
+  }
+
+  // Stripe checkout return — show a confirmation banner
+  if (params.get('paid') === '1' || params.get('cancelled') === '1') {
+    var isPaid = params.get('paid') === '1';
+    var banner = document.createElement('div');
+    banner.style.cssText = 'max-width:600px;margin:24px auto;padding:18px 24px;border-radius:10px;text-align:center;font-size:15px;font-weight:600;' +
+      (isPaid ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d');
+    banner.textContent = isPaid
+      ? '✓ Payment received — thank you! A receipt has been emailed to you by Stripe.'
+      : 'Payment was cancelled. Your invoice is still open — you can pay any time using the link in your invoice email.';
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+
+  // Load portal config via Cloud Function (never exposes password to client)
+  firebase.functions().httpsCallable('getPortalConfig')({}).then(function(result) {
+    var cfg = result.data || {};
+    portalMode = cfg.mode || 'preorder';
+    pricePerCase = cfg.pricePerCase || null;
+    if (portalMode === 'preorder') {
+      document.getElementById('preorder-banner').style.display = 'block';
+      if (document.getElementById('preorder-note')) document.getElementById('preorder-note').style.display = 'block';
+      document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
+    } else {
+      document.getElementById('submit-btn').textContent = 'Place Order';
+      if (pricePerCase) {
+        document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
+        document.getElementById('price-display').style.display = 'block';
+      }
+    }
+  }).catch(function() {});
+
+  if (token) {
+    // Token present — show loading state, then reveal form after lookup completes
+    document.getElementById('order-form').style.display = 'none';
+    document.getElementById('password-gate').style.display = 'none';
+    var loadingEl = document.createElement('div');
+    loadingEl.id = 'token-loading';
+    loadingEl.style.cssText = 'max-width:400px;margin:60px auto;text-align:center;color:#6b7280;font-size:14px';
+    loadingEl.innerHTML = '<div style="margin-bottom:12px">Loading your account...</div><div class="loading-spinner" style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#7B4FA0;border-radius:50%;animation:spin .7s linear infinite;margin:0 auto"></div>';
+    document.querySelector('.container').insertBefore(loadingEl, document.getElementById('order-form'));
+
+    firebase.functions().httpsCallable('lookupPortalToken')({ token: token })
+      .then(function(result) {
+        if (loadingEl) loadingEl.remove();
+        var d = result.data;
+        if (d.found) {
+          accountId = d.accountId;
+          accountName = d.accountName;
+          accountEmail = d.accountEmail;
+          isPbf = d.isPbf || false;
+          isMatched = true;
+          isProspect = d.isProspect || false;
+          document.getElementById('order-form').style.display = '';
+          _applyMatchedAccount(d);
+        } else {
+          document.getElementById('order-form').style.display = '';
+          var errEl = document.getElementById('error-msg');
+          if (errEl) {
+            errEl.textContent = 'This order link may have expired. Please contact graham@pumpkinblossomfarm.com for a new link.';
+            errEl.style.display = 'block';
+          }
+        }
+      })
+      .catch(function(e) {
+        console.error('Token lookup error:', e);
+        if (loadingEl) loadingEl.remove();
+        document.getElementById('order-form').style.display = 'none';
+        document.getElementById('password-gate').style.display = '';
+        var errEl = document.getElementById('error-msg');
+        if (errEl) {
+          errEl.textContent = 'Could not load your account — please try the link again or enter the portal password below.';
+          errEl.style.display = 'block';
+        }
+      });
+  } else {
+    // No token — show password gate
+    document.getElementById('password-gate').style.display = '';
+    document.getElementById('order-form').style.display = 'none';
+  }
+
+  function _applyMatchedAccount(data) {
+    document.getElementById('locked-name').textContent = accountName;
+    document.getElementById('matched-section').style.display = 'block';
+    document.getElementById('unmatched-section').style.display = 'none';
+    if (accountEmail) document.getElementById('billing-email').value = accountEmail;
+    var banner = document.getElementById('returning-banner');
+    if (banner) banner.style.display = 'block';
+
+    if (!isProspect) {
+      _brandPurpl = true;
+      _brandLf = isPbf;
+      updateBrandVisibility();
+      if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
+      loadOutstandingInvoices(accountId);
+    }
+
+    // Pre-fill shipping from account
+    var addr = data.address || data.shipAddress || '';
+    if (typeof addr === 'object' && addr.street1) {
+      document.getElementById('ship-street').value = addr.street1 || '';
+      document.getElementById('ship-street2').value = addr.street2 || '';
+      document.getElementById('ship-city').value = addr.city || '';
+      document.getElementById('ship-state').value = addr.state || '';
+      document.getElementById('ship-zip').value = addr.zip || '';
+    } else if (typeof addr === 'string' && addr) {
+      var parts = addr.split(',').map(function(p){return p.trim();});
+      document.getElementById('ship-street').value = parts[0] || '';
+      if (parts.length >= 2) {
+        var last = parts[parts.length - 1];
+        var m = last.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+        if (m) {
+          if (parts.length >= 3) document.getElementById('ship-city').value = parts[parts.length - 2];
+          document.getElementById('ship-state').value = m[1];
+          document.getElementById('ship-zip').value = m[2];
+        } else {
+          var m2 = last.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
+          if (m2) { document.getElementById('ship-city').value = m2[1]; document.getElementById('ship-state').value = m2[2]; document.getElementById('ship-zip').value = m2[3]; }
+        }
+        if (parts.length > 3) document.getElementById('ship-street2').value = parts[1];
+      }
+    }
+
+    var prefs = data.portalPrefs || {};
+    if (prefs.billingEmail) {
+      var be = document.getElementById('billing-email');
+      if (be) be.value = prefs.billingEmail;
+    }
+    // Distributor/social fields moved to wholesale.html — skip prefill for removed fields
+    if (prefs.leadTimeNeeded) {
+      var lt = document.getElementById('lead-time-needed');
+      if (lt) lt.value = prefs.leadTimeNeeded;
+    }
+    if (prefs.deliveryNotes) {
+      var dw = document.getElementById('delivery-window');
+      if (dw) dw.value = prefs.deliveryNotes;
+    }
+    if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
+
+    firebase.firestore()
+      .collection('portal_orders')
+      .where('accountId', '==', accountId)
+      .orderBy('submittedAt', 'desc')
+      .limit(10)
+      .get()
+      .then(function(snap) {
+        var orders = snap.docs.map(function(d) {
+          return Object.assign({id: d.id}, d.data());
+        });
+        renderPastOrders(orders);
+      })
+      .catch(function(e) {
+        console.log('Past orders error:', e);
+        renderPastOrders([]);
+      });
+  }
+
+  // Load LF SKUs for anonymous visitors (matched accounts load them after isPbf check)
+  if (!token) {
+    _brandPurpl = true;
+    _brandLf = false;
+    updateBrandVisibility();
+    loadLfSkus(null); // pre-load so it's ready if user clicks LF card
+  }
+
+}
+
+function updateCans() {
+  const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+  const el = document.getElementById('cans-calc');
+  el.textContent = cases > 0 ? '= ' + (cases * CANS_PER_CASE) + ' cans total' : '';
+  checkSubmitEnabled();
+}
+
+document.getElementById('request-sample')?.addEventListener('change', function() {
+  var note = document.getElementById('sample-note');
+  if (note) note.style.display = this.checked ? '' : 'none';
+});
+
+function checkSubmitEnabled() {
+  var agreeEl = document.getElementById('agree-terms');
+  if (agreeEl && !agreeEl.checked) {
+    document.getElementById('submit-btn').disabled = true;
+    return;
+  }
+  const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+  const notifyChecked = ['blueberry', 'peach']
+    .some(f => document.getElementById('notify-' + f).checked);
+  const lfTotal = _brandLf ? getLfTotal() : 0;
+  const requestSample = document.getElementById('request-sample')?.checked || false;
+  const hasPurpl = _brandPurpl && (cases > 0 || notifyChecked || requestSample);
+  const hasLf    = _brandLf && lfTotal > 0;
+  var variantsMismatched = _brandLf && _lfSkus.some(function(s) {
+    var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
+    if (!activeVariants.length) return false;
+    var skuCases = parseInt(document.getElementById('lf-qty-'+s.id)?.value)||0;
+    if (skuCases <= 0) return false;
+    var requiredUnits = skuCases * s.caseSize;
+    var assignedUnits = activeVariants.reduce(function(sum,v){
+      return sum + (parseInt(document.getElementById('lf-vqty-'+s.id+'-'+v.id)?.value)||0);
+    },0);
+    return assignedUnits !== requiredUnits;
+  });
+  document.getElementById('submit-btn').disabled = (!hasPurpl && !hasLf) || variantsMismatched;
+}
+
+// Distributor fields moved to wholesale.html — stubs for backward compatibility
+function toggleDistributorOther() {}
+function getDistributors() { return []; }
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = false;
+  btn.textContent = portalMode === 'preorder' ? 'Submit Pre-Order' : 'Place Order';
+}
+
+function showThankYou(data) {
+  document.getElementById('order-form').style.display = 'none';
+  var ty = document.getElementById('thankyou');
+  ty.style.display = 'block';
+  document.getElementById('ty-heading').textContent = 'Thank you, ' + data.accountName + '!';
+  var subEl = document.getElementById('ty-subtext');
+  if (subEl && portalMode === 'preorder') subEl.textContent = 'Pre-order received! We\'ll confirm availability and delivery timing soon.';
+
+  var orderData = data.orderData || {};
+  var summaryHtml = '';
+
+  // purpl section
+  if (data.cases > 0) {
+    var purplPrice = pricePerCase ? parseFloat(pricePerCase) : null;
+    var purplTotal = purplPrice ? (data.cases * purplPrice) : null;
+    summaryHtml += '<div style="font-size:12px;font-weight:700;color:#7B4FA0;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">💜 purpl Lemonade</div>';
+    summaryHtml += '<div class="summary-row"><span>Classic Lavender Lemonade</span><span>' + data.cases + ' cases (' + (data.cases * CANS_PER_CASE) + ' cans)' + (purplTotal ? ' · $' + purplTotal.toFixed(2) : '') + '</span></div>';
+  }
+
+  // LF section
+  if (data.lfItems && data.lfItems.length) {
+    summaryHtml += '<div style="font-size:12px;font-weight:700;color:#166534;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🌿 Lavender Fields</div>';
+    data.lfItems.forEach(function(it) {
+      if (it.hasVariants && it.variantLines && it.variantLines.length) {
+        summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + escHtml(it.skuName) + '</span>';
+        it.variantLines.forEach(function(vl) {
+          summaryHtml += '<span style="font-size:12px;color:var(--muted)">— ' + escHtml(vl.variantName) + (_isRefillable(vl.variantName) ? ' (Refillable)' : '') + ': ' + vl.units + ' units</span>';
+        });
+        summaryHtml += '<span style="align-self:flex-end;font-weight:600">$' + it.lineTotal.toFixed(2) + '</span></div>';
+      } else {
+        summaryHtml += '<div class="summary-row"><span>' + escHtml(it.skuName) + '</span><span>' + it.cases + ' case' + (it.cases!==1?'s':'') + ' · $' + it.lineTotal.toFixed(2) + '</span></div>';
+      }
+    });
+    summaryHtml += '<div class="summary-row"><span>LF Total</span><span>$' + (data.lfTotal||0).toFixed(2) + '</span></div>';
+  }
+
+  // Shared fields
+  var dists = getDistributors();
+  if (dists.length) summaryHtml += '<div class="summary-row"><span>Distributor(s)</span><span>' + escHtml(dists.join(', ')) + '</span></div>';
+  if (orderData.leadTimeNeeded) summaryHtml += '<div class="summary-row"><span>Lead Time</span><span>' + escHtml(orderData.leadTimeNeeded) + '</span></div>';
+  if (data.deliveryWindow) summaryHtml += '<div class="summary-row"><span>Delivery Window</span><span>' + escHtml(data.deliveryWindow) + '</span></div>';
+  if (data.poNumber) summaryHtml += '<div class="summary-row"><span>PO Number</span><span>' + escHtml(data.poNumber) + '</span></div>';
+  summaryHtml += '<div class="summary-row"><span>Billing Email</span><span>' + escHtml(data.billingEmail) + '</span></div>';
+  summaryHtml += '<div class="summary-row"><span>Payment Terms</span><span>Net 30 from invoice date</span></div>';
+
+  // Shipping address
+  var sa = data.orderData?.shipAddress || {};
+  if (sa.street1) {
+    summaryHtml += '<div class="summary-row"><span>Ships To</span><span>' + escHtml(sa.street1) + (sa.street2 ? ', ' + escHtml(sa.street2) : '') + '<br>' + escHtml(sa.city || '') + (sa.state ? ', ' + escHtml(sa.state) : '') + ' ' + escHtml(sa.zip || '') + '</span></div>';
+  }
+
+  // Sample request
+  if (data.orderData?.requestSample) {
+    summaryHtml += '<div style="background:#faf5ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#4B2082">🧪 <strong>Sample box requested</strong> — 3 cans of Classic Lavender Lemonade. We\'ll review and ship it with tracking.</div>';
+  }
+
+  if (data.bothBrands) {
+    summaryHtml += '<div style="background:#eff6ff;border-radius:6px;padding:8px 10px;margin-top:8px;font-size:12px;color:#1e40af">You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.</div>';
+  }
+
+  document.getElementById('ty-summary').innerHTML = summaryHtml;
+  _lastOrderData = data;
+
+  // Confirmation email handled by sendOrderConfirmation Cloud Function
+}
+
+function submitOrder() {
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('error-msg');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  errEl.style.display = 'none';
+
+  const cases = parseInt(document.getElementById('classic-cases').value) || 0;
+
+  let billingEmail = '';
+  let contactName = '';
+  let finalAccountName = accountName;
+
+  if (isMatched) {
+    billingEmail = document.getElementById('billing-email').value.trim();
+  } else {
+    finalAccountName = document.getElementById('business-name').value.trim();
+    contactName = document.getElementById('contact-name').value.trim();
+    billingEmail = document.getElementById('billing-email-unmatched').value.trim();
+    if (!finalAccountName) { showError('Please enter your business name.'); return; }
+    if (!contactName) { showError('Please enter your contact name.'); return; }
+    if (!billingEmail) { showError('Please enter your billing email.'); return; }
+  }
+  if (!billingEmail) { showError('Please enter your billing email.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) { showError('Please enter a valid email address.'); return; }
+
+  const deliveryWindow = document.getElementById('delivery-window').value.trim();
+  const poNumber = document.getElementById('po-number').value.trim();
+  const notes = document.getElementById('order-notes').value.trim();
+
+  const checkedFlavors = ['blueberry', 'peach']
+    .filter(f => document.getElementById('notify-' + f).checked);
+
+  var requestSample = document.getElementById('request-sample')?.checked || false;
+
+  var shipAddress = {
+    street1: (document.getElementById('ship-street')?.value||'').trim(),
+    street2: (document.getElementById('ship-street2')?.value||'').trim(),
+    city: (document.getElementById('ship-city')?.value||'').trim(),
+    state: (document.getElementById('ship-state')?.value||'').trim().toUpperCase(),
+    zip: (document.getElementById('ship-zip')?.value||'').trim(),
+  };
+  if (!shipAddress.street1 || !shipAddress.city || !shipAddress.state || !shipAddress.zip) {
+    showError('Please enter a complete shipping address.');
+    return;
+  }
+
+  const orderData = {
+    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    mode: portalMode,
+    accountId: accountId || null,
+    accountName: finalAccountName,
+    isMatched: isMatched,
+    isProspect: isProspect,
+    billingEmail: billingEmail,
+    contactName: contactName || null,
+    distributors: getDistributors(),
+    distributorDirectOpen: document.getElementById('distributor-direct-open')?.value||'',
+    distributorContactOk: document.getElementById('distributor-contact-ok')?.checked||false,
+    leadTimeNeeded: document.getElementById('lead-time-needed')?.value||'',
+    socialHandle: (document.getElementById('social-handle')?.value||'').trim(),
+    shipAddress: shipAddress,
+    requestSample: requestSample,
+    agreedToTerms: true,
+    items: cases > 0 ? [{
+      sku: 'classic',
+      label: 'Classic Lavender Lemonade',
+      cases: cases,
+      cansPerCase: CANS_PER_CASE,
+      totalCans: cases * CANS_PER_CASE
+    }] : [],
+    notifyMe: checkedFlavors,
+    deliveryWindow: deliveryWindow,
+    poNumber: poNumber,
+    notes: notes,
+    status: 'new',
+    isUnmatched: !isMatched
+  };
+
+  // Collect LF items if LF section is active
+  var lfItems = _brandLf ? getLfItems() : [];
+  var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
+  if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0 && !requestSample) {
+    showError('Please add at least one item, request a sample, or select a notification.');
+    return;
+  }
+  if (!document.getElementById('agree-terms')?.checked) {
+    showError('Please agree to the wholesale terms.');
+    return;
+  }
+
+  // Write purpl order (unchanged logic — only if purpl brand selected and has items/notify)
+  var purplPromise = (_brandPurpl && (cases > 0 || orderData.notifyMe.length > 0))
+    ? db.collection('portal_orders').add(Object.assign({}, orderData, {brand:'purpl'}))
+    : Promise.resolve(null);
+
+  // Write LF order if any LF items
+  var lfPromise = lfItems.length > 0
+    ? db.collection('portal_orders').add({
+        accountId: accountId || null,
+        accountName: finalAccountName,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        mode: portalMode,
+        brand: 'lf',
+        lineItems: lfItems,
+        total: lfTotal,
+        contactName: contactName || null,
+        contactEmail: billingEmail,
+        billingEmail: billingEmail,
+        deliveryWindow: deliveryWindow,
+        poNumber: poNumber,
+        notes: notes,
+        shipAddress: shipAddress,
+        requestSample: requestSample,
+        agreedToTerms: true,
+        status: 'new',
+        source: 'portal',
+        isMatched: isMatched,
+        isProspect: isProspect,
+        isUnmatched: !isMatched,
+      })
+    : Promise.resolve(null);
+
+  Promise.all([purplPromise, lfPromise])
+    .then(function(results) {
+      var purplRef = results[0];
+      var lfRef    = results[1];
+
+      if (isMatched && accountId) {
+        // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
+        var lfLastOrder = {};
+        lfItems.forEach(function(it){
+          lfLastOrder[it.skuId] = it.cases;
+          if (it.hasVariants && it.variantLines) {
+            var varMap = {};
+            it.variantLines.forEach(function(vl){ varMap[vl.variantId] = vl.cases; });
+            lfLastOrder['variants_'+it.skuId] = varMap;
+          }
+        });
+
+        firebase.firestore()
+          .collection('accounts')
+          .doc(accountId)
+          .update({
+            // Merge prefs — spread existing first via FieldValue is not possible;
+            // we use set with merge to avoid overwriting unrelated prefs fields.
+            'portalPrefs.billingEmail': billingEmail,
+            'portalPrefs.distributors': getDistributors(),
+            'portalPrefs.distributorDirectOpen': document.getElementById('distributor-direct-open')?.value||'',
+            'portalPrefs.distributorContactOk': document.getElementById('distributor-contact-ok')?.checked||false,
+            'portalPrefs.leadTimeNeeded': document.getElementById('lead-time-needed')?.value||'',
+            'portalPrefs.socialHandle': (document.getElementById('social-handle')?.value||'').trim(),
+            'portalPrefs.deliveryNotes': (document.getElementById('delivery-window')?.value||'').trim(),
+            'portalPrefs.lastUpdated': firebase.firestore.FieldValue.serverTimestamp(),
+            ...(lfItems.length ? {'portalPrefs.lfLastOrder': lfLastOrder} : {}),
+            ...(cases > 0 ? {'portalPrefs.purplLastCases': cases} : {}),
+          }).catch(function(e) {
+            console.log('Prefs save error:', e);
+          });
+      }
+      // Build structured items for confirmation email (server renders HTML)
+      var _emailItems = [];
+      var _emailPpc = pricePerCase ? parseFloat(pricePerCase) : null;
+      if (_brandPurpl && cases > 0) {
+        var _emailPt = _emailPpc ? (cases * _emailPpc) : null;
+        _emailItems.push({ name: 'purpl Classic Lavender Lemonade', qty: cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)', total: _emailPt ? _emailPt.toFixed(2) : '' });
+      }
+      if (lfItems.length) {
+        lfItems.forEach(function(it) {
+          if (it.hasVariants && it.variantLines) {
+            it.variantLines.forEach(function(vl) {
+              _emailItems.push({ name: it.skuName + ' — ' + vl.variantName, qty: vl.units + ' units', total: '' });
+            });
+          } else {
+            _emailItems.push({ name: it.skuName, qty: it.cases + ' case' + (it.cases!==1?'s':''), total: it.lineTotal ? it.lineTotal.toFixed(2) : '' });
+          }
+        });
+      }
+
+      // Send order confirmation email (silent fail — never blocks order submission)
+      firebase.functions().httpsCallable('sendOrderConfirmation')({
+        to: billingEmail,
+        accountName: finalAccountName,
+        contactName: contactName || null,
+        accountId: accountId || null,
+        portalOrderId: purplRef?.id || lfRef?.id || null,
+        isPbf: _brandLf,
+        portalLink: window.location.href,
+        items: _emailItems,
+        poNumber: poNumber || '',
+        mode: portalMode,
+        requestSample: requestSample,
+        shipAddress: shipAddress,
+      }).catch(function(err) {
+        console.error('Confirmation email failed:', err);
+      });
+
+      showThankYou({
+        accountName: finalAccountName,
+        cases: _brandPurpl ? cases : 0,
+        deliveryWindow: deliveryWindow,
+        poNumber: poNumber,
+        billingEmail: billingEmail,
+        orderData: orderData,
+        lfItems: lfItems,
+        lfTotal: lfTotal,
+        bothBrands: _brandPurpl && lfItems.length > 0,
+      });
+    })
+    .catch(function(e) {
+      console.error('SUBMIT ERROR:', e.code, e.message, e);
+      var errEl = document.getElementById('error-msg');
+      if (errEl) {
+        errEl.textContent = 'Submission failed: ' + (e.message || e.code || 'Unknown error');
+        errEl.style.display = 'block';
+      }
+      var btn = document.getElementById('submit-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Place Order';
+      }
+    });
+}
+
+function renderPastOrders(orders) {
+  var section = document.getElementById(
+    'past-orders-section');
+  var list = document.getElementById('past-orders-list');
+  if (!section || !list) return;
+  section.style.display = 'block';
+
+  // Update header to be a collapsible toggle
+  var h2 = section.querySelector('h2');
+  if (h2 && !h2.dataset.wired) {
+    h2.dataset.wired = '1';
+    var countLabel = orders && orders.length ? ' (' + orders.length + ')' : '';
+    h2.innerHTML = '<span style="cursor:pointer;user-select:none" onclick="toggleOrderHistory()">▶ Order History' + countLabel + '</span>';
+    list.style.display = 'none'; // collapsed by default
+    var descEl = section.querySelector('p');
+    if (descEl) descEl.style.display = 'none'; // hide description when collapsed
+  }
+
+  if (!orders || !orders.length) {
+    list.innerHTML = '<div style="text-align:center;' +
+      'padding:20px;color:#9ca3af;font-size:13px">' +
+      'No previous orders yet — your history ' +
+      'will appear here after your first order.</div>';
+    return;
+  }
+  var statusColor = {
+    confirmed:'#166534',new:'#92400e',
+    reviewed:'#1e40af',declined:'#991b1b'
+  };
+  var statusBg = {
+    confirmed:'#dcfce7',new:'#fef3c7',
+    reviewed:'#dbeafe',declined:'#fee2e2'
+  };
+  list.innerHTML = orders.map(function(o) {
+    var cases = (o.items||[]).reduce(function(s,i){return s+(i.cases||0);},0);
+    var cans = cases * CANS_PER_CASE;
+    var lfItems = o.lineItems || [];
+    var status = o.status || 'new';
+    var dt = o.submittedAt && o.submittedAt.toDate ?
+      o.submittedAt.toDate().toLocaleDateString(
+        'en-US',{month:'short',day:'numeric',
+        year:'numeric'}) : 'Unknown date';
+    var color = statusColor[status] || '#374151';
+    var bg = statusBg[status] || '#f3f4f6';
+    var details = '';
+    if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
+    if (lfItems.length) {
+      if (details) details += ' · ';
+      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+    }
+    if (o.deliveryWindow) details += ' · ' + escHtml(o.deliveryWindow);
+    return '<div style="display:flex;' +
+      'justify-content:space-between;' +
+      'align-items:center;padding:12px 0;' +
+      'border-bottom:1px solid #f5f0ff">' +
+      '<div>' +
+      '<div style="font-size:13px;font-weight:600">' +
+        dt + '</div>' +
+      '<div style="font-size:12px;color:#6b7280;' +
+        'margin-top:2px">' +
+        (details || 'Order') +
+      '</div></div>' +
+      '<div style="display:flex;gap:8px;' +
+        'align-items:center;flex-shrink:0">' +
+      '<span style="font-size:11px;font-weight:600;' +
+        'padding:3px 10px;border-radius:20px;' +
+        'background:'+bg+';color:'+color+'">' +
+        status.toUpperCase()+'</span>' +
+      '<button onclick="printPortalOrder(\''+o.id+'\')" ' +
+        'style="background:#f5f0ff;border:1px solid ' +
+        '#c4b5fd;color:#7B4FA0;border-radius:8px;' +
+        'padding:6px 12px;font-size:12px;' +
+        'font-weight:500;cursor:pointer">' +
+        'View PDF</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+function printPortalOrder(orderId) {
+  firebase.firestore()
+    .collection('portal_orders')
+    .doc(orderId)
+    .get()
+    .then(function(doc) {
+      if (!doc.exists) {
+        alert('Order not found'); return;
+      }
+      var o = doc.data();
+      var dt = o.submittedAt && o.submittedAt.toDate ?
+        o.submittedAt.toDate().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : 'Unknown date';
+
+      // Build item rows — handles purpl items array and LF lineItems
+      var itemRows = '';
+      var purplCases = 0;
+      (o.items||[]).forEach(function(it) {
+        if ((it.cases||it.qty) > 0) {
+          purplCases += it.cases||it.qty||0;
+          var cans = (it.cases||it.qty||0) * CANS_PER_CASE;
+          itemRows += '<tr>' +
+            '<td>' + _e(it.label||'Classic Lavender Lemonade') + '</td>' +
+            '<td style="color:#6b7280">💜 purpl</td>' +
+            '<td style="text-align:right">' + (it.cases||it.qty) + ' case' + ((it.cases||it.qty)!==1?'s':'') + ' (' + cans + ' cans)</td>' +
+          '</tr>';
+        }
+      });
+      var lfSubtotal = 0;
+      (o.lineItems||[]).forEach(function(it) {
+        if (it.hasVariants && it.variantLines) {
+          it.variantLines.forEach(function(vl) {
+            var amt = vl.units * (it.unitPrice||0);
+            lfSubtotal += amt;
+            itemRows += '<tr>' +
+              '<td>' + _e(it.skuName||'') + ' &mdash; ' + _e(vl.variantName||'') + '</td>' +
+              '<td style="color:#6b7280">🌿 LF</td>' +
+              '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + amt.toFixed(2) + '</td>' +
+            '</tr>';
+          });
+        } else if ((it.cases||0) > 0 || (it.units||0) > 0) {
+          lfSubtotal += it.lineTotal||0;
+          itemRows += '<tr>' +
+            '<td>' + _e(it.skuName||'') + '</td>' +
+            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="text-align:right">' + (it.cases||0) + ' case' + ((it.cases||0)!==1?'s':'') + ' &nbsp; $' + (it.lineTotal||0).toFixed(2) + '</td>' +
+          '</tr>';
+        }
+      });
+      var subtotalRow = lfSubtotal > 0
+        ? '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + lfSubtotal.toFixed(2) + '</td></tr>'
+        : '';
+      if (!itemRows) {
+        itemRows = '<tr><td colspan="3" style="color:#9ca3af;font-style:italic">No items recorded</td></tr>';
+      }
+
+      var w = window.open('','_blank');
+      w.document.write('<!DOCTYPE html><html><head>' +
+        '<meta charset="UTF-8">' +
+        '<title>Order &mdash; ' + _e(o.accountName||'') + '</title>' +
+        '<style>' +
+        'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
+        '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #6B4F9A;margin-bottom:28px}' +
+        '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
+        '.hdr h1{font-size:22px;font-weight:700;color:#6B4F9A;margin:0 0 4px}' +
+        '.hdr .sub{font-size:13px;color:#6b7280}' +
+        '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
+        '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:3px}' +
+        '.val{font-size:14px;font-weight:600}' +
+        '.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
+        'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+        'th:last-child,td:last-child{text-align:right}' +
+        'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
+        '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+        '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
+        '@media print{button{display:none!important}}' +
+        '</style></head><body>' +
+        '<div class="hdr">' +
+        '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png">' +
+        '<h1>Order Confirmation</h1>' +
+        '<div class="sub">' + _e(dt) + '</div>' +
+        '</div>' +
+        '<div class="meta">' +
+          '<div><div class="lbl">Account</div><div class="val">' + _e(o.accountName||'—') + '</div></div>' +
+          (o.poNumber ? '<div><div class="lbl">PO Number</div><div class="val">' + _e(o.poNumber) + '</div></div>' : '<div></div>') +
+          '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(o.billingEmail||'—') + '</div></div>' +
+          '<div><div class="lbl">Status</div><div class="val"><span class="badge">' + _e((o.status||'new').toUpperCase()) + '</span></div></div>' +
+          (o.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(o.deliveryWindow) + '</div></div>' : '') +
+          '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from invoice date</div></div>' +
+        '</div>' +
+        '<table>' +
+        '<thead><tr><th>Item</th><th>Brand</th><th>Qty / Amount</th></tr></thead>' +
+        '<tbody>' + itemRows + '</tbody>' +
+        subtotalRow +
+        '</table>' +
+        '<div class="confirm">' +
+        '<strong>Order received — thank you!</strong><br>' +
+        'We\'ll be in touch to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> — payment is Net 30 from invoice date.' +
+        '</div>' +
+        '<div style="text-align:center;margin:20px 0">' +
+        '<button onclick="window.print()" style="background:#6B4F9A;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+        '</div>' +
+        '<div class="footer">' +
+        'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +
+        'lavender@pbfwholesale.com &nbsp;&middot;&nbsp; 603-748-3038 &nbsp;&middot;&nbsp; drinkpurpl.com' +
+        '</div>' +
+        '</body></html>');
+      w.document.close();
+    })
+    .catch(function(e) {
+      console.error('Print error:', e);
+      alert('Could not load order');
+    });
+}
+
+let _lastOrderData = null;
+
+function _e(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function printCurrentOrder() {
+  if (!_lastOrderData) { window.print(); return; }
+  var data = _lastOrderData;
+  var dt = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  var itemRows = '';
+  var _ppc = pricePerCase ? parseFloat(pricePerCase) : null;
+  if (data.cases > 0) {
+    var _pt = _ppc ? (data.cases * _ppc) : null;
+    itemRows += '<tr>' +
+      '<td>Classic Lavender Lemonade</td>' +
+      '<td style="color:#6b7280">💜 purpl</td>' +
+      '<td style="text-align:right">' + data.cases + ' case' + (data.cases!==1?'s':'') + ' (' + (data.cases*CANS_PER_CASE) + ' cans)' + (_pt ? ' &nbsp; $' + _pt.toFixed(2) : '') + '</td>' +
+    '</tr>';
+  }
+  if (data.lfItems && data.lfItems.length) {
+    data.lfItems.forEach(function(it) {
+      if (it.hasVariants && it.variantLines) {
+        it.variantLines.forEach(function(vl) {
+          itemRows += '<tr>' +
+            '<td>' + _e(it.skuName) + ' &mdash; ' + _e(vl.variantName) + '</td>' +
+            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + (vl.units*it.unitPrice).toFixed(2) + '</td>' +
+          '</tr>';
+        });
+      } else {
+        itemRows += '<tr>' +
+          '<td>' + _e(it.skuName) + '</td>' +
+          '<td style="color:#6b7280">🌿 LF</td>' +
+          '<td style="text-align:right">' + it.cases + ' case' + (it.cases!==1?'s':'') + ' &nbsp; $' + it.lineTotal.toFixed(2) + '</td>' +
+        '</tr>';
+      }
+    });
+  }
+
+  var totalsHtml = '';
+  if (data.lfTotal > 0) {
+    totalsHtml += '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + data.lfTotal.toFixed(2) + '</td></tr>';
+  }
+
+  var w = window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html><head>' +
+    '<meta charset="UTF-8">' +
+    '<title>Order Confirmation &mdash; ' + _e(data.accountName) + '</title>' +
+    '<style>' +
+    'body{font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1a1a2e;font-size:13px;line-height:1.5}' +
+    '.hdr{text-align:center;padding-bottom:20px;border-bottom:3px solid #6B4F9A;margin-bottom:28px}' +
+    '.hdr img{height:44px;display:block;margin:0 auto 12px}' +
+    '.hdr h1{font-size:22px;font-weight:700;color:#6B4F9A;margin:0 0 4px}' +
+    '.hdr .sub{font-size:13px;color:#6b7280}' +
+    '.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}' +
+    '.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:3px}' +
+    '.val{font-size:14px;font-weight:600}' +
+    'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
+    'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
+    'th:last-child,td:last-child{text-align:right}' +
+    'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
+    '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+    '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
+    '@media print{button{display:none!important}}' +
+    '</style></head><body>' +
+    '<div class="hdr">' +
+    '<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px">' +
+    '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" style="height:40px">' +
+    '<div style="width:1px;height:36px;background:#e5e7eb"></div>' +
+    '<img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" style="height:36px">' +
+    '</div>' +
+    '<h1>Order Confirmation</h1>' +
+    '<div class="sub">' + _e(dt) + '</div>' +
+    '</div>' +
+    '<div class="meta">' +
+      '<div><div class="lbl">Account</div><div class="val">' + _e(data.accountName) + '</div></div>' +
+      (data.poNumber ? '<div><div class="lbl">PO Number</div><div class="val">' + _e(data.poNumber) + '</div></div>' : '<div></div>') +
+      '<div><div class="lbl">Billing Email</div><div class="val" style="font-size:12px">' + _e(data.billingEmail) + '</div></div>' +
+      '<div><div class="lbl">Payment Terms</div><div class="val">Net 30 from invoice date</div></div>' +
+      (data.deliveryWindow ? '<div><div class="lbl">Delivery Window</div><div class="val">' + _e(data.deliveryWindow) + '</div></div>' : '') +
+    '</div>' +
+    '<table>' +
+    '<thead><tr><th>Item</th><th>Brand</th><th>Qty / Amount</th></tr></thead>' +
+    '<tbody>' + itemRows + '</tbody>' +
+    totalsHtml +
+    '</table>' +
+    '<div class="confirm">' +
+    '<strong>Order received &mdash; thank you!</strong><br>' +
+    'We\'ll be in touch shortly to confirm your delivery window. Your invoice will arrive from <strong>lavender@pbfwholesale.com</strong> — payment is Net 30 from invoice date.' +
+    (data.bothBrands ? '<br><br>You will receive a <strong>combined invoice</strong> for both purpl and Lavender Fields.' : '') +
+    '</div>' +
+    '<div style="text-align:center;margin:20px 0">' +
+    '<button onclick="window.print()" style="background:#6B4F9A;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">Print / Save as PDF</button>' +
+    '</div>' +
+    '<div class="footer">' +
+    'Pumpkin Blossom Farm LLC &nbsp;&middot;&nbsp; 393 Pumpkin Hill Rd, Warner, NH 03278<br>' +
+    'lavender@pbfwholesale.com &nbsp;&middot;&nbsp; 603-748-3038 &nbsp;&middot;&nbsp; drinkpurpl.com' +
+    '</div>' +
+    '</body></html>');
+  w.document.close();
+}
+
+// ── Order History toggle ──────────────────────────────────
+function toggleOrderHistory() {
+  var list = document.getElementById('past-orders-list');
+  var section = document.getElementById('past-orders-section');
+  if (!list) return;
+  var open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : 'block';
+  var descEl = section && section.querySelector('p');
+  if (descEl) descEl.style.display = open ? 'none' : 'block';
+  var h2 = section && section.querySelector('h2 span');
+  if (h2) {
+    h2.textContent = h2.textContent.replace(/^[▶▼] /, (open ? '▶ ' : '▼ '));
+  }
+}
+
+// ── Outstanding invoices ──────────────────────────────────
+function loadOutstandingInvoices(acId) {
+  if (!acId) return;
+  var invoices = [];
+  var collections = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
+  var loaded = 0;
+  collections.forEach(function(col) {
+    db.collection('workspace').doc('main').collection(col)
+      .where('accountId', '==', acId).get()
+      .then(function(snap) {
+        snap.docs.forEach(function(d) {
+          var inv = d.data();
+          if (inv.status !== 'paid') invoices.push(inv);
+        });
+      })
+      .catch(function() {})
+      .finally(function() {
+        loaded++;
+        if (loaded === collections.length) renderOutstandingInvoices(invoices, {});
+      });
+  });
+}
+
+function renderOutstandingInvoices(invoices, settings) {
+  var el = document.getElementById('outstanding-invoices-section');
+  if (!el || !invoices.length) return;
+
+  var stripeLink = settings.stripeLink || '';
+  var today = new Date().toISOString().slice(0, 10);
+  var rows = invoices.map(function(inv) {
+    var num    = inv.number || inv.invoiceNumber || '—';
+    var due    = inv.due || inv.dueDate || '';
+    var amt    = parseFloat(inv.amount || 0);
+    var status = inv.status || 'unpaid';
+    var isOver = due && due < today;
+    var color  = isOver ? '#dc2626' : '#d97706';
+    var safeLink = stripeLink && /^https?:\/\//.test(stripeLink) ? escHtml(stripeLink) : '';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;' +
+      'padding:8px 0;border-bottom:1px solid #ede9fe;font-size:13px">' +
+      '<div>' +
+      '<span style="font-weight:600">Invoice ' + escHtml(num) + '</span>' +
+      (due ? '<div style="font-size:11px;color:#6b7280">Due ' + new Date(due+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:11px;font-weight:600;color:'+color+';">' + escHtml(status.toUpperCase()) + '</span>' +
+      '<span style="font-weight:700">$' + amt.toFixed(2) + '</span>' +
+      (safeLink ? '<a href="'+safeLink+'" target="_blank" style="background:#7B4FA0;color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500">Pay Now</a>' : '') +
+      '</div></div>';
+  }).join('');
+
+  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || 0); }, 0);
+  el.innerHTML = '<div class="card" style="border-left:3px solid #7B4FA0;padding:16px 20px;margin-bottom:16px">' +
+    '<div style="font-size:14px;font-weight:600;color:#4B2082;margin-bottom:12px">' +
+    '💜 Outstanding Invoices' +
+    '</div>' +
+    rows +
+    '<div style="display:flex;justify-content:space-between;padding-top:10px;font-size:13px;font-weight:700;color:#4B2082">' +
+    '<span>Total Outstanding</span><span>$' + total.toFixed(2) + '</span>' +
+    '</div>' +
+    '</div>';
+  el.style.display = 'block';
+}
+
+// ── Auto-fill purpl cases from portalPrefs ────────────────
+function applyPurplPrefill(cases) {
+  if (!cases || cases <= 0) return;
+  var input = document.getElementById('classic-cases');
+  var note  = document.getElementById('purpl-prefill-note');
+  if (input) { input.value = cases; updateCans(); }
+  if (note)  note.style.display = 'block';
+}
+
+function renderOrderHistory(orders) {
+  var el = document.getElementById('order-history');
+  if (!el || !orders.length) return;
+  var html = '<div style="margin-bottom:24px">';
+  html += '<h3 style="font-size:14px;font-weight:600;color:#7B4FA0;margin-bottom:12px">Your Previous Orders</h3>';
+  orders.forEach(function(o) {
+    var cases = (o.items||[]).reduce(function(s,i){return s+(i.cases||0);},0);
+    var lfItems = o.lineItems || [];
+    var dt = o.submittedAt?.toDate ?
+      o.submittedAt.toDate().toLocaleDateString() : 'Unknown date';
+    var status = o.status || 'new';
+    var statusColor = status === 'confirmed' ? '#22c55e' :
+      status === 'declined' ? '#ef4444' : '#f59e0b';
+    var details = '';
+    if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
+    if (lfItems.length > 0) {
+      if (details) details += ' · ';
+      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+    }
+    html += '<div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + '">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    html += '<div>';
+    html += '<div style="font-size:13px;font-weight:600">' + dt + '</div>';
+    html += '<div style="font-size:12px;color:#6b7280">' + (details || 'Order') + '</div>';
+    html += '</div>';
+    html += '<span style="font-size:11px;font-weight:600;color:' + statusColor + '">' + status.toUpperCase() + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function checkPortalPassword() {
+  const input = document.getElementById('portal-password').value.trim();
+  if (!input) return;
+  var btn = document.querySelector('#password-gate button');
+  if (btn) btn.disabled = true;
+  firebase.functions().httpsCallable('verifyPortalPassword')({ password: input })
+    .then(function(result) {
+      if (result.data && result.data.valid) {
+        document.getElementById('password-gate').style.display = 'none';
+        document.getElementById('order-form').style.display = '';
+        _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
+      } else {
+        document.getElementById('pw-error').style.display = '';
+      }
+    })
+    .catch(function() {
+      document.getElementById('pw-error').style.display = '';
+    })
+    .finally(function() {
+      if (btn) btn.disabled = false;
+    });
+}
+
+init();
+</script>
+</body>
+</html>
