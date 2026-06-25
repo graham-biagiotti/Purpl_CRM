@@ -41,34 +41,58 @@ function _isOverdue(inv) {
 }
 
 // ── Invoice helpers — single source of truth ────────────
+const _INV_COLS = ['retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices', 'iv'];
+
 function _allPurplInvoices() {
   const ids = new Set(DB.a('retail_invoices').map(x => x.id));
   return [...DB.a('retail_invoices'), ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !ids.has(x.id))];
 }
+
+function _allInvoices(opts) {
+  const o = opts || {};
+  const retailIds = new Set(DB.a('retail_invoices').map(x => x.id));
+  const all = [
+    ...DB.a('retail_invoices').map(x => ({...x, _col: 'retail_invoices', _brand: 'purpl'})),
+    ...DB.a('iv').filter(x => (x.number || x.invoiceNumber) && !retailIds.has(x.id)).map(x => ({...x, _col: 'iv', _brand: 'purpl'})),
+    ...DB.a('lf_invoices').map(x => ({...x, _col: 'lf_invoices', _brand: 'lf'})),
+    ...DB.a('combined_invoices').map(x => ({...x, _col: 'combined_invoices', _brand: 'combined'})),
+    ...DB.a('dist_invoices').map(x => ({...x, _col: 'dist_invoices', _brand: 'dist'})),
+  ];
+  let result = all;
+  if (o.excludeChildren) result = result.filter(x => !x.combinedInvoiceId);
+  if (o.brand) result = result.filter(x => x._brand === o.brand);
+  if (o.status) result = result.filter(x => x.status === o.status);
+  if (o.accountId) result = result.filter(x => x.accountId === o.accountId);
+  return result;
+}
+
 function findInvoice(id) {
-  return DB.a('retail_invoices').find(x => x.id === id)
-      || DB.a('lf_invoices').find(x => x.id === id)
-      || DB.a('iv').find(x => x.id === id) || null;
+  for (const col of _INV_COLS) {
+    const found = DB.a(col).find(x => x.id === id);
+    if (found) return found;
+  }
+  return null;
 }
+
 function _invoiceCol(id) {
-  if (DB.a('retail_invoices').some(x => x.id === id)) return 'retail_invoices';
-  if (DB.a('lf_invoices').some(x => x.id === id)) return 'lf_invoices';
-  return 'iv';
+  for (const col of _INV_COLS) {
+    if (DB.a(col).some(x => x.id === id)) return col;
+  }
+  return 'retail_invoices';
 }
+
 function updateInvoice(id, fn) { DB.update(_invoiceCol(id), id, fn); }
+
 function deleteInvoiceWithCleanup(id) {
   DB.atomicUpdate(cache => {
-    for (const col of ['retail_invoices','lf_invoices','iv']) {
+    for (const col of _INV_COLS) {
       const i = (cache[col]||[]).findIndex(x => x.id === id);
       if (i >= 0) { cache[col].splice(i, 1); break; }
     }
     cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
-    // Orphan LF Wix deductions tied to this invoice
     cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== id);
-    // If this invoice is part of a combined, remove the combined reference
     const ci = (cache.combined_invoices||[]).findIndex(x => x.purplInvoiceId === id || x.lfInvoiceId === id);
     if (ci >= 0) cache.combined_invoices.splice(ci, 1);
-    // Drop cadence email-history entries that pointed at this invoice
     cache.ac = (cache.ac||[]).map(a =>
       (a.cadence||[]).some(c => c.invoiceId === id)
         ? { ...a, cadence: a.cadence.filter(c => c.invoiceId !== id) }
@@ -76,7 +100,8 @@ function deleteInvoiceWithCleanup(id) {
     );
   });
 }
-function _invAmt(inv) { return parseFloat(inv.amount || inv.total || 0); }
+
+function _invAmt(inv) { return parseFloat(inv.grandTotal || inv.amount || inv.total || 0); }
 
 // Look up email tracking status for an invoice from the account's cadence array
 // Returns a small HTML badge string or '' if no send event
@@ -1186,15 +1211,9 @@ function renderDashQuickActions() {
   const el = document.getElementById('dash-quick-actions');
   if (!el) return;
   const todayStr = today();
-  const open2 = x => !['paid','draft','void'].includes(x.status);
-  const od = x => { const due = x.dueDate || x.due || ''; return open2(x) && due && due < todayStr; };
-  const overdue = _allPurplInvoices().filter(x => !x.combinedInvoiceId && od(x)).length
-    + DB.a('lf_invoices').filter(x => !x.combinedInvoiceId && od(x)).length
-    + DB.a('combined_invoices').filter(od).length
-    + DB.a('dist_invoices').filter(od).length;
-  const drafts = _allPurplInvoices().filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
-    + DB.a('lf_invoices').filter(x => x.status === 'draft' && !x.combinedInvoiceId).length
-    + DB.a('combined_invoices').filter(x => (x.status||'draft') === 'draft').length;
+  const od = x => { const due = x.dueDate || x.due || ''; return !['paid','draft','void'].includes(x.status) && due && due < todayStr; };
+  const overdue = _allInvoices({excludeChildren: true}).filter(od).length;
+  const drafts = _allInvoices({status: 'draft', excludeChildren: true}).length;
   const pendingOrders = (() => {
     const pending = DB.a('orders').filter(o => o.status === 'pending');
     const seen = new Set();
@@ -9234,12 +9253,12 @@ function renderReports() {
       combinedEl.style.marginBottom = '12px';
       kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
     }
-    const purplInvoiced = _allPurplInvoices().reduce((s,x) => s + _invAmt(x), 0);
-    const lfInvoiced    = DB.a('lf_invoices').reduce((s,x) => s + parseFloat(x.total||0), 0);
+    const allInv = _allInvoices({excludeChildren: true});
+    const totalInvoiced = allInv.reduce((s,x) => s + _invAmt(x), 0);
     combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
-      `<div class="num">${fmtC(purplInvoiced + lfInvoiced)}</div>` +
+      `<div class="num">${fmtC(totalInvoiced)}</div>` +
       `<div class="label">Total Invoiced (All Brands)</div>` +
-      `<div style="font-size:10px;color:var(--muted);margin-top:2px">purpl + LF combined</div></div>`;
+      `<div style="font-size:10px;color:var(--muted);margin-top:2px">purpl + LF + distributor</div></div>`;
   }
 
   // Set default date range if blank (last 90 days)
@@ -9350,7 +9369,6 @@ function renderGoingColdReport() {
 
   const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
   const accounts = DB.a('ac').filter(a => a.status === 'active');
-  const allPurplInv = _allPurplInvoices();
 
   const rows = [];
   accounts.forEach(ac => {
@@ -9362,7 +9380,7 @@ function renderGoingColdReport() {
     if (daysSince < 45) return;
 
     const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
-    const outstanding = allPurplInv.filter(i => i.accountId === ac.id && i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total || i.amount || 0), 0);
+    const outstanding = _allInvoices({accountId: ac.id, excludeChildren: true}).filter(i => i.status !== 'paid' && i.status !== 'void' && i.status !== 'draft').reduce((s, i) => s + _invAmt(i), 0);
     rows.push({ name: ac.name, lastOrder: lastOrd?.created || lastOrd?.date || '', daysSince, outstanding, tier });
   });
 
@@ -10060,6 +10078,14 @@ function exportYearEnd() {
     const acName = x.accountName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number, 'purpl', acName, parseFloat(x.purplSubtotal||0).toFixed(2), 'Combined - purpl']);
     rows.push([pd, x.number, 'LF',    acName, parseFloat(x.lfSubtotal||0).toFixed(2),    'Combined - LF']);
+  });
+
+  // DM-1 FIX: distributor invoices were missing from tax export
+  DB.a('dist_invoices').filter(x => x.status === 'paid').forEach(x => {
+    const pd = (x.paidDate || x.paidAt || '').slice(0,10);
+    if (!inYear(pd)) return;
+    const acName = x.accountName || acLookup[x.accountId] || '—';
+    rows.push([pd, x.number||'—', 'Dist', acName, parseFloat(x.total||x.amount||0).toFixed(2), 'Distributor']);
   });
 
   rows.sort((a, b) => a[0] > b[0] ? 1 : -1);
