@@ -4102,6 +4102,8 @@ async function _renderEmailsRightCol() {
       </div>`;
     } else if (cts.length === 1) {
       contactPickerHtml = `<div style="margin-bottom:8px;font-size:12px;color:var(--muted)">To: ${escHtml(cts[0].name || '')} — ${escHtml(cts[0].email)}</div>`;
+    } else if (account.email) {
+      contactPickerHtml = `<div style="margin-bottom:8px;font-size:12px;color:var(--muted)">To: ${escHtml(account.email)}</div>`;
     }
   }
 
@@ -15750,9 +15752,11 @@ function _updateApplicationsBadge(count) {
 }
 
 let _portalOrderIds = new Set();
+let _portalOrderUnsub = null;
 function _listenPortalOrders() {
+  if (_portalOrderUnsub) _portalOrderUnsub();
   try {
-    firebase.firestore().collection('portal_orders')
+    _portalOrderUnsub = firebase.firestore().collection('portal_orders')
       .orderBy('submittedAt', 'desc')
       .limit(50)
       .onSnapshot(snap => {
