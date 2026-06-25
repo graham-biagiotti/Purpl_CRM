@@ -2355,6 +2355,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
     if (qs('#iv-delivery-method'))qs('#iv-delivery-method').value = inv.deliveryMethod||'deliver';
+    if (qs('#iv-fulfillment'))   qs('#iv-fulfillment').value   = inv.fulfillmentSource||'farm';
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = inv.deliveryDate||'';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
     ivDeliveryMethodChange();
@@ -9025,7 +9026,7 @@ async function createDeliveryInvoice(accountId, ordId) {
     const ivEntries = lineItems.map(li => ({
       id: uid(), date: today(), sku: li.sku, type: 'out',
       qty: li.cases * CANS_PER_CASE,
-      pool: 'farm',
+      pool: invoice.fulfillmentSource || 'farm',
       note: 'Invoice ' + invoiceNumber, invoiceId: invoice.id,
     }));
     cache['iv'] = [...(cache['iv']||[]), ...ivEntries];
@@ -12116,6 +12117,7 @@ async function saveNewCombinedInvoice() {
   const notes    = qs('#nciv-notes')?.value || '';
   const userNum  = qs('#nciv-number')?.value?.trim() || '';
   const deliveryMethod = qs('#nciv-delivery-method')?.value || 'deliver';
+  const fulfillmentSource = qs('#nciv-fulfillment')?.value || 'farm';
   const deliveryDate   = qs('#nciv-delivery-date')?.value || '';
   const trackingNumber = qs('#nciv-tracking')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
@@ -12132,13 +12134,13 @@ async function saveNewCombinedInvoice() {
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
-    notes, deliveryMethod, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: lfSub, status,
     lineItems: lfLines,
-    notes, deliveryMethod, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   const combInv = {
     id: combId, number: combNum, invoiceNumber: combNum,
@@ -12147,7 +12149,7 @@ async function saveNewCombinedInvoice() {
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
-    notes, deliveryMethod, deliveryDate, trackingNumber, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, source: 'manual',
   };
 
   DB.atomicUpdate(cache => {
@@ -12160,7 +12162,7 @@ async function saveNewCombinedInvoice() {
       const purplIvEntries = purplLines.map(li => ({
         id: uid(), date: issued, sku: li.skuId || li.sku, type: 'out',
         qty: (li.cases || 0) * CANS_PER_CASE,
-        pool: 'farm',
+        pool: fulfillmentSource,
         note: 'Invoice ' + combNum, invoiceId: purplId,
       })).filter(e => e.qty > 0);
       if (purplIvEntries.length) {
@@ -12576,15 +12578,25 @@ async function openCombinedInvoicePreview(combinedId) {
   qs('#civ-edit-notes').value = rec.notes || '';
   const delivSel = qs('#civ-edit-delivery');
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
+  const fulfillSel = qs('#civ-edit-fulfillment');
+  if (fulfillSel) fulfillSel.value = rec.fulfillmentSource || 'farm';
   const shipBtn = qs('#civ-btn-ship');
-  const _updateShipBtn = () => {
-    if (!shipBtn) return;
+  const whBtn = qs('#civ-btn-warehouse');
+  const _updateFulfillBtns = () => {
     const isShip = delivSel?.value === 'ship';
-    shipBtn.style.display = isShip ? '' : 'none';
-    if (rec.shipStationOrderId) { shipBtn.textContent = '✓ Pushed to ShipStation'; shipBtn.disabled = true; }
+    const isWh = fulfillSel?.value === 'warehouse';
+    if (shipBtn) {
+      shipBtn.style.display = isShip ? '' : 'none';
+      if (rec.shipStationOrderId) { shipBtn.textContent = '✓ Pushed to ShipStation'; shipBtn.disabled = true; }
+    }
+    if (whBtn) {
+      whBtn.style.display = isWh ? '' : 'none';
+      if (rec.warehousePushedAt) { whBtn.textContent = '✓ Sent to Warehouse'; whBtn.disabled = true; }
+    }
   };
-  _updateShipBtn();
-  if (delivSel) delivSel.onchange = _updateShipBtn;
+  _updateFulfillBtns();
+  if (delivSel) delivSel.onchange = _updateFulfillBtns;
+  if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
   if (shipBtn) shipBtn.onclick = async () => {
     shipBtn.disabled = true; shipBtn.textContent = 'Pushing…';
     try {
@@ -12592,6 +12604,11 @@ async function openCombinedInvoicePreview(combinedId) {
       toast('Pushed to ShipStation ✓');
       setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
     } catch(e) { toast('ShipStation push failed'); shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
+  };
+  if (whBtn) whBtn.onclick = () => {
+    DB.update('combined_invoices', combinedId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
+    toast('Marked for warehouse fulfillment ✓');
+    setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
   };
 
   const saveBtn = qs('#civ-btn-save');
@@ -12601,7 +12618,8 @@ async function openCombinedInvoicePreview(combinedId) {
     const newTerms = qs('#civ-edit-terms').value;
     const newNotes = qs('#civ-edit-notes').value;
     const newDelivery = qs('#civ-edit-delivery')?.value || 'deliver';
-    const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery };
+    const newFulfillment = qs('#civ-edit-fulfillment')?.value || 'farm';
+    const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery, fulfillmentSource: newFulfillment };
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
@@ -12668,7 +12686,7 @@ async function openCombinedInvoicePreview(combinedId) {
                 const cases = li.cases || li.qty || 0;
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
-                  cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
+                  cache.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: rec.fulfillmentSource || 'farm', note: 'Invoice ' + invNum, invoiceId: rec.purplInvoiceId });
                   didDeduct = true;
                 }
               });
@@ -14474,6 +14492,7 @@ async function confirmPortalOrder() {
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
     const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
     const deliveryMethod = qs('#mcpo-delivery-method')?.value || 'deliver';
+    const fulfillmentSource = qs('#mcpo-fulfillment')?.value || 'farm';
 
     // Create order record(s)
     const purplOrderId = hasPurpl ? uid() : null;
@@ -14542,7 +14561,7 @@ async function confirmPortalOrder() {
             total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
           })),
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.', deliveryMethod,
+          notes: 'Auto-drafted from portal order.', deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
         }];
@@ -14553,7 +14572,7 @@ async function confirmPortalOrder() {
           total: lfTotal, amount: lfTotal, status: 'draft',
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.', deliveryMethod,
+          notes: 'Auto-drafted from portal order.', deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
@@ -14561,7 +14580,7 @@ async function confirmPortalOrder() {
           id: combId, number: combNum, invoiceNumber: combNum,
           purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
           accountId: d.accountId, accountName: d.accountName, status: 'draft',
-          date: todayStr, dueDate: dueDateStr, deliveryMethod,
+          date: todayStr, dueDate: dueDateStr, deliveryMethod, fulfillmentSource,
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
           notes: 'Auto-drafted from portal order.', source: 'portal',
@@ -14575,7 +14594,7 @@ async function confirmPortalOrder() {
           cases: purplCases, cans: purplCans,
           pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
           priceType: isDistFulfilled ? 'dist' : 'direct',
-          status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod,
+          status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod, fulfillmentSource,
           billingEmail: d.billingEmail || acct.email || '',
           notes: 'Auto-drafted from portal order.',
           linkedPortalOrderId: _portalOrderId,
@@ -15346,7 +15365,7 @@ function markInvoiceSent(id) {
     lines.forEach(li => {
       const cases = li.cases || li.qty || 0;
       if (cases > 0) {
-        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + invNum, invoiceId: id });
+        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'farm', note: 'Invoice ' + invNum, invoiceId: id });
       }
     });
   }
@@ -15578,6 +15597,7 @@ async function _saveInvCore(id, isNew) {
     status,
     notes,
     deliveryMethod:  qs('#iv-delivery-method')?.value || 'deliver',
+    fulfillmentSource: qs('#iv-fulfillment')?.value || 'farm',
     deliveryDate,
     trackingNumber,
     lineItems,
@@ -15594,7 +15614,7 @@ async function _saveInvCore(id, isNew) {
     if (status !== 'draft') {
       lineItems.forEach(li => {
         if (li.cases > 0) {
-          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, pool: 'farm', note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
+          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, pool: rec.fulfillmentSource || 'farm', note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
         }
       });
     }
