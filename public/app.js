@@ -13610,6 +13610,8 @@ async function generateOrderLink(entityId, entityName, entityEmail, entityType) 
       email: entityEmail || '',
       orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
     }, { merge: true });
+    const localKey = entityType === 'prospects' ? 'pr' : 'ac';
+    DB.update(localKey, entityId, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
     const link = window.location.origin + '/order?t=' + token;
     await navigator.clipboard.writeText(link);
     toast('Order link copied ✓');

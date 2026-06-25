@@ -837,7 +837,12 @@ function loadLfSkus(prevOrder) {
 
 function init() {
   const params = new URLSearchParams(window.location.search);
-  const token = params.get('t');
+  var token = params.get('t');
+  if (token) {
+    try { sessionStorage.setItem('pbf_portal_token', token); } catch(e) {}
+  } else {
+    try { token = sessionStorage.getItem('pbf_portal_token'); } catch(e) {}
+  }
 
   // Stripe checkout return — show a confirmation banner
   if (params.get('paid') === '1' || params.get('cancelled') === '1') {
@@ -904,7 +909,13 @@ function init() {
       .catch(function(e) {
         console.error('Token lookup error:', e);
         if (loadingEl) loadingEl.remove();
-        document.getElementById('order-form').style.display = '';
+        document.getElementById('order-form').style.display = 'none';
+        document.getElementById('password-gate').style.display = '';
+        var errEl = document.getElementById('error-msg');
+        if (errEl) {
+          errEl.textContent = 'Could not load your account — please try the link again or enter the portal password below.';
+          errEl.style.display = 'block';
+        }
       });
   } else {
     // No token — show password gate
