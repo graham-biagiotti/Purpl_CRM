@@ -91,10 +91,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .brand-card{border:2px solid var(--border);border-radius:10px;padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.2s;background:white;position:relative;user-select:none}
 .brand-card:hover{border-color:var(--purpl-border);background:var(--purpl-soft)}
 .brand-card.sel-purpl{border-color:var(--purpl);background:var(--purpl-soft)}
-.brand-card.sel-lf{border-color:var(--lf-green);background:var(--lf-soft)}
+.brand-card.sel-lf{border-color:var(--purpl);background:var(--purpl-soft)}
 .brand-checkmark{position:absolute;top:8px;right:10px;font-size:16px;display:none}
 .brand-card.sel-purpl .bck-purpl{display:block;color:var(--purpl)}
-.brand-card.sel-lf .bck-lf{display:block;color:var(--lf-green)}
+.brand-card.sel-lf .bck-lf{display:block;color:var(--purpl)}
 
 /* ── DUAL BRAND NOTICE ── */
 .dual-brand-notice{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:var(--purpl-dark);line-height:1.5;display:none}
@@ -105,13 +105,13 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .lf-sku-info{flex:1;min-width:0}
 .lf-sku-name{font-size:14px;font-weight:600}
 .lf-sku-meta{font-size:11px;color:var(--muted);margin-top:2px}
-.lf-sku-price{font-size:12px;color:var(--lf-green);font-weight:600;margin-top:2px}
+.lf-sku-price{font-size:12px;color:var(--purpl);font-weight:600;margin-top:2px}
 .lf-sku-qty{display:flex;flex-direction:column;align-items:center;gap:3px}
 .lf-sku-qty input{width:64px;text-align:center}
 .lf-sku-qty span{font-size:10px;color:var(--muted);text-align:center}
-.lf-line-total{min-width:72px;text-align:right;font-size:13px;font-weight:600;color:var(--lf-green)}
+.lf-line-total{min-width:72px;text-align:right;font-size:13px;font-weight:600;color:var(--purpl)}
 .lf-prev-note{font-size:11px;color:var(--muted);margin-top:3px;font-style:italic}
-.lf-subtotal-row{display:flex;justify-content:space-between;padding:14px 0 0;font-size:15px;font-weight:700;color:var(--lf-green);border-top:2px solid var(--border);margin-top:4px}
+.lf-subtotal-row{display:flex;justify-content:space-between;padding:14px 0 0;font-size:15px;font-weight:700;color:var(--purpl);border-top:2px solid var(--border);margin-top:4px}
 
 /* ── LF VARIANT PICKER ── */
 .lf-variant-picker{padding:8px 0 0}
@@ -119,14 +119,14 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .lf-variant-row:last-child{border-bottom:none}
 .lf-variant-name{flex:1;font-size:13px;color:var(--text)}
 .lf-variant-input{width:64px;text-align:center}
-.lf-variant-total{min-width:72px;text-align:right;font-size:12px;font-weight:600;color:var(--lf-green)}
+.lf-variant-total{min-width:72px;text-align:right;font-size:12px;font-weight:600;color:var(--purpl)}
 
 /* ── LF VARIANT FLOW (cases-first) ── */
 .lf-sku-has-variants{flex-wrap:wrap;align-items:flex-start}
 .lf-sku-has-variants .lf-sku-qty{padding-top:4px}
 .lf-vpicker{width:100%;margin-top:10px;padding:12px 14px;background:#f6fdf8;border-radius:8px;border:1px solid var(--lf-border)}
-.lf-vheader{font-size:12px;font-weight:600;color:#166534;margin-bottom:10px}
-.lf-vtally{font-size:12px;font-weight:600;color:var(--lf-green);margin-top:10px;padding-top:8px;border-top:1px solid var(--lf-border)}
+.lf-vheader{font-size:12px;font-weight:600;color:var(--purpl-dark);margin-bottom:10px}
+.lf-vtally{font-size:12px;font-weight:600;color:var(--purpl);margin-top:10px;padding-top:8px;border-top:1px solid var(--purpl-border)}
 .lf-vtally.mismatch{color:#dc2626}
 .lf-verr{font-size:12px;color:#dc2626;margin-top:4px;display:none}
 
@@ -237,7 +237,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
           <div id="bc-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:8px;font-style:italic">+ Add this line too</div>
         </div>
       </div>
-      <div id="bc-both-badge" style="display:none;text-align:center;color:#15803d;font-size:13px;font-weight:600;margin-top:10px">Both lines selected ✓</div>
+      <div id="bc-both-badge" style="display:none;text-align:center;color:var(--purpl);font-size:13px;font-weight:600;margin-top:10px">Both Brands Selected ✓</div>
     </div>
 
     <div id="returning-banner" style="display:none">
@@ -367,7 +367,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- LF Order Section -->
     <div class="card" id="lf-order-section" style="display:none">
-      <h2>🌿 Lavender Fields</h2>
+      <h2>🪻 Lavender Fields</h2>
       <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Handcrafted farm goods &nbsp;·&nbsp; Minimum order per item noted below &nbsp;·&nbsp; Net 30</p>
       <div id="lf-sku-list">
         <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Loading products…</div>
@@ -461,7 +461,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     <div id="past-orders-section" style="display:none;margin-top:24px">
       <div class="card sm">
         <h2>Order History</h2>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Previous orders on file. Click View PDF on any order to download a copy.</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Previous orders on file.</p>
         <div id="past-orders-list"></div>
       </div>
     </div>
@@ -501,8 +501,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 <!-- Footer -->
 <div class="op-footer">
   <p>Pumpkin Blossom Farm &nbsp;·&nbsp; Warner, NH</p>
-  <p><a href="https://drinkpurpl.com" target="_blank">drinkpurpl.com</a> &nbsp;·&nbsp; <a href="https://pbfwholesale.com" target="_blank">pbfwholesale.com</a> &nbsp;·&nbsp; <a href="https://pumpkinblossomfarm.com" target="_blank">pumpkinblossomfarm.com</a></p>
-  <p>Graham Biagiotti &nbsp;·&nbsp; <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> &nbsp;·&nbsp; <a href="tel:6037483038">603-748-3038</a></p>
+  <p><a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a></p>
+  <p><a href="tel:6037483038">603-748-3038</a></p>
 </div>
 
 <script>
@@ -623,7 +623,7 @@ function renderLfSkus(skus, prevOrder) {
       var variantHtml = activeVariants.map(function(v) {
         var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
         return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
-          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#15803d">(Refillable)</span>' : '')+'</span>' +
+          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#6B4F9A">(Refillable)</span>' : '')+'</span>' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
           '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
           '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
@@ -849,7 +849,7 @@ function init() {
     var isPaid = params.get('paid') === '1';
     var banner = document.createElement('div');
     banner.style.cssText = 'max-width:600px;margin:24px auto;padding:18px 24px;border-radius:10px;text-align:center;font-size:15px;font-weight:600;' +
-      (isPaid ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d');
+      (isPaid ? 'background:#f3f0fa;color:#4B2082;border:1px solid #D4B8F0' : 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d');
     banner.textContent = isPaid
       ? '✓ Payment received — thank you! A receipt has been emailed to you by Stripe.'
       : 'Payment was cancelled. Your invoice is still open — you can pay any time using the link in your invoice email.';
@@ -981,15 +981,11 @@ function init() {
     }
     if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
 
-    firebase.firestore()
-      .collection('portal_orders')
-      .where('accountId', '==', accountId)
-      .orderBy('submittedAt', 'desc')
-      .limit(10)
-      .get()
-      .then(function(snap) {
-        var orders = snap.docs.map(function(d) {
-          return Object.assign({id: d.id}, d.data());
+    firebase.functions().httpsCallable('getPortalOrderHistory')({ accountId: accountId, token: token })
+      .then(function(result) {
+        var orders = (result.data?.orders || []).map(function(o) {
+          if (o.submittedAt && typeof o.submittedAt === 'string') o.submittedAt = { toDate: function() { return new Date(o.submittedAt); } };
+          return o;
         });
         renderPastOrders(orders);
       })
@@ -1082,7 +1078,7 @@ function showThankYou(data) {
 
   // LF section
   if (data.lfItems && data.lfItems.length) {
-    summaryHtml += '<div style="font-size:12px;font-weight:700;color:#166534;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🌿 Lavender Fields</div>';
+    summaryHtml += '<div style="font-size:12px;font-weight:700;color:#4B2082;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.04em">🪻 Lavender Fields</div>';
     data.lfItems.forEach(function(it) {
       if (it.hasVariants && it.variantLines && it.variantLines.length) {
         summaryHtml += '<div class="summary-row" style="flex-direction:column;align-items:flex-start;gap:3px"><span style="font-weight:600">' + escHtml(it.skuName) + '</span>';
@@ -1399,7 +1395,7 @@ function renderPastOrders(orders) {
     if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
     if (lfItems.length) {
       if (details) details += ' · ';
-      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+      details += '🪻 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
     }
     if (o.deliveryWindow) details += ' · ' + escHtml(o.deliveryWindow);
     return '<div style="display:flex;' +
@@ -1464,7 +1460,7 @@ function printPortalOrder(orderId) {
             lfSubtotal += amt;
             itemRows += '<tr>' +
               '<td>' + _e(it.skuName||'') + ' &mdash; ' + _e(vl.variantName||'') + '</td>' +
-              '<td style="color:#6b7280">🌿 LF</td>' +
+              '<td style="color:#6b7280">🪻 LF</td>' +
               '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + amt.toFixed(2) + '</td>' +
             '</tr>';
           });
@@ -1472,13 +1468,13 @@ function printPortalOrder(orderId) {
           lfSubtotal += it.lineTotal||0;
           itemRows += '<tr>' +
             '<td>' + _e(it.skuName||'') + '</td>' +
-            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="color:#6b7280">🪻 LF</td>' +
             '<td style="text-align:right">' + (it.cases||0) + ' case' + ((it.cases||0)!==1?'s':'') + ' &nbsp; $' + (it.lineTotal||0).toFixed(2) + '</td>' +
           '</tr>';
         }
       });
       var subtotalRow = lfSubtotal > 0
-        ? '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + lfSubtotal.toFixed(2) + '</td></tr>'
+        ? '<tr style="font-weight:600;color:#4B2082"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + lfSubtotal.toFixed(2) + '</td></tr>'
         : '';
       if (!itemRows) {
         itemRows = '<tr><td colspan="3" style="color:#9ca3af;font-style:italic">No items recorded</td></tr>';
@@ -1502,7 +1498,7 @@ function printPortalOrder(orderId) {
         'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
         'th:last-child,td:last-child{text-align:right}' +
         'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
-        '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+        '.confirm{background:#f3f0fa;border:1px solid #D4B8F0;border-radius:8px;padding:14px 16px;font-size:13px;color:#4B2082;margin:20px 0;line-height:1.6}' +
         '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
         '@media print{button{display:none!important}}' +
         '</style></head><body>' +
@@ -1571,14 +1567,14 @@ function printCurrentOrder() {
         it.variantLines.forEach(function(vl) {
           itemRows += '<tr>' +
             '<td>' + _e(it.skuName) + ' &mdash; ' + _e(vl.variantName) + '</td>' +
-            '<td style="color:#6b7280">🌿 LF</td>' +
+            '<td style="color:#6b7280">🪻 LF</td>' +
             '<td style="text-align:right">' + vl.units + ' units &nbsp; $' + (vl.units*it.unitPrice).toFixed(2) + '</td>' +
           '</tr>';
         });
       } else {
         itemRows += '<tr>' +
           '<td>' + _e(it.skuName) + '</td>' +
-          '<td style="color:#6b7280">🌿 LF</td>' +
+          '<td style="color:#6b7280">🪻 LF</td>' +
           '<td style="text-align:right">' + it.cases + ' case' + (it.cases!==1?'s':'') + ' &nbsp; $' + it.lineTotal.toFixed(2) + '</td>' +
         '</tr>';
       }
@@ -1587,7 +1583,7 @@ function printCurrentOrder() {
 
   var totalsHtml = '';
   if (data.lfTotal > 0) {
-    totalsHtml += '<tr style="font-weight:600;color:#166534"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + data.lfTotal.toFixed(2) + '</td></tr>';
+    totalsHtml += '<tr style="font-weight:600;color:#4B2082"><td colspan="2">LF Subtotal</td><td style="text-align:right">$' + data.lfTotal.toFixed(2) + '</td></tr>';
   }
 
   var w = window.open('','_blank');
@@ -1607,7 +1603,7 @@ function printCurrentOrder() {
     'th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;padding:8px 4px;border-bottom:2px solid #e5e7eb}' +
     'th:last-child,td:last-child{text-align:right}' +
     'td{padding:9px 4px;border-bottom:1px solid #f3f4f6;font-size:13px}' +
-    '.confirm{background:#f0f7f1;border:1px solid #b8d4c0;border-radius:8px;padding:14px 16px;font-size:13px;color:#1a4731;margin:20px 0;line-height:1.6}' +
+    '.confirm{background:#f3f0fa;border:1px solid #D4B8F0;border-radius:8px;padding:14px 16px;font-size:13px;color:#4B2082;margin:20px 0;line-height:1.6}' +
     '.footer{text-align:center;margin-top:28px;padding-top:16px;border-top:1px solid #e9d5ff;color:#6b7280;font-size:11px;line-height:1.8}' +
     '@media print{button{display:none!important}}' +
     '</style></head><body>' +
@@ -1752,7 +1748,7 @@ function renderOrderHistory(orders) {
     if (cases > 0) details += '💜 ' + cases + ' case' + (cases!==1?'s':'');
     if (lfItems.length > 0) {
       if (details) details += ' · ';
-      details += '🌿 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
+      details += '🪻 ' + lfItems.length + ' LF item' + (lfItems.length!==1?'s':'');
     }
     html += '<div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:8px;border-left:3px solid ' + statusColor + '">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center">';

@@ -103,7 +103,7 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 .sku-grid-lf{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
 @media(max-width:600px){.sku-grid-lf{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:400px){.sku-grid-lf{grid-template-columns:1fr}}
-.sku-card-lf{background:#fff;border:1px solid #d4e8da;border-radius:8px;padding:18px 14px}
+.sku-card-lf{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:18px 14px}
 .sku-card-lf .sku-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
 .sku-card-lf .sku-meta{font-size:11px;color:var(--muted)}
 
@@ -138,10 +138,10 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 .ws-brand-card{border:2px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fff;transition:all .2s;user-select:none}
 .ws-brand-card:hover{border-color:#c4b5fd}
 .ws-brand-card.selected-purpl{border-color:var(--purpl);background:var(--purpl-soft)}
-.ws-brand-card.selected-lf{border-color:var(--lf);background:var(--lf-soft)}
+.ws-brand-card.selected-lf{border-color:var(--purpl);background:var(--purpl-soft)}
 .ws-card-purpl-logo{height:36px;display:block;margin:0 auto 8px;opacity:0.85}
 .ws-card-purpl-name{font-size:13px;font-weight:600;color:var(--text)}
-.ws-card-lf-name{font-family:Georgia,'Times New Roman',serif;font-size:17px;color:var(--lf);margin-bottom:2px}
+.ws-card-lf-name{font-family:Georgia,'Times New Roman',serif;font-size:17px;color:var(--purpl-dark);margin-bottom:2px}
 .ws-card-lf-sub{font-size:11px;color:var(--muted)}
 .brand-err{font-size:11px;color:#dc2626;margin-top:2px;display:none}
 
@@ -191,9 +191,9 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-dist-note{font-size:13px;color:var(--muted);font-style:italic;margin-top:24px;font-family:Inter,sans-serif}
 
 /* ── LF SECTION ──────────────────────── */
-.ws-lf{background:var(--lf-soft)}
-.ws-lf .ws-eyebrow{color:var(--lf-green)}
-.ws-lf h2{color:var(--lf-dark)}
+.ws-lf{background:var(--white)}
+.ws-lf .ws-eyebrow{color:var(--purpl)}
+.ws-lf h2{color:var(--text)}
 .ws-product-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:40px}
 .ws-product-card{background:var(--white);border:1px solid var(--lf-border);border-radius:10px;padding:0 0 16px;overflow:hidden;transition:transform 0.2s,box-shadow 0.2s}
 .ws-product-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(74,124,89,0.10)}
@@ -202,7 +202,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-product-card:hover .ws-product-img{transform:scale(1.03)}
 .ws-product-name{font-family:'Playfair Display',serif;font-size:16px;color:var(--lf-dark);padding:0 16px}
 .ws-product-desc{font-size:12px;color:var(--muted);margin-top:6px;font-family:Inter,sans-serif;padding:0 16px}
-.ws-lf .ws-bullet-dot{color:var(--lf-green)}
+.ws-lf .ws-bullet-dot{color:var(--purpl)}
 
 /* ── TERMS SECTION ───────────────────── */
 .ws-terms{background:var(--cream)}
@@ -244,7 +244,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-thankyou p,.apply-success p{font-size:15px;color:var(--muted);line-height:1.6;font-family:Inter,sans-serif}
 
 /* ── FOOTER ──────────────────────────── */
-.ws-footer{background:#1a1229;padding:48px 24px;text-align:center}
+.ws-footer{background:var(--purpl-dark);padding:48px 24px;text-align:center}
 .ws-footer,.ws-footer p,.ws-footer span{font-family:Inter,sans-serif;color:rgba(255,255,255,0.5);font-size:13px;line-height:2}
 .ws-footer a{color:rgba(255,255,255,0.7);text-decoration:none;transition:0.15s}
 .ws-footer a:hover{text-decoration:underline;color:rgba(255,255,255,0.9)}
@@ -349,7 +349,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
   <div class="container ws-section-inner">
     <div class="eyebrow eyebrow-purpl ws-eyebrow">purpl</div>
     <h2 class="section-h2">Lavender lemonade that earns its shelf space</h2>
-    <p class="section-desc ws-section-desc">purpl is a lavender-infused sparkling lemonade available in three flavors — Classic, Blueberry, and Peach. MSRP $3.29 per can. NH-made, clean-ingredient, and built for specialty grocery, co-ops, cafes, and wellness retail.</p>
+    <p class="section-desc ws-section-desc">purpl is a lavender-infused lemonade available in three flavors — Classic, Blueberry, and Peach. MSRP $3.29 per can. NH-made, clean-ingredient, and built for specialty grocery, co-ops, cafes, and wellness retail.</p>
 
     <div class="sku-grid-purpl ws-sku-grid" style="grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:48px;max-width:900px;margin-left:auto;margin-right:auto">
       <div class="sku-card-purpl ws-sku-card" style="padding:32px 20px">
@@ -411,10 +411,10 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
       onerror="this.style.display='none'"
     >
     <div class="ws-farm-text">
-      <span class="ws-eyebrow" style="color:#9dc4a8">Our story</span>
+      <span class="ws-eyebrow" style="color:#fff">Our story</span>
       <h2>Born from the farm.<br>Built for the shelf.</h2>
       <p>Our property dates back to 1790 — over the centuries it's been a Civil War-era boarding house, an art center, and a horse farm. It became the center of our family's life in 2007, and in 2019 we planted our first 2,000 lavender plants. Today the hillside holds more than 10,000, and the farm is home to Lavender Fields, our handcrafted lavender goods line.</p>
-      <p style="margin-top:16px">purpl is our foray into the beverage world — a lavender-infused sparkling lemonade made in New Hampshire, built for the specialty retail shelf.</p>
+      <p style="margin-top:16px">purpl is our foray into the beverage world — a lavender-infused lemonade made in New Hampshire, built for the specialty retail shelf.</p>
     </div>
   </div>
 </section>
@@ -423,7 +423,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 <div class="section ws-section ws-lf" id="lf-section">
   <div class="container ws-section-inner">
     <div style="margin-bottom:20px;line-height:1.2">
-      <div style="font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:600;color:var(--lf-dark,#2d4a35)">lavender fields</div>
+      <div style="font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:600;color:var(--purpl-dark)">lavender fields</div>
       <div style="font-size:12px;color:var(--muted,#6b7280);letter-spacing:0.05em;text-transform:uppercase;margin-top:3px">at Pumpkin Blossom Farm</div>
     </div>
     <div class="eyebrow eyebrow-lf ws-eyebrow">Lavender Fields</div>
@@ -500,18 +500,16 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 </div>
 
 <!-- HOW IT WORKS -->
-<div class="section ws-section ws-terms" id="how-it-works-section">
-  <div class="container ws-section-inner">
-    <div style="max-width:680px">
-      <h3 class="terms-h3">How It Works</h3>
-      <p class="terms-p ws-terms-para">We work directly with retailers — no brokers, no middlemen. Submit an application below and we will follow up within one business day. Approved accounts receive a personalized ordering portal, Net 30 payment terms, and direct access to our team.</p>
-      <p class="terms-p ws-terms-para" style="margin-top:16px">We deliver across New Hampshire and New England and work with regional distributors for broader coverage. Minimum order quantities are kept reasonable — we would rather build a real relationship than push volume you cannot move.</p>
-    </div>
+<div class="section" id="how-it-works-section" style="background:var(--purpl-dark);padding:80px 24px">
+  <div class="container ws-section-inner" style="max-width:680px;text-align:center">
+    <h3 style="font-family:'Playfair Display',serif;font-size:clamp(24px,4vw,36px);color:#fff;margin-bottom:20px">How It Works</h3>
+    <p style="font-size:16px;color:rgba(255,255,255,0.85);line-height:1.75;margin-bottom:16px">We work directly with retailers — no brokers, no middlemen. Submit an application below and we will follow up within one business day. Approved accounts receive a personalized ordering portal, Net 30 payment terms, and direct access to our team.</p>
+    <p style="font-size:16px;color:rgba(255,255,255,0.85);line-height:1.75">We deliver across New Hampshire and New England and work with regional distributors for broader coverage. Minimum order quantities are kept reasonable — we would rather build a real relationship than push volume you cannot move.</p>
   </div>
 </div>
 
 <!-- SECTION 4 — TERMS -->
-<div class="section ws-section ws-terms" id="terms-section">
+<div class="section ws-section" id="terms-section" style="background:var(--white)">
   <div class="container ws-section-inner">
     <div class="terms-grid ws-terms-grid">
       <div>
