@@ -1287,29 +1287,24 @@ function submitOrder() {
             console.log('Prefs save error:', e);
           });
       }
-      // Build orderSummary HTML for confirmation email
-      var _oSummary = '';
+      // Build structured items for confirmation email (server renders HTML)
+      var _emailItems = [];
       var _emailPpc = pricePerCase ? parseFloat(pricePerCase) : null;
       if (_brandPurpl && cases > 0) {
         var _emailPt = _emailPpc ? (cases * _emailPpc) : null;
-        _oSummary += '<p style="margin:0 0 6px"><strong>💜 purpl Lemonade</strong></p>' +
-          '<p style="margin:0 0 12px;color:#374151">Classic Lavender Lemonade &mdash; ' + cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)' + (_emailPt ? ' &mdash; $' + _emailPt.toFixed(2) : '') + '</p>';
+        _emailItems.push({ name: 'purpl Classic Lavender Lemonade', qty: cases + ' case' + (cases!==1?'s':'') + ' (' + (cases*CANS_PER_CASE) + ' cans)', total: _emailPt ? _emailPt.toFixed(2) : '' });
       }
       if (lfItems.length) {
-        _oSummary += '<p style="margin:0 0 6px"><strong>🌿 Lavender Fields</strong></p>';
         lfItems.forEach(function(it) {
           if (it.hasVariants && it.variantLines) {
-            _oSummary += '<p style="margin:0 0 3px;color:#374151"><em>' + it.skuName + '</em></p>';
             it.variantLines.forEach(function(vl) {
-              _oSummary += '<p style="margin:0 0 3px;color:#374151;padding-left:12px">&ndash; ' + vl.variantName + ': ' + vl.units + ' units</p>';
+              _emailItems.push({ name: it.skuName + ' — ' + vl.variantName, qty: vl.units + ' units', total: '' });
             });
           } else {
-            _oSummary += '<p style="margin:0 0 3px;color:#374151">' + it.skuName + ' &mdash; ' + it.cases + ' case' + (it.cases!==1?'s':'') + '</p>';
+            _emailItems.push({ name: it.skuName, qty: it.cases + ' case' + (it.cases!==1?'s':''), total: it.lineTotal ? it.lineTotal.toFixed(2) : '' });
           }
         });
-        _oSummary += '<p style="margin:8px 0 0;font-weight:600;color:#166534">LF Total: $' + lfTotal.toFixed(2) + '</p>';
       }
-      if (poNumber) _oSummary += '<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ' + escHtml(poNumber) + '</p>';
 
       // Send order confirmation email (silent fail — never blocks order submission)
       firebase.functions().httpsCallable('sendOrderConfirmation')({
@@ -1320,7 +1315,8 @@ function submitOrder() {
         portalOrderId: purplRef?.id || lfRef?.id || null,
         isPbf: _brandLf,
         portalLink: window.location.href,
-        orderSummary: _oSummary,
+        items: _emailItems,
+        poNumber: poNumber || '',
         mode: portalMode,
         requestSample: requestSample,
         shipAddress: shipAddress,

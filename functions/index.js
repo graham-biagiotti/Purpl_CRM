@@ -102,13 +102,28 @@ exports.sendCombinedInvoice = onCall(
 
 // ── 3. Send Order Confirmation ────────────────────────────
 // Intentionally public — called from order.html portal (unauthenticated customers).
-// Input is validated and escaped; email rate-limited by Resend.
+// TB-3 FIX: orderSummary is now structured data rendered server-side (no raw HTML).
+// accountId/portalOrderId validated before writing.
 exports.sendOrderConfirmation = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
     if (!data.to || !data.accountName) {
       throw new HttpsError('invalid-argument', 'Missing required fields: to, accountName');
+    }
+    if (typeof data.to !== 'string' || data.to.length > 200) {
+      throw new HttpsError('invalid-argument', 'Invalid to address');
+    }
+
+    // TB-3 FIX: render order summary server-side from structured items
+    let orderSummaryHtml = '';
+    if (Array.isArray(data.items)) {
+      for (const item of data.items.slice(0, 50)) {
+        orderSummaryHtml += `<p style="margin:0 0 6px;color:#374151">${escHtml(String(item.name || ''))} &mdash; ${escHtml(String(item.qty || ''))}${item.total ? ' &mdash; $' + escHtml(String(item.total)) : ''}</p>`;
+      }
+    }
+    if (data.poNumber) {
+      orderSummaryHtml += `<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ${escHtml(String(data.poNumber))}</p>`;
     }
 
     const accentColor = data.isPbf ? '#4a7c59' : '#8B5FBF';
@@ -148,7 +163,7 @@ exports.sendOrderConfirmation = onCall(
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
     <p style="line-height:1.7">Thanks for your ${data.mode === 'preorder' ? 'pre-order' : 'order'} for <strong>${escHtml(data.accountName)}</strong>. I've got it and I'm on it personally.</p>
-    ${data.orderSummary || ''}
+    ${orderSummaryHtml}
     ${data.shipAddress && data.shipAddress.street1 ? `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0">
       <tr><td style="padding:14px 18px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;font-size:13px;color:#374151">
@@ -194,26 +209,31 @@ exports.sendOrderConfirmation = onCall(
       });
       const messageId = result.data?.id || result.id;
 
-      if (data.accountId && messageId) {
-        await _logCadenceEntry(data.accountId, {
-          stage: 'order_confirmation',
-          sentMessageId: messageId,
-          subject: `Order received — ${data.accountName}`,
-        });
-      }
-      // Also log on the portal_order doc so unmatched orders have tracking
-      if (data.portalOrderId && messageId) {
+      // TB-3 FIX: validate portalOrderId exists before writing to it
+      if (data.portalOrderId && typeof data.portalOrderId === 'string' && messageId) {
         try {
-          await admin.firestore().collection('portal_orders').doc(data.portalOrderId).update({
-            emailLog: admin.firestore.FieldValue.arrayUnion({
-              stage: 'order_confirmation',
-              sentAt: new Date().toISOString(),
-              sentBy: 'system',
-              method: 'resend',
-              sentMessageId: messageId,
-              to: data.to,
-            }),
-          });
+          const poDoc = await admin.firestore().collection('portal_orders').doc(data.portalOrderId).get();
+          if (poDoc.exists) {
+            await poDoc.ref.update({
+              emailLog: admin.firestore.FieldValue.arrayUnion({
+                stage: 'order_confirmation',
+                sentAt: new Date().toISOString(),
+                sentBy: 'system',
+                method: 'resend',
+                sentMessageId: messageId,
+                to: data.to,
+              }),
+            });
+            // Only write cadence if accountId matches the portal order's account
+            const poData = poDoc.data();
+            if (poData.accountId && poData.accountId === data.accountId && messageId) {
+              await _logCadenceEntry(poData.accountId, {
+                stage: 'order_confirmation',
+                sentMessageId: messageId,
+                subject: `Order received — ${escHtml(data.accountName)}`,
+              });
+            }
+          }
         } catch(e) { console.warn('Failed to log portal order email:', e.message); }
       }
 

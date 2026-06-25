@@ -79,3 +79,17 @@ Both checks run before any Firestore reads, email sends, or inventory deductions
 ```
 Update in ShipStation → Settings → Stores → Webhook URL: append `?secret=YOUR8CHARS`
 
+---
+
+## TB-3: sendOrderConfirmation unauthenticated HTML injection
+
+**Confirmed:** Line 151 `${data.orderSummary || ''}` injected raw HTML from unauthenticated callers into branded emails. `data.accountId` and `data.portalOrderId` allowed writing cadence/emailLog entries to arbitrary Firestore docs.
+
+**Changed:**
+1. **Structured data rendering:** `data.orderSummary` (raw HTML) replaced with `data.items` (array of `{name, qty, total}` objects). Server renders each item using `escHtml()`. Client (order.html) updated to send structured items instead of pre-rendered HTML.
+2. **Input validation:** `data.to` validated as string with 200-char limit.
+3. **Doc write validation:** `portalOrderId` must exist in Firestore before writing emailLog. Cadence entry only written if `accountId` matches the portal order's stored accountId (prevents cross-account writes).
+4. **PO number:** Moved from `orderSummary` HTML to separate `data.poNumber` field, escaped server-side.
+
+**Risk:** Low. The email format is slightly different (simpler item listing vs the old HTML with emoji headers and styled paragraphs). Content is identical but rendering changes from client-side to server-side. Order.html updated in same commit — both must deploy together.
+
