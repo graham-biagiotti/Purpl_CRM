@@ -464,6 +464,29 @@ exports.lookupPortalToken = onCall(async (request) => {
   return { found: false };
 });
 
+// ── 4c. Init User Role ──────────────────────────────────
+// Called on first sign-in to create the users/{uid} doc with the correct role.
+// Uses Admin SDK so it bypasses security rules (client can't set role directly).
+exports.initUserRole = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const uid = request.auth.uid;
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if (userSnap.exists) {
+    return { role: userSnap.data().role || 'employee' };
+  }
+  const usersSnap = await db.collection('users').limit(1).get();
+  const role = usersSnap.empty ? 'admin' : 'employee';
+  await userRef.set({
+    email: request.auth.token.email || '',
+    displayName: request.auth.token.name || request.auth.token.email?.split('@')[0] || '',
+    role,
+    createdAt: new Date().toISOString(),
+  });
+  return { role };
+});
+
 // ── 5. Resend Webhook ─────────────────────────────────────
 // Validates webhook signature via svix, then updates cadence entries.
 exports.resendWebhook = onRequest(

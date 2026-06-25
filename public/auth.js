@@ -112,28 +112,20 @@ async function bootApp() {
       }
       clearTimeout(slowTimer);
 
-      // Ensure a users/{uid} doc exists for role-based access control
+      // Ensure a users/{uid} doc exists for role-based access control.
+      // Role assignment happens server-side (initUserRole Cloud Function)
+      // so the client can never set its own role — SR-1 fix.
       try {
         const userRef = firebase.firestore().collection('users').doc(user.uid);
         const userSnap = await userRef.get();
         if (!userSnap.exists) {
-          // Check if ANY users exist — first user ever is admin, all others are employee
-          const usersSnap = await firebase.firestore().collection('users').limit(1).get();
-          const isFirstUser = usersSnap.empty;
-          await userRef.set({
-            email: user.email || '',
-            displayName: user.displayName || user.email?.split('@')[0] || '',
-            role: isFirstUser ? 'admin' : 'employee',
-            createdAt: new Date().toISOString(),
-          });
-          window._userRole = isFirstUser ? 'admin' : 'employee';
+          const result = await firebase.functions().httpsCallable('initUserRole')({});
+          window._userRole = result.data?.role || 'employee';
         } else {
           window._userRole = userSnap.data().role || 'employee';
         }
       } catch(e) {
-        console.warn('User doc init failed:', e);
-        // If we couldn't read/write the users collection, fall back to
-        // checking the owner email so the admin isn't locked out.
+        console.warn('User role init failed:', e);
         window._userRole = (user.email === 'graham@pumpkinblossomfarm.com') ? 'admin' : 'employee';
       }
 

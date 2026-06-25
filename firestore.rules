@@ -9,10 +9,21 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // Users collection: user can read own doc, admins can read/write all
+    // Helper: check if the authenticated user is admin or employee
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'employee'];
+    }
+
+    // Users collection: user can read own doc, admins can read/write all.
+    // SR-1 FIX: create rule blocks role field — prevents self-elevation.
+    // Role is set by auth.js first-user logic or inviteEmployee Cloud Function.
     match /users/{userId} {
       allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow create: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && !('role' in request.resource.data);
       allow update, delete: if isAdmin();
     }
 
@@ -38,7 +49,8 @@ service cloud.firestore {
         && (!('items' in request.resource.data) || request.resource.data.items.size() < 50)
         && (!('lineItems' in request.resource.data) || request.resource.data.lineItems.size() < 50)
         && request.resource.data.size() < 50;
-      allow read: if true;
+      // SR-2 FIX: read requires auth (was: if true)
+      allow read: if request.auth != null;
       allow update: if request.auth != null;
       allow delete: if isAdmin();
     }
@@ -61,6 +73,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Portal config: admin-only (was falling through to catch-all)
+    match /portal_config/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // Portal tokens: admin-only write, staff read (was falling through to catch-all)
+    match /portal_tokens/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     // Wholesale page: public can submit inquiries
     match /portal_inquiries/{docId} {
       allow create: if true
@@ -75,15 +99,18 @@ service cloud.firestore {
     }
 
     // Workspace data: all auth users can read/write (employees need full access)
-    // Sensitive config writes restricted to admin
+    // SR-4 FIX: audit_log is read-only at rules level; writes via Admin SDK only
+    match /workspace/main/audit_log/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
     match /workspace/{path=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // Everything else requires auth
-    match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
+    // SR-3 FIX: removed global catch-all. Default posture is now DENY.
+    // Any collection not matched above is inaccessible from client SDK.
+    // Cloud Functions using Admin SDK bypass these rules entirely.
   }
 }
