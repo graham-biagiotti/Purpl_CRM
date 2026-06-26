@@ -781,8 +781,8 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const contactName = escHtml(primary.name||account.contact||'there');
   const businessName = escHtml(account.name||'your store');
   const portalLink = account.orderPortalToken
-    ? `https://purpl-crm.web.app/order?t=${account.orderPortalToken}`
-    : 'https://purpl-crm.web.app/order';
+    ? `https://pbfwholesale.com/order?t=${account.orderPortalToken}`
+    : 'https://pbfwholesale.com/order';
 
   const templates = {
     'application-received': {
@@ -3750,7 +3750,7 @@ const CADENCE_STAGES = [
     subject: () => 'Welcome to the wholesale program — your retailer portal is ready',
     body: (a) => {
       const token = a.orderPortalToken || '';
-      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '[portal link not yet generated — use Copy Link on the account first]';
+      const portalLink = token ? `https://pbfwholesale.com/order?t=${token}` : '[portal link not yet generated — use Copy Link on the account first]';
       return `Hi ${a.contact||a.name},\n\nWe're thrilled to welcome ${a.name} as a retail partner. Your wholesale account has been approved.\n\nYour retailer order portal:\n${portalLink}\n\nUse this link to place orders, view order history, and manage your account. Bookmark it for easy access.\n\nPayment terms: Net 30. Invoices from lavender@pbfwholesale.com.\n\nLooking forward to growing together.\n\nWarmly,\n${_SIG()}`;
     }
   },
@@ -3810,7 +3810,7 @@ const CADENCE_STAGES = [
     subject: () => 'Time to restock? — Pumpkin Blossom Farm',
     body: (a) => {
       const token = a.orderPortalToken || '';
-      const portalLink = token ? `https://purpl-crm.web.app/order?t=${token}` : '';
+      const portalLink = token ? `https://pbfwholesale.com/order?t=${token}` : '';
       return `Hi ${a.contact||a.name},\n\nHope things are going well at ${a.name}! It's been a little while since your last order and we wanted to check in.\n\nRunning low on anything? ${portalLink ? `You can reorder anytime through your portal:\n${portalLink}\n\n` : '\n'}Let us know if there's anything we can do — happy to help.\n\nWarmly,\n${_SIG()}`;
     }
   },
@@ -4345,7 +4345,7 @@ async function _emailsApprovedGenerateToken() {
       orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
     }, { merge: true });
     DB.update('ac', account.id, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
-    const link = window.location.origin + '/order?t=' + token;
+    const link = 'https://pbfwholesale.com/order?t=' + token;
     await navigator.clipboard.writeText(link);
     toast('Portal link generated & copied ✓');
     _renderEmailsRightCol();
@@ -12544,7 +12544,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     grandTotal: inv.amount != null ? inv.amount : (inv.total || 0),
     notes: inv.notes || '',
     payLink: inv._payLink || null,
-    portalLink: ac.orderPortalToken ? `https://purpl-crm.web.app/order?t=${ac.orderPortalToken}` : null,
+    portalLink: ac.orderPortalToken ? `https://pbfwholesale.com/order?t=${ac.orderPortalToken}` : null,
     printButton: !!(opts && opts.printButton),
   });
 }
@@ -13707,7 +13707,7 @@ async function generateOrderLink(entityId, entityName, entityEmail, entityType) 
     }, { merge: true });
     const localKey = entityType === 'prospects' ? 'pr' : 'ac';
     DB.update(localKey, entityId, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
-    const link = window.location.origin + '/order?t=' + token;
+    const link = 'https://pbfwholesale.com/order?t=' + token;
     await navigator.clipboard.writeText(link);
     toast('Order link copied ✓');
   } catch(e) {
@@ -14079,7 +14079,7 @@ function _renderPoLinks() {
       // Show all accounts (with and without token)
       const rows = allAc.map(a => {
         const token = a.orderPortalToken;
-        const url   = token ? `https://purpl-crm.web.app/order?t=${token}` : null;
+        const url   = token ? `https://pbfwholesale.com/order?t=${token}` : null;
         const subs  = orders.filter(o => o.accountId === a.id);
         return { a, token, url, subCount: subs.length };
       });

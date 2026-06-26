@@ -1366,7 +1366,7 @@ exports.shipStationWebhook = onRequest(
     ${ac.orderPortalToken ? `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
       <tr><td align="center">
-        <a href="https://purpl-crm.web.app/order?t=${ac.orderPortalToken}" style="display:inline-block;background:#7B4FA0;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order →</a>
+        <a href="https://pbfwholesale.com/order?t=${ac.orderPortalToken}" style="display:inline-block;background:#7B4FA0;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order →</a>
       </td></tr>
     </table>` : ''}
     <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
