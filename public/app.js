@@ -14809,6 +14809,12 @@ async function savePortalSettings() {
   const config    = { mode, pricePerCase: price, portalPassword, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null, launchDate };
   try {
     await PortalDB.saveConfig(config);
+    // The password gate (verifyPortalPassword) and email/link readers all
+    // read from portal_settings/config — mirror the password there so the
+    // gate actually enforces it. (saveConfig writes the full config to
+    // portal_config/main for mode/price/launch.)
+    await firebase.firestore().collection('portal_settings').doc('config')
+      .set({ portalPassword }, { merge: true });
     toast('Portal settings saved ✓');
     await _renderPortalStatusCard(config);
   } catch(e) {
