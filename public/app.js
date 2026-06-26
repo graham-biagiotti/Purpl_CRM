@@ -8,8 +8,9 @@
 // Inventory (iv collection) is tracked in individual CANS.
 // Always use CANS_PER_CASE when converting between them.
 const CANS_PER_CASE = 12;
-const PURPL_MSRP = 3.29;
-const PURPL_DIRECT_PER_CASE = PURPL_MSRP * 0.65 * CANS_PER_CASE; // $25.66
+const PURPL_MSRP = 3.29;                          // suggested retail, per can
+const PURPL_WHOLESALE_PER_CAN = 2.30;             // standard wholesale, per can
+const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
 function _cogs(sku) { return _costs().cogs?.[sku] || 2.15; }
