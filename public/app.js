@@ -3225,6 +3225,27 @@ function _macShowLoc(locs, idx) {
   }
 }
 
+// Sample status badge for the account header — see at a glance whether
+// this account has been sampled, has a pending request, or never sampled.
+function _sampleStatusBadge(a) {
+  const samples = a.samples || [];
+  const shipped = samples.find(s => s.status === 'shipped' || s.shippedAt || s.trackingNumber);
+  if (shipped) {
+    const when = shipped.shippedAt ? fmtD(String(shipped.shippedAt).slice(0,10)) : (shipped.date ? fmtD(shipped.date) : '');
+    return `<span class="badge green" title="Sample shipped${when ? ' ' + when : ''}">🧪 Sampled${when ? ' · ' + when : ''}</span>`;
+  }
+  if (samples.length) {
+    return `<span class="badge amber" title="Sample logged, not yet shipped">🧪 Sample pending</span>`;
+  }
+  // Check for an unshipped portal sample request matched to this account
+  try {
+    const req = (typeof PortalDB !== 'undefined' ? PortalDB.getOrders() : [])
+      .find(o => o.requestSample && o.accountId === a.id && !o.sampleDeclined);
+    if (req) return `<span class="badge amber" title="Sample requested via portal">🧪 Sample requested</span>`;
+  } catch(e) {}
+  return `<span class="badge gray" title="No sample sent yet">🧪 Not sampled</span>`;
+}
+
 function openAccount(id) {
   const a = DB.a('ac').find(x=>x.id===id);
   if (!a) return;
@@ -3240,6 +3261,8 @@ function openAccount(id) {
       ? `<span class="badge green">🪻 Lavender Fields wholesaler + purpl</span>`
       : `<span class="badge purple">purpl only</span>`;
   }
+  const sampleBadgeEl = qs('#mac-sample-badge');
+  if (sampleBadgeEl) sampleBadgeEl.innerHTML = _sampleStatusBadge(a);
   const avEl = qs('#mac-avatar');
   if (avEl) {
     const initials = (a.name||'?').trim().split(/\s+/).slice(0,2).map(w => (w[0]||'').toUpperCase()).join('') || '?';
@@ -4479,15 +4502,16 @@ function switchEmailsTab(tab) {
 function renderEmailsSamples() {
   const el = qs('#emails-samples-list');
   if (!el) return;
-  const orders = PortalDB.getOrders().filter(o => o.requestSample);
-  if (!orders.length) { el.innerHTML = '<div class="empty">No sample requests yet</div>'; return; }
+  const groups = _dedupeSampleRequests();
+  if (!groups.length) { el.innerHTML = '<div class="empty">No sample requests yet</div>'; return; }
   el.innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Date</th><th>Account</th><th>Email</th><th>Address</th><th>Status</th><th></th></tr></thead>
-    <tbody>${orders.map(o => {
+    <tbody>${groups.map(g => {
+      const o = g.rep;
       const addr = o.shipAddress || {};
       const addrStr = [addr.street1, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-      const status = o.sampleApproved ? '<span class="badge green">Approved</span>'
-        : o.sampleDeclined ? '<span class="badge red">Declined</span>'
+      const status = g.approved ? '<span class="badge green">Approved</span>'
+        : g.declined ? '<span class="badge red">Declined</span>'
         : '<span class="badge amber">Pending</span>';
       return `<tr>
         <td>${_fmtPoDate(o.submittedAt)}</td>
@@ -4496,7 +4520,7 @@ function renderEmailsSamples() {
         <td style="font-size:12px">${escHtml(addrStr||'No address')}</td>
         <td>${status}</td>
         <td style="white-space:nowrap">
-          ${!o.sampleApproved && !o.sampleDeclined ? `
+          ${!g.approved && !g.declined ? `
             <button class="btn xs primary" onclick="_approveSampleRequest('${o.id}')">Approve & Ship</button>
             <button class="btn xs" onclick="_declineSampleRequest('${o.id}')">Decline</button>
           ` : ''}
@@ -13770,18 +13794,46 @@ function _switchPoTab(tab) {
   if (tab === 'samples')   _renderPoSampleRequests();
 }
 
+// Dedupe sample requests: a dual-brand order creates 2 portal_order docs,
+// both flagged requestSample. Group by account (or email) so each sample
+// request shows ONCE. Status reflects any doc in the group being
+// approved/declined. Keeps the most informative doc as the representative.
+function _dedupeSampleRequests() {
+  const all = PortalDB.getOrders().filter(o => o.requestSample);
+  const groups = new Map();
+  for (const o of all) {
+    const key = o.accountId || o.billingEmail || o.contactEmail || o.id;
+    const g = groups.get(key);
+    if (!g) {
+      groups.set(key, { rep: o, ids: [o.id], approved: !!o.sampleApproved, declined: !!o.sampleDeclined });
+    } else {
+      g.ids.push(o.id);
+      g.approved = g.approved || !!o.sampleApproved;
+      g.declined = g.declined || !!o.sampleDeclined;
+      // Prefer a rep with a shipping address
+      if (!(g.rep.shipAddress && g.rep.shipAddress.street1) && o.shipAddress && o.shipAddress.street1) g.rep = o;
+    }
+  }
+  return [...groups.values()];
+}
+
 function _renderPoSampleRequests() {
   const el = qs('#po-pane-samples');
   if (!el) return;
-  const orders = PortalDB.getOrders().filter(o => o.requestSample);
-  if (!orders.length) { el.innerHTML = '<div class="empty">No sample requests</div>'; return; }
+  const groups = _dedupeSampleRequests();
+  if (!groups.length) { el.innerHTML = '<div class="empty">No sample requests</div>'; return; }
+  return _renderSampleTable(el, groups);
+}
+
+function _renderSampleTable(el, groups) {
   el.innerHTML = `<div class="tbl-wrap"><table>
     <thead><tr><th>Submitted</th><th>Account</th><th>Email</th><th>Address</th><th>Status</th><th></th></tr></thead>
-    <tbody>${orders.map(o => {
+    <tbody>${groups.map(g => {
+      const o = g.rep;
       const addr = o.shipAddress || {};
       const addrStr = [addr.street1, addr.city, addr.state, addr.zip].filter(Boolean).join(', ');
-      const sampled = o.sampleApproved ? '<span class="badge green">Approved</span>'
-        : o.sampleDeclined ? '<span class="badge red">Declined</span>'
+      const sampled = g.approved ? '<span class="badge green">Approved</span>'
+        : g.declined ? '<span class="badge red">Declined</span>'
         : '<span class="badge amber">Pending</span>';
       return `<tr>
         <td>${_fmtPoDate(o.submittedAt)}</td>
@@ -13790,7 +13842,7 @@ function _renderPoSampleRequests() {
         <td style="font-size:12px">${escHtml(addrStr||'No address')}</td>
         <td>${sampled}</td>
         <td style="white-space:nowrap">
-          ${!o.sampleApproved && !o.sampleDeclined ? `
+          ${!g.approved && !g.declined ? `
             <button class="btn xs primary" onclick="_approveSampleRequest('${o.id}')">✓ Approve & Ship</button>
             <button class="btn xs" onclick="_declineSampleRequest('${o.id}')">✗ Decline</button>
           ` : ''}
@@ -13800,25 +13852,37 @@ function _renderPoSampleRequests() {
   </table></div>`;
 }
 
+// Find every sample-request doc that belongs to the same account/email
+// group as the given order (the dual-brand pair + any resubmissions).
+function _sampleSiblingIds(order) {
+  const key = order.accountId || order.billingEmail || order.contactEmail || order.id;
+  return PortalDB.getOrders()
+    .filter(o => o.requestSample && (o.accountId || o.billingEmail || o.contactEmail || o.id) === key)
+    .map(o => o.id);
+}
+
 async function _approveSampleRequest(portalOrderId) {
   const order = PortalDB.getOrders().find(o => o.id === portalOrderId);
   if (!order) return;
   const accountId = order.accountId;
-  if (accountId) {
-    // Push sample to ShipStation via the account
-    await pushSampleToShipStation(accountId);
-    // Mark the portal order as approved
-    try { await firebase.firestore().collection('portal_orders').doc(portalOrderId).update({ sampleApproved: true, sampleApprovedAt: new Date().toISOString() }); } catch(e) {}
-  } else {
-    toast('No matched account — match this order to an account first');
-    return;
+  if (!accountId) { toast('No matched account — match this order to an account first'); return; }
+  // Push sample to ShipStation once via the account
+  await pushSampleToShipStation(accountId);
+  // Mark ALL sibling docs (dual-brand pair) as approved so neither lingers
+  const ts = new Date().toISOString();
+  for (const id of _sampleSiblingIds(order)) {
+    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleApproved: true, sampleApprovedAt: ts }); } catch(e) {}
   }
   renderPreOrders(true);
 }
 
-function _declineSampleRequest(portalOrderId) {
+async function _declineSampleRequest(portalOrderId) {
   if (!confirm2('Decline this sample request?')) return;
-  firebase.firestore().collection('portal_orders').doc(portalOrderId).update({ sampleDeclined: true }).catch(() => {});
+  const order = PortalDB.getOrders().find(o => o.id === portalOrderId);
+  if (!order) return;
+  for (const id of _sampleSiblingIds(order)) {
+    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleDeclined: true }); } catch(e) {}
+  }
   renderPreOrders(true);
   toast('Sample request declined');
 }
