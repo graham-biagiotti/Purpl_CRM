@@ -32,6 +32,9 @@
       "public": "public-wholesale",
       "cleanUrls": true,
       "trailingSlash": false,
+      "predeploy": [
+        "node sync-wholesale.js"
+      ],
       "ignore": [
         "firebase.json",
         "**/.*",
