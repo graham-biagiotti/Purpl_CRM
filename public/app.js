@@ -831,7 +831,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
               <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
-              ${extra.portalPassword ? `<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword)}</div>` : '<div style="font-size:13px;color:#6b7280;margin-top:4px">Contact us for the password</div>'}
+              <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">purpleherb</div>
             </div>
           </td></tr>
         </table>
@@ -867,7 +867,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
               <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
-              ${extra.portalPassword ? `<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword)}</div>` : '<div style="font-size:13px;color:#6b7280;margin-top:4px">Contact us for the password</div>'}
+              <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">purpleherb</div>
             </div>
           </td></tr>
         </table>
