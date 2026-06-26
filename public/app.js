@@ -807,8 +807,8 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm. I hope this finds you well — I wanted to share something we've been working on that I'm really excited about.</p>
-        <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade crafted with real lavender — born out of our love for lavender here at Pumpkin Blossom Farm. If you've carried our Lavender Fields products, you already know our commitment to quality — purpl is that same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
+        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm. I hope this finds you well. I wanted to share something we've been working on that I'm really excited about.</p>
+        <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade crafted with real lavender, born out of our love for lavender here at Pumpkin Blossom Farm. If you've carried our Lavender Fields products, you already know our commitment to quality. purpl is that same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
@@ -820,13 +820,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </table>
           </td></tr>
         </table>
-        <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment at this point — just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
-        <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well — one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
+        <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment, just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
+        <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well, one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
-              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below — goes straight to your order form, no password needed.</div>
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below. Goes straight to your order form, no password needed.</div>
               <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Pre-Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
@@ -841,12 +841,12 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
               <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
               <strong>Payment:</strong> Net 30 from invoice date.<br>
-              <strong>Samples:</strong> Request a free 3-can taster right on the order form — no obligation.<br>
+              <strong>Samples:</strong> Request a free 3-can taster right on the order form, no obligation.<br>
               <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
             </div>
           </td></tr>
         </table>
-        <p style="line-height:1.7;font-size:14px">I'd love to have purpl on your shelves. Reply to this email, give me a call, or just click the link above — whatever's easiest. I'm here for anything you need.</p>
+        <p style="line-height:1.7;font-size:14px">I'd love to have purpl on your shelves. Reply to this email, give me a call, or just click the link above. Whatever's easiest, I'm here for anything you need.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
@@ -856,13 +856,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">Great news — your wholesale account for <strong>${businessName}</strong> has been approved. You're all set to start ordering.</p>
+        <p style="line-height:1.7">Great news! Your wholesale account for <strong>${businessName}</strong> has been approved. You're all set to start ordering.</p>
         <p style="line-height:1.7">I've set up a personalized order portal for you below. You can also visit <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a> for product info and our sell sheet.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
-              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below — goes straight to your order form, no password needed.</div>
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below. Goes straight to your order form, no password needed.</div>
               <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
@@ -881,7 +881,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </div>
           </td></tr>
         </table>
-        <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text — whatever's easiest.</p>
+        <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text. Whatever's easiest.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
@@ -892,7 +892,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>.</p>
-        <p>After reviewing your application, we don't think it's the right fit at this time — but we genuinely appreciate you reaching out and wish you all the best.</p>
+        <p>After reviewing your application, we don't think it's the right fit at this time. We genuinely appreciate you reaching out and wish you all the best.</p>
         <p>Please don't hesitate to apply again in the future if circumstances change.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
@@ -965,7 +965,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p>Just a quick heads up — invoice <strong>${extra.invoiceNumber||''}</strong> for <strong>${businessName}</strong> is coming due.</p>
+        <p>Just a quick heads up, invoice <strong>${extra.invoiceNumber||''}</strong> for <strong>${businessName}</strong> is coming due.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;padding:20px 24px">
             <table width="100%">
@@ -1002,13 +1002,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p>It's been a while since your last order — just checking in to see if <strong>${businessName}</strong> is ready to restock.</p>
+        <p>It's been a while since your last order. Just checking in to see if <strong>${businessName}</strong> is ready to restock.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Reorder →</a>
           </td></tr>
         </table>
-        <p>If you need anything adjusted — quantities, delivery schedule, or product mix — just let us know.</p>
+        <p>If you need anything adjusted (quantities, delivery schedule, or product mix) just let us know.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
@@ -1039,7 +1039,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td style="background:#fdf9ff;border:1px solid #e9d5ff;border-radius:8px;padding:24px;text-align:center">
             <div style="font-size:20px;font-weight:600;color:#4B2082;margin-bottom:8px">🆕 New Product Launch</div>
-            <div style="font-size:14px;color:#374151">Details coming soon — stay tuned for pricing and availability.</div>
+            <div style="font-size:14px;color:#374151">Details coming soon. Stay tuned for pricing and availability.</div>
           </td></tr>
         </table>
         <p>Interested in adding this to your next order? Reply to this email or place an order through your portal:</p>
