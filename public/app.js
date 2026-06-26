@@ -823,10 +823,16 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment at this point — just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
         <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well — one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
-          <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place a Pre-Order</a>
-            ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
-            <div style="font-size:12px;color:#6b7280;margin-top:8px">Your personalized link — bookmark it for both purpl and Lavender Fields orders</div>
+          <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below — goes straight to your order form, no password needed.</div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Pre-Order</a></div>
+            </div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:12px">
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              ${extra.portalPassword ? `<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword)}</div>` : '<div style="font-size:13px;color:#6b7280;margin-top:4px">Contact us for the password</div>'}
+            </div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
@@ -853,10 +859,16 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7">Great news — your wholesale account for <strong>${businessName}</strong> has been approved. You're all set to start ordering.</p>
         <p style="line-height:1.7">I've set up a personalized order portal for you below. You can also visit <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a> for product info and our sell sheet.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
-          <tr><td align="center" style="padding:24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:14px 36px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500;letter-spacing:0.02em">Place Your First Order</a>
-            ${extra.portalPassword ? `<div style="font-size:13px;color:#374151;margin-top:14px">Portal password: <strong>${extra.portalPassword}</strong></div>` : ''}
-            <div style="font-size:12px;color:#6b7280;margin-top:8px">Bookmark this link — it's your personalized portal for all future orders</div>
+          <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below — goes straight to your order form, no password needed.</div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order</a></div>
+            </div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:12px">
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              ${extra.portalPassword ? `<div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword)}</div>` : '<div style="font-size:13px;color:#6b7280;margin-top:4px">Contact us for the password</div>'}
+            </div>
           </td></tr>
         </table>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
