@@ -222,7 +222,7 @@ const DB = {
           } catch(mapErr) {
             console.error(`[db] Corrupt snapshot for ${key}, keeping cache:`, mapErr);
           }
-          if (window.refreshCurrentPage) window.refreshCurrentPage();
+          this._scheduleRefresh(); // H4: debounced
         }
       }, err => {
         console.warn(`[db] Snapshot error on ${key}:`, err);
@@ -257,12 +257,22 @@ const DB = {
             this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
           }
         });
-        if (window.refreshCurrentPage) window.refreshCurrentPage();
+        this._scheduleRefresh(); // H4: debounced
       }
     }, err => {
       console.warn('[db] Config snapshot error:', err);
     });
     this._unsubscribers.push(configUnsub);
+  },
+
+  // H4: coalesce bursts of remote snapshots into ONE re-render. Each snapshot
+  // used to call refreshCurrentPage() directly, which re-runs migrations + a
+  // full page render; a multi-collection update (or another user's batch) thus
+  // caused a render storm. Debounce so N near-simultaneous events render once.
+  _scheduleRefresh() {
+    if (!window.refreshCurrentPage) return;
+    clearTimeout(this._refreshTimer);
+    this._refreshTimer = setTimeout(() => { try { window.refreshCurrentPage(); } catch(_) {} }, 120);
   },
 
   // ── Migration from single-doc to multi-collection ──
