@@ -27,6 +27,14 @@ const COLLECTION_KEYS = [
 // delete, otherwise the whole batch is rejected with permission-denied.
 const APPEND_ONLY_KEYS = ['audit_log'];
 
+// H1/H2/M14: the unload recovery snapshot only captures items modified within
+// this window before tab-close, and replay only resurrects missing items that
+// recent. Bounds the blob size and prevents stale rows from being resurrected
+// over a legitimate remote deletion. 30 min comfortably covers an active
+// editing session (incl. offline edits that keep retrying) without reaching
+// back to long-saved data.
+const RECOVERY_WINDOW_MS = 30 * 60 * 1000;
+
 // Arrays that stay in a single config document (small/rarely changing)
 const CONFIG_ARRAY_KEYS = [
   'saved_reports','loose_cans','repack_jobs','pallets','pack_supply',
@@ -331,10 +339,18 @@ const DB = {
     // unload — write a recovery snapshot first so the last edit can never be
     // lost. Replayed (with timestamp comparison) on next init.
     try {
-      const recovery = { ts: Date.now(), collections: {}, config: {} };
+      const ts = Date.now();
+      const recovery = { ts, collections: {}, config: {} };
       this._saveDirtyKeys.forEach(key => {
         if (COLLECTION_KEYS.includes(key)) {
-          recovery.collections[key] = this._cache[key] || [];
+          // H1/H2/M14: snapshot ONLY items modified recently (the genuine
+          // unsaved edits), not the whole collection. Snapshotting every row
+          // made old, untouched rows resurrection candidates on replay (H1)
+          // and bloated the blob past the localStorage quota (M14). An item
+          // the user actually touched this session has a fresh _updatedAt;
+          // anything older has long since saved (or surfaced a failure toast).
+          recovery.collections[key] = (this._cache[key] || []).filter(it =>
+            it && it._updatedAt && (ts - new Date(it._updatedAt).getTime() <= RECOVERY_WINDOW_MS));
         } else if (CONFIG_ARRAY_KEYS.includes(key) || OBJ_KEYS.includes(key)) {
           recovery.config[key] = this._cache[key];
         }
@@ -358,9 +374,12 @@ const DB = {
     this._saveDirtyKeys.clear();
   },
 
-  // HIGH-2: replay any recovery snapshot left by a previous tab-close. Only
-  // re-asserts items whose backed-up _updatedAt is NEWER than what loaded from
-  // the server (or is missing) — so it can never clobber a newer remote edit.
+  // HIGH-2 / H1 / H2: replay any recovery snapshot left by a previous
+  // tab-close. Re-asserts an item only when (a) it still exists on the server
+  // and our backup is meaningfully newer (an unsaved edit), or (b) it is
+  // missing from the server AND was modified just before close (an unsaved
+  // create). A missing item that was NOT recently modified is treated as a
+  // legitimate remote deletion and left deleted — never resurrected.
   _replayRecovery() {
     let recovery;
     try {
@@ -374,7 +393,21 @@ const DB = {
       return;
     }
     let restored = 0;
-    const newer = (a, b) => (a?._updatedAt || '') > (b?._updatedAt || '');
+    const recoveryTs = recovery.ts || 0;
+    // H2: require the local copy to beat the server by a margin so trivial
+    // client-clock skew between devices can't flip "newer" and clobber a
+    // genuinely-newer remote edit. Cross-device times are not authoritative;
+    // this only reduces the window, it cannot fully eliminate a true conflict.
+    const SKEW_MARGIN_MS = 5000;
+    const newer = (a, b) => {
+      const ta = a?._updatedAt ? new Date(a._updatedAt).getTime() : 0;
+      const tb = b?._updatedAt ? new Date(b._updatedAt).getTime() : 0;
+      return ta - tb > SKEW_MARGIN_MS;
+    };
+    // H1: only resurrect a server-missing item if it was edited right before
+    // close (recovery is fresh AND the item's stamp is within the window).
+    const recentlyTouched = (it) => it && it._updatedAt &&
+      (recoveryTs - new Date(it._updatedAt).getTime() <= RECOVERY_WINDOW_MS);
     Object.entries(recovery.collections || {}).forEach(([key, items]) => {
       if (!COLLECTION_KEYS.includes(key) || !Array.isArray(items)) return;
       const live = this._cache[key] || [];
@@ -382,7 +415,8 @@ const DB = {
       items.forEach(item => {
         if (!item?.id) return;
         const cur = byId.get(item.id);
-        if (!cur || newer(item, cur)) {
+        const reassert = cur ? newer(item, cur) : recentlyTouched(item);
+        if (reassert) {
           // Local edit didn't reach the server — re-assert it
           const idx = live.findIndex(x => x.id === item.id);
           if (idx >= 0) live[idx] = item; else live.push(item);
