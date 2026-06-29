@@ -166,8 +166,13 @@ const DB = {
         if (!this._firestoreReady) return;
         const stuck = [...(this._saveDirtyKeys || [])];
         if (stuck.length) {
-          this._saveRetries = {}; // reset backoff counters on reconnect
-          stuck.forEach(k => this._scheduleSave(k));
+          // M11: reset backoff ONLY for the keys we're re-driving. The previous
+          // global `_saveRetries = {}` also wiped counters for keys still
+          // mid-backoff, which could trigger a retry storm on those.
+          stuck.forEach(k => {
+            if (this._saveRetries) delete this._saveRetries[k];
+            this._scheduleSave(k);
+          });
           if (window.toast) toast('Reconnected — syncing your changes…');
         }
       });
@@ -689,6 +694,12 @@ const DB = {
         });
         COLLECTION_KEYS.forEach(k => this._saveCollection(k));
         this._saveConfig();
+        // M13: these direct flushes bypass _doSave (which is what normally
+        // clears _saveDirtyKeys). Without this, every key touched by an
+        // atomicUpdate stays "dirty" forever — jamming the config snapshot
+        // listener, which then defers ALL remote config changes indefinitely.
+        // A failed save re-adds its own key via its retry path.
+        allKeys.forEach(k => this._saveDirtyKeys && this._saveDirtyKeys.delete(k));
       } finally {
         this._atomicInProgress = false;
       }
