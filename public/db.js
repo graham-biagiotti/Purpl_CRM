@@ -138,6 +138,9 @@ const DB = {
     // Set up real-time listeners
     this._subscribeAll();
 
+    // HIGH-2: replay any unsaved edits a previous tab-close left behind.
+    this._replayRecovery();
+
     // HIGH-3: re-drive any cached-but-unsaved keys when connectivity returns.
     // After 3 failed transient save retries a key sits in _saveDirtyKeys with
     // no scheduled retry — without this it would only flush on the next manual
@@ -311,11 +314,27 @@ const DB = {
     this._saveTimers[key] = setTimeout(() => this._doSave(key), 500);
   },
 
+  _recoveryKey() { return 'pcrm_recovery_' + (this._uid || 'anon'); },
+
   _flushPendingSave() {
-    // On page unload, skip the async batch-save path (it does a .get()
-    // that won't complete before the page dies). Instead, fire immediate
-    // .set() calls for each dirty doc — these start an IndexedDB write
-    // that survives tab close via Firestore's persistence layer.
+    if (!this._saveDirtyKeys || this._saveDirtyKeys.size === 0) return;
+    // HIGH-2: the async .set() calls below queue to IndexedDB, but that queue
+    // write is itself async and is NOT guaranteed to commit before the tab is
+    // torn down. localStorage.setItem IS synchronous and completes before
+    // unload — write a recovery snapshot first so the last edit can never be
+    // lost. Replayed (with timestamp comparison) on next init.
+    try {
+      const recovery = { ts: Date.now(), collections: {}, config: {} };
+      this._saveDirtyKeys.forEach(key => {
+        if (COLLECTION_KEYS.includes(key)) {
+          recovery.collections[key] = this._cache[key] || [];
+        } else if (CONFIG_ARRAY_KEYS.includes(key) || OBJ_KEYS.includes(key)) {
+          recovery.config[key] = this._cache[key];
+        }
+      });
+      localStorage.setItem(this._recoveryKey(), JSON.stringify(recovery));
+    } catch(e) { /* localStorage full/unavailable — fall through to async writes */ }
+
     this._saveDirtyKeys.forEach(key => {
       if (this._saveTimers[key]) {
         clearTimeout(this._saveTimers[key]);
@@ -330,6 +349,58 @@ const DB = {
     // Config is a single doc — flush it directly
     if (this._saveDirtyKeys.size > 0) this._saveConfig();
     this._saveDirtyKeys.clear();
+  },
+
+  // HIGH-2: replay any recovery snapshot left by a previous tab-close. Only
+  // re-asserts items whose backed-up _updatedAt is NEWER than what loaded from
+  // the server (or is missing) — so it can never clobber a newer remote edit.
+  _replayRecovery() {
+    let recovery;
+    try {
+      const raw = localStorage.getItem(this._recoveryKey());
+      if (!raw) return;
+      recovery = JSON.parse(raw);
+    } catch(e) { try { localStorage.removeItem(this._recoveryKey()); } catch(_) {} return; }
+    // Ignore stale recovery (>24h) — too risky to replay against drifted data
+    if (!recovery || (recovery.ts && Date.now() - recovery.ts > 864e5)) {
+      try { localStorage.removeItem(this._recoveryKey()); } catch(_) {}
+      return;
+    }
+    let restored = 0;
+    const newer = (a, b) => (a?._updatedAt || '') > (b?._updatedAt || '');
+    Object.entries(recovery.collections || {}).forEach(([key, items]) => {
+      if (!COLLECTION_KEYS.includes(key) || !Array.isArray(items)) return;
+      const live = this._cache[key] || [];
+      const byId = new Map(live.map(x => [x.id, x]));
+      items.forEach(item => {
+        if (!item?.id) return;
+        const cur = byId.get(item.id);
+        if (!cur || newer(item, cur)) {
+          // Local edit didn't reach the server — re-assert it
+          const idx = live.findIndex(x => x.id === item.id);
+          if (idx >= 0) live[idx] = item; else live.push(item);
+          this._writeDoc(key, item);
+          restored++;
+        }
+      });
+      this._cache[key] = live;
+    });
+    Object.entries(recovery.config || {}).forEach(([key, val]) => {
+      const cur = this._cache[key];
+      // Config has no per-key timestamp; only restore if the server value is
+      // empty/missing (i.e. the local config write was lost), never overwrite
+      // a populated server value.
+      const curEmpty = cur === null || cur === undefined ||
+        (Array.isArray(cur) && cur.length === 0) ||
+        (typeof cur === 'object' && !Array.isArray(cur) && Object.keys(cur).length === 0);
+      if (curEmpty && val != null) { this._cache[key] = val; restored++; }
+    });
+    if (restored > 0) {
+      this._saveConfig();
+      if (window.toast) toast('Recovered ' + restored + ' unsaved change' + (restored > 1 ? 's' : '') + ' from your last session.');
+      if (window.refreshCurrentPage) window.refreshCurrentPage();
+    }
+    try { localStorage.removeItem(this._recoveryKey()); } catch(_) {}
   },
 
   _doSave(key) {
