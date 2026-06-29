@@ -9776,8 +9776,10 @@ function repRevenue() {
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
-    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
+    // MED-4: route through the canonical pricer so the pricePerCaseCustom
+    // fallback leg is included — inline versions omitted it, making reports
+    // disagree with invoices for custom-priced accounts.
+    const acPrc = _calcPricePerCase(ac2);
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
@@ -9821,8 +9823,10 @@ function repAccounts() {
   orders.forEach(o=>{
     if (!acMap[o.accountId]) return;
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
-    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
+    // MED-4: route through the canonical pricer so the pricePerCaseCustom
+    // fallback leg is included — inline versions omitted it, making reports
+    // disagree with invoices for custom-priced accounts.
+    const acPrc = _calcPricePerCase(ac2);
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
@@ -10030,8 +10034,10 @@ function repProfit() {
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
   orders.forEach(o=>{
     const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-    const isDist = ac2?.fulfilledBy && ac2.fulfilledBy !== 'direct';
-    const acPrc = parseFloat(isDist ? ac2?.pricePerCaseDist : ac2?.pricePerCaseDirect) || 0;
+    // MED-4: route through the canonical pricer so the pricePerCaseCustom
+    // fallback leg is included — inline versions omitted it, making reports
+    // disagree with invoices for custom-priced accounts.
+    const acPrc = _calcPricePerCase(ac2);
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
       bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
