@@ -347,7 +347,7 @@ const DB = {
       const ts = Date.now();
       const recovery = { ts, collections: {}, config: {} };
       this._saveDirtyKeys.forEach(key => {
-        if (COLLECTION_KEYS.includes(key)) {
+        if (COLLECTION_KEYS.includes(key) && !APPEND_ONLY_KEYS.includes(key)) {
           // H1/H2/M14: snapshot ONLY items modified recently (the genuine
           // unsaved edits), not the whole collection. Snapshotting every row
           // made old, untouched rows resurrection candidates on replay (H1)
@@ -360,6 +360,32 @@ const DB = {
           recovery.config[key] = this._cache[key];
         }
       });
+      // M15: two tabs of the same user share one recovery key. Merge with any
+      // existing blob instead of overwriting, so the earlier-closing tab's
+      // unsaved edits aren't dropped. Union collection items by id (newest
+      // _updatedAt wins); keep the max ts; config takes whichever is present.
+      try {
+        const prevRaw = localStorage.getItem(this._recoveryKey());
+        if (prevRaw) {
+          const prev = JSON.parse(prevRaw);
+          if (prev && prev.ts && (ts - prev.ts) <= 864e5) {
+            recovery.ts = Math.max(ts, prev.ts);
+            Object.entries(prev.collections || {}).forEach(([key, items]) => {
+              if (!Array.isArray(items)) return;
+              const merged = new Map((recovery.collections[key] || []).map(x => [x.id, x]));
+              items.forEach(it => {
+                if (!it || !it.id) return;
+                const cur = merged.get(it.id);
+                if (!cur || (it._updatedAt || '') > (cur._updatedAt || '')) merged.set(it.id, it);
+              });
+              recovery.collections[key] = [...merged.values()];
+            });
+            Object.entries(prev.config || {}).forEach(([key, val]) => {
+              if (!(key in recovery.config)) recovery.config[key] = val;
+            });
+          }
+        }
+      } catch(_) { /* malformed prior blob — overwrite it */ }
       localStorage.setItem(this._recoveryKey(), JSON.stringify(recovery));
     } catch(e) { /* localStorage full/unavailable — fall through to async writes */ }
 
