@@ -1366,19 +1366,28 @@ exports.shipStationWebhook = onRequest(
             const sampleIdx = samples.findIndex(s => s.sampleOrderNumber === orderNumber);
             if (sampleIdx >= 0) {
               sampleFound = true;
-              // Idempotency: skip if this sample was already shipped
-              if (samples[sampleIdx].status === 'shipped') {
-                break;
-              }
-              // Update the sample entry with tracking
-              samples[sampleIdx] = {
-                ...samples[sampleIdx],
-                trackingNumber: trackingStr,
-                carrier: carrierStr,
-                shippedAt: now,
-                status: 'shipped',
-              };
-              await acDoc.ref.update({ samples });
+              // M16: re-read + write the account inside a transaction so a
+              // concurrent edit to samples[] isn't clobbered (the previous
+              // whole-array overwrite was a lost-update race). The idempotency
+              // check (already-shipped) runs atomically inside the tx.
+              let newlyShipped = false;
+              await db.runTransaction(async (tx) => {
+                const fresh = await tx.get(acDoc.ref);
+                const fsamples = (fresh.data() || {}).samples || [];
+                const idx = fsamples.findIndex(s => s.sampleOrderNumber === orderNumber);
+                if (idx < 0 || fsamples[idx].status === 'shipped') return;
+                fsamples[idx] = {
+                  ...fsamples[idx],
+                  trackingNumber: trackingStr,
+                  carrier: carrierStr,
+                  shippedAt: now,
+                  status: 'shipped',
+                };
+                tx.update(acDoc.ref, { samples: fsamples });
+                newlyShipped = true;
+              });
+              // Already shipped (idempotent redelivery) — don't re-deduct/re-email.
+              if (!newlyShipped) break;
 
               // Deduct 3 cans of Classic from farm pool
               await db.collection('workspace/main/iv').add({
@@ -1502,24 +1511,30 @@ exports.shipStationWebhook = onRequest(
             const updatedItems = shippingLine ? [...itemsNoShip, shippingLine] : itemsNoShip;
             const newTotal = Math.round(updatedItems.reduce((s, li) => s + parseFloat(li.lineTotal || li.total || 0), 0) * 100) / 100;
 
-            // Recalculate due date: ship date + payment terms
-            const configSnap = await db.doc('workspace/main/config/main').get();
-            const configData = configSnap.exists ? configSnap.data() : {};
-            const terms = (configData.invoice_settings || {}).terms || (configData.settings || {}).payment_terms || 30;
-            const dueDate = new Date(Date.now() + terms * 86400000).toISOString().slice(0, 10);
-
             const update = {
               trackingNumber: trackingStr,
               carrier: carrierStr,
-              shippedAt: now,
               deliveryMethod: 'ship',
               lineItems: updatedItems,
-              date: shipDate,
-              issued: shipDate,
-              dueDate: dueDate,
-              due: dueDate,
               readyToSend: true,
             };
+            // M7: set the financial dates (issued/date and the Net-X dueDate)
+            // ONLY on the first shipment event. ShipStation re-delivers webhooks
+            // (on non-2xx and operator replays); without this guard every
+            // redelivery reset issued/date to the redelivery day and pushed
+            // dueDate forward another full terms window, silently aging the
+            // invoice. Tracking/carrier/shipping line stay idempotently updated.
+            if (!inv.shippedAt) {
+              const configSnap = await db.doc('workspace/main/config/main').get();
+              const configData = configSnap.exists ? configSnap.data() : {};
+              const terms = (configData.invoice_settings || {}).terms || (configData.settings || {}).payment_terms || 30;
+              const dueDate = new Date(Date.now() + terms * 86400000).toISOString().slice(0, 10);
+              update.shippedAt = now;
+              update.date = shipDate;
+              update.issued = shipDate;
+              update.dueDate = dueDate;
+              update.due = dueDate;
+            }
             // Update total on the right field(s) depending on collection
             if (col === 'combined_invoices') {
               // For combined: shipping goes on grand total; product subtotals unchanged
