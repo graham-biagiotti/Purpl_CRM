@@ -92,8 +92,23 @@ function deleteInvoiceWithCleanup(id) {
     }
     cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
     cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== id);
+    // HIGH-5: if the deleted invoice is a child of a combined invoice, remove
+    // the combined parent AND dissolve the combination on the surviving
+    // sibling — otherwise the sibling keeps combinedInvoiceId pointing at a
+    // deleted parent, so reports (which filter !combinedInvoiceId) exclude it
+    // and its dollars vanish entirely.
     const ci = (cache.combined_invoices||[]).findIndex(x => x.purplInvoiceId === id || x.lfInvoiceId === id);
-    if (ci >= 0) cache.combined_invoices.splice(ci, 1);
+    if (ci >= 0) {
+      const parent = cache.combined_invoices[ci];
+      const siblingId = parent.purplInvoiceId === id ? parent.lfInvoiceId : parent.purplInvoiceId;
+      if (siblingId) {
+        for (const col of ['retail_invoices','lf_invoices','iv','dist_invoices']) {
+          const si = (cache[col]||[]).findIndex(x => x.id === siblingId);
+          if (si >= 0) { cache[col][si] = { ...cache[col][si], combinedInvoiceId: null }; break; }
+        }
+      }
+      cache.combined_invoices.splice(ci, 1);
+    }
     cache.ac = (cache.ac||[]).map(a =>
       (a.cadence||[]).some(c => c.invoiceId === id)
         ? { ...a, cadence: a.cadence.filter(c => c.invoiceId !== id) }
