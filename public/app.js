@@ -4663,6 +4663,7 @@ function _getMeFilteredAccounts(brandSel, lastContactSel, statusSel) {
   const status      = qs(statusSel)?.value || '';
   let list = DB.a('ac');
   if (status === 'active') list = list.filter(a=>a.status==='active');
+  else if (status === 'pending') list = list.filter(a=>a.status==='pending');
   if (brand === 'lf')    list = list.filter(a=>a.isPbf);
   if (brand === 'purpl') list = list.filter(a=>!a.isPbf);
   if (lastContact === 'never') list = list.filter(a=>!a.lastContacted);
