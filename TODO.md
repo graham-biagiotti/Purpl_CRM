@@ -4,14 +4,12 @@ _Updated for go-live. The account + portal-order systems have been fully
 reviewed and the must-fix items are committed (see "Done this session")._
 
 ## 🔴 Open — needs your DECISION
-- [ ] **Unsubscribe link doesn't work for real customers** (email-R2). A customer
-      clicking "Unsubscribe" silently does nothing — relies on data only logged-in
-      CRM users have. Fix = a small Cloud Function (HTTP endpoint that flips
-      `emailOptOut` server-side). RECOMMENDED before the 87-account blast. Claude
-      can build it on request.
 - [ ] **Opt-out on transactional/invoice emails** (email-R1). Policy choice: should
       invoices skip opted-out accounts, or send regardless (usual default)? Not a
-      bug — needs your call.
+      bug — current behavior (send regardless) is the standard default; leave unless
+      you want it changed.
+- [x] ~~Unsubscribe link doesn't work for real customers~~ — BUILT (public Cloud
+      Function + /unsubscribe rewrite). Needs `firebase deploy --only functions,hosting`.
 
 ## 🟡 Open — needs your ACTION / assets
 - [ ] Set real **COGS** in Settings (reports still fall back to $2.15 placeholder
