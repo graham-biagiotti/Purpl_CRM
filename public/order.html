@@ -1365,7 +1365,9 @@ function submitOrder() {
     });
 }
 
+var _pastOrders = [];
 function renderPastOrders(orders) {
+  _pastOrders = orders || [];  // LOW-12: keep in memory so View PDF doesn't re-read Firestore
   var section = document.getElementById(
     'past-orders-section');
   var list = document.getElementById('past-orders-list');
@@ -1444,15 +1446,18 @@ function renderPastOrders(orders) {
 }
 
 function printPortalOrder(orderId) {
-  firebase.firestore()
-    .collection('portal_orders')
-    .doc(orderId)
-    .get()
-    .then(function(doc) {
-      if (!doc.exists) {
-        alert('Order not found'); return;
-      }
-      var o = doc.data();
+  // LOW-12: the portal is unauthenticated and portal_orders read now requires
+  // staff — re-fetching here was denied (broken "Order not found"). The order
+  // is already in memory from getPortalOrderHistory; use that.
+  var o = _pastOrders.find(function(x){ return x.id === orderId; });
+  if (o) {
+    _printPortalOrderDoc(o);
+  } else {
+    alert('Order not found');
+  }
+}
+
+function _printPortalOrderDoc(o) {
       var dt = o.submittedAt && o.submittedAt.toDate ?
         o.submittedAt.toDate().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : 'Unknown date';
 
@@ -1551,11 +1556,6 @@ function printPortalOrder(orderId) {
         '</div>' +
         '</body></html>');
       w.document.close();
-    })
-    .catch(function(e) {
-      console.error('Print error:', e);
-      alert('Could not load order');
-    });
 }
 
 let _lastOrderData = null;
