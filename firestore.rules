@@ -103,14 +103,20 @@ service cloud.firestore {
     }
 
     // Workspace data: LAYER 2 — requires staff role (was request.auth != null)
-    // HIGH-7: audit_log must be append-only via Admin SDK / never client-
-    // writable. A dedicated `match` with `write: false` is NOT enough — the
-    // recursive `workspace/{path=**}` below ALSO matches audit_log docs, and
-    // Firestore grants access if ANY matching rule allows it. So the exclusion
-    // must live in the catch-all's write condition itself.
+    // HIGH-7: audit_log is APPEND-ONLY. The client (db.js) legitimately CREATEs
+    // audit entries under the signed-in user's auth, so a blanket `write:false`
+    // would break audit logging entirely (permission-denied on every audited
+    // action). Tamper-proofing comes from denying UPDATE and DELETE — once
+    // written, an entry can never be altered or removed by a client.
+    // A dedicated `match` is NOT enough on its own: the recursive
+    // `workspace/{path=**}` below ALSO matches audit_log docs, and Firestore
+    // grants access if ANY matching rule allows it. So the catch-all must keep
+    // excluding audit_log writes (see its condition), and this match re-grants
+    // ONLY create.
     match /workspace/main/audit_log/{docId} {
       allow read: if isStaff();
-      allow write: if false;
+      allow create: if isStaff();
+      allow update, delete: if false;
     }
     // NOTE: invoice deletion, config changes, etc. are all isStaff() for now.
     // If you want admin-only delete on invoices or admin-only write on

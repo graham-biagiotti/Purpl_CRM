@@ -20,6 +20,13 @@ const COLLECTION_KEYS = [
   'prod_hist','runs','shipments',
 ];
 
+// Append-only collections: entries may be CREATED but never updated or
+// deleted (mirrors firestore.rules — audit_log is tamper-proof). Batch saves
+// must only write NEW docs for these keys, never re-set existing ones (a
+// merge-set on an existing doc is an UPDATE, which the rules deny) and never
+// delete, otherwise the whole batch is rejected with permission-denied.
+const APPEND_ONLY_KEYS = ['audit_log'];
+
 // Arrays that stay in a single config document (small/rarely changing)
 const CONFIG_ARRAY_KEYS = [
   'saved_reports','loose_cans','repack_jobs','pallets','pack_supply',
@@ -423,19 +430,24 @@ const DB = {
     colRef.get().then(snap => {
       const existingIds = new Set(snap.docs.map(d => d.id));
       const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
+      const appendOnly = APPEND_ONLY_KEYS.includes(key);
 
-      // Set/update all current items
+      // Set/update all current items. For append-only collections, only write
+      // NEW docs (re-setting an existing one is an UPDATE the rules reject).
       items.forEach(item => {
         if (!item.id) return;
+        if (appendOnly && existingIds.has(item.id)) return;
         batch.set(colRef.doc(item.id), item, { merge: true });
       });
 
-      // Delete removed items
-      existingIds.forEach(id => {
-        if (!cacheIds.has(id)) {
-          batch.delete(colRef.doc(id));
-        }
-      });
+      // Delete removed items — never for append-only collections.
+      if (!appendOnly) {
+        existingIds.forEach(id => {
+          if (!cacheIds.has(id)) {
+            batch.delete(colRef.doc(id));
+          }
+        });
+      }
 
       return batch.commit();
     }).then(() => {
@@ -690,14 +702,18 @@ const DB = {
     const snap = await colRef.get();
     const existingIds = new Set(snap.docs.map(d => d.id));
     const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
+    const appendOnly = APPEND_ONLY_KEYS.includes(key);
     const batch = this._db.batch();
     items.forEach(item => {
       if (!item.id) return;
+      if (appendOnly && existingIds.has(item.id)) return;
       batch.set(colRef.doc(item.id), item, { merge: true });
     });
-    existingIds.forEach(id => {
-      if (!cacheIds.has(id)) batch.delete(colRef.doc(id));
-    });
+    if (!appendOnly) {
+      existingIds.forEach(id => {
+        if (!cacheIds.has(id)) batch.delete(colRef.doc(id));
+      });
+    }
     await batch.commit();
   },
 
