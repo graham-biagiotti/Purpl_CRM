@@ -747,7 +747,7 @@ function buildEmailHTML(headerHTML, accentColor, bodyHTML, unsubscribeAccountId)
     ? `<tr><td style="background:#f9fafb;padding:10px 40px 16px;
         border-top:1px solid #e5e7eb;text-align:center;
         font-size:11px;color:#6b7280">
-        <a href="https://purpl-crm.web.app/?optout=${encodeURIComponent(unsubscribeAccountId)}"
+        <a href="https://purpl-crm.web.app/unsubscribe?id=${encodeURIComponent(unsubscribeAccountId)}"
           style="color:#6b7280">Unsubscribe from marketing emails</a>
       </td></tr>`
     : '';

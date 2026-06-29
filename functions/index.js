@@ -571,6 +571,40 @@ exports.getPortalOrderHistory = onCall(async (request) => {
   };
 });
 
+// ── 4b. Public Unsubscribe endpoint ───────────────────────
+// One-click unsubscribe for marketing emails. The link in the email points
+// here (via the /unsubscribe hosting rewrite). Runs with Admin SDK so it works
+// for unauthenticated recipients — the old client-side ?optout handler only
+// worked for logged-in CRM users, so external customers' clicks silently did
+// nothing. Sets emailOptOut on the account; always returns a friendly page.
+exports.unsubscribe = onRequest({ invoker: 'public' }, async (req, res) => {
+  const id = String((req.query && (req.query.id || req.query.optout)) || '').trim();
+  const page = (title, msg) => `<!DOCTYPE html><html><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>` +
+    `<body style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;margin:0;padding:48px 16px;text-align:center">` +
+    `<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px 32px;box-shadow:0 2px 8px rgba(0,0,0,.08)">` +
+    `<div style="font-size:13px;letter-spacing:.15em;text-transform:uppercase;color:#8B5FBF;margin-bottom:16px">Pumpkin Blossom Farm</div>` +
+    `<h1 style="font-size:20px;color:#1a1a2e;margin:0 0 12px">${title}</h1>` +
+    `<p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0">${msg}</p></div></body></html>`;
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (!id) { res.status(400).send(page('Invalid link', 'This unsubscribe link is missing its account reference.')); return; }
+  try {
+    const ref = admin.firestore().collection('workspace/main/ac').doc(id);
+    const snap = await ref.get();
+    if (snap.exists) {
+      await ref.update({ emailOptOut: true, emailOptOutAt: new Date().toISOString() });
+    }
+    const name = snap.exists ? (snap.data().name || 'your account') : 'your account';
+    res.status(200).send(page("You're unsubscribed",
+      `${escHtml(name)} has been removed from our marketing email list. You may still receive order and invoice confirmations. ` +
+      `Changed your mind? Just reply to any email and we'll add you back.`));
+  } catch (e) {
+    console.error('unsubscribe error:', e);
+    // Never show an error to the recipient — fail to a reassuring message.
+    res.status(200).send(page('All set', "You won't receive further marketing emails from us."));
+  }
+});
+
 // ── 4c. Init User Role ──────────────────────────────────
 // Called on first sign-in to create the users/{uid} doc with the correct role.
 // Uses Admin SDK so it bypasses security rules (client can't set role directly).

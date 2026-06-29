@@ -14,6 +14,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        { "source": "/unsubscribe", "function": "unsubscribe" },
         { "source": "/order", "destination": "/order.html" },
         { "source": "/wholesale.html", "destination": "/wholesale.html" },
         { "source": "/privacy.html", "destination": "/privacy.html" },
