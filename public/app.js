@@ -3035,6 +3035,10 @@ function toggleAccountStar(id) {
   renderAccounts();
 }
 
+// perf: per-render indexes (orders & invoices grouped by accountId), built
+// once in renderAccounts so each card is an O(1) lookup instead of re-scanning
+// all orders + rebuilding the unified invoice array per card.
+let _acIdxOrders = null, _acIdxInv = null;
 function _acCardHTML(a, muted) {
   const lastContact  = acLastContacted(a);
   const needsAttn    = !muted && (daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30);
@@ -3047,8 +3051,9 @@ function _acCardHTML(a, muted) {
     ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
     : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
 
-  const acOrds = DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled')
-    .sort((x,y)=>x.dueDate>y.dueDate?1:-1);
+  const acOrds = (_acIdxOrders ? (_acIdxOrders.get(a.id) || [])
+                               : DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled'))
+    .slice().sort((x,y)=>x.dueDate>y.dueDate?1:-1);
   let velocityHtml = `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
   if (acOrds.length>=2) {
     const intervals=[];
@@ -3062,7 +3067,9 @@ function _acCardHTML(a, muted) {
     }
   }
 
-  const outstandingAmt = _allInvoices({accountId: a.id, excludeChildren: true})
+  const acInvs = _acIdxInv ? (_acIdxInv.get(a.id) || [])
+                           : _allInvoices({accountId: a.id, excludeChildren: true});
+  const outstandingAmt = acInvs
     .filter(x => !['paid','draft','void'].includes(x.status))
     .reduce((s, x) => s + _invAmt(x), 0);
   const outstandingHtml = outstandingAmt > 0
@@ -3134,6 +3141,7 @@ function _acCardHTML(a, muted) {
       <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
       <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
       <button class="btn sm" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')">🔗 Copy Link</button>
+      ${_isAdmin()?`<button class="btn sm" style="color:#dc2626" onclick="event.stopPropagation();deleteAccount('${a.id}')">Delete</button>`:''}
     </div>
   </div>`;
 }
@@ -3185,6 +3193,20 @@ function renderAccounts() {
 
   // Determine if any filter is active (for auto-expand logic)
   const hasActiveFilter = !!(search || typeFilter || fulfillFilter || (_acBrandFilter && _acBrandFilter !== ''));
+
+  // perf: index orders & invoices by account ONCE (was re-scanned/rebuilt per
+  // card → O(accounts × (orders + all invoices)); ~100 accounts made this slow).
+  _acIdxOrders = new Map();
+  DB.a('orders').forEach(o => {
+    if (o.status === 'cancelled') return;
+    const arr = _acIdxOrders.get(o.accountId);
+    if (arr) arr.push(o); else _acIdxOrders.set(o.accountId, [o]);
+  });
+  _acIdxInv = new Map();
+  _allInvoices({ excludeChildren: true }).forEach(inv => {
+    const arr = _acIdxInv.get(inv.accountId);
+    if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
+  });
 
   // Split into direct and per-distributor
   const directList = list.filter(a => !a.fulfilledBy || a.fulfilledBy === 'direct');
