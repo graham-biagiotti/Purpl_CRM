@@ -1830,8 +1830,14 @@ function renderFollowUps() {
       return;
     }
     if (!a.notes?.length) return;
-    const ln = a.notes[a.notes.length-1];
-    if (ln?.nextDate && ln.nextDate <= in14) {
+    // MED-8: scan ALL notes for the soonest pending follow-up — reading only
+    // the last appended note dropped earlier pending follow-ups whenever a
+    // later note without a nextDate was added.
+    let ln = null;
+    for (const n of a.notes) {
+      if (n?.nextDate && n.nextDate <= in14 && (!ln || n.nextDate < ln.nextDate)) ln = n;
+    }
+    if (ln) {
       const daysUntil = Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:ln.nextDate, action:ln.nextAction||'Follow up', id:a.id, daysUntil});
     }
