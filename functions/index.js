@@ -460,9 +460,14 @@ exports.verifyPortalPassword = onCall(async (request) => {
   if (!pw || typeof pw !== 'string') return { valid: false };
   const db = admin.firestore();
   const snap = await db.collection('portal_settings').doc('config').get();
-  if (!snap.exists) return { valid: true };
+  // LOW-10: fail CLOSED. Previously a missing config doc or empty password
+  // returned valid:true — anyone could enter with any password. The gate's
+  // whole purpose is to restrict the manual-entry path; if no password is
+  // configured, deny. (Personalized ?t= links bypass this gate entirely, so
+  // real retailers are unaffected.)
+  if (!snap.exists) return { valid: false };
   const stored = snap.data().portalPassword || '';
-  if (!stored) return { valid: true };
+  if (!stored) return { valid: false };
   return { valid: pw === stored };
 });
 
