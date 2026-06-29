@@ -472,12 +472,28 @@ const DB = {
     OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
 
     setDoc(this._configRef(), payload, { merge: true })
-      .then(() => this._updateSyncUI('synced'))
+      .then(() => { this._configRetries = 0; this._updateSyncUI('synced'); })
       .catch(e => {
         console.error('[db] Config save error:', e);
         this._updateSyncUI('error');
-        if (window.toast) toast('⚠️ Settings save failed — retrying…');
-        setTimeout(() => this._saveConfig(), 2000);
+        // LOW-1: classify like _saveCollection — never retry a permanent error
+        // forever (that's a retry storm). Bound transient retries; leave config
+        // keys dirty so the reconnect re-drive (online listener) picks them up.
+        const code = e?.code || '';
+        const permanent = ['permission-denied','not-found','invalid-argument','failed-precondition','already-exists','resource-exhausted','unimplemented'].includes(code);
+        if (permanent) {
+          if (window.toast) toast('⚠️ Settings save rejected by server: ' + (e.message || code) + '. Changes NOT saved.', 10000);
+          return;
+        }
+        const retries = (this._configRetries || 0) + 1;
+        this._configRetries = retries;
+        if (retries <= 3) {
+          if (window.toast) toast('⚠️ Settings save failed — retrying…');
+          setTimeout(() => this._saveConfig(), 2000 * retries);
+        } else {
+          [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].forEach(k => this._saveDirtyKeys.add(k));
+          if (window.toast) toast('⚠️ Settings save failed after 3 retries — cached locally, will sync when reconnected.', 10000);
+        }
       });
   },
 
