@@ -136,6 +136,13 @@ exports.sendOrderConfirmation = onCall(
     }
     data.to = recipient; // server-authoritative recipient
 
+    // MED-3: portalLink is interpolated into an href. escHtml blocks quote
+    // breakout but NOT dangerous URI schemes (javascript:, data:). Only allow
+    // http(s); drop anything else so the link can't be a phishing/script vector.
+    if (data.portalLink && !/^https?:\/\//i.test(String(data.portalLink))) {
+      data.portalLink = null;
+    }
+
     // TB-3 FIX: render order summary server-side from structured items
     let orderSummaryHtml = '';
     if (Array.isArray(data.items)) {
