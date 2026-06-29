@@ -9309,7 +9309,10 @@ function renderReports() {
       combinedEl.style.marginBottom = '12px';
       kpiRow.parentNode.insertBefore(combinedEl, kpiRow);
     }
-    const allInv = _allInvoices({excludeChildren: true});
+    // M2: exclude void so this "Total Invoiced (All Brands)" matches the
+    // Invoices-page KPI (renderInvKpis), which also drops void. Without this
+    // the two same-labeled totals disagreed by the voided amount.
+    const allInv = _allInvoices({excludeChildren: true}).filter(x => x.status !== 'void');
     const totalInvoiced = allInv.reduce((s,x) => s + _invAmt(x), 0);
     combinedEl.innerHTML = `<div class="kpi green" style="max-width:260px">` +
       `<div class="num">${fmtC(totalInvoiced)}</div>` +
@@ -11997,6 +12000,11 @@ async function getNextInvoiceNumber(type) {
       const num = peekNextInvoiceNumber();
       const n = parseInt(num.replace(/[^0-9]/g, ''));
       DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+      // M6: the atomic allocator (Firestore transaction) is unreachable, so this
+      // number is derived from local cache and is NOT collision-safe if another
+      // user is creating an invoice at the same moment. Surface it so staff can
+      // verify it isn't a duplicate, rather than failing silently.
+      if (window.toast) toast('⚠️ Could not reach the server to reserve invoice number ' + num + '. Generated from local data — double-check it isn\'t a duplicate.', 9000);
       return num;
     }
   }
