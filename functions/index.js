@@ -280,9 +280,28 @@ exports.sendApplicationConfirmation = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
-    if (!data.to || !data.businessName || !data.contactName) {
+    if (!data.businessName || !data.contactName) {
       throw new HttpsError('invalid-argument', 'Missing required fields');
     }
+    // MED-2: public callable — bind it to a real inquiry so it can't be an open
+    // branded-email relay or an arbitrary portal_inquiries tamper primitive.
+    // Require inquiryDocId, load it, send ONLY to the email stored on it, and
+    // make it idempotent. Never trust client data.to.
+    if (!data.inquiryDocId || typeof data.inquiryDocId !== 'string') {
+      throw new HttpsError('invalid-argument', 'Missing inquiryDocId');
+    }
+    const _inqRef = admin.firestore().collection('portal_inquiries').doc(data.inquiryDocId);
+    const _inqSnap = await _inqRef.get();
+    if (!_inqSnap.exists) throw new HttpsError('not-found', 'Inquiry not found');
+    const _inq = _inqSnap.data();
+    const recipient = _inq.email || '';
+    if (!recipient || typeof recipient !== 'string' || recipient.length > 200) {
+      throw new HttpsError('failed-precondition', 'Inquiry has no valid email');
+    }
+    if ((_inq.emailLog || []).some(e => e && e.stage === 'application_received')) {
+      return { success: true, alreadySent: true };
+    }
+    data.to = recipient; // server-authoritative recipient
 
     const safeName = escHtml(data.contactName);
     const safeBiz = escHtml(data.businessName);
