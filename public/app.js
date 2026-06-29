@@ -7062,7 +7062,7 @@ function saveDistShipment() {
     cases: parseInt(qs(`#dship-qty-${s.id}`)?.value)||0
   })).filter(i=>i.cases>0);
 
-  if (!items.length) { toast('Add at least one SKU qty'); return; }
+  if (!items.length) { _distShipInFlight = false; toast('Add at least one SKU qty'); return; }  // LOW-5
 
   const totalCases = items.reduce((s,i)=>s+i.cases, 0);
   const totalCans  = totalCases * CANS_PER_CASE;
@@ -7876,8 +7876,8 @@ function receiveFinishedPacks() {
   const sku = qs('#recv-pack-sku')?.value;
   const qty = parseInt(qs('#recv-pack-qty')?.value);
   const packType = qs('#recv-pack-type')?.value||'6pack';
-  if (!sku) { toast('Select a SKU'); return; }
-  if (!qty||qty<=0) { toast('Enter a valid quantity'); return; }
+  if (!sku) { _recvPacksInFlight = false; toast('Select a SKU'); return; }  // LOW-5
+  if (!qty||qty<=0) { _recvPacksInFlight = false; toast('Enter a valid quantity'); return; }  // LOW-5
   const recvPool = qs('#recv-pack-pool')?.value || 'warehouse';
   DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, pool: recvPool, note:`${packType} receipt — ${qs('#recv-pack-note')?.value?.trim()||''}`});
   qs('#recv-pack-qty').value=''; qs('#recv-pack-note').value='';
@@ -7937,7 +7937,7 @@ function saveRepackJob() {
   const date = qs('#repack-date')?.value || today();
   const outSku = qs('#repack-out-sku')?.value;
   const outQty = parseInt(qs('#repack-out-qty')?.value);
-  if (!outSku||!outQty||outQty<=0) { toast('Output SKU and quantity required'); return; }
+  if (!outSku||!outQty||outQty<=0) { _repackInFlight = false; toast('Output SKU and quantity required'); return; }  // LOW-5
   const inputs = {};
   document.querySelectorAll('.repack-input').forEach(el=>{
     const q = parseInt(el.value);
@@ -8698,7 +8698,7 @@ function saveTodayRun() {
   setTimeout(() => { _prodRunInFlight = false; }, 2000);
   const items = {};
   SKUS.forEach(s=>{ const v=parseInt(qs('#sched-'+s.id)?.value)||0; if(v>0) items[s.id]=v; });
-  if (!Object.keys(items).length) { toast('Enter at least one quantity'); return; }
+  if (!Object.keys(items).length) { _prodRunInFlight = false; toast('Enter at least one quantity'); return; }  // LOW-5
   const notes = qs('#sched-notes')?.value?.trim()||'';
   const entry = {id:uid(), date:today(), notes, ...items};
   DB.push('prod_hist', entry);
@@ -12205,7 +12205,7 @@ async function saveNewCombinedInvoice() {
     lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: false });
   });
 
-  if (!purplLines.length && !lfLines.length) { toast('Add at least one case quantity'); return; }
+  if (!purplLines.length && !lfLines.length) { _saveCombInFlight = false; toast('Add at least one case quantity'); return; }  // LOW-5
 
   const account  = DB.a('ac').find(x => x.id === accountId) || {};
   const due      = qs('#nciv-due')?.value || '';
@@ -15693,7 +15693,7 @@ async function _saveInvCore(id, isNew) {
   const paymentTerms = qs('#iv-terms')?.value || 'net30';
   const paymentTermsCustom = paymentTerms === 'custom' ? (qs('#iv-terms-custom')?.value?.trim() || '') : undefined;
 
-  if (!accountId) { toast('Select an account'); return; }
+  if (!accountId) { _saveInvInFlight = false; toast('Select an account'); return; }  // LOW-5: don't 2s-lock the form on validation failure
 
   const ac          = DB.a('ac').find(x => x.id === accountId) || {};
   const invSettings = DB.obj('invoice_settings', {});
@@ -15716,7 +15716,7 @@ async function _saveInvCore(id, isNew) {
     });
   });
 
-  if (!lineItems.length) { toast('Enter at least one case quantity'); return; }
+  if (!lineItems.length) { _saveInvInFlight = false; toast('Enter at least one case quantity'); return; }  // LOW-5
 
   const totalCases = lineItems.reduce((s, l) => s + l.cases, 0);
   const totalCans  = totalCases * CANS_PER_CASE;
