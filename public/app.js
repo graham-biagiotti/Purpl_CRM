@@ -14095,6 +14095,33 @@ function _fmtPoDate(d) {
   return d;
 }
 
+function _poTsMs(t) {
+  if (!t) return 0;
+  if (t.toDate) return t.toDate().getTime();
+  if (typeof t.getTime === 'function') return t.getTime();
+  return new Date(t).getTime() || 0;
+}
+// Whether two portal_orders are the purpl+LF halves of ONE submission.
+// Requires: different brands, near-simultaneous (<60s), AND a POSITIVE shared
+// identity. The old predicates paired on `accountId === accountId`, which is
+// TRUE for two unmatched orders (undefined === undefined) — letting two
+// different new businesses get merged onto one combined invoice. This never
+// pairs on blank ids: both-matched needs equal accountId; both-unmatched needs
+// the same non-empty business name AND email; one-matched-one-not never pairs.
+function _samePortalSubmission(a, b) {
+  if (!a || !b || a.id === b.id) return false;
+  if (a.brand === b.brand) return false;
+  const ta = _poTsMs(a.submittedAt), tb = _poTsMs(b.submittedAt);
+  if (!ta || !tb || Math.abs(ta - tb) >= 60000) return false;
+  if (a.accountId && b.accountId) return a.accountId === b.accountId;
+  if (a.accountId || b.accountId) return false;
+  const nameA = (a.accountName || '').trim().toLowerCase();
+  const nameB = (b.accountName || '').trim().toLowerCase();
+  const emA = (a.billingEmail || a.contactEmail || '').trim().toLowerCase();
+  const emB = (b.billingEmail || b.contactEmail || '').trim().toLowerCase();
+  return !!nameA && nameA === nameB && !!emA && emA === emB;
+}
+
 function _renderPoAll() {
   const el = qs('#po-pane-all');
   if (!el) return;
@@ -14111,16 +14138,12 @@ function _renderPoAll() {
     used.add(o.id);
     const group = { purpl: null, lf: null };
     if (o.brand === 'lf') group.lf = o; else group.purpl = o;
-    // Find matching pair (same account, within 60 seconds)
-    const oTime = o.submittedAt?.toDate ? o.submittedAt.toDate().getTime() : (o.submittedAt ? new Date(o.submittedAt).getTime() : 0);
+    // Find the opposite-brand half of the same submission (strict identity).
     orders.forEach(p => {
       if (used.has(p.id) || p.id === o.id) return;
-      if (p.accountId !== o.accountId && p.accountName !== o.accountName) return;
-      const pTime = p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0);
-      if (Math.abs(oTime - pTime) < 60000) {
-        used.add(p.id);
-        if (p.brand === 'lf') group.lf = p; else group.purpl = p;
-      }
+      if (!_samePortalSubmission(o, p)) return;
+      used.add(p.id);
+      if (p.brand === 'lf') group.lf = p; else group.purpl = p;
     });
     grouped.push(group);
   });
@@ -14430,13 +14453,8 @@ async function reviewPortalOrder(id) {
     await PortalDB.updateOrder(id, { status:'reviewed', reviewedAt: new Date() });
   }
 
-  // Find paired LF/purpl order from same submission
-  const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
-  const oTime = _tsMs(o.submittedAt);
-  const paired = PortalDB.getOrders().find(p =>
-    p.id !== o.id && (p.accountId === o.accountId || p.accountName === o.accountName) && p.brand !== o.brand &&
-    Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
-  );
+  // Find paired LF/purpl order from same submission (strict identity).
+  const paired = PortalDB.getOrders().find(p => _samePortalSubmission(o, p));
   const purplOrd = o.brand === 'lf' ? paired : o;
   const lfOrd = o.brand === 'lf' ? o : paired;
 
@@ -14557,16 +14575,7 @@ async function deletePortalOrder(orderId) {
     if (order) {
       const oTime = order.submittedAt?.toDate ? order.submittedAt.toDate().getTime()
                   : (order.submittedAt ? new Date(order.submittedAt).getTime() : 0);
-      const paired = PortalDB.getOrders().find(p => {
-        if (p.id === orderId) return false;
-        if (p.brand === order.brand) return false;
-        const dt = p.submittedAt?.toDate ? p.submittedAt.toDate().getTime() : (p.submittedAt ? new Date(p.submittedAt).getTime() : 0);
-        if (!oTime || !dt || Math.abs(dt - oTime) >= 60000) return false;
-        // When both have accountIds, require a strict match. Otherwise fall back to
-        // accountName + billingEmail to avoid clobbering unrelated unmatched orders.
-        if (order.accountId && p.accountId) return p.accountId === order.accountId;
-        return p.accountName === order.accountName && (p.billingEmail || '') === (order.billingEmail || '');
-      });
+      const paired = PortalDB.getOrders().find(p => _samePortalSubmission(order, p));
       if (paired) toDelete.push(paired.id);
     }
     await Promise.all(toDelete.map(id =>
@@ -14590,13 +14599,8 @@ function openConfirmPortalOrder(id) {
   if (!o) return;
   const isUnmatched = !o.accountId;
 
-  // Find paired order from same submission
-  const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
-  const oTime = _tsMs(o.submittedAt);
-  const paired = PortalDB.getOrders().find(p =>
-    p.id !== o.id && (p.accountId === o.accountId || p.accountName === o.accountName) &&
-    p.brand !== o.brand && Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
-  );
+  // Find paired order from same submission (strict identity).
+  const paired = PortalDB.getOrders().find(p => _samePortalSubmission(o, p));
   const purplDoc = o.brand === 'lf' ? paired : o;
   const lfDoc    = o.brand === 'lf' ? o : paired;
   const hasPurpl = purplDoc && (purplDoc.items||[]).some(i => (i.cases||0) > 0);
@@ -14669,8 +14673,11 @@ function openConfirmPortalOrder(id) {
   openModal('modal-confirm-portal-order');
 }
 
+let _confirmPortalInFlight = false;
 async function confirmPortalOrder() {
   if (!_portalOrderId) return;
+  if (_confirmPortalInFlight) { toast('Confirming — please wait…'); return; }
+  _confirmPortalInFlight = true;
   try {
     const portalRef = firebase.firestore()
       .collection('portal_orders').doc(_portalOrderId);
@@ -14702,14 +14709,22 @@ async function confirmPortalOrder() {
     const isDistFulfilled = acct.fulfilledBy && acct.fulfilledBy !== 'direct';
 
     // Find paired order from same submission (other brand, within 60s)
-    const _tsMs = t => { if (!t) return 0; if (t.toDate) return t.toDate().getTime(); if (typeof t.getTime === 'function') return t.getTime(); return new Date(t).getTime() || 0; };
-    const oTime = _tsMs(d.submittedAt);
     const allPortal = PortalDB.getOrders();
-    const paired = allPortal.find(p =>
-      p.id !== _portalOrderId && (p.accountId === d.accountId || p.accountName === d.accountName) &&
-      p.brand !== d.brand && p.status !== 'confirmed' &&
-      Math.abs(_tsMs(p.submittedAt) - oTime) < 60000
-    );
+    let paired = allPortal.find(p => p.status !== 'confirmed' && _samePortalSubmission(d, p));
+    // #4: claim the paired (other-brand) doc TRANSACTIONALLY before building the
+    // combined invoice, so two tabs converting the two halves of one submission
+    // can't both succeed. If it's already been confirmed elsewhere, drop it and
+    // convert this half as a single-brand order instead of double-invoicing.
+    if (paired) {
+      const pairedRef = firebase.firestore().collection('portal_orders').doc(paired.id);
+      const claimed = await firebase.firestore().runTransaction(async tx => {
+        const ps = await tx.get(pairedRef);
+        if (!ps.exists || ps.data().status === 'confirmed') return false;
+        tx.update(pairedRef, { status: 'confirmed', confirmedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        return true;
+      });
+      if (!claimed) paired = null;
+    }
 
     const purplDoc = d.brand === 'lf' ? paired : d;
     const lfDoc    = d.brand === 'lf' ? d : paired;
@@ -14939,6 +14954,8 @@ async function confirmPortalOrder() {
   } catch(e) {
     console.error('confirmPortalOrder error:', e);
     toast('Error confirming order — check console');
+  } finally {
+    _confirmPortalInFlight = false;
   }
 }
 
