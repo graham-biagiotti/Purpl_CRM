@@ -15497,19 +15497,27 @@ function markInvoiceSent(id) {
   _markSentInFlight.add(id);
   const inv = findInvoice(id);
   const col = _invoiceCol(id);
-  DB.update(col, id, x => ({...x, status:'sent', sentAt: today()}));
   // Deduct purpl inventory when a draft is first sent — skip if already deducted
   const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
-  if (inv && inv.status === 'draft' && !alreadyDeducted) {
-    const invNum = inv.number || inv.invoiceNumber || '';
-    const lines = inv.lineItems || inv.items || [];
-    lines.forEach(li => {
-      const cases = li.cases || li.qty || 0;
-      if (cases > 0) {
-        DB.push('iv', { id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'farm', note: 'Invoice ' + invNum, invoiceId: id });
-      }
-    });
-  }
+  const deduct = inv && inv.status === 'draft' && !alreadyDeducted;
+  // M3: status flip + inventory deductions in one atomicUpdate (was two
+  // independent writes that could land apart on a persistence failure).
+  DB.atomicUpdate(c => {
+    const arr = c[col] || [];
+    const idx = arr.findIndex(x => x.id === id);
+    if (idx >= 0) arr[idx] = {...arr[idx], status:'sent', sentAt: today()};
+    if (deduct) {
+      const invNum = inv.number || inv.invoiceNumber || '';
+      const lines = inv.lineItems || inv.items || [];
+      c.iv = c.iv || [];
+      lines.forEach(li => {
+        const cases = li.cases || li.qty || 0;
+        if (cases > 0) {
+          c.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'farm', note: 'Invoice ' + invNum, invoiceId: id });
+        }
+      });
+    }
+  });
   _markSentInFlight.delete(id);
   renderInvoicesPage();
   toast('Marked as sent ✓');
@@ -15749,16 +15757,22 @@ async function _saveInvCore(id, isNew) {
   };
 
   if (_isNew) {
-    DB.push('retail_invoices', rec);
-    // Deduct inventory on new non-draft invoice creation (purpl only)
-    // Draft invoices get deducted when marked as sent via markInvoiceSent()
-    if (status !== 'draft') {
-      lineItems.forEach(li => {
-        if (li.cases > 0) {
-          DB.push('iv', { id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, pool: rec.fulfillmentSource || 'farm', note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
-        }
-      });
-    }
+    // M3: write the invoice doc AND its inventory deductions in ONE atomicUpdate
+    // so a partial persistence failure can't leave a billed invoice with no
+    // stock deducted (which would overstate on-hand and risk overselling).
+    // Draft invoices get deducted later when marked sent via markInvoiceSent().
+    DB.atomicUpdate(c => {
+      c.retail_invoices = c.retail_invoices || [];
+      c.retail_invoices.push(rec);
+      if (status !== 'draft') {
+        c.iv = c.iv || [];
+        lineItems.forEach(li => {
+          if (li.cases > 0) {
+            c.iv.push({ id: uid(), date: rec.date || today(), sku: li.skuId, type: 'out', qty: li.cases * CANS_PER_CASE, pool: rec.fulfillmentSource || 'farm', note: 'Invoice ' + (rec.invoiceNumber || rec.number || ''), invoiceId: saveId });
+          }
+        });
+      }
+    });
   } else {
     updateInvoice(id, () => rec);
   }
