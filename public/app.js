@@ -1366,6 +1366,7 @@ function renderDash() {
   renderDashPayments();
   renderDashActivity();
   const ac  = DB.a('ac').filter(x=>x.status==='active');
+  const pendingAc = DB.a('ac').filter(x=>x.status==='pending').length;
   const pr  = DB.a('pr');
   const ord = DB.a('orders');
   const inv = DB.a('iv');
@@ -1396,7 +1397,7 @@ function renderDash() {
   const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
   const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
-  if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple');
+  if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple') + (pendingAc>0?`<div style="font-size:11px;color:#1e40af;margin-top:4px;text-align:center">+${pendingAc} pending</div>`:'');
   if (qs('#dash-kpi-purpl-ac'))             qs('#dash-kpi-purpl-ac').innerHTML             = kpiHtml('💜 purpl', purplAcCount, 'purple');
   if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🪻 LF', lfAcCount, 'green');
   if (qs('#dash-kpi-combined-outstanding')) qs('#dash-kpi-combined-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(combinedOutstanding), combinedOutstanding > 0 ? 'amber' : 'gray');
@@ -1443,6 +1444,9 @@ function renderDash() {
   qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
   qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
     `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
+      ${pendingAc>0?`<div class="dash-brand-stat" onclick="dashFilterStatus('pending')" title="View pending accounts (no order yet)" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#1e40af;background:#dbeafe;border-radius:6px;padding:3px 8px">
+        <span>⏳</span><span><strong>${pendingAc}</strong> pending (no order yet)</span>
+      </div>`:''}
       <div class="dash-brand-stat" onclick="dashFilterBrand('lf')" title="View Lavender Fields + purpl accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#166534;background:#dcfce7;border-radius:6px;padding:3px 8px">
         <span>🪻</span><span><strong>${lfCount}</strong> carry both purpl + Lavender Fields</span>
       </div>
@@ -1682,6 +1686,13 @@ function kpiHtml(label, val, color) {
 function dashFilterBrand(val) {
   _acBrandFilter = val;
   nav('accounts');
+  renderAccounts();
+}
+
+function dashFilterStatus(val) {
+  nav('accounts');
+  const el = qs('#ac-status-filter');
+  if (el) el.value = val;
   renderAccounts();
 }
 
