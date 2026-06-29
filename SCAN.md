@@ -8,6 +8,49 @@
 
 ---
 
+## RESOLUTION STATUS (updated after fix pass)
+
+Fixed and pushed (one or two findings per commit for traceability):
+
+| Finding | Status | Commit summary |
+|---------|--------|----------------|
+| C1 — `_saveCollection` deletes other users' records | ✅ FIXED | deletions now explicit via `_deleteDoc`; save paths never delete by cache-absence |
+| H1 — recovery resurrects remote deletes | ✅ FIXED | blob holds only recently-modified items; replay won't resurrect old missing rows |
+| H2 — recovery clobbers newer remote edit | ✅ MITIGATED | epoch compare + 5s skew margin (true same-doc cross-device conflict still needs server timestamps) |
+| H4 — full re-render per remote snapshot | ✅ PARTIAL | re-render debounced (120ms); deeper query-on-demand work still open |
+| H5 — O(n²) reports | ✅ FIXED | single `accountById` map in the 3 reports |
+| M1 — combined child paid ≠ parent | ✅ FIXED | `_syncCombinedParentForChild` wired into all child paid paths |
+| M2 — two "Total Invoiced" disagree | ✅ FIXED | reports total now excludes void to match the invoices KPI |
+| M3 — non-atomic invoice + inventory | ✅ FIXED | `_saveInvCore` & `markInvoiceSent` use one `atomicUpdate` |
+| M6 — invoice-number collision | ✅ MITIGATED | cache-fallback now warns staff to verify (true fix needs server) |
+| M7 — ShipStation slides due dates | ✅ FIXED | financial dates set only on first shipment |
+| M8 — `$NaN` KPIs from qty | ✅ FIXED | `parseFloat(i.qty)||0` in reports + velocity |
+| M11 — online re-drive wipes all backoff | ✅ FIXED | resets only the re-driven keys |
+| M13 — atomicUpdate leaks dirty keys | ✅ FIXED | deferred flush clears the keys it persists |
+| M14 — recovery blob quota | ✅ FIXED | windowed blob + audit_log excluded |
+| M15 — multi-tab recovery clobber | ✅ FIXED | blob merged, not overwritten |
+| M16 — sample-box lost update | ✅ FIXED | account write in a `runTransaction` |
+| L5 — atomicUpdate re-stamps audit_log | ✅ FIXED | append-only rows no longer re-stamped |
+
+Deferred — needs a product decision, a dedicated effort, or is the owner's task (NOT fixed here):
+
+| Finding | Why deferred |
+|---------|--------------|
+| H3 — audit_log fully loaded + listened | Architectural: make it `orderBy('timestamp','desc').limit(N)` query-on-demand and drop it from the loaded/listened collection set. Worth a focused pass; touches the data-layer core. |
+| M4 — `lastOrder` not set by invoice paths | Display-only false "stale" flag. Clean fix is reader-side (card considers latest invoice date) but needs the per-account invoice index from the H3/H5 work to avoid O(n²). |
+| M5 — portal `workspace/*` reads denied | Customer-facing: portal quotes LF prices from a stale client constant. Fix is a token-validated callable (mirror `getPortalOrderHistory`) returning `lf_skus`. New Cloud Function + deploy — do as its own change. |
+| M9 — `$2.15` COGS placeholder | Resolves once real COGS is set in Settings (owner's checklist item). |
+| M10 — config recovery guard | Needs per-key config timestamps to do right; current behavior is conservative. Low value. |
+| M12 — atomicUpdate no cache rollback | A correct rollback needs a deep cache clone per atomicUpdate (expensive at scale; audit_log is huge). Trigger is UNCONFIRMED (mutator throwing post-mutation). Not worth the cost yet. |
+| L1 — invoice-number sequence gaps | Cosmetic; allocator decoupled from write. |
+| L2 — Stripe idempotency check-then-write | Mark-paid mutation is idempotent; only a duplicate audit row. |
+| L3 — `accountId` spoofing on portal create | Rules can't verify the id exists; staff review `new` orders. |
+| L4 — employee can mint portal tokens | Product decision: gate `orderPortalToken` write to admin, or accept it. |
+| L7 — emulator test for audit_log rule | Add `@firebase/rules-unit-testing`; testing-infra task. |
+| L8 — dead `app_config` rule | Harmless; leave or remove later. |
+
+---
+
 ## TL;DR — the three that matter most
 
 1. **`_saveCollection` deletes other users' records (CRITICAL, multi-user data loss).** The whole-collection save reads the server, then deletes any doc not in the *local cache* — but the cache is intentionally stale whenever a save/atomicUpdate is in flight. Two concurrent users ⇒ one silently deletes the other's just-created accounts/orders/invoices.
