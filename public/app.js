@@ -7070,7 +7070,6 @@ function saveDistShipment() {
   // Build batch write: PO record + inventory deductions + stock transfer + dist lastOrder
   const shipId = uid();
   const poId   = uid();
-  const stId   = uid();
 
   const dist = DB.a('dist_profiles').find(x=>x.id===distId);
 
@@ -7105,16 +7104,9 @@ function saveDistShipment() {
     });
   });
 
-  // 3. Stock transfer record
-  DB.push('stock_transfers', {
-    id: stId,
-    date,
-    fromLocation: 'warehouse',
-    toLocation: `dist:${distId}`,
-    items,
-    ref: poRef || poId,
-    notes,
-  });
+  // LOW-7: removed the stock_transfers write — that collection was only ever
+  // written, never read (the two-pool model replaced the old locations system,
+  // and _renderLocationsTable was deleted). Dead write.
 
   // 4. Update distributor last-order date
   // MED-6: distributor readers (edit modal, overdue-reorder KPI) all read
