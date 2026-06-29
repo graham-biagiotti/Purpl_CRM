@@ -1,12 +1,19 @@
 # Purpl CRM — Open To-Do
 
-## Held (waiting on assets or clarification)
-- [ ] New Aromatherapy Roll-On product photo (WS_Edits p.3) — waiting on image upload
-- [ ] Email sender profile picture (PFP) for lavender@pbfwholesale.com — this is a
-      Google Workspace account-photo setting, not code. Set it in the Google admin
-      console / Gmail account settings for that address.
-- [ ] WS_Edits page 10 "Receipt?" item — unclear what it refers to, need clarification
-- [ ] Confirm "without pesticides" claim on wholesale LF section (legal/accuracy check)
+## Held (waiting on decision — not code)
+- [ ] Email sender profile picture (PFP) for lavender@pbfwholesale.com — requires
+      BIMI + a Verified Mark Certificate (VMC, ~$1k/yr, needs a registered
+      trademark). A Google Workspace photo only shows to people inside your own
+      org, not to wholesale recipients. RECOMMEND: drop unless trademarked later.
+- [ ] WS_Edits page 10 "Receipt?" item — unclear what it refers to, need Graham
+      to describe what the note was about (PDF not in repo).
+- [ ] Confirm "without pesticides" claim is accurate — appears in wholesale.html
+      lines 381 and 431. Graham to confirm true / reword / remove.
+
+## Done recently
+- [x] Aromatherapy Roll-On product photo — lf-rollon.PNG present + wired in wholesale catalog
+- [x] HIGH-7 follow-up: audit_log made append-only (was silently blocking client audit writes)
+- [x] Double DMARC record removed (deliverability fix)
 
 ## Done recently
 - [x] Sample request double-entry (dual-brand orders) — deduped by account
