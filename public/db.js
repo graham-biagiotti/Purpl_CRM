@@ -196,7 +196,13 @@ const DB = {
       if (snap.metadata.hasPendingWrites) return;
       if (!snap.exists) return;
 
-      if (this._dirty) {
+      // Mirror the collection-listener guard (line ~176): a remote config
+      // snapshot must NOT overwrite local config that's edited-but-unflushed.
+      // Config keys (CONFIG_ARRAY_KEYS + OBJ_KEYS) live in _saveDirtyKeys while
+      // a debounced save is pending, and atomicUpdate also flushes config.
+      const _configKeyDirty = this._saveDirtyKeys &&
+        [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys.has(k));
+      if (this._dirty || this._atomicInProgress || _configKeyDirty) {
         this._pendingRemoteChanges = true;
         this._showRemoteChangeWarning();
       } else {
