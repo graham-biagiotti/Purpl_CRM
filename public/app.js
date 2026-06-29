@@ -1378,10 +1378,13 @@ function renderDash() {
   const lowStock  = SKUS.filter(s => _onHand(s.id, null) < 48).length;
 
   const allAc  = DB.a('ac');
-  const lfCount      = allAc.filter(a=>!!a.isPbf).length;
-  const purplOnly    = allAc.filter(a=>!a.isPbf).length;
-  const directCount  = allAc.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct').length;
-  const viaDistCount = allAc.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
+  // Brand/fulfillment sub-counts use ACTIVE accounts (like the Active Accounts
+  // KPI), so the breakdown reconciles with the headline instead of silently
+  // including pending/inactive/paused accounts.
+  const lfCount      = ac.filter(a=>!!a.isPbf).length;
+  const purplOnly    = ac.filter(a=>!a.isPbf).length;
+  const directCount  = ac.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct').length;
+  const viaDistCount = ac.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
 
   // ── Combined 6-card KPI row ──────────────────────────────
   loadScratchpad();
@@ -4869,7 +4872,7 @@ async function meTemplateSend() {
   const needsLink     = _TEMPLATES_NEED_LINK.includes(tplId);
   const hasEmail      = a => (a.contacts || []).some(c => c.email) || !!a.email;
   const noEmailCount  = accounts.filter(a => !hasEmail(a)).length;
-  const newLinkCount  = needsLink ? accounts.filter(a => !a.orderPortalToken).length : 0;
+  const newLinkCount  = needsLink ? accounts.filter(a => !a.orderPortalToken && !a.emailOptOut).length : 0;
   let confirmMsg = `Send "${tplId}" to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`;
   if (noEmailCount) confirmMsg += `\n\n⚠️ ${noEmailCount} have no email address — they will be skipped.`;
   if (newLinkCount) confirmMsg += `\n\n🔗 ${newLinkCount} will get a brand-new personalized order link (generated now).`;
@@ -4887,7 +4890,7 @@ async function meTemplateSend() {
   // (which lookupPortalToken reads) AND the local ac cache. Awaited so the
   // token is persisted server-side before the email goes out.
   if (needsLink) {
-    const needTokens = accounts.filter(a => !a.orderPortalToken);
+    const needTokens = accounts.filter(a => !a.orderPortalToken && !a.emailOptOut);
     let tokenFails = 0;
     for (let t = 0; t < needTokens.length; t++) {
       const a = needTokens[t];
@@ -5275,8 +5278,17 @@ function editAccount(id) {
   const ffSel = qs('#eac-fulfilled-by');
   if (ffSel) {
     const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
-    ffSel.innerHTML = '<option value="direct">Direct (self-deliver)</option>' +
+    // If this account is fulfilled by a now-INACTIVE distributor, that distId
+    // won't be in the active list — inject an option for it so the select keeps
+    // the real value. Otherwise opening+saving would silently revert it to
+    // 'direct', changing the account's invoicing/delivery routing.
+    let optHtml = '<option value="direct">Direct (self-deliver)</option>' +
       dists.map(d=>`<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+    if (a.fulfilledBy && a.fulfilledBy !== 'direct' && !dists.some(d=>d.id===a.fulfilledBy)) {
+      const inactive = DB.a('dist_profiles').find(d=>d.id===a.fulfilledBy);
+      optHtml += `<option value="${a.fulfilledBy}">${escHtml((inactive?.name||'Distributor')+' (inactive)')}</option>`;
+    }
+    ffSel.innerHTML = optHtml;
     ffSel.value = a.fulfilledBy || 'direct';
   }
 
@@ -5399,6 +5411,7 @@ async function saveAccount(id, isNew) {
     notes:     existing?.notes||[],
     outreach:  existing?.outreach||[],
     lastOrder: existing?.lastOrder||null,
+    created:   existing?.created || today(),
   };
 
   if (isNew) DB.push('ac', rec);
