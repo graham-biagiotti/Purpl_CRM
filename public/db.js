@@ -426,29 +426,23 @@ const DB = {
     const batch = this._db.batch();
     const colRef = this._collRef(key);
 
-    // Get current docs to find deletions
-    colRef.get().then(snap => {
-      const existingIds = new Set(snap.docs.map(d => d.id));
-      const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
-      const appendOnly = APPEND_ONLY_KEYS.includes(key);
-
-      // Set/update all current items. For append-only collections, only write
-      // NEW docs (re-setting an existing one is an UPDATE the rules reject).
+    // C1: this path NEVER deletes. It only creates/updates the docs currently
+    // in cache. Deletions are propagated explicitly via _deleteDoc (from
+    // remove() and atomicUpdate's before/after diff) — inferring deletion from
+    // "server has an id my cache lacks" is unsafe because the cache is stale
+    // during in-flight saves and could wipe another user's new docs.
+    // For append-only collections we still read existing ids so we only CREATE
+    // new docs (re-setting an existing one is an UPDATE the rules reject).
+    const appendOnly = APPEND_ONLY_KEYS.includes(key);
+    const guard = appendOnly
+      ? colRef.get().then(snap => new Set(snap.docs.map(d => d.id)))
+      : Promise.resolve(null);
+    guard.then(existingIds => {
       items.forEach(item => {
         if (!item.id) return;
         if (appendOnly && existingIds.has(item.id)) return;
         batch.set(colRef.doc(item.id), item, { merge: true });
       });
-
-      // Delete removed items — never for append-only collections.
-      if (!appendOnly) {
-        existingIds.forEach(id => {
-          if (!cacheIds.has(id)) {
-            batch.delete(colRef.doc(id));
-          }
-        });
-      }
-
       return batch.commit();
     }).then(() => {
       this._saveRetries = {};
@@ -620,12 +614,27 @@ const DB = {
       fn(this._cache);
       const now = new Date().toISOString();
       COLLECTION_KEYS.forEach(k => {
+        const appendOnly = APPEND_ONLY_KEYS.includes(k);
+        const after = new Set();
         (this._cache[k]||[]).forEach(item => {
           if (item && typeof item === 'object') {
-            item._updatedAt = now;
-            if (item.id && !before[k].has(item.id)) this._writeDoc(k, item);
+            // L5: don't re-stamp append-only rows (they're immutable; the
+            // server skips re-writing them, so a new _updatedAt is pure drift).
+            if (!appendOnly) item._updatedAt = now;
+            if (item.id) {
+              after.add(item.id);
+              if (!before[k].has(item.id)) this._writeDoc(k, item);
+            }
           }
         });
+        // C1: propagate deletions EXPLICITLY. Previously _saveCollection inferred
+        // deletions from "server has a doc my cache doesn't" — but the cache is
+        // intentionally stale during a save/atomicUpdate (snapshot deferral), so
+        // that diff could delete another user's just-created docs. Diff the
+        // before/after id sets here instead. Append-only collections never delete.
+        if (!appendOnly) {
+          before[k].forEach(id => { if (!after.has(id)) this._deleteDoc(k, id); });
+        }
       });
       allKeys.forEach(k => this._scheduleSave(k));
     } catch (e) {
@@ -697,23 +706,19 @@ const DB = {
   },
 
   async _saveCollectionSync(key) {
+    // C1: create/update only — never delete by cache-absence (see _saveCollection).
     const items = this._cache[key] || [];
     const colRef = this._collRef(key);
-    const snap = await colRef.get();
-    const existingIds = new Set(snap.docs.map(d => d.id));
-    const cacheIds = new Set(items.map(x => x.id).filter(Boolean));
     const appendOnly = APPEND_ONLY_KEYS.includes(key);
+    const existingIds = appendOnly
+      ? new Set((await colRef.get()).docs.map(d => d.id))
+      : null;
     const batch = this._db.batch();
     items.forEach(item => {
       if (!item.id) return;
       if (appendOnly && existingIds.has(item.id)) return;
       batch.set(colRef.doc(item.id), item, { merge: true });
     });
-    if (!appendOnly) {
-      existingIds.forEach(id => {
-        if (!cacheIds.has(id)) batch.delete(colRef.doc(id));
-      });
-    }
     await batch.commit();
   },
 
