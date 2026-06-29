@@ -9933,16 +9933,18 @@ function repInventory() {
   const inv   = DB.a('iv');
   const costs = DB.obj('costs', {cogs:{}});
 
+  // LOW-3: report keeps inline ins/outs for the Received/Shipped columns, but
+  // net on-hand uses the canonical _onHand (single source of truth, clamped).
   const rows = SKUS.map(s=>{
     const ins  = inv.filter(i=>i.sku===s.id&&(i.type==='in'||i.type==='return')).reduce((t,i)=>t+i.qty,0);
     const outs = inv.filter(i=>i.sku===s.id&&i.type==='out').reduce((t,i)=>t+i.qty,0);
-    const oh   = Math.max(0, ins-outs);
+    const oh   = _onHand(s.id, null);
     const val  = oh*(costs.cogs[s.id]||2.15);
     const status = oh<24?'Critical':oh<48?'Low':'OK';
     return [s.label, fmt(ins), fmt(outs), fmt(oh), fmtC(val), status];
   });
-  const totalOH = SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in'||x.type==='return').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs); },0);
-  const totalVal= SKUS.reduce((s,sk)=>{ const i=DB.a('iv').filter(x=>x.sku===sk.id); const ins=i.filter(x=>x.type==='in'||x.type==='return').reduce((a,b)=>a+b.qty,0); const outs=i.filter(x=>x.type==='out').reduce((a,b)=>a+b.qty,0); return s+Math.max(0,ins-outs)*(costs.cogs[sk.id]||2.15); },0);
+  const totalOH = SKUS.reduce((s,sk)=> s + _onHand(sk.id, null), 0);
+  const totalVal= SKUS.reduce((s,sk)=> s + _onHand(sk.id, null) * (costs.cogs[sk.id]||2.15), 0);
 
   _setKPIs(fmt(totalOH)+' units', fmtC(totalVal), rows.filter(r=>r[5]==='Low').length+' low', rows.filter(r=>r[5]==='Critical').length+' critical');
 
