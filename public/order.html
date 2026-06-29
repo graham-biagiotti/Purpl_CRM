@@ -932,7 +932,7 @@ function init() {
       _brandPurpl = true;
       _brandLf = isPbf;
       updateBrandVisibility();
-      if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
+      if (isPbf) loadLfSkus(null); // load LF SKUs with no quantity prefill
       // #2: no balances/invoicing on the portal — customers just see their past
       // orders (renderPastOrders, below). Invoices go out separately near launch.
     }
@@ -977,7 +977,9 @@ function init() {
       var dw = document.getElementById('delivery-window');
       if (dw) dw.value = prefs.deliveryNotes;
     }
-    if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
+    // #3: do NOT prefill order quantities from the last order — a customer
+    // could accidentally re-submit old amounts. Only account info prefills
+    // (name, email, shipping above). Quantities always start at 0.
 
     firebase.functions().httpsCallable('getPortalOrderHistory')({ accountId: accountId, token: token })
       .then(function(result) {
