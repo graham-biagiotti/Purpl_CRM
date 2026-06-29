@@ -1114,7 +1114,15 @@ exports.stripeWebhook = onRequest(
         if (combSnap.exists) {
           const comb = combSnap.data();
           if (comb.purplInvoiceId) {
-            await db.doc(`workspace/main/retail_invoices/${comb.purplInvoiceId}`).update(paidData).catch(() => {});
+            // MED-1: the purpl child may be a legacy iv record (createCombinedInvoice
+            // supports purpl children in iv). Mirror markCombinedPaid: try
+            // retail_invoices, fall back to iv. Don't silently swallow both —
+            // log an orphan so overstated receivables are traceable.
+            await db.doc(`workspace/main/retail_invoices/${comb.purplInvoiceId}`).update(paidData)
+              .catch(async () => {
+                await db.doc(`workspace/main/iv/${comb.purplInvoiceId}`).update(paidData)
+                  .catch(() => console.warn(`Combined paid: purpl child ${comb.purplInvoiceId} not found in retail_invoices or iv`));
+              });
           }
           if (comb.lfInvoiceId) {
             await db.doc(`workspace/main/lf_invoices/${comb.lfInvoiceId}`).update(paidData).catch(() => {});
