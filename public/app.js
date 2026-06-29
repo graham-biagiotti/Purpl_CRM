@@ -2987,9 +2987,21 @@ function calcProjectionsWindow(windowDays) {
 // ══════════════════════════════════════════════════════════
 //  ACCOUNTS
 // ══════════════════════════════════════════════════════════
+// MED-7: notes/outreach are appended with user-chosen (backdatable) dates, so
+// the last array element is NOT necessarily the most recent. Scan for the max.
+function _maxDate(arr) {
+  if (!arr || !arr.length) return null;
+  return arr.reduce((m, x) => (x && x.date && x.date > m) ? x.date : m, '') || null;
+}
+// Returns the entry with the latest date (not the last appended) — entries can
+// be backdated, so positional [length-1] reads misreport the "latest".
+function _latestByDate(arr) {
+  if (!arr || !arr.length) return null;
+  return arr.reduce((best, x) => (!best || (x?.date || '') > (best.date || '')) ? x : best, null);
+}
 function acLastContacted(a) {
-  const noteDate     = a.notes?.length ? a.notes[a.notes.length-1].date : null;
-  const outreachDate = a.outreach?.length ? a.outreach[a.outreach.length-1].date : null;
+  const noteDate     = _maxDate(a.notes);
+  const outreachDate = _maxDate(a.outreach);
   if (noteDate && outreachDate) return noteDate > outreachDate ? noteDate : outreachDate;
   return noteDate || outreachDate || null;
 }
@@ -3050,8 +3062,8 @@ function _acCardHTML(a, muted) {
     ? `<span class="ac-metric-val red">${fmtC(outstandingAmt)}</span>`
     : `<span class="ac-metric-val green">Clear</span>`;
 
-  const lastNote     = a.notes?.length ? a.notes[a.notes.length-1] : null;
-  const lastOutreach = a.outreach?.length ? a.outreach[a.outreach.length-1] : null;
+  const lastNote     = _latestByDate(a.notes);
+  const lastOutreach = _latestByDate(a.outreach);
   const locs = (a.locs && a.locs.length) ? a.locs
     : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
 
@@ -5387,7 +5399,7 @@ function renderProspects() {
 
   el.innerHTML = list.map(p=>{
     const priCfg        = PRIORITY_CFG[p.priority||'medium']||PRIORITY_CFG.medium;
-    const lastNote      = p.notes?.length ? p.notes[p.notes.length-1] : null;
+    const lastNote      = _latestByDate(p.notes);
     const latestSample  = (p.samples||[]).slice().sort((a,b)=>b.date>a.date?1:-1)[0];
     const smpFuDate     = latestSample?.followUpDate;
     const in7d          = new Date(Date.now()+7*86400000).toISOString().slice(0,10);
@@ -5398,7 +5410,7 @@ function renderProspects() {
             ? `<span class="badge amber" style="font-size:10px">🧪 Follow-up ${fmtD(smpFuDate)}</span>`
             : '')
       : '';
-    const lastOutreach  = p.outreach?.length ? p.outreach[p.outreach.length-1] : null;
+    const lastOutreach  = _latestByDate(p.outreach);
     const _plc = p.lastContacted || p.lastContact;
     const lastContactStr= _plc
       ? `${fmtD(_plc)} (${daysAgo(_plc)}d)`
