@@ -7073,7 +7073,6 @@ function saveDistShipment() {
 
   const dist = DB.a('dist_profiles').find(x=>x.id===distId);
 
-  // 1. Create dist PO record
   const poRec = {
     id: poId,
     distId,
@@ -7087,11 +7086,15 @@ function saveDistShipment() {
     notes,
     isShipment: true,
   };
-  DB.push('dist_pos', poRec);
 
-  // 2. Deduct inventory (one iv entry per SKU) — always warehouse pool
-  items.forEach(item=>{
-    DB.push('iv', {
+  // LOW-4: write the PO record, the per-SKU iv deductions, and the distributor
+  // lastOrderDate as ONE atomic batch — previously three separate DB calls,
+  // so a partial failure could leave a PO without deductions (or vice versa).
+  // (LOW-7: the old stock_transfers write was dead and is dropped.)
+  // (MED-6: distributor readers use lastOrderDate, not lastOrder.)
+  DB.atomicUpdate(cache => {
+    cache.dist_pos = [...(cache.dist_pos||[]), poRec];
+    const ivEntries = items.map(item => ({
       id: uid(),
       sku: item.sku,
       type: 'out',
@@ -7101,21 +7104,11 @@ function saveDistShipment() {
       source: 'dist_shipment',
       ref: shipId,
       note: `Shipment to ${dist?.name||'distributor'}${poRef?' — '+poRef:''}`,
-    });
+    }));
+    cache.iv = [...(cache.iv||[]), ...ivEntries];
+    const di = (cache.dist_profiles||[]).findIndex(x => x.id === distId);
+    if (di >= 0) cache.dist_profiles[di] = { ...cache.dist_profiles[di], lastOrderDate: date };
   });
-
-  // LOW-7: removed the stock_transfers write — that collection was only ever
-  // written, never read (the two-pool model replaced the old locations system,
-  // and _renderLocationsTable was deleted). Dead write.
-
-  // 4. Update distributor last-order date
-  // MED-6: distributor readers (edit modal, overdue-reorder KPI) all read
-  // lastOrderDate — this writer used lastOrder (the account convention), so
-  // shipments never updated the field and distributors wrongly read overdue.
-  DB.update('dist_profiles', distId, d=>({
-    ...d,
-    lastOrderDate: date,
-  }));
 
   closeModal('modal-dist-shipment');
   // Refresh dist modal orders tab if open
