@@ -138,6 +138,23 @@ const DB = {
     // Set up real-time listeners
     this._subscribeAll();
 
+    // HIGH-3: re-drive any cached-but-unsaved keys when connectivity returns.
+    // After 3 failed transient save retries a key sits in _saveDirtyKeys with
+    // no scheduled retry — without this it would only flush on the next manual
+    // edit or reload. Fire once on reconnect.
+    if (!this._onlineWired) {
+      this._onlineWired = true;
+      window.addEventListener('online', () => {
+        if (!this._firestoreReady) return;
+        const stuck = [...(this._saveDirtyKeys || [])];
+        if (stuck.length) {
+          this._saveRetries = {}; // reset backoff counters on reconnect
+          stuck.forEach(k => this._scheduleSave(k));
+          if (window.toast) toast('Reconnected — syncing your changes…');
+        }
+      });
+    }
+
     if (window.refreshCurrentPage) window.refreshCurrentPage();
   },
 
