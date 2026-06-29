@@ -8157,6 +8157,7 @@ function _invReturns() {
   }
 }
 
+let _saveReturnInFlight = false;
 function saveReturn() {
   const accountId = qs('#ret-account')?.value;
   const skuId     = qs('#ret-sku')?.value;
@@ -8164,6 +8165,11 @@ function saveReturn() {
   if (!accountId) { toast('Select an account'); return; }
   if (!skuId)     { toast('Select a SKU'); return; }
   if (cans <= 0)  { toast('Enter number of cans'); return; }
+  // HIGH-6: block double-click — two return entries inflate on-hand 2x.
+  // Guarded AFTER validation so a failed validation doesn't lock the form.
+  if (_saveReturnInFlight) return;
+  _saveReturnInFlight = true;
+  setTimeout(() => { _saveReturnInFlight = false; }, 2000);
 
   const account     = DB.a('ac').find(a=>a.id===accountId);
   const date        = qs('#ret-date')?.value || today();
