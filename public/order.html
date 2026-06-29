@@ -1232,42 +1232,44 @@ function submitOrder() {
     return;
   }
 
-  // Write purpl order (unchanged logic — only if purpl brand selected and has items/notify)
-  var purplPromise = (_brandPurpl && (cases > 0 || orderData.notifyMe.length > 0))
-    ? db.collection('portal_orders').add(Object.assign({}, orderData, {brand:'purpl'}))
-    : Promise.resolve(null);
+  // #5: write the up-to-two portal_order docs ATOMICALLY in one batch, so a
+  // partial failure can't leave a duplicate (on retry) or an orphaned half.
+  var wantPurplDoc = _brandPurpl && (cases > 0 || orderData.notifyMe.length > 0);
+  var wantLfDoc    = lfItems.length > 0;
+  // A sample-only / notify-only submission has no line items but must STILL
+  // leave one record, or the request is silently lost.
+  if (!wantPurplDoc && !wantLfDoc && (requestSample || orderData.notifyMe.length > 0)) wantPurplDoc = true;
 
-  // Write LF order if any LF items
-  var lfPromise = lfItems.length > 0
-    ? db.collection('portal_orders').add({
-        accountId: accountId || null,
-        accountName: finalAccountName,
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        mode: portalMode,
-        brand: 'lf',
-        lineItems: lfItems,
-        total: lfTotal,
-        contactName: contactName || null,
-        contactEmail: billingEmail,
-        billingEmail: billingEmail,
-        deliveryWindow: deliveryWindow,
-        poNumber: poNumber,
-        notes: notes,
-        shipAddress: shipAddress,
-        requestSample: requestSample,
-        agreedToTerms: true,
-        status: 'new',
-        source: 'portal',
-        isMatched: isMatched,
-        isProspect: isProspect,
-        isUnmatched: !isMatched,
-      })
-    : Promise.resolve(null);
+  var _batch = db.batch();
+  var purplRef = wantPurplDoc ? db.collection('portal_orders').doc() : null;
+  var lfRef    = wantLfDoc    ? db.collection('portal_orders').doc() : null;
+  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl' }));
+  if (lfRef) _batch.set(lfRef, {
+    accountId: accountId || null,
+    accountName: finalAccountName,
+    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    mode: portalMode,
+    brand: 'lf',
+    lineItems: lfItems,
+    total: lfTotal,
+    contactName: contactName || null,
+    contactEmail: billingEmail,
+    billingEmail: billingEmail,
+    deliveryWindow: deliveryWindow,
+    poNumber: poNumber,
+    notes: notes,
+    shipAddress: shipAddress,
+    requestSample: requestSample,
+    agreedToTerms: true,
+    status: 'new',
+    source: 'portal',
+    isMatched: isMatched,
+    isProspect: isProspect,
+    isUnmatched: !isMatched,
+  });
 
-  Promise.all([purplPromise, lfPromise])
-    .then(function(results) {
-      var purplRef = results[0];
-      var lfRef    = results[1];
+  _batch.commit()
+    .then(function() {
 
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
