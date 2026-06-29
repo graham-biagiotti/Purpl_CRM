@@ -4842,19 +4842,62 @@ function meTemplatePreview() {
 }
 
 let _meTemplateInFlight = false;
+// Templates whose body shows a "personalized order link / no password needed"
+// button — every recipient needs a portal token for that link to actually work.
+const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'approved'];
 async function meTemplateSend() {
   if (_meTemplateInFlight) { toast('Send already in progress'); return; }
   const tplId = qs('#me-template-select')?.value || '';
   if (!tplId) { toast('Select a template first'); return; }
-  const accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));
+  let accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));
   if (!accounts.length) { toast('No accounts selected'); return; }
-  if (!confirm2(`Send "${tplId}" template to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`)) return;
+
+  // Pre-flight summary so a large blast has no surprises.
+  const needsLink     = _TEMPLATES_NEED_LINK.includes(tplId);
+  const hasEmail      = a => (a.contacts || []).some(c => c.email) || !!a.email;
+  const noEmailCount  = accounts.filter(a => !hasEmail(a)).length;
+  const newLinkCount  = needsLink ? accounts.filter(a => !a.orderPortalToken).length : 0;
+  let confirmMsg = `Send "${tplId}" to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`;
+  if (noEmailCount) confirmMsg += `\n\n⚠️ ${noEmailCount} have no email address — they will be skipped.`;
+  if (newLinkCount) confirmMsg += `\n\n🔗 ${newLinkCount} will get a brand-new personalized order link (generated now).`;
+  if (!confirm2(confirmMsg)) return;
 
   _meTemplateInFlight = true;
   const statusEl = qs('#me-template-status');
   const sendBtn = qs('#me-template-send-btn');
   if (sendBtn) sendBtn.disabled = true;
   let sent = 0, failed = 0, skipped = 0;
+
+  // Ensure every account has a portal token BEFORE sending, so the email's
+  // "personalized link, no password needed" button actually works. Mirrors
+  // generateOrderLink: write the token to the top-level `accounts` collection
+  // (which lookupPortalToken reads) AND the local ac cache. Awaited so the
+  // token is persisted server-side before the email goes out.
+  if (needsLink) {
+    const needTokens = accounts.filter(a => !a.orderPortalToken);
+    let tokenFails = 0;
+    for (let t = 0; t < needTokens.length; t++) {
+      const a = needTokens[t];
+      if (statusEl) statusEl.textContent = `Preparing links ${t + 1} of ${needTokens.length}…`;
+      const token = generateSecureToken(a.id);
+      const stamp = new Date().toISOString().slice(0, 10);
+      try {
+        await firebase.firestore().collection('accounts').doc(a.id).set({
+          orderPortalToken: token, name: a.name, email: a.email || '', orderPortalTokenCreatedAt: stamp
+        }, { merge: true });
+        DB.update('ac', a.id, x => ({ ...x, orderPortalToken: token, orderPortalTokenCreatedAt: stamp }));
+      } catch (e) { console.error('[preorder] token gen failed for', a.id, e); tokenFails++; }
+    }
+    if (tokenFails) {
+      _meTemplateInFlight = false;
+      if (sendBtn) sendBtn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+      toast(`⚠️ ${tokenFails} portal link(s) failed to generate. Nothing was sent — check your connection and try again.`, 9000);
+      return;
+    }
+    // Re-fetch so the send loop sees the freshly-generated tokens.
+    accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));
+  }
 
   let portalPassword = '';
   if (['preorder-announcement', 'approved'].includes(tplId)) {
@@ -4894,7 +4937,7 @@ async function meTemplateSend() {
         DB.update('ac', a.id, ac => ({ ...ac, lastContacted: today(), cadence: _pushCadence(ac.cadence, entry) }));
         sent++;
       } catch(_) { failed++; }
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 500)); // ~2/sec — gentle on Resend rate limits
     }
   }
 
