@@ -103,7 +103,11 @@ service cloud.firestore {
     }
 
     // Workspace data: LAYER 2 — requires staff role (was request.auth != null)
-    // audit_log is read-only at rules level; writes via Admin SDK only
+    // HIGH-7: audit_log must be append-only via Admin SDK / never client-
+    // writable. A dedicated `match` with `write: false` is NOT enough — the
+    // recursive `workspace/{path=**}` below ALSO matches audit_log docs, and
+    // Firestore grants access if ANY matching rule allows it. So the exclusion
+    // must live in the catch-all's write condition itself.
     match /workspace/main/audit_log/{docId} {
       allow read: if isStaff();
       allow write: if false;
@@ -113,7 +117,11 @@ service cloud.firestore {
     // invoice_settings, let me know and I'll add those sub-matches.
     match /workspace/{path=**} {
       allow read: if isStaff();
-      allow write: if isStaff();
+      // isStaff for all workspace writes EXCEPT audit_log, which stays
+      // immutable from the client. Size guard prevents an index error on
+      // short paths (e.g. a write to workspace/main itself).
+      allow write: if isStaff()
+        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log');
     }
 
     // Default posture: DENY. No catch-all rule.
