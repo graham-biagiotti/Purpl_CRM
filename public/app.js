@@ -2955,7 +2955,7 @@ function calcProjectionsWindow(windowDays) {
     const windowOrds = win===Infinity ? acOrds : acOrds.filter(o=>daysAgo(o.dueDate)<=win);
 
     const totalUnits = Object.fromEntries(SKUS.map(s=>[s.id,0]));
-    windowOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+i.qty; }));
+    windowOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+(parseFloat(i.qty)||0); })); // M8: guard NaN
 
     const periodDays = Math.max(7, Math.min(win===Infinity?90:win, acOrds.length>0 ? Math.max(1, daysAgo(acOrds[0].dueDate)) : 90));
     const weeklyUnits = Object.fromEntries(SKUS.map(s=>[s.id, Math.round((totalUnits[s.id]||0)/(periodDays/7)*10)/10]));
@@ -9780,16 +9780,19 @@ function repRevenue() {
 
   const bySkuRev={}, bySkuCases={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
+  // H5: index accounts once (was DB.a('ac').find per order = O(orders×accounts)).
+  const acById = new Map(DB.a('ac').map(a=>[a.id,a]));
   orders.forEach(o=>{
-    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const ac2 = acById.get(o.accountId);
     // MED-4: route through the canonical pricer so the pricePerCaseCustom
     // fallback leg is included — inline versions omitted it, making reports
     // disagree with invoices for custom-priced accounts.
     const acPrc = _calcPricePerCase(ac2);
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
-      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
+      const qty = parseFloat(i.qty)||0; // M8: guard NaN from malformed items
+      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * qty;
+      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + qty;
     });
   });
 
@@ -9824,11 +9827,12 @@ function repAccounts() {
   const margin = costs.target_margin || _margin();
   const markup = 1 / Math.max(0.01, 1 - margin);
   const acMap  = {};
+  const acById = new Map(DB.a('ac').map(a=>[a.id,a])); // H5: index once
   DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
 
   orders.forEach(o=>{
     if (!acMap[o.accountId]) return;
-    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const ac2 = acById.get(o.accountId);
     // MED-4: route through the canonical pricer so the pricePerCaseCustom
     // fallback leg is included — inline versions omitted it, making reports
     // disagree with invoices for custom-priced accounts.
@@ -9836,8 +9840,9 @@ function repAccounts() {
     acMap[o.accountId].orderCount++;
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      acMap[o.accountId].rev += pricePerCase * i.qty;
-      acMap[o.accountId].qty += i.qty; // cases
+      const qty = parseFloat(i.qty)||0; // M8: guard NaN
+      acMap[o.accountId].rev += pricePerCase * qty;
+      acMap[o.accountId].qty += qty; // cases
     });
   });
 
@@ -10040,16 +10045,18 @@ function repProfit() {
 
   const bySkuRev={}, bySkuCases={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
+  const acById = new Map(DB.a('ac').map(a=>[a.id,a])); // H5: index once
   orders.forEach(o=>{
-    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const ac2 = acById.get(o.accountId);
     // MED-4: route through the canonical pricer so the pricePerCaseCustom
     // fallback leg is included — inline versions omitted it, making reports
     // disagree with invoices for custom-priced accounts.
     const acPrc = _calcPricePerCase(ac2);
     (o.items||[]).forEach(i=>{
       const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * i.qty;
-      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + i.qty;
+      const qty = parseFloat(i.qty)||0; // M8: guard NaN
+      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * qty;
+      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + qty;
     });
   });
 
