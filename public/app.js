@@ -7098,10 +7098,13 @@ function saveDistShipment() {
     notes,
   });
 
-  // 4. Update distributor lastOrder date
+  // 4. Update distributor last-order date
+  // MED-6: distributor readers (edit modal, overdue-reorder KPI) all read
+  // lastOrderDate — this writer used lastOrder (the account convention), so
+  // shipments never updated the field and distributors wrongly read overdue.
   DB.update('dist_profiles', distId, d=>({
     ...d,
-    lastOrder: date,
+    lastOrderDate: date,
   }));
 
   closeModal('modal-dist-shipment');
