@@ -328,6 +328,7 @@ function _requireAdmin(action) {
 // ── STATUS CONFIG ────────────────────────────────────────
 const AC_STATUS = {
   active:   {label:'Active',   cls:'green'},
+  pending:  {label:'Pending',  cls:'blue'},
   inactive: {label:'Inactive', cls:'gray'},
   paused:   {label:'Paused',   cls:'amber'},
 };
@@ -3041,11 +3042,16 @@ function toggleAccountStar(id) {
 let _acIdxOrders = null, _acIdxInv = null;
 function _acCardHTML(a, muted) {
   const lastContact  = acLastContacted(a);
-  const needsAttn    = !muted && (daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30);
+  // Pending accounts are leads who haven't placed a first order yet — don't
+  // flag them as neglected ("Needs Attention" / red "Never").
+  const isPending    = a.status === 'pending';
+  const needsAttn    = !muted && !isPending && (daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30);
 
   const lastOrderHtml = a.lastOrder
     ? `<span class="ac-metric-val${daysAgo(a.lastOrder)>=30?' red':''}">${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d)</span>`
-    : `<span class="ac-metric-val red">Never</span>`;
+    : isPending
+      ? `<span class="ac-metric-val" style="color:var(--muted)">No order yet</span>`
+      : `<span class="ac-metric-val red">Never</span>`;
 
   const lastContactHtml = lastContact
     ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
@@ -3151,6 +3157,7 @@ function renderAccounts() {
   const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
   const typeFilter    = qs('#ac-type-filter')?.value || '';
   const fulfillFilter = qs('#ac-fulfill-filter')?.value || '';
+  const statusFilter  = qs('#ac-status-filter')?.value || '';
   const sortVal       = qs('#ac-sort')?.value || 'name';
 
   if (search) list = list.filter(a=>
@@ -3159,6 +3166,7 @@ function renderAccounts() {
     a.territory?.toLowerCase().includes(search) ||
     a.address?.toLowerCase().includes(search));
   if (typeFilter) list = list.filter(a=>a.type===typeFilter);
+  if (statusFilter) list = list.filter(a=>(a.status||'active')===statusFilter);
   if (_acBrandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
   else if (_acBrandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
   else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf); // refine when brands[] field added
@@ -6506,7 +6514,7 @@ function renderDistOverviewHTML(d) {
   const recentPO = DB.a('dist_pos').filter(p=>p.distId===d.id).sort((a,b)=>b.dateReceived>a.dateReceived?1:-1)[0];
   const outreach = (d.outreach||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
   const lastContact = outreach[0]?.date || d.lastContacted || null;
-  const staleAccounts = linkedAccounts.filter(a=>daysAgo(a.lastOrder)>=30);
+  const staleAccounts = linkedAccounts.filter(a=>a.status!=='pending'&&daysAgo(a.lastOrder)>=30);
 
   // Brands carried
   const brands = d.brandsCarried||[];
@@ -10892,7 +10900,7 @@ function setupFilters() {
     const el = qs(sel);
     if (el && !el.dataset.filterBound) { el.addEventListener('input', fn); el.dataset.filterBound = '1'; }
   }
-  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-fulfill-filter','#ac-sort'].forEach(sel => _bindOnce(sel, renderAccounts));
+  ['#ac-search','#ac-type-filter','#ac-brand-filter','#ac-fulfill-filter','#ac-status-filter','#ac-sort'].forEach(sel => _bindOnce(sel, renderAccounts));
   ['#pr-search','#pr-stage-filter','#pr-brand-filter','#pr-sort'].forEach(sel => _bindOnce(sel, renderProspects));
   ['#dist-search','#dist-status-filter'].forEach(sel => _bindOnce(sel, renderDistributors));
   // Projections velocity window
