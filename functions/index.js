@@ -108,12 +108,33 @@ exports.sendOrderConfirmation = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     const data = request.data;
-    if (!data.to || !data.accountName) {
-      throw new HttpsError('invalid-argument', 'Missing required fields: to, accountName');
+    if (!data.accountName) {
+      throw new HttpsError('invalid-argument', 'Missing required field: accountName');
     }
-    if (typeof data.to !== 'string' || data.to.length > 200) {
-      throw new HttpsError('invalid-argument', 'Invalid to address');
+    // HIGH-8: this callable is intentionally public (the unauthenticated portal
+    // sends its own confirmation). To stop it being an open branded-email relay,
+    // bind the recipient to a real portal order: require portalOrderId, look it
+    // up, and send ONLY to the email stored on that order — never an arbitrary
+    // client-supplied data.to. Also make it idempotent so one order can't be
+    // re-triggered as an email-bombing vector.
+    if (!data.portalOrderId || typeof data.portalOrderId !== 'string') {
+      throw new HttpsError('invalid-argument', 'Missing portalOrderId');
     }
+    const _poRef = admin.firestore().collection('portal_orders').doc(data.portalOrderId);
+    const _poSnap = await _poRef.get();
+    if (!_poSnap.exists) {
+      throw new HttpsError('not-found', 'Order not found');
+    }
+    const _po = _poSnap.data();
+    const recipient = _po.billingEmail || _po.contactEmail || '';
+    if (!recipient || typeof recipient !== 'string' || recipient.length > 200) {
+      throw new HttpsError('failed-precondition', 'Order has no valid email on file');
+    }
+    // Idempotency: don't re-send if this order already got a confirmation.
+    if ((_po.emailLog || []).some(e => e && e.stage === 'order_confirmation')) {
+      return { success: true, alreadySent: true };
+    }
+    data.to = recipient; // server-authoritative recipient
 
     // TB-3 FIX: render order summary server-side from structured items
     let orderSummaryHtml = '';
