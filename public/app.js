@@ -10766,8 +10766,11 @@ function saveSettings() {
   };
   DB.setObj('settings', s);
 
+  // MED-5: only persist a COGS a user actually entered. Coercing blank to 2.15
+  // baked a placeholder in as if it were real, so "unknown cost" became
+  // indistinguishable from an entered $2.15. Omit blank/invalid SKUs.
   const cogs = {};
-  SKUS.forEach(sk=>{ cogs[sk.id]=parseFloat(qs('#cost-'+sk.id)?.value)||2.15; });
+  SKUS.forEach(sk=>{ const v = parseFloat(qs('#cost-'+sk.id)?.value); if (!isNaN(v) && v > 0) cogs[sk.id] = v; });
   const c = {
     cogs,
     overhead_monthly: parseFloat(qs('#cost-overhead')?.value)||1200,
@@ -10817,8 +10820,11 @@ function saveInventorySettings() {
     gasPrice:             parseFloat(qs('#set-gas-price')?.value)||3.50,
     variety_recipe:       recipeTotal === CANS_PER_CASE ? recipe : (existing.variety_recipe||{}),
   });
+  // MED-5: only persist a COGS a user actually entered. Coercing blank to 2.15
+  // baked a placeholder in as if it were real, so "unknown cost" became
+  // indistinguishable from an entered $2.15. Omit blank/invalid SKUs.
   const cogs = {};
-  SKUS.forEach(sk=>{ cogs[sk.id]=parseFloat(qs('#cost-'+sk.id)?.value)||2.15; });
+  SKUS.forEach(sk=>{ const v = parseFloat(qs('#cost-'+sk.id)?.value); if (!isNaN(v) && v > 0) cogs[sk.id] = v; });
   DB.setObj('costs', {
     cogs,
     overhead_monthly: parseFloat(qs('#cost-overhead')?.value)||1200,
