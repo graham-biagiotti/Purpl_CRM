@@ -3194,9 +3194,10 @@ function renderAccounts() {
     a.address?.toLowerCase().includes(search));
   if (typeFilter) list = list.filter(a=>a.type===typeFilter);
   if (statusFilter) list = list.filter(a=>(a.status||'active')===statusFilter);
-  if (_acBrandFilter === 'lf')    list = list.filter(a=>!!a.isPbf);
-  else if (_acBrandFilter === 'purpl') list = list.filter(a=>!a.isPbf);
-  else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf); // refine when brands[] field added
+  // isPbf = carries Lavender Fields; purpl is carried if the account has purpl SKUs.
+  if (_acBrandFilter === 'lf')    list = list.filter(a=>!!a.isPbf && !(a.skus && a.skus.length)); // LF only
+  else if (_acBrandFilter === 'purpl') list = list.filter(a=>!a.isPbf);                            // purpl only
+  else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf && a.skus && a.skus.length > 0); // both lines
   if (fulfillFilter === 'direct') list = list.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 

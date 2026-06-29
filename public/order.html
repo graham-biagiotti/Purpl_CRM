@@ -191,9 +191,6 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   <!-- Past order history (shown only for matched accounts with history) -->
   <div id="order-history" style="display:none"></div>
 
-  <!-- Outstanding invoices (shown only for matched accounts with unpaid invoices) -->
-  <div id="outstanding-invoices-section" style="display:none"></div>
-
   <!-- Pre-order banner -->
   <div class="banner" id="preorder-banner">
     ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
@@ -936,7 +933,8 @@ function init() {
       _brandLf = isPbf;
       updateBrandVisibility();
       if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
-      loadOutstandingInvoices(accountId);
+      // #2: no balances/invoicing on the portal — customers just see their past
+      // orders (renderPastOrders, below). Invoices go out separately near launch.
     }
 
     // Pre-fill shipping from account
