@@ -14238,19 +14238,41 @@ function _renderPoConfirmed() {
     el.innerHTML = '<div class="card"><div class="empty" style="padding:32px">No confirmed orders yet.</div></div>';
     return;
   }
+  // Group dual-brand pairs into one row (mirror the All tab) so a purpl+LF
+  // order isn't shown as two rows — one of which falsely read "0 cases"
+  // because it only summed o.items (purpl) and ignored o.lineItems (LF).
+  const groups = [];
+  const used = new Set();
+  orders.forEach(o => {
+    if (used.has(o.id)) return;
+    used.add(o.id);
+    const g = { purpl: o.brand === 'lf' ? null : o, lf: o.brand === 'lf' ? o : null };
+    orders.forEach(p => {
+      if (used.has(p.id) || !_samePortalSubmission(o, p)) return;
+      used.add(p.id);
+      if (p.brand === 'lf') g.lf = p; else g.purpl = p;
+    });
+    groups.push(g);
+  });
   el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
-    <thead><tr><th>Submitted</th><th>Account</th><th>Cases</th><th>Confirmed</th><th>Order ID</th></tr></thead>
-    <tbody>${orders.map(o => {
-      const cases = (o.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+    <thead><tr><th>Submitted</th><th>Account</th><th>Brand</th><th>Cases</th><th>Confirmed</th><th>Order ID</th></tr></thead>
+    <tbody>${groups.map(g => {
+      const o = g.purpl || g.lf;
+      const purplCases = (g.purpl?.items||[]).reduce((s,i)=>s+(i.cases||0),0);
+      const lfCases    = (g.lf?.lineItems||[]).reduce((s,i)=>s+(i.cases||0),0);
+      const brands = [g.purpl?'💜 purpl':'', g.lf?'🪻 LF':''].filter(Boolean).join(' + ');
+      const casesLabel = [g.purpl?`${purplCases} purpl`:'', g.lf?`${lfCases} LF`:''].filter(Boolean).join(' · ') || '0';
       const confirmDate = o.confirmedAt instanceof Date ? fmtD(o.confirmedAt.toISOString().slice(0,10)) : (o.confirmedAt||'—');
+      const convId = g.purpl?.convertedOrderId || g.lf?.convertedOrderId || '—';
       return `<tr>
         <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
         <td>${o.isMatched&&o.accountId
           ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="openAccount('${o.accountId}')">${escHtml(o.accountName||'')}</span>`
           : escHtml(o.accountName||'')}</td>
-        <td>${cases}</td>
+        <td style="font-size:12px">${brands}</td>
+        <td style="font-size:12px">${casesLabel}</td>
         <td style="font-size:12px">${confirmDate}</td>
-        <td style="font-size:11px;color:var(--muted)">${o.convertedOrderId||'—'}</td>
+        <td style="font-size:11px;color:var(--muted)">${convId}</td>
       </tr>`;
     }).join('')}</tbody>
   </table></div></div>`;
