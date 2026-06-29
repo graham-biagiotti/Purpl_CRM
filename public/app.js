@@ -3019,10 +3019,23 @@ function _latestByDate(arr) {
   return arr.reduce((best, x) => (!best || (x?.date || '') > (best.date || '')) ? x : best, null);
 }
 function acLastContacted(a) {
-  const noteDate     = _maxDate(a.notes);
-  const outreachDate = _maxDate(a.outreach);
-  if (noteDate && outreachDate) return noteDate > outreachDate ? noteDate : outreachDate;
-  return noteDate || outreachDate || null;
+  // Consider ALL contact signals, not just notes/outreach: the top-level
+  // `lastContacted` field (written by email + invoice sends) and the latest
+  // cadence entry (mass/template sends append to `cadence`, not `outreach`).
+  // Without this, an account you just emailed shows "Last Contacted: —" and
+  // gets falsely flagged "Needs Attention". All values normalized to YYYY-MM-DD.
+  const cadenceDate = (a.cadence || []).reduce((m, c) => {
+    const d = (c.sentAt || '').slice(0, 10);
+    return d > m ? d : m;
+  }, '');
+  const candidates = [
+    _maxDate(a.notes),
+    _maxDate(a.outreach),
+    a.lastContacted || null,
+    cadenceDate || null,
+  ].filter(Boolean);
+  if (!candidates.length) return null;
+  return candidates.reduce((m, d) => (d > m ? d : m));
 }
 
 function setAcBrandFilter(val) {
@@ -13866,19 +13879,27 @@ const PortalDB = {
 
 async function generateOrderLink(entityId, entityName, entityEmail, entityType) {
   entityType = entityType || 'accounts';
+  const localKey = entityType === 'prospects' ? 'pr' : 'ac';
   try {
-    const token = generateSecureToken(entityId);
-    await firebase.firestore().collection(entityType).doc(entityId).set({
-      orderPortalToken: token,
-      name: entityName,
-      email: entityEmail || '',
-      orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
-    }, { merge: true });
-    const localKey = entityType === 'prospects' ? 'pr' : 'ac';
-    DB.update(localKey, entityId, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
+    // REUSE an existing token if one was already issued. Re-copying a link must
+    // NOT rotate the token — doing so would silently break a link already
+    // emailed to the customer. Only mint a new token if none exists yet.
+    const existing = DB.a(localKey).find(x => x.id === entityId);
+    let token = existing && existing.orderPortalToken;
+    const isNewToken = !token;
+    if (isNewToken) {
+      token = generateSecureToken(entityId);
+      await firebase.firestore().collection(entityType).doc(entityId).set({
+        orderPortalToken: token,
+        name: entityName,
+        email: entityEmail || '',
+        orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
+      }, { merge: true });
+      DB.update(localKey, entityId, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
+    }
     const link = 'https://pbfwholesale.com/order?t=' + token;
     await navigator.clipboard.writeText(link);
-    toast('Order link copied ✓');
+    toast(isNewToken ? 'Order link generated & copied ✓' : 'Order link copied ✓');
   } catch(e) {
     console.error(e);
     toast('Error generating link');
