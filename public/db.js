@@ -491,31 +491,42 @@ const DB = {
   atomicUpdate(fn) {
     // Block snapshots during atomic update to prevent the 50ms race
     this._atomicInProgress = true;
-    const before = {};
-    COLLECTION_KEYS.forEach(k => { before[k] = new Set((this._cache[k]||[]).map(x => x?.id).filter(Boolean)); });
-    fn(this._cache);
-    const now = new Date().toISOString();
-    COLLECTION_KEYS.forEach(k => {
-      (this._cache[k]||[]).forEach(item => {
-        if (item && typeof item === 'object') {
-          item._updatedAt = now;
-          if (item.id && !before[k].has(item.id)) this._writeDoc(k, item);
-        }
-      });
-    });
     const allKeys = [...ARRAY_KEYS, ...OBJ_KEYS];
-    allKeys.forEach(k => this._scheduleSave(k));
-    // Flush immediately for atomicity
-    setTimeout(() => {
-      allKeys.forEach(k => {
-        if (this._saveTimers[k]) {
-          clearTimeout(this._saveTimers[k]);
-          this._saveTimers[k] = null;
-        }
+    try {
+      const before = {};
+      COLLECTION_KEYS.forEach(k => { before[k] = new Set((this._cache[k]||[]).map(x => x?.id).filter(Boolean)); });
+      fn(this._cache);
+      const now = new Date().toISOString();
+      COLLECTION_KEYS.forEach(k => {
+        (this._cache[k]||[]).forEach(item => {
+          if (item && typeof item === 'object') {
+            item._updatedAt = now;
+            if (item.id && !before[k].has(item.id)) this._writeDoc(k, item);
+          }
+        });
       });
-      COLLECTION_KEYS.forEach(k => this._saveCollection(k));
-      this._saveConfig();
+      allKeys.forEach(k => this._scheduleSave(k));
+    } catch (e) {
+      // A throwing mutator must NOT leave _atomicInProgress stuck — that would
+      // permanently jam snapshot sync for the session. Clear it and rethrow.
       this._atomicInProgress = false;
+      throw e;
+    }
+    // Flush immediately for atomicity. finally guarantees the flag clears even
+    // if a _saveCollection/_saveConfig throws synchronously.
+    setTimeout(() => {
+      try {
+        allKeys.forEach(k => {
+          if (this._saveTimers[k]) {
+            clearTimeout(this._saveTimers[k]);
+            this._saveTimers[k] = null;
+          }
+        });
+        COLLECTION_KEYS.forEach(k => this._saveCollection(k));
+        this._saveConfig();
+      } finally {
+        this._atomicInProgress = false;
+      }
     }, 50);
   },
 
