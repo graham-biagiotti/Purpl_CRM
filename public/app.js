@@ -2626,6 +2626,7 @@ function calcInvTotal() { _ivCalcTotal(); }
 function markRetailInvPaid(id) {
   if (!DB._firestoreReady) return;
   DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  _syncCombinedParentForChild(id); // M1
   renderInvoiceStatus();
   if (currentPage === 'invoices') renderInvoicesPage();
   toast('Marked as paid');
@@ -11398,6 +11399,7 @@ function markLfInvPaid(id) {
   if (!inv) return;
   const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
   DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null}));
+  _syncCombinedParentForChild(id); // M1
   renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
 }
@@ -11881,6 +11883,32 @@ function markCombinedPaid(combinedId) {
   });
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
+}
+
+// M1: when a combined-invoice CHILD changes paid status, recompute the parent
+// so reports that count the parent and reports that count the children can't
+// disagree about the same money. Parent is 'paid' only when BOTH children are;
+// if a child is un-paid, a previously-paid parent reverts to 'sent'. No-op for
+// non-combined invoices.
+function _syncCombinedParentForChild(childId) {
+  const child = findInvoice(childId);
+  const combinedId = child && child.combinedInvoiceId;
+  if (!combinedId) return;
+  const parent = DB.a('combined_invoices').find(x => x.id === combinedId);
+  if (!parent) return;
+  const isPaid = (invId) => { const inv = findInvoice(invId); return !!inv && inv.status === 'paid'; };
+  const bothPaid = isPaid(parent.purplInvoiceId) && isPaid(parent.lfInvoiceId);
+  const now = new Date().toISOString();
+  DB.atomicUpdate(cache => {
+    const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
+    if (ci < 0) return;
+    const cur = cache.combined_invoices[ci];
+    if (bothPaid && cur.status !== 'paid') {
+      cache.combined_invoices[ci] = {...cur, status:'paid', paidDate: cur.paidDate || now.slice(0,10), paidAt: cur.paidAt || now};
+    } else if (!bothPaid && cur.status === 'paid') {
+      cache.combined_invoices[ci] = {...cur, status:'sent', paidDate:null, paidAt:null};
+    }
+  });
 }
 
 // ── Invoice numbering ─────────────────────────────────────
@@ -14951,6 +14979,7 @@ function markPaid(id) {
   if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   else if (inLf) DB.update('lf_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  _syncCombinedParentForChild(id); // M1
   renderInvoicesPage();
   toast('Marked as paid ✓');
 }
@@ -15785,6 +15814,7 @@ async function _saveInvCore(id, isNew) {
     updateInvoice(id, () => rec);
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
+  if (!_isNew) _syncCombinedParentForChild(saveId); // M1: modal status edit on a combined child
   return rec;
 }
 
