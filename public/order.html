@@ -1205,6 +1205,24 @@ function submitOrder() {
   // Collect LF items if LF section is active
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
+
+  // LOW-11: validate quantities are non-negative integers within a sane range.
+  // parseInt(...)||0 lets negatives through and caps nothing.
+  var MAX_QTY = 100000;
+  function _badQty(n) { return !Number.isInteger(n) || n < 0 || n > MAX_QTY; }
+  if (_badQty(cases)) { showError('Please enter a valid purpl case quantity.'); return; }
+  for (var _li = 0; _li < lfItems.length; _li++) {
+    var _it = lfItems[_li];
+    if (_badQty(_it.cases || 0) || _badQty(_it.units || 0)) {
+      showError('Please enter valid Lavender Fields quantities.');
+      return;
+    }
+    if ((_it.variantLines || []).some(function(v){ return _badQty(v.units || 0); })) {
+      showError('Please enter valid Lavender Fields quantities.');
+      return;
+    }
+  }
+
   if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0 && !requestSample) {
     showError('Please add at least one item, request a sample, or select a notification.');
     return;
