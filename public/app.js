@@ -529,8 +529,17 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   const invNum = inv.number || inv.invoiceNumber || '';
   const brand = collection === 'combined_invoices' ? 'purpl + LF' : (collection === 'lf_invoices' ? 'Lavender Fields' : 'purpl');
 
+  // A combined invoice's parent has NO lineItems of its own — its items live in
+  // the two child invoices (purpl + LF). Gather from both, same as the preview.
+  let _lineItems = inv.lineItems || [];
+  if (collection === 'combined_invoices') {
+    const _purplInv = findInvoice(inv.purplInvoiceId) || {};
+    const _lfInv    = DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId) || {};
+    _lineItems = [...( _purplInv.lineItems || _purplInv.items || [] ), ...( _lfInv.lineItems || [] )];
+  }
+
   const items = [];
-  (inv.lineItems || []).forEach(li => {
+  _lineItems.forEach(li => {
     if (li.hasVariants && li.variantLines) {
       li.variantLines.forEach(vl => items.push({
         sku: (li.skuId||li.skuName||'') + '-' + (vl.variantId||vl.variantName||''),
