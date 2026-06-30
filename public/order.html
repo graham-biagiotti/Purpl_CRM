@@ -910,10 +910,14 @@ function init() {
         if (loadingEl) loadingEl.remove();
         document.getElementById('order-form').style.display = 'none';
         document.getElementById('password-gate').style.display = '';
-        var errEl = document.getElementById('error-msg');
-        if (errEl) {
-          errEl.textContent = 'Could not load your account — please try the link again or enter the portal password below.';
-          errEl.style.display = 'block';
+        // B2: show the error INSIDE the password gate. #error-msg lives inside the
+        // now-hidden #order-form, so it was invisible — a transient lookup hiccup
+        // stranded a valid customer on a passwordless gate with no message. Use the
+        // gate's own #pw-error and offer a reload so they can retry their link.
+        var gateErr = document.getElementById('pw-error');
+        if (gateErr) {
+          gateErr.innerHTML = 'We couldn\'t load your account automatically. Please <a href="#" onclick="location.reload();return false;" style="color:#7B4FA0;font-weight:500">reload the page</a> to try your link again, or enter the wholesale password below.';
+          gateErr.style.display = 'block';
         }
       });
   } else {

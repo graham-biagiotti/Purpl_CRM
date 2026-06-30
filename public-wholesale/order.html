@@ -191,9 +191,6 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   <!-- Past order history (shown only for matched accounts with history) -->
   <div id="order-history" style="display:none"></div>
 
-  <!-- Outstanding invoices (shown only for matched accounts with unpaid invoices) -->
-  <div id="outstanding-invoices-section" style="display:none"></div>
-
   <!-- Pre-order banner -->
   <div class="banner" id="preorder-banner">
     ✦ Now accepting pre-orders — we'll confirm availability and delivery once we review your order.
@@ -383,10 +380,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <h2>Delivery &amp; Timing</h2>
 
       <div class="info-note">
-        Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont.
-        Other areas are served via scheduled routes or parcel shipping.<br>
-        Orders below 8 cases are available for warehouse pickup or parcel shipment (USPS, UPS, FedEx) — shipping will be billed at cost.<br>
-        Please allow 7 business days lead time for delivery.<br><br>
+        <strong>purpl orders:</strong> Free delivery on 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont. Smaller orders — warehouse pickup or parcel shipment (USPS, UPS, FedEx), billed at cost.<br>
+        <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
+        <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you reach 8 cases of purpl or $250 total, in one drop.<br>
+        Other areas are served via scheduled routes or parcel shipping. Please allow 7 business days lead time for delivery.<br><br>
         Questions? Contact Graham directly — <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> · <a href="tel:6037483038">603-748-3038</a>
       </div>
 
@@ -433,7 +430,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <strong>Wholesale Terms</strong>
       <div style="font-size:12px;color:#374151;line-height:1.8;margin-top:6px">
         <strong>Payment:</strong> Net 30 days from invoice date. A 2% monthly finance charge may apply to late payments.<br>
-        <strong>Delivery:</strong> Free delivery on orders of 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont. Other areas served via scheduled routes or parcel. Orders below 8 cases available for warehouse pickup or parcel shipment — shipping billed at cost.<br>
+        <strong>Delivery — purpl:</strong> Free on 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont; smaller orders by warehouse pickup or parcel (billed at cost).<br>
+        <strong>Delivery — Lavender Fields:</strong> Free on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
+        <strong>Delivery — both together:</strong> purpl and Lavender Fields combine — free once you reach 8 cases of purpl or $250 total. Other areas served via scheduled routes or parcel.<br>
         <strong>Lead Time:</strong> Please allow 7 business days for delivery.<br>
         <strong>Damaged/Short Shipments:</strong> Please inspect your shipment upon arrival and report any issues within 48 hours of receipt.<br>
         <strong>Pricing:</strong> We reserve the right to update pricing with 30 days' notice.
@@ -911,10 +910,14 @@ function init() {
         if (loadingEl) loadingEl.remove();
         document.getElementById('order-form').style.display = 'none';
         document.getElementById('password-gate').style.display = '';
-        var errEl = document.getElementById('error-msg');
-        if (errEl) {
-          errEl.textContent = 'Could not load your account — please try the link again or enter the portal password below.';
-          errEl.style.display = 'block';
+        // B2: show the error INSIDE the password gate. #error-msg lives inside the
+        // now-hidden #order-form, so it was invisible — a transient lookup hiccup
+        // stranded a valid customer on a passwordless gate with no message. Use the
+        // gate's own #pw-error and offer a reload so they can retry their link.
+        var gateErr = document.getElementById('pw-error');
+        if (gateErr) {
+          gateErr.innerHTML = 'We couldn\'t load your account automatically. Please <a href="#" onclick="location.reload();return false;" style="color:#7B4FA0;font-weight:500">reload the page</a> to try your link again, or enter the wholesale password below.';
+          gateErr.style.display = 'block';
         }
       });
   } else {
@@ -935,8 +938,9 @@ function init() {
       _brandPurpl = true;
       _brandLf = isPbf;
       updateBrandVisibility();
-      if (isPbf) loadLfSkus(data.portalPrefs?.lfLastOrder || null);
-      loadOutstandingInvoices(accountId);
+      if (isPbf) loadLfSkus(null); // load LF SKUs with no quantity prefill
+      // #2: no balances/invoicing on the portal — customers just see their past
+      // orders (renderPastOrders, below). Invoices go out separately near launch.
     }
 
     // Pre-fill shipping from account
@@ -948,20 +952,22 @@ function init() {
       document.getElementById('ship-state').value = addr.state || '';
       document.getElementById('ship-zip').value = addr.zip || '';
     } else if (typeof addr === 'string' && addr) {
-      var parts = addr.split(',').map(function(p){return p.trim();});
-      document.getElementById('ship-street').value = parts[0] || '';
-      if (parts.length >= 2) {
-        var last = parts[parts.length - 1];
-        var m = last.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-        if (m) {
-          if (parts.length >= 3) document.getElementById('ship-city').value = parts[parts.length - 2];
-          document.getElementById('ship-state').value = m[1];
-          document.getElementById('ship-zip').value = m[2];
-        } else {
-          var m2 = last.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-          if (m2) { document.getElementById('ship-city').value = m2[1]; document.getElementById('ship-state').value = m2[2]; document.getElementById('ship-zip').value = m2[3]; }
-        }
-        if (parts.length > 3) document.getElementById('ship-street2').value = parts[1];
+      // Robust parse so city/state/zip auto-fill (not just street). Strip a
+      // trailing country, pull the zip then the 2-letter state off the end
+      // (commas optional, any case), then the last comma-segment is the city.
+      // Everything still lands in a normal editable field — correct it if wrong,
+      // leave it if right.
+      var rest = addr.trim().replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim();
+      var zipM = rest.match(/(\d{5}(?:-\d{4})?)\s*$/);
+      if (zipM) { document.getElementById('ship-zip').value = zipM[1]; rest = rest.slice(0, zipM.index).replace(/[,\s]+$/, ''); }
+      var stM = rest.match(/[,\s]+([A-Za-z]{2})\s*$/);
+      if (stM) { document.getElementById('ship-state').value = stM[1].toUpperCase(); rest = rest.slice(0, stM.index).replace(/[,\s]+$/, ''); }
+      var segs = rest.split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+      if (segs.length >= 2) {
+        document.getElementById('ship-city').value = segs[segs.length - 1];
+        document.getElementById('ship-street').value = segs.slice(0, segs.length - 1).join(', ');
+      } else {
+        document.getElementById('ship-street').value = segs[0] || rest;
       }
     }
 
@@ -979,7 +985,9 @@ function init() {
       var dw = document.getElementById('delivery-window');
       if (dw) dw.value = prefs.deliveryNotes;
     }
-    if (prefs.purplLastCases) applyPurplPrefill(prefs.purplLastCases);
+    // #3: do NOT prefill order quantities from the last order — a customer
+    // could accidentally re-submit old amounts. Only account info prefills
+    // (name, email, shipping above). Quantities always start at 0.
 
     firebase.functions().httpsCallable('getPortalOrderHistory')({ accountId: accountId, token: token })
       .then(function(result) {
@@ -1205,6 +1213,24 @@ function submitOrder() {
   // Collect LF items if LF section is active
   var lfItems = _brandLf ? getLfItems() : [];
   var lfTotal = lfItems.reduce(function(s,i){return s+i.lineTotal;},0);
+
+  // LOW-11: validate quantities are non-negative integers within a sane range.
+  // parseInt(...)||0 lets negatives through and caps nothing.
+  var MAX_QTY = 100000;
+  function _badQty(n) { return !Number.isInteger(n) || n < 0 || n > MAX_QTY; }
+  if (_badQty(cases)) { showError('Please enter a valid purpl case quantity.'); return; }
+  for (var _li = 0; _li < lfItems.length; _li++) {
+    var _it = lfItems[_li];
+    if (_badQty(_it.cases || 0) || _badQty(_it.units || 0)) {
+      showError('Please enter valid Lavender Fields quantities.');
+      return;
+    }
+    if ((_it.variantLines || []).some(function(v){ return _badQty(v.units || 0); })) {
+      showError('Please enter valid Lavender Fields quantities.');
+      return;
+    }
+  }
+
   if (cases <= 0 && lfItems.length === 0 && checkedFlavors.length === 0 && !requestSample) {
     showError('Please add at least one item, request a sample, or select a notification.');
     return;
@@ -1214,42 +1240,44 @@ function submitOrder() {
     return;
   }
 
-  // Write purpl order (unchanged logic — only if purpl brand selected and has items/notify)
-  var purplPromise = (_brandPurpl && (cases > 0 || orderData.notifyMe.length > 0))
-    ? db.collection('portal_orders').add(Object.assign({}, orderData, {brand:'purpl'}))
-    : Promise.resolve(null);
+  // #5: write the up-to-two portal_order docs ATOMICALLY in one batch, so a
+  // partial failure can't leave a duplicate (on retry) or an orphaned half.
+  var wantPurplDoc = _brandPurpl && (cases > 0 || orderData.notifyMe.length > 0);
+  var wantLfDoc    = lfItems.length > 0;
+  // A sample-only / notify-only submission has no line items but must STILL
+  // leave one record, or the request is silently lost.
+  if (!wantPurplDoc && !wantLfDoc && (requestSample || orderData.notifyMe.length > 0)) wantPurplDoc = true;
 
-  // Write LF order if any LF items
-  var lfPromise = lfItems.length > 0
-    ? db.collection('portal_orders').add({
-        accountId: accountId || null,
-        accountName: finalAccountName,
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        mode: portalMode,
-        brand: 'lf',
-        lineItems: lfItems,
-        total: lfTotal,
-        contactName: contactName || null,
-        contactEmail: billingEmail,
-        billingEmail: billingEmail,
-        deliveryWindow: deliveryWindow,
-        poNumber: poNumber,
-        notes: notes,
-        shipAddress: shipAddress,
-        requestSample: requestSample,
-        agreedToTerms: true,
-        status: 'new',
-        source: 'portal',
-        isMatched: isMatched,
-        isProspect: isProspect,
-        isUnmatched: !isMatched,
-      })
-    : Promise.resolve(null);
+  var _batch = db.batch();
+  var purplRef = wantPurplDoc ? db.collection('portal_orders').doc() : null;
+  var lfRef    = wantLfDoc    ? db.collection('portal_orders').doc() : null;
+  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl' }));
+  if (lfRef) _batch.set(lfRef, {
+    accountId: accountId || null,
+    accountName: finalAccountName,
+    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    mode: portalMode,
+    brand: 'lf',
+    lineItems: lfItems,
+    total: lfTotal,
+    contactName: contactName || null,
+    contactEmail: billingEmail,
+    billingEmail: billingEmail,
+    deliveryWindow: deliveryWindow,
+    poNumber: poNumber,
+    notes: notes,
+    shipAddress: shipAddress,
+    requestSample: requestSample,
+    agreedToTerms: true,
+    status: 'new',
+    source: 'portal',
+    isMatched: isMatched,
+    isProspect: isProspect,
+    isUnmatched: !isMatched,
+  });
 
-  Promise.all([purplPromise, lfPromise])
-    .then(function(results) {
-      var purplRef = results[0];
-      var lfRef    = results[1];
+  _batch.commit()
+    .then(function() {
 
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
@@ -1347,7 +1375,9 @@ function submitOrder() {
     });
 }
 
+var _pastOrders = [];
 function renderPastOrders(orders) {
+  _pastOrders = orders || [];  // LOW-12: keep in memory so View PDF doesn't re-read Firestore
   var section = document.getElementById(
     'past-orders-section');
   var list = document.getElementById('past-orders-list');
@@ -1426,15 +1456,18 @@ function renderPastOrders(orders) {
 }
 
 function printPortalOrder(orderId) {
-  firebase.firestore()
-    .collection('portal_orders')
-    .doc(orderId)
-    .get()
-    .then(function(doc) {
-      if (!doc.exists) {
-        alert('Order not found'); return;
-      }
-      var o = doc.data();
+  // LOW-12: the portal is unauthenticated and portal_orders read now requires
+  // staff — re-fetching here was denied (broken "Order not found"). The order
+  // is already in memory from getPortalOrderHistory; use that.
+  var o = _pastOrders.find(function(x){ return x.id === orderId; });
+  if (o) {
+    _printPortalOrderDoc(o);
+  } else {
+    alert('Order not found');
+  }
+}
+
+function _printPortalOrderDoc(o) {
       var dt = o.submittedAt && o.submittedAt.toDate ?
         o.submittedAt.toDate().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}) : 'Unknown date';
 
@@ -1533,11 +1566,6 @@ function printPortalOrder(orderId) {
         '</div>' +
         '</body></html>');
       w.document.close();
-    })
-    .catch(function(e) {
-      console.error('Print error:', e);
-      alert('Could not load order');
-    });
 }
 
 let _lastOrderData = null;

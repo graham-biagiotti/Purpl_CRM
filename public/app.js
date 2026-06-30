@@ -876,7 +876,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7;font-size:14px">I'd love to have purpl on your shelves. Reply to this email, give me a call, or just click the link above. Whatever's easiest, I'm here for anything you need.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'approved': {
       subject: `Your wholesale account is ready — ${businessName}`,
@@ -912,7 +912,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text. Whatever's easiest.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'rejected': {
       subject: `Re: Your wholesale application — Pumpkin Blossom Farm`,
@@ -12120,8 +12120,8 @@ function deleteCombinedInvoice(combinedId) {
 }
 
 // Peek at what the next invoice number would be — no side effects, safe for modal preview
-function peekNextInvoiceNumber() {
-  const allNums = [
+function _maxCachedInvoiceNum() {
+  const nums = [
     ..._allPurplInvoices(),
     ...DB.a('lf_invoices'),
     ...DB.a('combined_invoices'),
@@ -12130,9 +12130,13 @@ function peekNextInvoiceNumber() {
     const n = parseInt((x.number||x.invoiceNumber||'').replace(/[^0-9]/g,''));
     return isNaN(n) ? 0 : n;
   });
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+function peekNextInvoiceNumber() {
+  // nextInvoiceNum = the next number to ASSIGN. Preview = max(counter, cacheMax+1).
   const settingsNext = DB.obj('invoice_settings', {}).nextInvoiceNum || 0;
-  const cacheMax = allNums.length ? Math.max(...allNums) : 0;
-  return `INV-${String(Math.max(cacheMax, settingsNext) + 1).padStart(4,'0')}`;
+  return `INV-${String(Math.max(_maxCachedInvoiceNum() + 1, settingsNext)).padStart(4,'0')}`;
 }
 
 // Claim the next invoice number atomically via Firestore transaction.
@@ -12145,15 +12149,19 @@ async function getNextInvoiceNumber(type) {
       const snap = await tx.get(configRef);
       const data = snap.data() || {};
       const invSettings = data.invoice_settings || {};
-      const current = invSettings.nextInvoiceNum || 0;
-      const peek = peekNextInvoiceNumber();
-      const peekN = parseInt(peek.replace(/[^0-9]/g, ''));
-      const next = Math.max(current, peekN);
-      tx.update(configRef, { 'invoice_settings.nextInvoiceNum': next });
-      return `INV-${String(next).padStart(4, '0')}`;
+      // nextInvoiceNum = the next number to ASSIGN (server-authoritative counter).
+      // Reserve `assign`, then advance the counter by 1 in the SAME transaction,
+      // so two concurrent confirmers can never derive the same number. The
+      // cacheMax floor only seeds/repairs the counter from existing invoices; it
+      // is never the sole source. (The old code stored the *used* number and
+      // re-derived the next value from stale local cache — that was the collision.)
+      const serverNext = invSettings.nextInvoiceNum || 0;
+      const assign = Math.max(serverNext, _maxCachedInvoiceNum() + 1);
+      tx.update(configRef, { 'invoice_settings.nextInvoiceNum': assign + 1 });
+      return `INV-${String(assign).padStart(4, '0')}`;
     });
     const n = parseInt(num.replace(/[^0-9]/g, ''));
-    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
     return num;
   } catch (e) {
     console.warn('Invoice number transaction failed, retrying once:', e);
@@ -12163,21 +12171,19 @@ async function getNextInvoiceNumber(type) {
         const snap = await tx.get(configRef);
         const data = snap.data() || {};
         const invSettings = data.invoice_settings || {};
-        const current = invSettings.nextInvoiceNum || 0;
-        const peek = peekNextInvoiceNumber();
-        const peekN = parseInt(peek.replace(/[^0-9]/g, ''));
-        const next = Math.max(current, peekN);
-        tx.update(configRef, { 'invoice_settings.nextInvoiceNum': next });
-        return `INV-${String(next).padStart(4, '0')}`;
+        const serverNext = invSettings.nextInvoiceNum || 0;
+        const assign = Math.max(serverNext, _maxCachedInvoiceNum() + 1);
+        tx.update(configRef, { 'invoice_settings.nextInvoiceNum': assign + 1 });
+        return `INV-${String(assign).padStart(4, '0')}`;
       });
       const n = parseInt(num.replace(/[^0-9]/g, ''));
-      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
       return num;
     } catch (e2) {
       console.error('Invoice number transaction failed twice, using cache fallback:', e2);
       const num = peekNextInvoiceNumber();
       const n = parseInt(num.replace(/[^0-9]/g, ''));
-      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n });
+      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
       // M6: the atomic allocator (Firestore transaction) is unreachable, so this
       // number is derived from local cache and is NOT collision-safe if another
       // user is creating an invoice at the same moment. Surface it so staff can
@@ -14773,7 +14779,15 @@ async function confirmPortalOrder() {
     // If unmatched, use the selected account from the picker
     if (!d.accountId) {
       const selectedAcId = qs('#mcpo-account-select')?.value;
-      if (!selectedAcId) { toast('Select an account to match this order'); return; }
+      if (!selectedAcId) {
+        toast('Select an account to match this order');
+        // B2: the opening transaction already flipped status to 'confirmed' to
+        // claim the order. We're bailing, so restore it — otherwise the order is
+        // stranded as confirmed with no account and no invoice, vanishing from
+        // the queue. (`d` is the pre-flip data, so d.status is the original.)
+        await portalRef.update({ status: d.status || 'new', confirmedAt: null }).catch(() => {});
+        return;
+      }
       d.accountId = selectedAcId;
       d.accountName = DB.a('ac').find(x => x.id === selectedAcId)?.name || d.accountName;
       await portalRef.update({ accountId: selectedAcId, accountName: d.accountName, isUnmatched: false });
@@ -14850,7 +14864,17 @@ async function confirmPortalOrder() {
       lfTotal = lfDoc.total || lfItems.reduce((s, li) => s + (li.lineTotal || 0), 0);
     }
 
-    if (purplCases < 1 && lfItems.length < 1) { toast('Order has no items'); return; }
+    if (purplCases < 1 && lfItems.length < 1) {
+      toast('Order has no items');
+      // B2: restore claimed status on bail so the order isn't stranded as
+      // confirmed-with-no-invoice. Revert the paired half too if we claimed it.
+      await portalRef.update({ status: d.status || 'new', confirmedAt: null }).catch(() => {});
+      if (paired) {
+        await firebase.firestore().collection('portal_orders').doc(paired.id)
+          .update({ status: paired.status || 'new', confirmedAt: null }).catch(() => {});
+      }
+      return;
+    }
 
     // Pricing
     const effectivePrice = _calcPricePerCase(acct);
