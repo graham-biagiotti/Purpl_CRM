@@ -855,8 +855,9 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
           <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #1a1a2e">
             <div style="font-size:13px;color:#374151;line-height:1.8">
-              <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
-              <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>purpl orders:</strong> Free delivery on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Smaller orders — warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
+              <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you hit 8 cases of purpl or $250 total, in one drop.<br>
               <strong>Payment:</strong> Net 30 from invoice date.<br>
               <strong>Samples:</strong> Request a free 3-can taster right on the order form, no obligation.<br>
               <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
@@ -891,8 +892,9 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
           <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #1a1a2e">
             <div style="font-size:13px;color:#374151;line-height:1.8">
-              <strong>Delivery:</strong> Free on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Other areas served via scheduled routes or parcel.<br>
-              <strong>Under 8 cases:</strong> Available for warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>purpl orders:</strong> Free delivery on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Smaller orders — warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
+              <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you hit 8 cases of purpl or $250 total, in one drop.<br>
               <strong>Payment:</strong> Net 30 from invoice date. Invoices from lavender@pbfwholesale.com.<br>
               <strong>Lead time:</strong> Please allow 7 business days.
             </div>
