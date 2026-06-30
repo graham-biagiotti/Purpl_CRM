@@ -14779,11 +14779,14 @@ async function confirmPortalOrder() {
       await portalRef.update({ accountId: selectedAcId, accountName: d.accountName, isUnmatched: false });
     }
 
-    // For pre-orders: use the configured launch date (editable in portal settings)
-    // as the invoice date. Falls back to today if not set.
+    // Invoice date priority: (1) the date the user picked in the confirm modal
+    // ("Invoice / Delivery Date"), (2) the configured pre-order launch date,
+    // (3) today. Previously the picked date was loaded into the field but never
+    // read back here, so any back/post-dated value silently reverted to today.
+    const pickedDate = (qs('#mcpo-due-date')?.value || '').trim();
     const portalConfig = await PortalDB.getConfig();
     const isPreorder = d.mode === 'preorder';
-    const invoiceDate = (isPreorder && portalConfig.launchDate) ? portalConfig.launchDate : today();
+    const invoiceDate = pickedDate || ((isPreorder && portalConfig.launchDate) ? portalConfig.launchDate : today());
     const todayStr = invoiceDate;
     const acct = DB.a('ac').find(x => x.id === d.accountId) || {};
     const isDistFulfilled = acct.fulfilledBy && acct.fulfilledBy !== 'direct';
@@ -14853,8 +14856,11 @@ async function confirmPortalOrder() {
     const effectivePrice = _calcPricePerCase(acct);
     const purplTotal = purplCases * effectivePrice;
 
+    // Due date = chosen invoice date + terms (not "now" + terms), so a
+    // back/post-dated invoice keeps its terms window relative to its own date.
     const invTerms = DB.obj('invoice_settings', { terms: 30 }).terms || _payTerms();
-    const dueDateStr = new Date(Date.now() + invTerms * 864e5).toISOString().slice(0, 10);
+    const _invDateMs = new Date(invoiceDate + 'T00:00:00').getTime();
+    const dueDateStr = new Date((isNaN(_invDateMs) ? Date.now() : _invDateMs) + invTerms * 864e5).toISOString().slice(0, 10);
     const deliveryMethod = qs('#mcpo-delivery-method')?.value || 'deliver';
     const fulfillmentSource = qs('#mcpo-fulfillment')?.value || 'farm';
 
