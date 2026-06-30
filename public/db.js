@@ -591,31 +591,26 @@ const DB = {
   markDirty() { this._dirty = true; },
   markClean() {
     this._dirty = false;
-    if (this._pendingRemoteChanges) {
-      // CRITICAL: _loadFromCollections REPLACES the cache from the server. If
-      // an atomicUpdate is mid-flush or saves are still pending, reloading now
-      // wipes those unpersisted local writes (this is how a confirmed portal
-      // order lost its freshly-created invoice). Wait for writes to settle
-      // first; bounded so a stuck save can't defer forever.
-      const writesPending = this._atomicInProgress ||
-        (this._saveDirtyKeys && this._saveDirtyKeys.size > 0);
-      this._markCleanTries = (this._markCleanTries || 0);
-      if (writesPending && this._markCleanTries < 12) {
-        this._markCleanTries++;
-        clearTimeout(this._markCleanRetry);
-        this._markCleanRetry = setTimeout(() => { this._dirty = false; this.markClean(); }, 300);
-        return;
-      }
-      this._markCleanTries = 0;
-      this._pendingRemoteChanges = false;
-      this._loadFromCollections().then(() => {
-        if (window.refreshCurrentPage) window.refreshCurrentPage();
-      });
-    }
+    // Do NOT reload here. _loadFromCollections() REPLACES the whole cache from
+    // the server; if a just-made local write hasn't committed yet, that reload
+    // wipes it (this is how a confirmed portal order lost its invoice — twice).
+    // It's also unnecessary: the per-collection snapshot listeners reconcile the
+    // cache on their own once writes are server-confirmed, and apply any
+    // remote change that was deferred while we were dirty at the same time.
+    // The user can still force a hard refresh via "Load Changes" (applyPendingRemote).
+    this._pendingRemoteChanges = false;
     this._dismissRemoteWarning();
   },
 
   applyPendingRemote() {
+    // User explicitly asked to load the latest. Still don't reload over
+    // in-flight writes (would wipe a just-saved invoice); wait briefly for them
+    // to settle, then do the hard refresh.
+    if (this._atomicInProgress || (this._saveDirtyKeys && this._saveDirtyKeys.size > 0)) {
+      clearTimeout(this._applyPendingRetry);
+      this._applyPendingRetry = setTimeout(() => this.applyPendingRemote(), 300);
+      return;
+    }
     this._pendingRemoteChanges = false;
     this._dirty = false;
     this._dismissRemoteWarning();
