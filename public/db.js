@@ -592,8 +592,22 @@ const DB = {
   markClean() {
     this._dirty = false;
     if (this._pendingRemoteChanges) {
+      // CRITICAL: _loadFromCollections REPLACES the cache from the server. If
+      // an atomicUpdate is mid-flush or saves are still pending, reloading now
+      // wipes those unpersisted local writes (this is how a confirmed portal
+      // order lost its freshly-created invoice). Wait for writes to settle
+      // first; bounded so a stuck save can't defer forever.
+      const writesPending = this._atomicInProgress ||
+        (this._saveDirtyKeys && this._saveDirtyKeys.size > 0);
+      this._markCleanTries = (this._markCleanTries || 0);
+      if (writesPending && this._markCleanTries < 12) {
+        this._markCleanTries++;
+        clearTimeout(this._markCleanRetry);
+        this._markCleanRetry = setTimeout(() => { this._dirty = false; this.markClean(); }, 300);
+        return;
+      }
+      this._markCleanTries = 0;
       this._pendingRemoteChanges = false;
-      // Reload all collections
       this._loadFromCollections().then(() => {
         if (window.refreshCurrentPage) window.refreshCurrentPage();
       });

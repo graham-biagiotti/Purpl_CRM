@@ -14867,8 +14867,10 @@ async function confirmPortalOrder() {
       singleInvId = uid();
     }
 
-    // Single atomicUpdate for all writes — orders + invoices together
-    DB.markDirty();
+    // Single atomicUpdate for all writes — orders + invoices together.
+    // (No markDirty/markClean here: atomicUpdate guards itself via
+    // _atomicInProgress, and markClean's remote-reload could wipe the
+    // just-created invoice before it persists.)
     DB.atomicUpdate(cache => {
       // Orders
       if (hasPurpl) {
@@ -14963,7 +14965,6 @@ async function confirmPortalOrder() {
         }];
       }
     });
-    DB.markClean();
 
     // Update portal_orders — primary already confirmed in transaction above
     await portalRef.update({ convertedOrderId: purplOrderId || lfOrderId });
