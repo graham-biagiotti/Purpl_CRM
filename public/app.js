@@ -5021,8 +5021,7 @@ function _renderBatchWorker() {
       <label>Context <span style="color:var(--muted);font-weight:400">(optional)</span></label>
       <input type="text" id="mebw-context" placeholder="e.g. Sample follow-up...">
     </div>
-    <button class="btn secondary" id="mebw-gen-btn" onclick="meBatchGenerate('${a.id}')" style="margin-bottom:10px">✨ Generate Draft</button>
-    <div id="mebw-output" style="display:none">
+    <div id="mebw-output">
       <div class="form-row" style="margin-bottom:6px">
         <label>Subject</label>
         <input type="text" id="mebw-subject" style="background:var(--surface-2,#f9f8ff)">

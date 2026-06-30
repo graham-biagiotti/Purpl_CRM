@@ -1816,19 +1816,6 @@
             </div>
             <!-- Custom compose -->
             <div class="section-hdr" style="margin-bottom:12px"><h3>Or Compose Custom</h3></div>
-            <div class="form-row" style="margin-bottom:10px">
-              <label>Goal / context <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-              <input type="text" id="me-goal" placeholder="e.g. Re-engagement after summer, new flavors available">
-            </div>
-            <div class="form-row" style="margin-bottom:10px">
-              <label>Regarding</label>
-              <div class="ac-brand-btns" id="me-regarding-btns" style="margin-top:4px">
-                <button type="button" class="ac-brand-btn active" data-val="purpl" onclick="setMeRegarding('purpl')">💜 purpl</button>
-                <button type="button" class="ac-brand-btn" data-val="lf" onclick="setMeRegarding('lf')">🪻 LF</button>
-                <button type="button" class="ac-brand-btn" data-val="both" onclick="setMeRegarding('both')">Both</button>
-              </div>
-            </div>
-            <button class="btn secondary" style="margin-bottom:12px" onclick="meBroadcastGenerate()">Generate with AI</button>
             <div class="form-row" style="margin-bottom:8px">
               <label>Subject</label>
               <input type="text" id="me-subject" placeholder="Subject line...">
@@ -2033,10 +2020,8 @@
         <button type="button" class="ac-brand-btn active" data-val="lavender@pbfwholesale.com" onclick="setMdoFrom('lavender@pbfwholesale.com')">🪻 lavender@pbfwholesale.com</button>
       </div>
     </div>
-    <!-- Generate button -->
-    <button class="btn primary" id="mdo-generate-btn" onclick="generateOutreachDraft()" style="margin-bottom:14px">✨ Generate Draft</button>
-    <!-- Output (hidden until generated) -->
-    <div id="mdo-output" style="display:none">
+    <!-- Compose -->
+    <div id="mdo-output">
       <div class="form-row" style="margin-bottom:8px">
         <label>Subject</label>
         <input type="text" id="mdo-subject" readonly style="background:var(--surface-2,#f9f8ff)">
