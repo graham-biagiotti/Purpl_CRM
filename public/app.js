@@ -8474,9 +8474,25 @@ function renderDistOrders() {
 //  ORDERS
 // ══════════════════════════════════════════════════════════
 let ordFilter = 'all';
+let _ordFulfillFilter = 'all';
+function setOrdFulfillFilter(mode) {
+  _ordFulfillFilter = mode;
+  qs('#orders-fulfill-filter')?.querySelectorAll('[data-fulfill]')
+    .forEach(b => b.classList.toggle('active', b.dataset.fulfill === mode));
+  renderOrders();
+}
+
 function renderOrders() {
+  // Index accounts + distributors once (avoids a per-row .find = O(n^2)).
+  const acById   = new Map(DB.a('ac').map(a=>[a.id,a]));
+  const distById = new Map(DB.a('dist_profiles').map(d=>[d.id,d]));
+  const _isDist  = o => { const ac = acById.get(o.accountId); return !!(ac && ac.fulfilledBy && ac.fulfilledBy !== 'direct'); };
+
   let list = DB.a('orders').slice().sort((a,b)=>b.created>a.created?1:-1);
   if (ordFilter !== 'all') list = list.filter(o=>o.status===ordFilter);
+  // Fulfillment filter: 'direct' = orders you deliver, 'dist' = a distributor does.
+  if (_ordFulfillFilter === 'direct') list = list.filter(o=>!_isDist(o));
+  else if (_ordFulfillFilter === 'dist') list = list.filter(o=>_isDist(o));
 
   const tbody = qs('#orders-tbody');
   if (!tbody) return;
@@ -8489,13 +8505,19 @@ function renderOrders() {
   };
 
   tbody.innerHTML = list.map(o=>{
-    const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+    const ac2 = acById.get(o.accountId);
     const isOverdue = o.status==='pending' && o.dueDate < today();
     const srcBadge  = SOURCE_BADGE[o.source] || '';
+    // Mark orders fulfilled by a distributor (not delivered by you).
+    const fb = ac2?.fulfilledBy;
+    const distName = (fb && fb !== 'direct') ? (distById.get(fb)?.name || 'Distributor') : '';
+    const fulfillBadge = distName
+      ? `<span class="badge amber" style="font-size:10px" title="Fulfilled by ${escHtml(distName)} — not your delivery">🚚 via ${escHtml(distName)}</span>`
+      : '';
     // qty in items is CASES; show with 'cs' label
     return `<tr class="${isOverdue?'overdue-row':''}">
       <td>${fmtD(o.created)}</td>
-      <td>${ac2?.name||'Unknown'} ${srcBadge}</td>
+      <td>${ac2?.name||'Unknown'} ${srcBadge} ${fulfillBadge}</td>
       <td>${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}cs`).join(' ')}</td>
       <td>${fmtD(o.dueDate)}${isOverdue?' <span class="badge red">Overdue</span>':''}</td>
       <td>${statusBadge(ORD_STATUS, o.status)}</td>

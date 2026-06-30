@@ -749,6 +749,11 @@
           <button class="tab" data-status="in_transit">In Transit</button>
           <button class="tab" data-status="delivered">Delivered</button>
         </div>
+        <div class="tabs" id="orders-fulfill-filter" style="margin-top:8px">
+          <button class="tab active" data-fulfill="all" onclick="setOrdFulfillFilter('all')">All Fulfillment</button>
+          <button class="tab" data-fulfill="direct" onclick="setOrdFulfillFilter('direct')">🚗 I Deliver</button>
+          <button class="tab" data-fulfill="dist" onclick="setOrdFulfillFilter('dist')">🚚 Via Distributor</button>
+        </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>Created</th><th>Account</th><th>Items</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead>
