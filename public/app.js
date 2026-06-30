@@ -519,10 +519,10 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
     : (collection === 'combined_invoices'
         ? DB.a('combined_invoices').find(x => x.id === invoiceId)
         : findInvoice(invoiceId));
-  if (!inv) { toast('Invoice not found'); return; }
-  if (inv.shipStationOrderId) { toast('Already pushed to ShipStation'); return; }
+  if (!inv) { toast('Invoice not found'); return false; }
+  if (inv.shipStationOrderId) { toast('Already pushed to ShipStation'); return true; }
   const ac = DB.a('ac').find(a => a.id === inv.accountId) || {};
-  if (!ac.address && !ac.shipAddress) { toast('No address on file — add one to the account first'); return; }
+  if (!ac.address && !ac.shipAddress) { _stickyError('Cannot push to ShipStation: no shipping address on this account. Add one in the account first.'); return false; }
 
   const addr = _parseAddress(ac.shipAddress || ac.address || '');
   const ss = DB.obj('shipstation_settings', {});
@@ -547,7 +547,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
       });
     }
   });
-  if (!items.length) { toast('Invoice has no line items'); return; }
+  if (!items.length) { toast('Invoice has no line items'); return false; }
 
   toast('Pushing to ShipStation…');
   try {
@@ -573,11 +573,14 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
       auditLog('ship_push', collection.replace('_invoices','')+'_invoice', invoiceId, invNum, {shipStationOrderId: d.orderId});
       toast('Pushed to ShipStation ✓ — order #' + (d.orderNumber || invNum));
       if (currentPage === 'invoices') renderInvoicesPage();
+      return true;
     } else {
       _stickyError('ShipStation push failed: ' + (d.error || 'unknown'));
+      return false;
     }
   } catch (e) {
     _stickyError('ShipStation push failed: ' + (e?.message || 'unknown'));
+    return false;
   }
 }
 
@@ -12865,11 +12868,16 @@ async function openCombinedInvoicePreview(combinedId) {
   if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
   if (shipBtn) shipBtn.onclick = async () => {
     shipBtn.disabled = true; shipBtn.textContent = 'Pushing…';
-    try {
-      await pushInvoiceToShipStation(combinedId, 'combined_invoices');
-      toast('Pushed to ShipStation ✓');
+    let ok = false;
+    try { ok = await pushInvoiceToShipStation(combinedId, 'combined_invoices'); } catch(e) { ok = false; }
+    // pushInvoiceToShipStation shows its own success toast / sticky error with the
+    // real reason. On success re-render (button becomes "✓ Pushed"); on failure
+    // ALWAYS reset the button so it can never get stuck on "Pushing…".
+    if (ok) {
       setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
-    } catch(e) { toast('ShipStation push failed'); shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
+    } else {
+      shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation';
+    }
   };
   if (whBtn) whBtn.onclick = () => {
     pushToWarehouse(combinedId, 'combined_invoices');
