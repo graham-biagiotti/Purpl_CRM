@@ -948,20 +948,22 @@ function init() {
       document.getElementById('ship-state').value = addr.state || '';
       document.getElementById('ship-zip').value = addr.zip || '';
     } else if (typeof addr === 'string' && addr) {
-      var parts = addr.split(',').map(function(p){return p.trim();});
-      document.getElementById('ship-street').value = parts[0] || '';
-      if (parts.length >= 2) {
-        var last = parts[parts.length - 1];
-        var m = last.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-        if (m) {
-          if (parts.length >= 3) document.getElementById('ship-city').value = parts[parts.length - 2];
-          document.getElementById('ship-state').value = m[1];
-          document.getElementById('ship-zip').value = m[2];
-        } else {
-          var m2 = last.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-          if (m2) { document.getElementById('ship-city').value = m2[1]; document.getElementById('ship-state').value = m2[2]; document.getElementById('ship-zip').value = m2[3]; }
-        }
-        if (parts.length > 3) document.getElementById('ship-street2').value = parts[1];
+      // Robust parse so city/state/zip auto-fill (not just street). Strip a
+      // trailing country, pull the zip then the 2-letter state off the end
+      // (commas optional, any case), then the last comma-segment is the city.
+      // Everything still lands in a normal editable field — correct it if wrong,
+      // leave it if right.
+      var rest = addr.trim().replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim();
+      var zipM = rest.match(/(\d{5}(?:-\d{4})?)\s*$/);
+      if (zipM) { document.getElementById('ship-zip').value = zipM[1]; rest = rest.slice(0, zipM.index).replace(/[,\s]+$/, ''); }
+      var stM = rest.match(/[,\s]+([A-Za-z]{2})\s*$/);
+      if (stM) { document.getElementById('ship-state').value = stM[1].toUpperCase(); rest = rest.slice(0, stM.index).replace(/[,\s]+$/, ''); }
+      var segs = rest.split(',').map(function(p){ return p.trim(); }).filter(Boolean);
+      if (segs.length >= 2) {
+        document.getElementById('ship-city').value = segs[segs.length - 1];
+        document.getElementById('ship-street').value = segs.slice(0, segs.length - 1).join(', ');
+      } else {
+        document.getElementById('ship-street').value = segs[0] || rest;
       }
     }
 
