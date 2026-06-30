@@ -2356,11 +2356,10 @@ function _renderAccountSelectOptions(sel, q) {
 function filterAccountSelect(selectId, q) {
   const sel = document.getElementById(selectId);
   if (!sel || !sel._accounts) return;
-  const before = sel.value;
-  const list = _renderAccountSelectOptions(sel, q);
-  // While typing, auto-pick the first match if the old pick was filtered out
-  if ((q || '').trim() && list.length && !sel.value) sel.value = list[0].id;
-  if (sel.value !== before) sel.dispatchEvent(new Event('change'));
+  // Just filter the dropdown options as you type. Do NOT auto-pick a match —
+  // that fired a selection on every keystroke before you could choose. You
+  // open the dropdown and select when ready.
+  _renderAccountSelectOptions(sel, q);
 }
 
 // purpl invoice SKUs
