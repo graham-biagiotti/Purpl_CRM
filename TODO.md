@@ -12,6 +12,11 @@ reviewed and the must-fix items are committed (see "Done this session")._
       Function + /unsubscribe rewrite). Needs `firebase deploy --only functions,hosting`.
 
 ## 🟡 Open — needs your ACTION / assets
+- [ ] **"Push to Warehouse" intake method** — the 🏭 Warehouse button is currently a
+      stub: it only sets `fulfillmentSource:'warehouse'` + a timestamp, it does NOT
+      send the order anywhere (unlike 📦 Ship → ShipStation Cloud Function). Decide how
+      the 3PL/warehouse receives orders (API/portal, email, or file export), then wire
+      `pushToWarehouse` (app.js:15328) to actually do it.
 - [ ] **Email Open Tracking (Resend)** — currently OFF (Resend flags it "Not
       Recommended": the open pixel is inaccurate + can hurt deliverability).
       Click tracking IS on, so 🔗 Clicked works; 👁 Opened never fires (incl.
