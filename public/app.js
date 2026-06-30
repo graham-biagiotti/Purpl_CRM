@@ -489,28 +489,25 @@ async function testShipStationConnection() {
 }
 
 function _parseAddress(addr) {
-  if (!addr) return {street1:'', street2:'', city:'', state:'', zip:''};
-  const parts = addr.split(',').map(p => p.trim());
-  // "393 Pumpkin Hill Rd, Warner, NH 03278" → 3 parts
-  // "123 Main St, Apt 4, Boston, MA 02101" → 4 parts
-  // "393 Pumpkin Hill Rd, Warner NH 03278"  → 2 parts (no comma before state)
-  if (parts.length >= 2) {
-    const lastPart = parts[parts.length - 1];
-    // Try "ST 01234" at the end of the last part
-    const stZip = lastPart.match(/^([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-    if (stZip) {
-      // Last part is "ST ZIP" — city is the part before it
-      const city = parts.length >= 3 ? parts[parts.length - 2] : '';
-      const street2 = parts.length >= 4 ? parts[1] : '';
-      return {street1: parts[0], street2, city, state: stZip[1], zip: stZip[2]};
-    }
-    // Try "City, ST ZIP" where ST ZIP is inside the last part: "Warner NH 03278"
-    const cityStZip = lastPart.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(-\d{4})?)$/);
-    if (cityStZip) {
-      return {street1: parts[0], street2: parts.length >= 3 ? parts[1] : '', city: cityStZip[1], state: cityStZip[2], zip: cityStZip[3]};
-    }
+  const out = {street1:'', street2:'', city:'', state:'', zip:''};
+  if (!addr || typeof addr !== 'string') return out;
+  // Robust: strip a trailing country, pull the zip then the 2-letter state off
+  // the end (commas optional, any case), then the last comma-segment is the
+  // city and the rest is the street. Handles "...NH 03278, USA", "...NH 03278",
+  // "...Warner NH 03278" (no comma), and lowercase states.
+  let rest = addr.trim().replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim();
+  const zipM = rest.match(/(\d{5}(?:-\d{4})?)\s*$/);
+  if (zipM) { out.zip = zipM[1]; rest = rest.slice(0, zipM.index).replace(/[,\s]+$/, ''); }
+  const stM = rest.match(/[,\s]+([A-Za-z]{2})\s*$/);
+  if (stM) { out.state = stM[1].toUpperCase(); rest = rest.slice(0, stM.index).replace(/[,\s]+$/, ''); }
+  const segs = rest.split(',').map(p => p.trim()).filter(Boolean);
+  if (segs.length >= 2) {
+    out.city = segs[segs.length - 1];
+    out.street1 = segs.slice(0, segs.length - 1).join(', ');
+  } else {
+    out.street1 = segs[0] || rest;
   }
-  return {street1: addr, street2:'', city:'', state:'', zip:''};
+  return out;
 }
 
 async function pushInvoiceToShipStation(invoiceId, collection) {
