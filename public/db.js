@@ -620,14 +620,12 @@ const DB = {
   },
 
   _showRemoteChangeWarning() {
-    if (document.getElementById('remote-change-banner')) return;
-    const banner = document.createElement('div');
-    banner.id = 'remote-change-banner';
-    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#fef3c7;border-top:2px solid #f59e0b;padding:12px 20px;z-index:9999;display:flex;align-items:center;justify-content:center;gap:12px;font-size:14px;color:#92400e;font-family:sans-serif';
-    banner.innerHTML = '<span>⚠️ Another user made changes. Save your work first, or reload to get the latest.</span>' +
-      '<button onclick="DB.applyPendingRemote()" style="background:#f59e0b;color:#fff;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Load Changes</button>' +
-      '<button onclick="DB._dismissRemoteWarning()" style="background:transparent;border:1px solid #f59e0b;color:#92400e;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">Dismiss</button>';
-    document.body.appendChild(banner);
+    // DISABLED. This produced false positives — a user's OWN write echoes back
+    // from the server as a "remote change" (same hasPendingWrites=false as a
+    // genuine other-user change), so it fired even in a single tab. Its "Load
+    // Changes" reload was also the cause of lost invoices. The snapshot
+    // listeners reconcile the cache on their own; no banner needed.
+    return;
   },
 
   _dismissRemoteWarning() {
