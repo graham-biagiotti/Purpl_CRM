@@ -12,6 +12,17 @@ reviewed and the must-fix items are committed (see "Done this session")._
       Function + /unsubscribe rewrite). Needs `firebase deploy --only functions,hosting`.
 
 ## 🟡 Open — needs your ACTION / assets
+- [ ] **Email Open Tracking (Resend)** — currently OFF (Resend flags it "Not
+      Recommended": the open pixel is inaccurate + can hurt deliverability).
+      Click tracking IS on, so 🔗 Clicked works; 👁 Opened never fires (incl.
+      "opened-but-didn't-click" and order confirmations, which have no link).
+      To enable safely LATER: (1) Resend → Domains → pbfwholesale.com →
+      Configuration → "Enable tracking metrics → Configure" = set up a CUSTOM
+      tracking subdomain (adds a CNAME at GoDaddy; also clears the shared-click-
+      tracking deliverability banner), THEN (2) flip Open Tracking on. Order
+      matters — custom subdomain first keeps it from tanking deliverability.
+      CRM side already supports displaying opens; nothing to code. Gmail still
+      caches the pixel, so opens stay imperfect even then.
 - [ ] Set real **COGS** in Settings (reports still fall back to $2.15 placeholder
       for SKUs with no cost set).
 - [ ] Set variety pack recipe to 4+4+4.
