@@ -701,7 +701,12 @@ exports.resendWebhook = onRequest(
     try {
       const {Webhook} = require('svix');
       const wh = new Webhook(whSecret);
-      wh.verify(JSON.stringify(req.body), {
+      // svix signs the RAW request bytes. Verifying JSON.stringify(req.body)
+      // re-serializes the parsed body (different key order/whitespace) and the
+      // signature won't match — so every open/click event was being 401'd and
+      // dropped. Use req.rawBody, same as the Stripe webhook does.
+      const rawPayload = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+      wh.verify(rawPayload, {
         'svix-id': req.headers['svix-id'],
         'svix-timestamp': req.headers['svix-timestamp'],
         'svix-signature': req.headers['svix-signature'],
