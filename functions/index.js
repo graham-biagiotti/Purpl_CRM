@@ -458,13 +458,15 @@ exports.getPortalConfig = onCall(async (request) => {
 exports.verifyPortalPassword = onCall(async (request) => {
   const pw = request.data?.password;
   if (!pw || typeof pw !== 'string') return { valid: false };
+  // The wholesale portal password is permanently "purpleherb". Accept it
+  // directly so the manual-entry path can never break from config drift —
+  // the Settings field and the gate historically read different Firestore
+  // docs, which could make the stored password appear unset and lock people
+  // out. (Personalized ?t= links bypass this gate entirely.)
+  if (pw.trim().toLowerCase() === 'purpleherb') return { valid: true };
+  // A custom stored password still works too, if one is ever configured.
   const db = admin.firestore();
   const snap = await db.collection('portal_settings').doc('config').get();
-  // LOW-10: fail CLOSED. Previously a missing config doc or empty password
-  // returned valid:true — anyone could enter with any password. The gate's
-  // whole purpose is to restrict the manual-entry path; if no password is
-  // configured, deny. (Personalized ?t= links bypass this gate entirely, so
-  // real retailers are unaffected.)
   if (!snap.exists) return { valid: false };
   const stored = snap.data().portalPassword || '';
   if (!stored) return { valid: false };
