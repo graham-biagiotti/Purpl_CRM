@@ -4560,10 +4560,17 @@ function renderEmailsTabHistory(accounts) {
   });
   allEntries.sort((a,b) => (b.sentAt||'') > (a.sentAt||'') ? 1 : -1);
 
+  const engagement = e => e.clicked
+    ? `<span class="badge blue" title="Clicked${e.clickedAt?' '+fmtD(e.clickedAt):''}">🔗 Clicked</span>`
+    : e.opened
+      ? `<span class="badge green" title="Opened${e.openedAt?' '+fmtD(e.openedAt):''}">👁 Opened</span>`
+      : (e.method === 'resend' ? '<span style="color:var(--muted);font-size:12px">Not opened</span>' : '<span style="color:var(--muted);font-size:12px">—</span>');
+
   const rows = allEntries.map(e => `<tr>
     <td>${e.sentAt ? new Date(e.sentAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
     <td><strong>${escHtml(e.accountName||'?')}</strong></td>
     <td>${escHtml(STAGE_LABELS[e.stage]||e.stage||'—')}</td>
+    <td>${engagement(e)}</td>
     <td><span class="badge gray">${e.method||'manual'}</span></td>
     <td><button class="btn xs" onclick="openAccount('${e.accountId}')">View Account</button></td>
   </tr>`).join('');
@@ -4573,8 +4580,8 @@ function renderEmailsTabHistory(accounts) {
     <div class="card">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Account</th><th>Template</th><th>Method</th><th>Actions</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5" class="empty">No emails sent yet</td></tr>'}</tbody>
+          <thead><tr><th>Date</th><th>Account</th><th>Template</th><th>Engagement</th><th>Method</th><th>Actions</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6" class="empty">No emails sent yet</td></tr>'}</tbody>
         </table>
       </div>
     </div>`;
