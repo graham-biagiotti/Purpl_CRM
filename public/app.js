@@ -14412,6 +14412,12 @@ function _poTsMs(t) {
 function _samePortalSubmission(a, b) {
   if (!a || !b || a.id === b.id) return false;
   if (a.brand === b.brand) return false;
+  // Strict: both halves of one checkout carry the same submissionId. If either
+  // side has a submissionId, that is the ONLY thing that pairs them — orders
+  // from different checkouts (even same account, same minute) never merge.
+  if (a.submissionId || b.submissionId) return a.submissionId === b.submissionId;
+  // Legacy fallback for orders created before submissionId existed: different
+  // brands, near-simultaneous (<60s), AND a positive shared identity.
   const ta = _poTsMs(a.submittedAt), tb = _poTsMs(b.submittedAt);
   if (!ta || !tb || Math.abs(ta - tb) >= 60000) return false;
   if (a.accountId && b.accountId) return a.accountId === b.accountId;

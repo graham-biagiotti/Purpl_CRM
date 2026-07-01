@@ -1249,15 +1249,20 @@ function submitOrder() {
   if (!wantPurplDoc && !wantLfDoc && (requestSample || orderData.notifyMe.length > 0)) wantPurplDoc = true;
 
   var _batch = db.batch();
+  // One shared id per checkout so the purpl + LF halves of a single submission
+  // pair by strict identity — not a fuzzy account+time guess, which merged
+  // separate orders placed by the same account.
+  var _submissionId = db.collection('portal_orders').doc().id;
   var purplRef = wantPurplDoc ? db.collection('portal_orders').doc() : null;
   var lfRef    = wantLfDoc    ? db.collection('portal_orders').doc() : null;
-  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl' }));
+  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl', submissionId: _submissionId }));
   if (lfRef) _batch.set(lfRef, {
     accountId: accountId || null,
     accountName: finalAccountName,
     submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
     mode: portalMode,
     brand: 'lf',
+    submissionId: _submissionId,
     lineItems: lfItems,
     total: lfTotal,
     contactName: contactName || null,
