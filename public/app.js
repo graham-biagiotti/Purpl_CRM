@@ -4725,7 +4725,7 @@ function renderMeAccountList() {
       <input type="checkbox" id="me-chk-${a.id}" ${_meSelectedIds.has(a.id)?'checked':''} onchange="meToggleAccount('${a.id}',this.checked)" style="width:14px;height:14px;flex-shrink:0">
       <label for="me-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px">
         <div>${escHtml(a.name)}</div>
-        <div style="font-size:11px;color:var(--muted)">${a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted'}</div>
+        <div style="font-size:11px">${a.lastContacted === today() ? '<span style="color:#16a34a;font-weight:600">✓ Sent today</span>' : '<span style="color:var(--muted)">'+(a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted')+'</span>'}</div>
       </label>
     </div>`).join('') || '<div style="color:var(--muted);font-size:13px;padding:8px">No accounts match filters.</div>';
   _updateMeCount();
@@ -4740,7 +4740,7 @@ function renderMeBatchList() {
       <input type="checkbox" id="meb-chk-${a.id}" ${_meSelectedIds.has(a.id)?'checked':''} onchange="meToggleAccount('${a.id}',this.checked)" style="width:14px;height:14px;flex-shrink:0">
       <label for="meb-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px">
         <div>${escHtml(a.name)}</div>
-        <div style="font-size:11px;color:var(--muted)">${a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted'}</div>
+        <div style="font-size:11px">${a.lastContacted === today() ? '<span style="color:#16a34a;font-weight:600">✓ Sent today</span>' : '<span style="color:var(--muted)">'+(a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted')+'</span>'}</div>
       </label>
     </div>`).join('') || '<div style="color:var(--muted);font-size:13px;padding:8px">No accounts match filters.</div>';
   _updateMeBatchCount();
