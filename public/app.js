@@ -809,6 +809,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const portalLink = account.orderPortalToken
     ? `https://pbfwholesale.com/order?t=${account.orderPortalToken}`
     : 'https://pbfwholesale.com/order';
+  // Pre-order first-delivery estimate, formatted "Month Day". Configurable via
+  // extra.launchDate (Portal Settings launch date); defaults to the launch week.
+  const _launchWk = (() => {
+    try { return new Date((extra.launchDate || '2026-07-27') + 'T12:00:00')
+      .toLocaleDateString('en-US', { month: 'long', day: 'numeric' }); }
+    catch(_) { return 'July 27'; }
+  })();
 
   const templates = {
     'application-received': {
@@ -847,6 +854,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment, just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:12px 20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff;text-align:center;font-size:15px;color:#4B2082;font-weight:600">📦 First delivery the week of ${_launchWk}</td></tr></table>
         <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well, one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
