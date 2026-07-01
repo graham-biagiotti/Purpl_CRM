@@ -15024,6 +15024,16 @@ async function confirmPortalOrder() {
           orderId: purplOrderId, date: todayStr, dueDate: dueDateStr,
           cases: purplCases, cans: purplCans,
           pricePerCase: effectivePrice, total: purplTotal, amount: purplTotal,
+          // Include a lineItems array like manual + combined invoices so the
+          // Edit modal, print/preview, and (critically) the markInvoiceSent
+          // inventory deduction all see the products. Without it, this invoice
+          // looked empty in Edit and would deduct zero cans on send.
+          lineItems: purplItems.map(i => ({
+            skuId: i.sku, sku: i.label, description: i.label,
+            qty: i.qty, cases: i.qty, units: i.qty * CANS_PER_CASE,
+            unitPrice: effectivePrice, pricePerCase: effectivePrice,
+            total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
+          })),
           priceType: isDistFulfilled ? 'dist' : 'direct',
           status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod, fulfillmentSource,
           billingEmail: d.billingEmail || acct.email || '',
