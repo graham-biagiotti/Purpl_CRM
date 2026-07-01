@@ -1716,8 +1716,7 @@ function dashFilterFulfill(val) {
   if (el) {
     // 'dist' means show all distributor-linked; pick first distributor or leave as ''
     if (val === 'dist') {
-      const dists = DB.a('dist_profiles').filter(d=>d.status==='active');
-      el.value = dists.length ? dists[0].id : '';
+      el.value = '__any_dist__'; // "Via distributor (any)" — renderAccounts adds this option
     } else {
       el.value = val;
     }
@@ -1850,6 +1849,7 @@ function renderFollowUps() {
   const in14  = new Date(Date.now()+14*864e5).toISOString().slice(0,10);
 
   DB.a('ac').forEach(a=>{
+    if ((a.status||'active') !== 'active') return; // only active accounts nag, matching Needs-Attention
     if (a.nextFollowUp && a.nextFollowUp <= in14) {
       const daysUntil = Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5);
       items.push({type:'account', name:a.name, date:a.nextFollowUp, action:'Follow up', id:a.id, daysUntil});
@@ -3191,6 +3191,18 @@ function _acCardHTML(a, muted) {
 
 function renderAccounts() {
   let list = DB.a('ac');
+  // Populate the fulfillment filter with active distributors so "via {dist}"
+  // filtering — including the dashboard drill-down — actually works (the select
+  // used to have only All/Direct, so a distributor value silently no-op'd).
+  const _ffSel = qs('#ac-fulfill-filter');
+  if (_ffSel) {
+    const _cur = _ffSel.value;
+    const _dOpts = DB.a('dist_profiles').filter(d=>d.status==='active')
+      .sort((a,b)=>(a.name||'')<(b.name||'')?-1:1)
+      .map(d=>`<option value="${d.id}">via ${escHtml(d.name)}</option>`).join('');
+    _ffSel.innerHTML = `<option value="">All Fulfillment</option><option value="direct">Direct</option><option value="__any_dist__">Via distributor (any)</option>${_dOpts}`;
+    _ffSel.value = _cur;
+  }
   const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
   const typeFilter    = qs('#ac-type-filter')?.value || '';
   const fulfillFilter = qs('#ac-fulfill-filter')?.value || '';
@@ -3209,6 +3221,7 @@ function renderAccounts() {
   else if (_acBrandFilter === 'purpl') list = list.filter(a=>!a.isPbf);                            // purpl only
   else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf && a.skus && a.skus.length > 0); // both lines
   if (fulfillFilter === 'direct') list = list.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
+  else if (fulfillFilter === '__any_dist__') list = list.filter(a=>a.fulfilledBy && a.fulfilledBy!=='direct');
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
   list = list.slice().sort((a,b)=>{
@@ -4249,6 +4262,9 @@ async function _renderEmailsRightCol() {
 
   let contactPickerHtml = '';
   if (account) {
+    if (account.emailOptOut) {
+      contactPickerHtml += `<div style="margin-bottom:10px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#991b1b">✉ This account has <strong>unsubscribed</strong> — you'll be asked to confirm before sending.</div>`;
+    }
     const cts = (account.contacts || []).filter(c => c.email);
     if (cts.length > 1) {
       const opts = cts.map(c => `<option value="${escHtml(c.email)}"${c.isPrimary ? ' selected' : ''}>${escHtml(c.name || 'Contact')} — ${escHtml(c.email)}${c.role ? ' (' + escHtml(c.role) + ')' : ''}${c.isPrimary ? ' ★' : ''}</option>`).join('');
@@ -7202,6 +7218,14 @@ function saveDistShipment() {
 
   const dist = DB.a('dist_profiles').find(x=>x.id===distId);
 
+  // Value the shipment from the distributor's price list (was null → showed $0
+  // in every PO-value report) so shipment POs count like manually-entered ones.
+  const _shipPricing = DB.a('dist_pricing').filter(x=>x.distId===distId);
+  const shipmentValue = items.reduce((s,i)=>{
+    const pr = _shipPricing.find(x=>x.sku===i.sku);
+    return s + (pr?.pricePerCase||0) * i.cases;
+  }, 0);
+
   const poRec = {
     id: poId,
     distId,
@@ -7210,7 +7234,7 @@ function saveDistShipment() {
     expectedShipDate: date,
     items,
     totalCases,
-    totalValue: null,
+    totalValue: shipmentValue,
     status,
     notes,
     isShipment: true,
@@ -13186,7 +13210,7 @@ function renderMacInvoicesTab(accountId) {
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           ${statBadge(iv.status||'draft', statColor[iv.status]||'gray')}
-          <strong>${fmtC(iv.amount||0)}</strong>
+          <strong>${fmtC(iv.amount||iv.total||0)}</strong>
         </div>
       </div>`).join('')
     : '<div style="font-size:13px;color:var(--muted);padding:8px 0">No purpl invoices</div>';
@@ -13225,7 +13249,7 @@ function renderMacInvoicesTab(accountId) {
     const unpaidLf    = lfInvs.filter(x => x.status !== 'paid' && !x.combinedInvoiceId);
     if (unpaidPurpl.length && unpaidLf.length) {
       const purplOpts = unpaidPurpl.map(iv =>
-        `<option value="${iv.id}">${escHtml(iv.number||iv.invoiceNumber||iv.id)} — ${fmtC(iv.amount||0)}</option>`).join('');
+        `<option value="${iv.id}">${escHtml(iv.number||iv.invoiceNumber||iv.id)} — ${fmtC(iv.amount||iv.total||0)}</option>`).join('');
       const lfOpts = unpaidLf.map(inv =>
         `<option value="${inv.id}">${escHtml(inv.number||inv.id)} — ${fmtC(inv.total||0)}</option>`).join('');
       manualSection = `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">

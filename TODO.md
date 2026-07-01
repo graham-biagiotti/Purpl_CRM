@@ -3,6 +3,24 @@
 _Updated for go-live. The account + portal-order systems have been fully
 reviewed and the must-fix items are committed (see "Done this session")._
 
+## 🟣 AFTER LAUNCH — approved behavior changes (build once the 87-blast is out)
+_Decisions locked in from the full CRM scan (see CRM_SCAN.md). Deliberately held
+until after launch so they don't destabilize the blast._
+- [ ] **Inventory deduction rule** → deduct stock the first time an invoice becomes
+      **Sent OR Paid** (guarded against double), and **reverse on Void/Delete**. Pool
+      still chosen on the invoice. Closes the ✓Paid / edit-status / void gaps
+      (markRetailInvPaid 2653, markLfInvPaid, markCombinedPaid, _saveInvCore edit path,
+      standalone void).
+- [ ] **Reports revenue** → total from the invoice collections directly (parent
+      combined + standalone, excluding combined children), so invoices created
+      directly (not from an order) stop showing $0 in Reports.
+- [ ] **Variety-pack decomposition** → a variety production run consumes 4 classic +
+      4 blueberry + 4 peach component cans and adds variety stock; selling variety
+      then deducts variety only. (Recipe 4+4+4.)
+- [ ] Bundle the low-risk leftovers with this batch: delete dead four-column invoice
+      UI + `saveSettings()` + `?optout` handler; pin velocity to order date; converted
+      prospects → "pending"; report date-axis → issue/order date.
+
 ## 🔴 Open — needs your DECISION
 - [ ] **Opt-out on transactional/invoice emails** (email-R1). Policy choice: should
       invoices skip opted-out accounts, or send regardless (usual default)? Not a
