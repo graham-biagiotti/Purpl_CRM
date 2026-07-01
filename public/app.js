@@ -14957,7 +14957,7 @@ async function confirmPortalOrder() {
           created: todayStr, dueDate: todayStr, items: purplItems,
           cases: purplCases, cans: purplCans, status: 'pending', source: 'portal', brand: 'purpl',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
-          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : undefined,
+          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : null,
           notes: d.notes || '', deliveryWindow: d.deliveryWindow || purplDoc.deliveryWindow || '',
         }];
       }
@@ -14967,7 +14967,7 @@ async function confirmPortalOrder() {
           created: todayStr, dueDate: todayStr, items: lfItems.map(li => ({ sku: li.skuId, label: li.skuName, qty: li.cases })),
           cases: lfItems.reduce((s,li)=>s+(li.cases||0),0), cans: 0, status: 'pending', source: 'portal', brand: 'lf',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
-          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : undefined,
+          combinedOrderGroupId: isDual ? (combId || _portalOrderId) : null,
           notes: d.notes || '', deliveryWindow: d.deliveryWindow || lfDoc?.deliveryWindow || '',
         }];
       }
