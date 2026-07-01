@@ -15385,8 +15385,8 @@ function renderInvUnifiedList() {
     <td style="text-align:right"><strong>${fmtC(r.amt)}</strong></td>
     <td>${stBadge(r)}</td>
     <td style="white-space:nowrap;text-align:right">
+      ${r.print ? `<button class="btn xs" onclick="${r.print}">Preview</button>` : ''}
       <button class="btn xs" onclick="${r.edit}">${r.type==='combined' ? 'Preview' : 'Edit'}</button>
-      ${r.print ? `<button class="btn xs" onclick="${r.print}">🖨️</button>` : ''}
       ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
       ${r.inv.deliveryMethod==='ship' && !r.inv.shipStationOrderId ? `<button class="btn xs" onclick="pushInvoiceToShipStation('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">📦 Ship</button>` : ''}
       ${r.inv.fulfillmentSource==='warehouse' && !r.inv.warehousePushedAt && r.rawSt!=='paid' && r.rawSt!=='void' ? `<button class="btn xs" style="color:#0891b2;border-color:#0891b2" onclick="pushToWarehouse('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">🏭 Warehouse</button>` : ''}
