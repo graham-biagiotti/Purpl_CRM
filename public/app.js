@@ -12880,12 +12880,184 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
   });
 }
 
+// Unified single-brand (purpl / LF) invoice console — reuses the combined
+// modal shell so purpl and LF invoices get the same in-app document + edit +
+// "Send Invoice to Customer" experience (no browser tabs). Combined delegates
+// to its own tested function below.
+async function openInvoicePreview(type, id) {
+  if (type === 'combined') return openCombinedInvoicePreview(id);
+  const col = type === 'lf' ? 'lf_invoices' : 'retail_invoices';
+  const rec = DB.a(col).find(x => x.id === id);
+  if (!rec) { toast('Invoice not found'); return; }
+  toast('Loading preview…');
+  if (!rec.number && !rec.invoiceNumber) {
+    const n = await getNextInvoiceNumber(type === 'lf' ? 'lf' : 'purpl');
+    DB.update(col, id, x => ({ ...x, number: n, invoiceNumber: n }));
+    rec.number = n; rec.invoiceNumber = n;
+  }
+  const account = DB.a('ac').find(x => x.id === rec.accountId) || {};
+  let payLink = null;
+  if (rec.status !== 'paid') { try { payLink = await _getStripePayLink(rec, type === 'lf' ? 'lf' : 'retail'); } catch (e) { payLink = null; } }
+  const recForDoc = payLink ? { ...rec, _payLink: payLink } : rec;
+  const buildDoc = opts => type === 'lf' ? buildLfInvoiceEmailHTML(recForDoc, opts) : buildPurplInvoiceEmailHTML(recForDoc, opts);
+  const html = buildDoc({});
+  const total = type === 'lf' ? (rec.total || 0) : (rec.amount != null ? rec.amount : (rec.total || 0));
+  const st = rec.status || 'draft';
+  const stColor = { draft:'gray', sent:'blue', paid:'green', overdue:'red', void:'red' };
+
+  const h2 = document.querySelector('#modal-combined-invoice .modal-hdr h2');
+  if (h2) h2.textContent = type === 'lf' ? 'Lavender Fields Invoice' : 'purpl Invoice';
+  if (qs('#civ-account-name')) qs('#civ-account-name').textContent = rec.accountName || account.name || '';
+  if (qs('#civ-invoice-nums')) qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') +
+    ` <span class="badge ${stColor[st]||'gray'}" style="margin-left:8px;text-transform:uppercase;font-size:10px">${st}</span>`;
+
+  // Single brand: show only this brand's subtotal row + grand total
+  const purplRow = qs('#civ-purpl-sub')?.parentElement;
+  const lfRow = qs('#civ-lf-sub')?.parentElement;
+  if (type === 'lf') {
+    if (purplRow) purplRow.style.display = 'none';
+    if (lfRow) { lfRow.style.display = ''; qs('#civ-lf-sub').textContent = '$' + total.toFixed(2); }
+  } else {
+    if (lfRow) lfRow.style.display = 'none';
+    if (purplRow) { purplRow.style.display = ''; qs('#civ-purpl-sub').textContent = '$' + total.toFixed(2); }
+  }
+  if (qs('#civ-grand-total')) qs('#civ-grand-total').textContent = '$' + total.toFixed(2);
+
+  if (qs('#civ-edit-date')) qs('#civ-edit-date').value = rec.date || rec.issued || today();
+  if (qs('#civ-edit-due')) qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
+  if (qs('#civ-edit-terms')) qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
+  if (qs('#civ-edit-notes')) qs('#civ-edit-notes').value = rec.notes || '';
+  const delivSel = qs('#civ-edit-delivery');
+  if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
+  const fulfillSel = qs('#civ-edit-fulfillment');
+  if (fulfillSel) fulfillSel.value = rec.fulfillmentSource || 'warehouse';
+
+  const shipBtn = qs('#civ-btn-ship');
+  const whBtn = qs('#civ-btn-warehouse');
+  const _updateFulfillBtns = () => {
+    if (shipBtn) {
+      shipBtn.style.display = delivSel?.value === 'ship' ? '' : 'none';
+      if (rec.shipStationOrderId) { shipBtn.textContent = '✓ Pushed to ShipStation'; shipBtn.disabled = true; }
+      else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
+    }
+    if (whBtn) {
+      whBtn.style.display = fulfillSel?.value === 'warehouse' ? '' : 'none';
+      if (rec.warehousePushedAt) { whBtn.textContent = '✓ Sent to Warehouse'; whBtn.disabled = true; }
+      else { whBtn.textContent = '🏭 Push to Warehouse'; whBtn.disabled = false; }
+    }
+  };
+  _updateFulfillBtns();
+  if (delivSel) delivSel.onchange = _updateFulfillBtns;
+  if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
+  if (shipBtn) shipBtn.onclick = async () => {
+    shipBtn.disabled = true; shipBtn.textContent = 'Pushing…';
+    let ok = false;
+    try { ok = await pushInvoiceToShipStation(id, col); } catch (e) { ok = false; }
+    if (ok) setTimeout(() => openInvoicePreview(type, id), 300);
+    else { shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
+  };
+  if (whBtn) whBtn.onclick = () => { pushToWarehouse(id, col); setTimeout(() => openInvoicePreview(type, id), 300); };
+
+  const saveBtn = qs('#civ-btn-save');
+  if (saveBtn) saveBtn.onclick = () => {
+    const nd = qs('#civ-edit-date').value, ndu = qs('#civ-edit-due').value;
+    const patch = {
+      date: nd, dueDate: ndu, issued: nd, due: ndu,
+      paymentTerms: qs('#civ-edit-terms').value, notes: qs('#civ-edit-notes').value,
+      deliveryMethod: qs('#civ-edit-delivery')?.value || 'deliver',
+      fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
+    };
+    DB.update(col, id, x => ({ ...x, ...patch }));
+    toast('Invoice updated ✓');
+    setTimeout(() => openInvoicePreview(type, id), 200);
+  };
+
+  if (qs('#civ-preview-frame')) qs('#civ-preview-frame').srcdoc = html;
+
+  const newtabBtn = qs('#civ-btn-newtab');
+  if (newtabBtn) newtabBtn.onclick = () => {
+    const blob = new Blob([buildDoc({ printButton: true })], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
+
+  const sendBtn = qs('#civ-btn-gmail');
+  if (sendBtn) {
+    sendBtn.disabled = false; sendBtn.textContent = 'Send Invoice to Customer';
+    sendBtn.onclick = async () => {
+      const to = account.email || '';
+      if (!to) { toast('No email address on file for this account'); return; }
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+      try {
+        if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) { try { await pushInvoiceToShipStation(id, col); } catch (e) {} }
+        const subject = 'Invoice from Pumpkin Blossom Farm — ' + (rec.accountName || account.name || '');
+        const result = await callSendEmail(to, 'lavender@pbfwholesale.com', subject, html);
+        toast('Invoice sent ✓');
+        // purpl deducts inventory via markInvoiceSent; LF is Wix-managed (no iv ledger)
+        if (type === 'lf') DB.update('lf_invoices', id, x => ({ ...x, status: (x.status === 'draft' || !x.status) ? 'sent' : x.status, sentAt: new Date().toISOString() }));
+        else markInvoiceSent(id);
+        const entry = { id: uid(), stage: 'invoice_sent', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', invoiceId: id, invoiceRef: rec.number || rec.invoiceNumber || '' };
+        if (result?.id) entry.sentMessageId = result.id;
+        if (rec.accountId) DB.update('ac', rec.accountId, a => ({ ...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry) }));
+        _clearReadyToSend(id, col);
+        setTimeout(() => openInvoicePreview(type, id), 400);
+      } catch (e) {
+        console.error('Send invoice error:', e);
+        sendBtn.disabled = false; sendBtn.textContent = 'Send Invoice to Customer';
+        toast('Send failed — ' + (e?.message || 'try again'));
+      }
+    };
+  }
+
+  const paidBtn = qs('#civ-btn-paid');
+  if (paidBtn) {
+    paidBtn.textContent = 'Mark Paid';
+    paidBtn.style.display = (st === 'paid' || st === 'void') ? 'none' : '';
+    paidBtn.onclick = () => { (type === 'lf' ? markLfInvPaid : markRetailInvPaid)(id); closeModal('modal-combined-invoice'); };
+  }
+
+  const voidBtn = qs('#civ-btn-void');
+  if (voidBtn) {
+    voidBtn.style.display = (st === 'void') ? 'none' : '';
+    voidBtn.onclick = () => {
+      if (!confirm2('Void this invoice?')) return;
+      DB.atomicUpdate(cache => {
+        const arr = cache[col] || [];
+        const i2 = arr.findIndex(x => x.id === id);
+        if (i2 >= 0) arr[i2] = { ...arr[i2], status: 'void' };
+        if (type !== 'lf') cache.iv = (cache.iv || []).filter(x => !(x.type === 'out' && x.invoiceId === id));
+      });
+      toast('Invoice voided');
+      closeModal('modal-combined-invoice');
+      renderInvoicesPage();
+    };
+  }
+
+  const delBtn = qs('#civ-btn-delete');
+  if (delBtn) {
+    delBtn.style.display = _isAdmin() ? '' : 'none';
+    delBtn.onclick = () => { closeModal('modal-combined-invoice'); (type === 'lf' ? deleteLfInvoice : deleteRetailInv)(id); };
+  }
+
+  const copyBtn = qs('#civ-btn-copy');
+  if (copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(html).then(() => toast('HTML copied')).catch(() => toast('Copy failed'));
+
+  openModal('modal-combined-invoice');
+}
+
 // ── Combined invoice preview modal ────────────────────────
 
 async function openCombinedInvoicePreview(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
   toast('Loading preview…');
+  // Restore shell defaults that the shared single-brand openInvoicePreview may
+  // have altered (title, hidden subtotal row, "Mark Paid" label).
+  const _h2 = document.querySelector('#modal-combined-invoice .modal-hdr h2');
+  if (_h2) _h2.textContent = 'Combined Invoice';
+  const _pr = qs('#civ-purpl-sub')?.parentElement; if (_pr) _pr.style.display = '';
+  const _lr = qs('#civ-lf-sub')?.parentElement; if (_lr) _lr.style.display = '';
+  const _pb = qs('#civ-btn-paid'); if (_pb) { _pb.textContent = 'Mark Both Paid'; _pb.style.display = ''; }
+  const _vb = qs('#civ-btn-void'); if (_vb) _vb.style.display = '';
   // Older combined invoices were created without a number — backfill one,
   // since Stripe link generation requires it.
   if (!rec.number && !rec.invoiceNumber) {
@@ -15378,7 +15550,7 @@ function renderInvUnifiedList() {
       name: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '—',
       issued: x.date || '', due: x.dueDate || x.due || '',
       amt: parseFloat(x.amount || x.total || 0),
-      edit: `openInvModal('${x.id}')`, print: `generateInvoicePrint('${x.id}')`,
+      edit: `openInvModal('${x.id}')`, print: `openInvoicePreview('purpl','${x.id}')`,
       paidFn: `markRetailInvPaid('${x.id}')`,
     }));
   }
@@ -15387,7 +15559,7 @@ function renderInvUnifiedList() {
       name: x.accountName || '—',
       issued: x.issued || x.date || '', due: x.due || x.dueDate || '',
       amt: parseFloat(x.total || 0),
-      edit: `openLfInvoiceModal('${x.id}')`, print: `generateLfInvoicePrint('${x.id}')`,
+      edit: `openLfInvoiceModal('${x.id}')`, print: `openInvoicePreview('lf','${x.id}')`,
       paidFn: `markLfInvPaid('${x.id}')`,
     }));
   }
@@ -15396,7 +15568,7 @@ function renderInvUnifiedList() {
       name: x.accountName || '—',
       issued: x.date || (x.createdAt||'').slice(0,10), due: x.dueDate || x.due || '',
       amt: parseFloat(x.grandTotal || 0),
-      edit: `openCombinedInvoicePreview('${x.id}')`, print: `generateCombinedInvoicePrint('${x.id}')`,
+      edit: null, print: `openInvoicePreview('combined','${x.id}')`,
       paidFn: `markCombinedPaid('${x.id}')`,
     }));
   }
@@ -15436,7 +15608,7 @@ function renderInvUnifiedList() {
     <td>${stBadge(r)}</td>
     <td style="white-space:nowrap;text-align:right">
       ${r.print ? `<button class="btn xs" onclick="${r.print}">Preview</button>` : ''}
-      <button class="btn xs" onclick="${r.edit}">Edit</button>
+      ${r.edit ? `<button class="btn xs" onclick="${r.edit}">Edit</button>` : ''}
       ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
       ${r.inv.deliveryMethod==='ship' && !r.inv.shipStationOrderId ? `<button class="btn xs" onclick="pushInvoiceToShipStation('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">📦 Ship</button>` : ''}
       ${r.inv.fulfillmentSource==='warehouse' && !r.inv.warehousePushedAt && r.rawSt!=='paid' && r.rawSt!=='void' ? `<button class="btn xs" style="color:#0891b2;border-color:#0891b2" onclick="pushToWarehouse('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">🏭 Warehouse</button>` : ''}
