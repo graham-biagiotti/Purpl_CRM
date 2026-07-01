@@ -2935,7 +2935,7 @@ function renderProjectionsPage() {
       const pos = allPOs.filter(p=>p.distId===d.id).sort((a,b)=>a.dateReceived>b.dateReceived?1:-1);
       if (!pos.length) return `<tr><td onclick="openDistributor('${d.id}')" style="cursor:pointer"><strong>${d.name}</strong></td><td colspan="4" style="color:var(--muted)">No PO history</td></tr>`;
 
-      const avgVal = pos.reduce((s,p)=>s+(p.total||0),0)/pos.length;
+      const avgVal = pos.reduce((s,p)=>s+(p.totalValue||0),0)/pos.length;
       let avgFreq = null, nextEst = null;
       if (pos.length >= 2) {
         const intervals = [];
@@ -6344,7 +6344,7 @@ function _renderDistListKPIs() {
     .filter(p=>p.dateReceived&&p.dateReceived>=fom&&p.status!=='cancelled')
     .reduce((s,p)=>{
       const c = (p.items||[]).reduce((a,i)=>a+(parseInt(i.cases)||parseInt(i.qty)||0),0);
-      return s + (c || parseInt(p.total)||0);
+      return s + (c || parseInt(p.totalCases)||0);
     },0);
 
   // Overdue reorders: active distributors where today > lastOrderDate + reorderCycleDays
@@ -9225,7 +9225,7 @@ async function createDeliveryInvoice(accountId, ordId) {
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
   const total      = lineItems.reduce((s,l)=>s+l.amount, 0);
-  if (totalCases < 1) { toast('No items to invoice'); return; }
+  if (totalCases < 1) { toast('No items to invoice'); _deliveryInvInFlight.delete(ordId); return; }
   const pricePerCase = totalCases > 0 ? total / totalCases : 0;
 
   const invoice = {
@@ -10121,11 +10121,11 @@ function repDistributor() {
   const totalPOs = rows.reduce((s,r)=>s+parseInt(r[2])||0,0);
   const totalOut = allInv.filter(i=>!['paid','draft','void'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
 
-  _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.total||0),0)), fmtC(totalOut)+' outstanding');
+  _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.totalValue||0),0)), fmtC(totalOut)+' outstanding');
 
   _drawChart('bar',
     dists.map(d=>d.name),
-    [{label:'PO Value', data:dists.map(d=>allPOs.filter(p=>p.distId===d.id&&p.dateReceived>=from&&p.dateReceived<=to).reduce((s,p)=>s+(p.total||0),0)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
+    [{label:'PO Value', data:dists.map(d=>allPOs.filter(p=>p.distId===d.id&&p.dateReceived>=from&&p.dateReceived<=to).reduce((s,p)=>s+(p.totalValue||0),0)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
     'PO Value by Distributor'
   );
 
@@ -12848,9 +12848,9 @@ async function openCombinedInvoicePreview(combinedId) {
     if (!trackEntry.opened && !trackEntry.clicked && rec.status === 'sent') statusHtml += ` <span style="margin-left:6px;font-size:11px;color:var(--muted)">Not yet opened</span>`;
   }
   qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') + statusHtml;
-  qs('#civ-purpl-sub').textContent    = '$' + rec.purplSubtotal.toFixed(2);
-  qs('#civ-lf-sub').textContent       = '$' + rec.lfSubtotal.toFixed(2);
-  qs('#civ-grand-total').textContent  = '$' + rec.grandTotal.toFixed(2);
+  qs('#civ-purpl-sub').textContent    = '$' + (rec.purplSubtotal||0).toFixed(2);
+  qs('#civ-lf-sub').textContent       = '$' + (rec.lfSubtotal||0).toFixed(2);
+  qs('#civ-grand-total').textContent  = '$' + (rec.grandTotal||0).toFixed(2);
 
   // Populate editable fields
   qs('#civ-edit-date').value = rec.date || today();
@@ -13641,8 +13641,8 @@ function _renderMapPins() {
     // Info window
     const iw = new google.maps.InfoWindow({ content: `
       <div style="font-family:sans-serif;min-width:160px">
-        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${opts.name}</div>
-        <div style="font-size:12px;color:#666">${opts.sub||''}</div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${escHtml(opts.name||'')}</div>
+        <div style="font-size:12px;color:#666">${escHtml(opts.sub||'')}</div>
         ${opts.action?`<div style="margin-top:8px"><a href="#" onclick="${opts.action};return false" style="color:#8b5cf6;font-weight:600;font-size:12px">${opts.actionLabel||'View'}</a></div>`:''}
         ${opts.action2&&opts.actionLabel2?`<div style="margin-top:4px"><a href="#" onclick="${opts.action2};return false" style="color:#d97706;font-weight:600;font-size:12px">${opts.actionLabel2}</a></div>`:''}
         ${_mapRunMode&&opts.runAction?`<div style="margin-top:4px"><a href="#" onclick="${opts.runAction};return false" style="color:#10b981;font-weight:600;font-size:12px">+ Add to Run</a></div>`:''}
@@ -14313,7 +14313,10 @@ function _renderPoConfirmed() {
       const lfCases    = (g.lf?.lineItems||[]).reduce((s,i)=>s+(i.cases||0),0);
       const brands = [g.purpl?'💜 purpl':'', g.lf?'🪻 LF':''].filter(Boolean).join(' + ');
       const casesLabel = [g.purpl?`${purplCases} purpl`:'', g.lf?`${lfCases} LF`:''].filter(Boolean).join(' · ') || '0';
-      const confirmDate = o.confirmedAt instanceof Date ? fmtD(o.confirmedAt.toISOString().slice(0,10)) : (o.confirmedAt||'—');
+      let _cAt = o.confirmedAt;
+      if (_cAt && _cAt.toDate) _cAt = _cAt.toDate(); // Firestore Timestamp → Date
+      const confirmDate = _cAt instanceof Date ? fmtD(_cAt.toISOString().slice(0,10))
+        : (typeof _cAt === 'string' && _cAt ? fmtD(_cAt.slice(0,10)) : '—');
       const convId = g.purpl?.convertedOrderId || g.lf?.convertedOrderId || '—';
       return `<tr>
         <td style="font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
@@ -16262,14 +16265,14 @@ function _listenPortalOrders() {
         const unconfirmed = [];
         snap.docs.forEach(doc => {
           const d = doc.data();
-          if (d.status !== 'confirmed' && d.status !== 'rejected') unconfirmed.push(doc.id);
+          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined') unconfirmed.push(doc.id);
           if (!_portalOrderIds.has(doc.id) && _portalOrderIds.size > 0) {
             newCount++;
           }
         });
         if (newCount > 0) {
           toast(`New portal order${newCount > 1 ? 's' : ''} received!`, 5000);
-          if (currentPage === 'preorders') renderPreOrders(true);
+          if (currentPage === 'pre-orders') renderPreOrders(true);
           renderDashQuickActions();
         }
         _portalOrderIds = new Set(snap.docs.map(d => d.id));
