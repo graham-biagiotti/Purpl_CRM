@@ -12847,6 +12847,39 @@ function buildLfInvoiceEmailHTML(inv, opts) {
   });
 }
 
+// Combined invoice → same shared document as purpl/LF, with both the purpl and
+// LF line sections populated from the two child invoices, so the Preview looks
+// identical across all invoice types.
+function buildCombinedInvoiceEmailHTML(inv, opts) {
+  const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
+  const s  = DB.obj('invoice_settings', {});
+  const purplChild = inv.purplInvoiceId ? DB.a('retail_invoices').find(x => x.id === inv.purplInvoiceId) : null;
+  const lfChild    = inv.lfInvoiceId ? DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId) : null;
+  return buildInvoiceDocHTML({
+    number: inv.number || inv.invoiceNumber || '',
+    status: inv.status,
+    paidAt: inv.paidAt,
+    accountName: ac.name || inv.accountName || '',
+    accountEmail: ac.email || '',
+    accountAddress: ac.address || '',
+    issueDate: inv.date || inv.issued,
+    dueDate: inv.dueDate || inv.due,
+    terms: 'Net ' + (s.terms || 30),
+    deliveryDate: inv.deliveryDate || '',
+    tracking: inv.trackingNumber || '',
+    purplLines: purplChild ? _normPurplLines(purplChild) : [],
+    lfLines:    lfChild ? _normLfLines(lfChild) : [],
+    shippingLines: [
+      ...(purplChild ? _normShippingLines(purplChild) : []),
+      ...(lfChild ? _normShippingLines(lfChild) : []),
+    ],
+    grandTotal: inv.grandTotal != null ? inv.grandTotal : ((purplChild?.total || 0) + (lfChild?.total || 0)),
+    notes: inv.notes || '',
+    payLink: inv._payLink || null,
+    printButton: !!(opts && opts.printButton),
+  });
+}
+
 // ── Combined invoice preview modal ────────────────────────
 
 async function openCombinedInvoicePreview(combinedId) {
@@ -15363,7 +15396,7 @@ function renderInvUnifiedList() {
       name: x.accountName || '—',
       issued: x.date || (x.createdAt||'').slice(0,10), due: x.dueDate || x.due || '',
       amt: parseFloat(x.grandTotal || 0),
-      edit: `openCombinedInvoicePreview('${x.id}')`, print: null,
+      edit: `openCombinedInvoicePreview('${x.id}')`, print: `generateCombinedInvoicePrint('${x.id}')`,
       paidFn: `markCombinedPaid('${x.id}')`,
     }));
   }
@@ -15403,7 +15436,7 @@ function renderInvUnifiedList() {
     <td>${stBadge(r)}</td>
     <td style="white-space:nowrap;text-align:right">
       ${r.print ? `<button class="btn xs" onclick="${r.print}">Preview</button>` : ''}
-      <button class="btn xs" onclick="${r.edit}">${r.type==='combined' ? 'Preview' : 'Edit'}</button>
+      <button class="btn xs" onclick="${r.edit}">Edit</button>
       ${r.rawSt !== 'paid' && r.rawSt !== 'void' ? `<button class="btn xs green" onclick="${r.paidFn}">✓ Paid</button>` : ''}
       ${r.inv.deliveryMethod==='ship' && !r.inv.shipStationOrderId ? `<button class="btn xs" onclick="pushInvoiceToShipStation('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">📦 Ship</button>` : ''}
       ${r.inv.fulfillmentSource==='warehouse' && !r.inv.warehousePushedAt && r.rawSt!=='paid' && r.rawSt!=='void' ? `<button class="btn xs" style="color:#0891b2;border-color:#0891b2" onclick="pushToWarehouse('${r.id}','${r.type==='lf'?'lf_invoices':r.type==='combined'?'combined_invoices':'retail_invoices'}')">🏭 Warehouse</button>` : ''}
@@ -15991,6 +16024,15 @@ async function generateLfInvoicePrint(invoiceId) {
   if (!w) return;
   const payLink = inv.status === 'paid' ? null : await _getStripePayLink(inv, 'lf');
   const html = buildLfInvoiceEmailHTML(payLink ? { ...inv, _payLink: payLink } : inv, { printButton: true });
+  _writeInvoiceWindow(w, html);
+}
+
+async function generateCombinedInvoicePrint(invoiceId) {
+  const inv = DB.a('combined_invoices').find(x => x.id === invoiceId);
+  if (!inv) { toast('Invoice not found'); return; }
+  const w = _openInvoiceWindow();
+  if (!w) return;
+  const html = buildCombinedInvoiceEmailHTML(inv, { printButton: true });
   _writeInvoiceWindow(w, html);
 }
 
