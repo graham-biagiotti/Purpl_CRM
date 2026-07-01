@@ -2418,7 +2418,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   } else if (inv) {
     if (qs('#iv-number')) qs('#iv-number').value = inv.number||'';
     if (qs('#iv-date'))   qs('#iv-date').value   = inv.date||today();
-    if (qs('#iv-due'))    qs('#iv-due').value    = inv.due||'';
+    if (qs('#iv-due'))    qs('#iv-due').value    = inv.dueDate||inv.due||'';
     if (qs('#iv-status')) qs('#iv-status').value = inv.status||'draft';
     if (qs('#iv-notes'))  qs('#iv-notes').value  = inv.notes||'';
     if (qs('#iv-delivery-method'))qs('#iv-delivery-method').value = inv.deliveryMethod||'deliver';
@@ -11611,8 +11611,8 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
   } else {
     if (qs('#lfi-number')) qs('#lfi-number').value = inv.number||'';
-    if (qs('#lfi-issued')) qs('#lfi-issued').value  = inv.issued||today();
-    if (qs('#lfi-due'))    qs('#lfi-due').value    = inv.due||'';
+    if (qs('#lfi-issued')) qs('#lfi-issued').value  = inv.issued||inv.date||today();
+    if (qs('#lfi-due'))    qs('#lfi-due').value    = inv.due||inv.dueDate||'';
     if (qs('#lfi-status')) qs('#lfi-status').value = inv.status||'draft';
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
@@ -14794,6 +14794,21 @@ function openConfirmPortalOrder(id) {
   openModal('modal-confirm-portal-order');
 }
 
+// Build a Wix pull-deduction record for an LF invoice, mirroring the shape
+// _saveLfInvoiceCore writes (~11980), so confirmed LF portal invoices generate
+// a Wix stock-pull instruction instead of silently deducting nothing. The LF
+// save path de-dupes by invoiceId, so editing/sending later won't double it.
+function _lfWixDeductionFor(invId, invNum, lfItems, accountId, accountName, dateStr) {
+  return {
+    id: uid(), invoiceId: invId, invoiceNumber: invNum,
+    accountId, accountName, date: dateStr,
+    items: (lfItems || []).flatMap(l => l.hasVariants
+      ? (l.variantLines || []).map(vl => ({ skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units }))
+      : [{ skuName: l.skuName, cases: l.cases, units: l.units }]),
+    confirmed: false,
+  };
+}
+
 let _confirmPortalInFlight = false;
 async function confirmPortalOrder() {
   if (!_portalOrderId) return;
@@ -15007,6 +15022,7 @@ async function confirmPortalOrder() {
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
+        cache.lf_wix_deductions = [...(cache.lf_wix_deductions || []), _lfWixDeductionFor(lfInvId, lfNum, lfItems, d.accountId, d.accountName, todayStr)];
         cache.combined_invoices = [...(cache.combined_invoices||[]), {
           id: combId, number: combNum, invoiceNumber: combNum,
           purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
@@ -15051,6 +15067,7 @@ async function confirmPortalOrder() {
           notes: 'Auto-drafted from portal order.',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
+        cache.lf_wix_deductions = [...(cache.lf_wix_deductions || []), _lfWixDeductionFor(singleInvId, singleInvNum, lfItems, d.accountId, d.accountName, todayStr)];
       }
     });
 
