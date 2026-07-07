@@ -866,10 +866,11 @@ function init() {
       document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
     } else {
       document.getElementById('submit-btn').textContent = 'Place Order';
-      if (pricePerCase) {
-        document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
-        document.getElementById('price-display').style.display = 'block';
-      }
+    }
+    // Show the per-case price in BOTH pre-order and regular mode when one is set.
+    if (pricePerCase) {
+      document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
+      document.getElementById('price-display').style.display = 'block';
     }
   }).catch(function() {});
 
