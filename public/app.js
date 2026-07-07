@@ -7248,6 +7248,7 @@ function saveDistShipment() {
     status,
     notes,
     isShipment: true,
+    shipId, // links this PO to its iv deductions (ref: shipId) so delete can reverse them
   };
 
   // LOW-4: write the PO record, the per-SKU iv deductions, and the distributor
@@ -7547,12 +7548,27 @@ function cycleDistPOStatus(poId, distId) {
 }
 
 function deleteDistPO(poId, distId) {
-  if (!confirm2('Delete this PO?')) return;
-  DB.remove('dist_pos', poId);
+  const po = DB.a('dist_pos').find(x => x.id === poId);
+  // Shipment POs wrote warehouse deductions keyed ref:shipId — deleting the PO
+  // without reversing them left the ledger permanently short (delete+re-log
+  // double-deducted). Reverse them atomically with the PO removal.
+  const canReverse = !!(po && po.isShipment && po.shipId);
+  const msg = canReverse
+    ? 'Delete this shipment PO? Its inventory deductions will be reversed.'
+    : (po && po.isShipment
+        ? 'Delete this shipment PO? NOTE: it predates deduction linking — its inventory deductions cannot be auto-reversed; adjust stock manually if you re-log it.'
+        : 'Delete this PO?');
+  if (!confirm2(msg)) return;
+  DB.atomicUpdate(cache => {
+    cache.dist_pos = (cache.dist_pos||[]).filter(x => x.id !== poId);
+    if (canReverse) {
+      cache.iv = (cache.iv||[]).filter(e => !(e.source === 'dist_shipment' && e.ref === po.shipId));
+    }
+  });
   const d = DB.a('dist_profiles').find(x=>x.id===distId);
   const pane = qs('#mdist-tab-orders');
   if (d&&pane) pane.innerHTML = renderDistOrdersHTML(d);
-  toast('PO deleted');
+  toast(canReverse ? 'PO deleted — inventory restored ✓' : 'PO deleted');
 }
 
 // ── Invoices ──────────────────────────────────────────────
