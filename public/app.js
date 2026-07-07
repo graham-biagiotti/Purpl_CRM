@@ -3707,6 +3707,10 @@ function sendEmailViaResend() {
   const subject = document.getElementById('email-preview-subject').value || t.subject;
   const html    = document.getElementById('email-preview-body-textarea').value || t.body;
   if (!to) { toast('No recipient email on file'); return; }
+  // Same opt-out gate as the Emails page — this path had none, so an
+  // unsubscribed account could be emailed from the Cadence tab with no warning.
+  const _optAc = DB.a('ac').find(x => x.id === _currentEmailPreview.accountId);
+  if (_optAc?.emailOptOut && !confirm2(`${_optAc.name} has unsubscribed from emails. Send anyway?`)) return;
   const from = 'lavender@pbfwholesale.com';
   const btn = document.querySelector('#modal-email-preview .btn.primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -3739,7 +3743,9 @@ function markCadenceEmailSent(sentMessageId) {
     method: 'manual',
   };
   if (sentMessageId) entry.sentMessageId = sentMessageId;
-  DB.update('ac', accountId, a => ({...a, cadence: _pushCadence(a.cadence, entry)}));
+  // Stamp lastContacted too — cadence-tab sends were invisible to the
+  // mass-send "Sent today" stamp and last-contact filters.
+  DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
   closeModal('modal-email-preview');
   openAccountToEmailsTab(accountId);
   renderCadenceOverdue();
@@ -4725,6 +4731,11 @@ function _getMeFilteredAccounts(brandSel, lastContactSel, statusSel) {
   if (brand === 'lf')    list = list.filter(a=>a.isPbf);
   if (brand === 'purpl') list = list.filter(a=>!a.isPbf);
   if (lastContact === 'never') list = list.filter(a=>!a.lastContacted);
+  else if (lastContact === '1') {
+    // "Not contacted today" — exact date compare. daysAgo() pins date-only
+    // strings to noon, so >=1 hid accounts contacted YESTERDAY until ~noon.
+    list = list.filter(a=>a.lastContacted !== today());
+  }
   else if (lastContact) {
     const days = parseInt(lastContact);
     list = list.filter(a=>!a.lastContacted || daysAgo(a.lastContacted) >= days);
@@ -5834,6 +5845,10 @@ function convertProspect(id) {
     convertedFrom: 'prospect',
     convertedDate: today(),
     isPbf:      p.isPbf || false,
+    // Carry the portal token — without it the next mass send saw no token on
+    // the new account record and minted a NEW one, killing the personalized
+    // link already emailed to this customer as a prospect.
+    ...(p.orderPortalToken ? { orderPortalToken: p.orderPortalToken, orderPortalTokenCreatedAt: p.orderPortalTokenCreatedAt || null } : {}),
   };
 
   // Atomic: mark prospect won + create account in one Firestore write
