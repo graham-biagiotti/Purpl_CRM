@@ -8078,7 +8078,11 @@ function receiveFinishedPacks() {
   if (!sku) { _recvPacksInFlight = false; toast('Select a SKU'); return; }  // LOW-5
   if (!qty||qty<=0) { _recvPacksInFlight = false; toast('Enter a valid quantity'); return; }  // LOW-5
   const recvPool = qs('#recv-pack-pool')?.value || 'warehouse';
-  DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty, pool: recvPool, note:`${packType} receipt — ${qs('#recv-pack-note')?.value?.trim()||''}`});
+  // The ledger is CANS. qty is the number of PACKS (per the pack-type
+  // selector) — it was pushed raw, so receiving 8 six-packs added 8 cans.
+  const _packSize = ({'6pack':6, '12pack':12, '24pack':24, 'single':1})[packType] || 1;
+  const cans = qty * _packSize;
+  DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty: cans, pool: recvPool, note:`${qty} × ${packType} = ${cans} cans — ${qs('#recv-pack-note')?.value?.trim()||''}`});
   qs('#recv-pack-qty').value=''; qs('#recv-pack-note').value='';
   _invReceive();
   toast('Finished packs logged');
@@ -8103,7 +8107,7 @@ function _invRepack() {
     return `<tr>
       <td>${fmtD(j.date)}</td>
       <td>${inputs||'—'}</td>
-      <td>${skuBadge(j.outputSku)} ×${j.outputQty} packs</td>
+      <td>${skuBadge(j.outputSku)} ×${j.outputQty} cans</td>
       <td>${j.note||'—'}</td>
       <td><button class="btn xs red" onclick="deleteRepackJob('${j.id}')">✕</button></td>
     </tr>`;
