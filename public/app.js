@@ -12019,6 +12019,12 @@ async function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrder
   }
   const id = uid();
   const num = await getNextInvoiceNumber('combined');
+  // amount||total: delivery-run (and legacy) purpl invoices store only `total` —
+  // reading `amount` alone dropped the whole purpl half from the grand total
+  // while the document still listed its line items.
+  const _pSub = parseFloat(purplInv.amount != null ? purplInv.amount : purplInv.total) || 0;
+  const _lSub = parseFloat(lfInv.total != null ? lfInv.total : lfInv.amount) || 0;
+  const _date = purplInv.date || lfInv.issued || lfInv.date || today();
   const rec = {
     id,
     number: num,
@@ -12028,13 +12034,16 @@ async function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrder
     accountId,
     accountName:    purplInv.accountName || '',
     status:         'draft',
+    // date/dueDate were never set, so this parent could never show overdue
+    date:           _date,
+    dueDate:        purplInv.dueDate || purplInv.due || lfInv.dueDate || lfInv.due || '',
     createdAt:      new Date().toISOString(),
     sentAt:         null,
     paidAt:         null,
     portalOrderId:  portalOrderId || null,
-    purplSubtotal:  parseFloat(purplInv.amount||0),
-    lfSubtotal:     parseFloat(lfInv.total||0),
-    grandTotal:     parseFloat(purplInv.amount||0) + parseFloat(lfInv.total||0),
+    purplSubtotal:  _pSub,
+    lfSubtotal:     _lSub,
+    grandTotal:     _pSub + _lSub,
   };
   DB.atomicUpdate(cache => {
     cache.combined_invoices = [...(cache.combined_invoices||[]), rec];
