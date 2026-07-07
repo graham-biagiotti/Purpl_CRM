@@ -11710,6 +11710,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
     if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = 'deliver';
+    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = 'warehouse';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
     if (qs('#lfi-ship-status'))   qs('#lfi-ship-status').style.display = 'none';
@@ -11722,6 +11723,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
     if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = inv.deliveryMethod||'deliver';
+    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = inv.fulfillmentSource||'warehouse';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
     lfiDeliveryMethodChange();
@@ -12073,6 +12075,9 @@ function _saveLfInvoiceCore(id, isNew) {
     wixPulled:   existing?.wixPulled   || false,
     wixPulledAt: existing?.wixPulledAt || null,
     deliveryMethod:  qs('#lfi-delivery-method')?.value || 'deliver',
+    // The Fulfilled-by dropdown existed in the modal but was never read, so
+    // manual LF invoices could never get the Warehouse badge / push button.
+    fulfillmentSource: qs('#lfi-fulfillment')?.value || existing?.fulfillmentSource || 'warehouse',
     notes, link, deliveryDate, trackingNumber,
   };
 
@@ -13657,13 +13662,16 @@ function showWixPullModal(inv, deductionId) {
   inv = inv || {};
   _wixPullDeductionId = deductionId;
   _wixPullInvoiceId   = inv.id || null;
+  // Delivery runs open this with inv=null — render from the deduction record
+  // itself (it carries the stop's items/note) instead of a blank "—/No items".
+  const ded = deductionId ? DB.a('lf_wix_deductions').find(d => d.id === deductionId) : null;
   const acEl = qs('#wix-pull-account');
-  if (acEl) acEl.textContent = inv.accountName || '—';
+  if (acEl) acEl.textContent = inv.accountName || ded?.accountName || (ded?.note || '').replace(/^Delivery: /,'') || '—';
   const numEl = qs('#wix-pull-inv-number');
-  if (numEl) numEl.textContent = inv.number || '—';
+  if (numEl) numEl.textContent = inv.number || ded?.invoiceNumber || ded?.runName || '—';
   const itemsEl = qs('#wix-pull-items');
   if (itemsEl) {
-    itemsEl.innerHTML = (inv.lineItems||[]).map(l => {
+    itemsEl.innerHTML = ((inv.lineItems && inv.lineItems.length ? inv.lineItems : ded?.items) || []).map(l => {
       if (l.hasVariants && l.variantLines?.length) {
         const varHtml = l.variantLines.map(vl => `
           <div style="display:flex;justify-content:space-between;padding:3px 0 3px 24px;font-size:12px;color:var(--muted)">
@@ -13680,8 +13688,8 @@ function showWixPullModal(inv, deductionId) {
       }
       return `
         <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <span>${escHtml(l.skuName)}</span>
-          <span><strong>${l.cases}</strong> case${l.cases!==1?'s':''} (${l.units} units)</span>
+          <span>${escHtml(l.skuName || l.sku || '')}${l.variantName ? ' — ' + escHtml(l.variantName) : ''}</span>
+          <span><strong>${l.cases ?? l.qty ?? 0}</strong> case${(l.cases ?? l.qty) !== 1 ? 's' : ''}${l.units ? ` (${l.units} units)` : ''}</span>
         </div>`;
     }).join('') || '<div style="color:var(--muted)">No items</div>';
   }
