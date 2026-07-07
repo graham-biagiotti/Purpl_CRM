@@ -11744,7 +11744,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = '';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = '';
     if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = 'deliver';
-    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = 'warehouse';
+    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = 'farm';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
     if (qs('#lfi-ship-status'))   qs('#lfi-ship-status').style.display = 'none';
@@ -11757,7 +11757,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-notes'))  qs('#lfi-notes').value  = inv.notes||'';
     if (qs('#lfi-link'))   qs('#lfi-link').value   = inv.link||'';
     if (qs('#lfi-delivery-method'))qs('#lfi-delivery-method').value = inv.deliveryMethod||'deliver';
-    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = inv.fulfillmentSource||'warehouse';
+    if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = inv.fulfillmentSource||'farm';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
     lfiDeliveryMethodChange();
@@ -12111,7 +12111,7 @@ function _saveLfInvoiceCore(id, isNew) {
     deliveryMethod:  qs('#lfi-delivery-method')?.value || 'deliver',
     // The Fulfilled-by dropdown existed in the modal but was never read, so
     // manual LF invoices could never get the Warehouse badge / push button.
-    fulfillmentSource: qs('#lfi-fulfillment')?.value || existing?.fulfillmentSource || 'warehouse',
+    fulfillmentSource: qs('#lfi-fulfillment')?.value || existing?.fulfillmentSource || 'farm',
     notes, link, deliveryDate, trackingNumber,
   };
 
