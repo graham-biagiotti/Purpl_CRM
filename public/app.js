@@ -1047,7 +1047,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>If you need anything adjusted (quantities, delivery schedule, or product mix) just let us know.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'delivery-followup': {
       subject: `How did your delivery go? — ${businessName}`,
@@ -1064,7 +1064,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>Your feedback helps us serve you better. Just reply to this email with any thoughts.</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'new-product': {
       subject: `New from Pumpkin Blossom Farm — you'll want to see this`,
@@ -1082,7 +1082,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="text-align:center"><a href="${portalLink}" style="color:${accentColor};font-weight:500">Open Your Portal →</a></p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'thank-you': {
       subject: `Thank you, ${businessName} — we appreciate your partnership`,
@@ -1099,7 +1099,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>With gratitude,</p>
         <p>Graham Biagiotti<br>
         Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'custom': {
       subject: `A message from Pumpkin Blossom Farm`,
@@ -4416,6 +4416,12 @@ function emailsPageSendEmail() {
   }
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
   if (!tpl) return;
+  // The Custom template ships with a literal placeholder and this page has no
+  // edit surface — block it instead of emailing "[Your message here]".
+  if (tpl.body && tpl.body.includes('[Your message here]')) {
+    toast('The Custom template needs a real message — edit it via the account modal Cadence tab before sending.', 7000);
+    return;
+  }
   const toEmails = _getEmailsRecipients(account);
   const toEmail = toEmails[0] || '';
   if (!toEmail) { toast('No recipient email on file'); return; }
@@ -4918,6 +4924,12 @@ async function meTemplateSend() {
   if (_meTemplateInFlight) { toast('Send already in progress'); return; }
   const tplId = qs('#me-template-select')?.value || '';
   if (!tplId) { toast('Select a template first'); return; }
+  // Mass send has no edit surface — the Custom template would blast the
+  // literal "[Your message here]" placeholder to every selected account.
+  if (tplId === 'custom') {
+    toast('The Custom template cannot be mass-sent — it contains a placeholder body. Use Broadcast mode to write a one-off message.', 8000);
+    return;
+  }
   let accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));
   if (!accounts.length) { toast('No accounts selected'); return; }
 
