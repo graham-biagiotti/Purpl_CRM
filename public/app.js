@@ -8805,7 +8805,7 @@ function openOrderDetail(id) {
     renderOrders();
     renderInventory();
     renderDash();
-    toast('Order and linked inventory entries removed');
+    toast('Order removed');
   };
   const modStatusBtn = qs('#mod-status-btn');
   if (modStatusBtn) modStatusBtn.onclick = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
@@ -10267,7 +10267,10 @@ function repDistributor() {
     const poTotal  = pos.reduce((s,p)=>s+(p.totalValue||0),0);
     const invTotal = inv.reduce((s,i)=>s+(i.total||0),0);
     const paid     = inv.filter(i=>i.status==='paid').reduce((s,i)=>s+(i.total||0),0);
-    return [d.name, d.status, pos.length, fmtC(poTotal), fmtC(invTotal), fmtC(paid), fmtC(invTotal-paid)];
+    // Outstanding = open invoices only; invTotal−paid counted drafts/voids,
+    // contradicting the KPI above which excludes them.
+    const openAmt  = inv.filter(i=>!['paid','draft','void'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
+    return [d.name, d.status, pos.length, fmtC(poTotal), fmtC(invTotal), fmtC(paid), fmtC(openAmt)];
   });
 
   const totalPOs = rows.reduce((s,r)=>s+parseInt(r[2])||0,0);
@@ -10461,7 +10464,7 @@ function exportYearEnd() {
   DB.a('dist_invoices').filter(x => x.status === 'paid').forEach(x => {
     const pd = (x.paidDate || x.paidAt || '').slice(0,10);
     if (!inYear(pd)) return;
-    const acName = x.accountName || acLookup[x.accountId] || '—';
+    const acName = x.accountName || x.distName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number||'—', 'Dist', acName, parseFloat(x.total||x.amount||0).toFixed(2), 'Distributor']);
   });
 
@@ -10540,7 +10543,8 @@ function renderLfReports() {
   const cutoff = _lfRepCutoff();
   const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.issued || inv.date || inv.created || '') >= cutoff);
   const paid = invs.filter(i => i.status === 'paid');
-  const outstanding = invs.filter(i => i.status !== 'paid');
+  // void + draft are not receivables — they inflated Outstanding
+  const outstanding = invs.filter(i => !['paid','void','draft'].includes(i.status || 'draft'));
 
   // KPIs
   const totalRev = paid.reduce((s,i)=>s+(i.total||0),0);
@@ -10609,11 +10613,12 @@ function renderLfReports() {
     const outRows = outstanding.sort((a,b)=>(a.dueDate||'')>(b.dueDate||'')?1:-1);
     outTbody.innerHTML = outRows.length
       ? outRows.map(i=>{
-          const overdue = i.dueDate && i.dueDate < today();
+          const _od = i.dueDate || i.due || '';
+          const overdue = _od && _od < today();
           return `<tr>
             <td>${escHtml(i.accountName||'—')}</td>
             <td>${escHtml(i.number||i.invoiceNumber||'INV')}</td>
-            <td style="${overdue?'color:var(--red);font-weight:600':''}">${fmtD(i.dueDate)}</td>
+            <td style="${overdue?'color:var(--red);font-weight:600':''}">${fmtD(i.dueDate||i.due)}</td>
             <td>${fmtC(i.total||0)}</td>
           </tr>`;
         }).join('')
@@ -10660,7 +10665,7 @@ function exportLfReportCSV(section) {
     filename = 'lf-orders-by-account.csv';
   } else if (section === 'outstanding') {
     headers = ['Account','Invoice','Due Date','Amount'];
-    rows = invs.filter(i=>i.status!=='paid').map(i=>[i.accountName||'—', i.number||i.invoiceNumber||'', i.dueDate||'', (i.total||0).toFixed(2)]);
+    rows = invs.filter(i=>!['paid','void','draft'].includes(i.status||'draft')).map(i=>[i.accountName||'—', i.number||i.invoiceNumber||'', i.dueDate||i.due||'', (i.total||0).toFixed(2)]);
     filename = 'lf-outstanding.csv';
   } else if (section === 'wix') {
     headers = ['Date','Run','SKU','Cases','Status'];
