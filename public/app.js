@@ -2006,13 +2006,18 @@ function renderCadenceOverdue() {
     }
   });
 
-  // Invoices without a sent notification
+  // Invoices without a sent notification. Skip: drafts (nothing to send yet),
+  // paid/void (moot), anything already status sent/sentAt (markInvoiceSent
+  // logs no cadence), and combined children (the SEND logs the parent id, so
+  // children were flagged forever after every combined send).
   DB.a('ac').forEach(a=>{
     const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
-    _allPurplInvoices().filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
+    const needsFlag = inv => !sentIds.has(inv.id) && !inv.combinedInvoiceId &&
+      !['draft','paid','void','sent'].includes(inv.status || 'draft') && !inv.sentAt;
+    _allPurplInvoices().filter(x=>x.accountId===a.id&&needsFlag(x)).forEach(inv=>{
       flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
     });
-    DB.a('lf_invoices').filter(x=>x.accountId===a.id&&!sentIds.has(x.id)).forEach(inv=>{
+    DB.a('lf_invoices').filter(x=>x.accountId===a.id&&needsFlag(x)).forEach(inv=>{
       flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number||inv.id} not sent to retailer`, invoiceId:inv.id});
     });
   });
@@ -13473,7 +13478,9 @@ function printAccountStatement(accountId) {
     .slice()
     .sort((x, y) => (x._date || '') > (y._date || '') ? -1 : 1)
     .map(iv => {
-      const balance = (iv.status === 'paid' || iv.status === 'void') ? 0 : iv._amt;
+      // Drafts are unsent — counting them inflated the customer-facing
+      // "Total Outstanding" with money never billed.
+      const balance = (iv.status === 'paid' || iv.status === 'void' || (iv.status || 'draft') === 'draft') ? 0 : iv._amt;
       totalOutstanding += balance;
       return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${escHtml(iv.number || iv.invoiceNumber || '—')} <span style="font-size:10px;color:#9ca3af">${iv._type}</span></td>
