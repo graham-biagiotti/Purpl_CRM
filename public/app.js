@@ -10798,11 +10798,11 @@ function _parseLLCSV(text) {
   if (countEl) countEl.textContent = `${orders.length} order${orders.length!==1?'s':''} detected`;
   if (head) head.innerHTML = '<tr><th>Buyer</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th></tr>';
   if (tbody) tbody.innerHTML = orders.map(o=>`<tr>
-    <td><strong>${o.buyer||'Unknown'}</strong></td>
-    <td>${o.date}</td>
-    <td>${o.items.map(i=>`${i.product}${i.variant?' ('+i.variant+')':''} ×${i.qty}`).join(', ')||'—'}</td>
+    <td><strong>${escHtml(o.buyer||'Unknown')}</strong></td>
+    <td>${escHtml(o.date||'')}</td>
+    <td>${escHtml(o.items.map(i=>`${i.product}${i.variant?' ('+i.variant+')':''} ×${i.qty}`).join(', ')||'—')}</td>
     <td>${fmtC(o.total||o.items.reduce((s,i)=>s+i.unitPrice*i.qty,0))}</td>
-    <td><span class="badge ${o.status.includes('complet')||o.status.includes('deliver')?'green':o.status.includes('cancel')?'red':'amber'}">${o.status}</span></td>
+    <td><span class="badge ${o.status.includes('complet')||o.status.includes('deliver')?'green':o.status.includes('cancel')?'red':'amber'}">${escHtml(o.status)}</span></td>
   </tr>`).join('') || '<tr><td colspan="5" class="empty">No orders detected</td></tr>';
 
   const importBtn = qs('#ll-import-btn');
