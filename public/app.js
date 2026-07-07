@@ -2225,6 +2225,20 @@ function renderInvoiceReminders() {
     queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total });
   });
 
+  // Combined PARENTS — the real bill for a dual-brand order. Children are
+  // excluded above, so without this an overdue combined invoice got no
+  // automated reminder at all. sendInvoiceReminder already supports the
+  // combined_invoices collection.
+  DB.a('combined_invoices').forEach(inv => {
+    if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
+    if (inv.reminderSentAt) return;
+    const days = daysAgo(inv.dueDate||inv.due);
+    if (days < -7) return;
+    const ac = DB.a('ac').find(x => x.id === inv.accountId);
+    if (!ac || !ac.email) return;
+    queue.push({ inv, ac, collection: 'combined_invoices', isOverdue: days > 0, amount: inv.grandTotal });
+  });
+
   // Find or create container, inserted before #dash-dist-kpis
   let el = document.getElementById('dash-invoice-reminders');
   if (!el) {
@@ -2251,7 +2265,7 @@ function renderInvoiceReminders() {
           <div class="attn-icon">${isOverdue ? '🔴' : '🟡'}</div>
           <div class="attn-info" style="flex:1">
             <div class="attn-name">${escHtml(ac.name)} — ${escHtml(inv.number || '')}</div>
-            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.due || inv.dueDate)}</div>
+            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.dueDate || inv.due)}</div>
           </div>
           <button class="btn xs primary" onclick="sendInvoiceReminder('${inv.id}','${collection}')">Send Reminder</button>
         </div>
@@ -2269,7 +2283,7 @@ async function sendInvoiceReminder(invId, collection) {
   const payLink = await _getStripePayLink(inv, type);
   const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
 
-  const _dueStr = inv.due || inv.dueDate || '';
+  const _dueStr = inv.dueDate || inv.due || '';
   const isOverdue = !!_dueStr && daysAgo(_dueStr) > 0;
   const subject = isOverdue
     ? `Payment reminder — ${inv.number || ''} (${ac.name})`
@@ -2297,7 +2311,7 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
   const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || inv.total || 0);
   const invSettings = DB.obj('invoice_settings') || {};
-  const _remDue = inv.due || inv.dueDate;
+  const _remDue = inv.dueDate || inv.due;
   const dueLabel = _remDue ? new Date(_remDue+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
   const isLf = collection === 'lf_invoices';
   const accentColor = isLf ? '#4a7c59' : '#6B4F9A';
@@ -13372,6 +13386,7 @@ async function openCombinedInvoicePreview(combinedId) {
               const purplInv = cache.retail_invoices[ri];
               const invNum = purplInv.number || purplInv.invoiceNumber || '';
               (purplInv.lineItems || []).forEach(li => {
+                if (li.skuId === '__shipping__') return; // shipping is not stock
                 const cases = li.cases || li.qty || 0;
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
@@ -16260,6 +16275,7 @@ function markInvoiceSent(id) {
       const lines = inv.lineItems || inv.items || [];
       c.iv = c.iv || [];
       lines.forEach(li => {
+        if (li.skuId === '__shipping__') return; // shipping is not stock — the webhook line carries cases:1
         const cases = li.cases || li.qty || 0;
         if (cases > 0) {
           c.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'warehouse', note: 'Invoice ' + invNum, invoiceId: id });

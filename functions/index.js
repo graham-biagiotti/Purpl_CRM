@@ -1203,8 +1203,14 @@ exports.stripeWebhook = onRequest(
         }
       }
 
-      // If combined, also mark the child invoices as paid
+      // If combined, also mark the child invoices as paid. Strip the
+      // parent-specific mismatch fields first — paidData.notes is the PARENT's
+      // notes+warning and would overwrite each child's own notes.
       if (invoiceType === 'combined') {
+        if (paidData.paidAmountMismatch) {
+          delete paidData.notes;
+          delete paidData.paidAmountMismatch;
+        }
         const combSnap = await db.doc(`${colPath}/${invoiceId}`).get();
         if (combSnap.exists) {
           const comb = combSnap.data();
