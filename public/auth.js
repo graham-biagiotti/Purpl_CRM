@@ -20,9 +20,20 @@ async function bootApp() {
   try {
     await enableIndexedDbPersistence(db);
   } catch(e) {
-    if (e.code !== 'failed-precondition' && e.code !== 'unimplemented') {
-      console.warn('Offline persistence unavailable:', e);
-    }
+    // Without persistence, edits made while OFFLINE are not queued — closing
+    // the browser loses them. This failed silently (typical cause: the CRM
+    // already open in another tab), which was the worst remaining data-loss
+    // hole: the user still got "changes will sync" messaging that wasn't true.
+    window._persistenceDisabled = true;
+    const why = e.code === 'failed-precondition'
+      ? 'the CRM is open in another tab — close it and reload this one'
+      : (e.code === 'unimplemented' ? 'this browser does not support it' : (e.message || e.code || 'unknown error'));
+    console.warn('Offline persistence unavailable:', e);
+    setTimeout(() => {
+      if (typeof toast === 'function') {
+        toast(`⚠️ Offline protection is OFF (${why}). Edits made while offline will NOT survive closing the browser.`, 12000);
+      }
+    }, 3000);
   }
 
   const authScreen    = document.getElementById('auth-screen');
