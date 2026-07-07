@@ -11951,9 +11951,14 @@ function _saveLfInvoiceCore(id, isNew) {
 
   if (!lineItems.length) { toast('Add at least one line item'); return; }
 
-  const total    = lineItems.reduce((s, l) => s + l.lineTotal, 0);
   const existing = isNew ? null : DB.a('lf_invoices').find(x => x.id === id);
   const saveId   = isNew ? uid() : id;
+
+  // Preserve the ShipStation __shipping__ line — the modal renders SKU rows
+  // only, so rebuilding from the DOM dropped the shipping charge on re-edit.
+  lineItems.push(...((existing?.lineItems || []).filter(li => li.skuId === '__shipping__')));
+
+  const total    = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0);
 
   const rec = {
     ...(existing||{}),
@@ -11978,7 +11983,7 @@ function _saveLfInvoiceCore(id, isNew) {
     accountId:     rec.accountId,
     accountName:   rec.accountName,
     date:          existingDeduction?.date || today(),
-    items:         lineItems.flatMap(l => l.hasVariants
+    items:         lineItems.filter(l => l.skuId !== '__shipping__').flatMap(l => l.hasVariants
       ? l.variantLines.map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
       : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
     confirmed:     existingDeduction?.confirmed || false,
@@ -16280,14 +16285,20 @@ async function _saveInvCore(id, isNew) {
 
   if (!lineItems.length) { _saveInvInFlight = false; toast('Enter at least one case quantity'); return; }  // LOW-5
 
-  const totalCases = lineItems.reduce((s, l) => s + l.cases, 0);
-  const totalCans  = totalCases * CANS_PER_CASE;
-  const totalAmt   = lineItems.reduce((s, l) => s + l.lineTotal, 0);
-
   // isNew may be undefined if called from old code paths — treat missing id as new
   const _isNew   = isNew !== false && !id;
   const existing = _isNew ? null : findInvoice(id);
   const saveId   = _isNew ? uid() : id;
+
+  // Preserve non-SKU lines (ShipStation writes a __shipping__ line after
+  // shipment) — the modal only renders SKU rows, so rebuilding from the DOM
+  // alone silently deleted the shipping charge on any later edit.
+  const _carryLines = (existing?.lineItems || []).filter(li => li.skuId === '__shipping__');
+  lineItems.push(..._carryLines);
+
+  const totalCases = lineItems.filter(l => l.skuId !== '__shipping__').reduce((s, l) => s + l.cases, 0);
+  const totalCans  = totalCases * CANS_PER_CASE;
+  const totalAmt   = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0);
 
   const _invNum = number || existing?.invoiceNumber || existing?.number || await getNextInvoiceNumber('purpl');
   const rec = {
