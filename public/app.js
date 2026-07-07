@@ -15399,12 +15399,15 @@ async function savePortalSettings() {
   const config    = { mode, pricePerCase: price, portalPassword, deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null, launchDate };
   try {
     await PortalDB.saveConfig(config);
-    // The password gate (verifyPortalPassword) and email/link readers all
-    // read from portal_settings/config — mirror the password there so the
-    // gate actually enforces it. (saveConfig writes the full config to
-    // portal_config/main for mode/price/launch.)
+    // The portal reads its config via the getPortalConfig Cloud Function,
+    // which reads portal_settings/config — NOT portal_config/main (where
+    // saveConfig writes). Mirror the full public config there, or the price/
+    // mode/launch date saved in Settings never reach the customer order form.
+    // (Previously only portalPassword was mirrored, so the order form always
+    // saw pricePerCase: null and showed no pricing.)
     await firebase.firestore().collection('portal_settings').doc('config')
-      .set({ portalPassword }, { merge: true });
+      .set({ portalPassword, mode, pricePerCase: price, launchDate,
+             deadlineEnabled: dlEnabled, deadline: dlEnabled ? deadline : null }, { merge: true });
     toast('Portal settings saved ✓');
     await _renderPortalStatusCard(config);
   } catch(e) {
