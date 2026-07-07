@@ -46,7 +46,9 @@ const CONFIG_ARRAY_KEYS = [
 const ARRAY_KEYS = [...COLLECTION_KEYS, ...CONFIG_ARRAY_KEYS];
 
 // Object keys stored in the config document
-const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings'];
+// (shipstation_settings was written via setObj but missing here, so it lived
+// only in memory — Store ID / From-address silently reverted on every reload.)
+const OBJ_KEYS = ['settings','costs','today_run','invoice_settings','api_settings','shipstation_settings'];
 
 const DB = {
   _cache: {},
