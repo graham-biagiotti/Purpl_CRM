@@ -11993,6 +11993,7 @@ function _saveLfInvoiceCore(id, isNew) {
   else DB.push('lf_wix_deductions', deduction);
 
   auditLog(isNew ? 'create' : 'update', 'lf_invoice', saveId, rec.number || saveId);
+  if (!isNew) _syncCombinedParentForChild(saveId); // M1: keep combined parent status+dollars in step with LF child edits
   return { rec, deduction };
 }
 
@@ -12095,10 +12096,28 @@ function _syncCombinedParentForChild(childId) {
   const isPaid = (invId) => { const inv = findInvoice(invId); return !!inv && inv.status === 'paid'; };
   const bothPaid = isPaid(parent.purplInvoiceId) && isPaid(parent.lfInvoiceId);
   const now = new Date().toISOString();
+  // Re-derive the parent's dollars from the CURRENT children — the stored
+  // subtotals were copies frozen at creation, so editing a child's quantities
+  // left the parent (document Amount Due, Stripe amount, tax export) at the
+  // old number while the Invoices-page KPIs (children-based) showed the new one.
+  const _childAmt = (invId, lf) => {
+    const inv = lf ? DB.a('lf_invoices').find(x => x.id === invId) : findInvoice(invId);
+    if (!inv) return null;
+    return parseFloat(lf ? (inv.total != null ? inv.total : inv.amount) : (inv.amount != null ? inv.amount : inv.total)) || 0;
+  };
+  const newPSub = _childAmt(parent.purplInvoiceId, false);
+  const newLSub = _childAmt(parent.lfInvoiceId, true);
   DB.atomicUpdate(cache => {
     const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
     if (ci < 0) return;
-    const cur = cache.combined_invoices[ci];
+    let cur = cache.combined_invoices[ci];
+    if (newPSub != null && newLSub != null) {
+      // Shipping lives only on the parent's grandTotal (webhook adds it there,
+      // child subtotals unchanged) — preserve that delta through the recompute.
+      const extra = Math.max(0, (parseFloat(cur.grandTotal) || 0) - ((parseFloat(cur.purplSubtotal) || 0) + (parseFloat(cur.lfSubtotal) || 0)));
+      cur = { ...cur, purplSubtotal: newPSub, lfSubtotal: newLSub, grandTotal: newPSub + newLSub + extra };
+      cache.combined_invoices[ci] = cur;
+    }
     if (bothPaid && cur.status !== 'paid') {
       cache.combined_invoices[ci] = {...cur, status:'paid', paidDate: cur.paidDate || now.slice(0,10), paidAt: cur.paidAt || now};
     } else if (!bothPaid && cur.status === 'paid') {
