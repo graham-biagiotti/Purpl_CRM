@@ -9122,7 +9122,13 @@ function addStop() {
   toast('Stop added');
 }
 
+const _stopToggleBusy = new Set();
 function toggleStop(i) {
+  // Rapid double-click fired create-then-reverse back to back; ignore the
+  // second event and re-render so the checkbox re-syncs to real state.
+  if (_stopToggleBusy.has(i)) { renderDelivery(); return; }
+  _stopToggleBusy.add(i);
+  setTimeout(() => _stopToggleBusy.delete(i), 600);
   const run = DB.obj('today_run', {date:today(), stops:[]});
   if (!run.stops[i]) { renderDelivery(); return; }
   const wasDone = run.stops[i].done;
@@ -9161,6 +9167,12 @@ function toggleStop(i) {
       confirmed: false,
     } : null;
 
+    // Link the created records to THIS stop so un-toggling reverses exactly
+    // these — the old account+date matching collided when one account had two
+    // stops in a day and could sweep unrelated ledger entries.
+    stop.ordId = newOrd.id;
+    if (newWixDeduction) stop.wixDeductionId = newWixDeduction.id;
+
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
       cache['ac'] = (cache['ac']||[]).map(a => a.id===ac2.id ? {...a, lastOrder:today()} : a);
@@ -9184,23 +9196,35 @@ function toggleStop(i) {
     if (allDone) setTimeout(()=>openDeliveryCostModal(updatedRun.stops), 800);
 
   } else if (wasDone && !stop.done) {
-    // Un-toggling from done → reverse all side-effects (order, invoice, inventory)
+    // Un-toggling from done → reverse the side-effects of THIS stop only.
+    const stopOrdId = stop.ordId || null;
+    const stopWixId = stop.wixDeductionId || null;
+    delete stop.ordId; delete stop.wixDeductionId;
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
       const acId = ac2?.id || stop.accountId;
-      const deliveryOrd = (cache['orders']||[]).find(o =>
-        o.source === 'run' && o.accountId === acId && o.created === today()
-      );
+      // Prefer the order linked at mark-done; fall back to account+date only
+      // for stops marked done before ordId linking existed.
+      const deliveryOrd = stopOrdId
+        ? (cache['orders']||[]).find(o => o.id === stopOrdId)
+        : (cache['orders']||[]).find(o => o.source === 'run' && o.accountId === acId && o.created === today());
       if (deliveryOrd) {
         cache['orders'] = (cache['orders']||[]).filter(o => o.id !== deliveryOrd.id);
-        // Remove linked invoice
-        cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
-          !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
-        );
-        // Remove linked inventory deductions
-        cache['iv'] = (cache['iv']||[]).filter(e =>
-          !(e.type === 'out' && e.invoiceId && (cache['retail_invoices']||[]).every(inv => inv.id !== e.invoiceId))
-        );
+        // Remove ONLY the invoice(s) created for this order, and collect their
+        // ids — the old cleanup deleted every ledger 'out' whose invoiceId
+        // wasn't in retail_invoices, sweeping legacy-invoice deductions too.
+        const removedInvIds = new Set();
+        cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv => {
+          const mine = inv.source === 'delivery_run' &&
+            (inv.orderId ? inv.orderId === deliveryOrd.id : (inv.accountId === acId && inv.date === today()));
+          if (mine) removedInvIds.add(inv.id);
+          return !mine;
+        });
+        cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && removedInvIds.has(e.invoiceId)));
+      }
+      // Drop this stop's unconfirmed Wix pull so no phantom pending deduction lingers
+      if (stopWixId) {
+        cache['lf_wix_deductions'] = (cache['lf_wix_deductions']||[]).filter(d => !(d.id === stopWixId && !d.confirmed));
       }
     });
     toast('Stop unmarked — order, invoice & inventory reversed');
