@@ -2185,8 +2185,11 @@ function renderInvoiceStatus() {
 function renderInvoiceReminders() {
   const queue = [];
 
-  // Check both retail_invoices and legacy iv for purpl invoices
+  // Check both retail_invoices and legacy iv for purpl invoices.
+  // Combined CHILDREN are excluded — reminding from a child quotes the
+  // customer half of what they owe; the combined parent is the real bill.
   _allPurplInvoices().forEach(inv => {
+    if (inv.combinedInvoiceId) return;
     if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
     const days = daysAgo(inv.dueDate||inv.due);
@@ -2198,9 +2201,12 @@ function renderInvoiceReminders() {
   });
 
   DB.a('lf_invoices').forEach(inv => {
-    if (['paid','draft','void'].includes(inv.status) || !inv.due || !inv.accountId) return;
+    if (inv.combinedInvoiceId) return;
+    // due||dueDate: portal-confirmed LF invoices store dueDate only — they
+    // never surfaced in this card at all.
+    if (['paid','draft','void'].includes(inv.status) || !(inv.due||inv.dueDate) || !inv.accountId) return;
     if (inv.reminderSentAt) return;
-    const days = daysAgo(inv.due);
+    const days = daysAgo(inv.due||inv.dueDate);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !ac.email) return;
@@ -2233,7 +2239,7 @@ function renderInvoiceReminders() {
           <div class="attn-icon">${isOverdue ? '🔴' : '🟡'}</div>
           <div class="attn-info" style="flex:1">
             <div class="attn-name">${escHtml(ac.name)} — ${escHtml(inv.number || '')}</div>
-            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.due)}</div>
+            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.due || inv.dueDate)}</div>
           </div>
           <button class="btn xs primary" onclick="sendInvoiceReminder('${inv.id}','${collection}')">Send Reminder</button>
         </div>
@@ -2251,7 +2257,8 @@ async function sendInvoiceReminder(invId, collection) {
   const payLink = await _getStripePayLink(inv, type);
   const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
 
-  const isOverdue = daysAgo(inv.due) > 0;
+  const _dueStr = inv.due || inv.dueDate || '';
+  const isOverdue = !!_dueStr && daysAgo(_dueStr) > 0;
   const subject = isOverdue
     ? `Payment reminder — ${inv.number || ''} (${ac.name})`
     : `Invoice due soon — ${inv.number || ''} (${ac.name})`;
@@ -2278,7 +2285,8 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
   const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || inv.total || 0);
   const invSettings = DB.obj('invoice_settings') || {};
-  const dueLabel = inv.due ? new Date(inv.due+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
+  const _remDue = inv.due || inv.dueDate;
+  const dueLabel = _remDue ? new Date(_remDue+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
   const isLf = collection === 'lf_invoices';
   const accentColor = isLf ? '#4a7c59' : '#6B4F9A';
   const accentLight = isLf ? '#dcfce7' : '#ede4f5';
