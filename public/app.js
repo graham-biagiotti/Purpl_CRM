@@ -3191,7 +3191,7 @@ function _acCardHTML(a, muted) {
       <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
       <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
       <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
-      <button class="btn sm" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')">🔗 Copy Link</button>
+      <button class="btn sm" onclick="generateOrderLink('${a.id}')">🔗 Copy Link</button>
       ${_isAdmin()?`<button class="btn sm" style="color:#dc2626" onclick="event.stopPropagation();deleteAccount('${a.id}')">Delete</button>`:''}
     </div>
   </div>`;
@@ -14186,6 +14186,11 @@ async function generateOrderLink(entityId, entityName, entityEmail, entityType) 
     // NOT rotate the token — doing so would silently break a link already
     // emailed to the customer. Only mint a new token if none exists yet.
     const existing = DB.a(localKey).find(x => x.id === entityId);
+    // name/email are derived from the cache record so inline onclick handlers
+    // only pass the id — interpolating names into JS strings broke on
+    // apostrophes (escHtml entities decode back before JS parses the attribute).
+    if (entityName == null) entityName = existing?.name || '';
+    if (entityEmail == null) entityEmail = existing?.email || '';
     let token = existing && existing.orderPortalToken;
     const isNewToken = !token;
     if (isNewToken) {
@@ -14639,13 +14644,13 @@ function _renderPoLinks() {
       <tbody>${rows.map(({a, token, url, subCount}) => `<tr>
         <td><strong>${escHtml(a.name)}</strong></td>
         <td style="font-size:11px;color:var(--muted)">
-          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
+          ${url ? `<span style="cursor:pointer;color:var(--lavblue)" onclick="generateOrderLink('${a.id}')" title="${url}">${url.slice(0,50)}…</span>` : '<span style="color:var(--muted)">Not generated yet</span>'}
         </td>
         <td style="font-size:12px">${a.orderPortalTokenCreatedAt ? fmtD(a.orderPortalTokenCreatedAt) : '—'}</td>
         <td>${subCount > 0
           ? `<span class="badge green">Yes (${subCount})</span>`
           : '<span class="badge gray">No</span>'}</td>
-        <td><button class="btn xs" onclick="generateOrderLink('${a.id}','${escHtml(a.name)}','${escHtml(a.email||'')}')">🔗 Copy Link</button></td>
+        <td><button class="btn xs" onclick="generateOrderLink('${a.id}')">🔗 Copy Link</button></td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
