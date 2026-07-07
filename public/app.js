@@ -15644,7 +15644,9 @@ function renderInvKpis() {
   const distInvs  = DB.a('dist_invoices');
 
   function purplStatus(inv) {
-    if (inv.status === 'paid' || inv.status === 'draft') return inv.status;
+    // void must short-circuit like paid/draft, or a voided invoice past its
+    // due date evaluates to 'overdue' and re-enters the Outstanding/Overdue KPIs
+    if (inv.status === 'paid' || inv.status === 'draft' || inv.status === 'void') return inv.status;
     const due = inv.due || inv.dueDate || '';
     if (due && due < todayStr) return 'overdue';
     return inv.status || 'draft';
@@ -15667,7 +15669,7 @@ function renderInvKpis() {
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
   const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
                           .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => !['paid','draft','void'].includes(x.status) && (x.due||'') < todayStr && x.due)
+                      + lfInvs.filter(x => { const d = x.due || x.dueDate || ''; return !['paid','draft','void'].includes(x.status) && d && d < todayStr; })
                           .reduce((s,x) => s + parseFloat(x.total||0), 0)
                       + distInvs.filter(x => _distOpen(x) && x.dueDate && x.dueDate < todayStr)
                           .reduce((s,x) => s + parseFloat(x.total||0), 0);
