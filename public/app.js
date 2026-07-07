@@ -12919,8 +12919,10 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
   ${_legalTermsHTML() ? `<tr><td style="padding:0 48px 24px">${_legalTermsHTML()}</td></tr>` : ''}
 
+  ${(DB.obj('invoice_settings',{}).footerNotes||'').trim() ? `<tr><td style="padding:0 48px 16px;font-size:12px;color:#6b7280;line-height:1.6">${escHtml(DB.obj('invoice_settings',{}).footerNotes.trim())}</td></tr>` : ''}
+
   <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#4b5563;line-height:1.8">
-    <strong style="color:#1a1a2e">Pumpkin Blossom Farm LLC</strong> · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
+    <strong style="color:#1a1a2e">${escHtml(DB.obj('invoice_settings',{}).fromName || 'Pumpkin Blossom Farm LLC')}</strong> · ${escHtml((DB.obj('invoice_settings',{}).fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278').replace(/,\s*/g,' · '))}<br>
     <a href="mailto:lavender@pbfwholesale.com" style="color:#4b5563;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038
   </td></tr>
 
