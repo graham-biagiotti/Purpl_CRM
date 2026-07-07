@@ -25,6 +25,7 @@
       ],
       "headers": [
         { "source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "no-cache"}] },
+        { "source": "**/*.html", "headers": [{"key": "Cache-Control", "value": "no-cache"}] },
         { "source": "/sw.js", "headers": [{"key": "Cache-Control", "value": "no-cache"}] }
       ]
     },
@@ -47,6 +48,10 @@
         { "source": "/privacy.html", "destination": "/privacy.html" },
         { "source": "/terms.html", "destination": "/terms.html" },
         { "source": "/404.html", "destination": "/404.html" }
+      ],
+      "headers": [
+        { "source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "no-cache"}] },
+        { "source": "**/*.html", "headers": [{"key": "Cache-Control", "value": "no-cache"}] }
       ]
     }
   ],
