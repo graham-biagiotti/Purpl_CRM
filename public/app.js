@@ -14974,8 +14974,15 @@ async function createProspectFromPoId(id) {
 
 async function declinePortalOrder(id) {
   if (!confirm('Mark this submission as declined?')) return;
+  // Decline BOTH halves of a dual-brand submission — declining only the
+  // clicked doc left the paired other-brand doc status 'new' forever (it is
+  // grouped into the same row, so it was invisible but kept the nav badge lit).
+  const o = PortalDB.getOrders().find(x => x.id === id);
+  const paired = o ? PortalDB.getOrders().find(p =>
+    !['confirmed','declined'].includes(p.status) && _samePortalSubmission(o, p)) : null;
   await PortalDB.updateOrder(id, { status:'declined' });
-  toast('Submission declined');
+  if (paired) await PortalDB.updateOrder(paired.id, { status:'declined' });
+  toast('Submission declined' + (paired ? ' (both brands)' : ''));
   renderPreOrders(true);
 }
 
@@ -16654,7 +16661,12 @@ function _listenPortalOrders() {
         const unconfirmed = [];
         snap.docs.forEach(doc => {
           const d = doc.data();
-          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined') unconfirmed.push(doc.id);
+          // A sample-only request (no purchasable items) that has been approved
+          // or declined is fully handled — it must stop counting as "waiting",
+          // or the nav badge stays lit forever (confirm bails on no-items).
+          const sampleOnly = !((d.items||[]).some(i => (i.cases||0) > 0)) && !(d.lineItems||[]).length;
+          const sampleHandled = sampleOnly && (d.sampleApproved || d.sampleDeclined);
+          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined' && !sampleHandled) unconfirmed.push(doc.id);
           if (!_portalOrderIds.has(doc.id) && _portalOrderIds.size > 0) {
             newCount++;
           }
