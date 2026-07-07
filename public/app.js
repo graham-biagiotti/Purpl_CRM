@@ -2658,7 +2658,9 @@ function calcInvTotal() { _ivCalcTotal(); }
 
 function markRetailInvPaid(id) {
   if (!DB._firestoreReady) return;
-  DB.update('retail_invoices', id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  // Legacy purpl invoices live in the iv collection — route by _invoiceCol or
+  // the update is a silent no-op that still toasts success.
+  DB.update(_invoiceCol(id), id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
   _syncCombinedParentForChild(id); // M1
   renderInvoiceStatus();
   if (currentPage === 'invoices') renderInvoicesPage();
@@ -12919,7 +12921,9 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
 // to its own tested function below.
 async function openInvoicePreview(type, id) {
   if (type === 'combined') return openCombinedInvoicePreview(id);
-  const col = type === 'lf' ? 'lf_invoices' : 'retail_invoices';
+  // _invoiceCol so legacy purpl invoices stored in the iv collection preview
+  // and save to the right place instead of "Invoice not found".
+  const col = type === 'lf' ? 'lf_invoices' : _invoiceCol(id);
   const rec = DB.a(col).find(x => x.id === id);
   if (!rec) { toast('Invoice not found'); return; }
   toast('Loading preview…');
