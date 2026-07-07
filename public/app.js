@@ -7693,12 +7693,22 @@ async function saveDistInvoice(existingId) {
   const invNum = userNum || await getNextInvoiceNumber('dist');
 
   const pricing = DB.a('dist_pricing').filter(p => p.distId === distId);
-  const items = SKUS.map(s => ({
-    sku: s.id,
-    cases: parseInt(qs('#mdinv-cases-' + s.id)?.value) || 0,
-    pricePerCase: (v => isNaN(v) ? 0 : v)(parseFloat(pricing.find(p => p.sku === s.id)?.pricePerCase))
-  })).filter(i => i.cases > 0);
+  // On EDIT, keep each line's ORIGINAL price — repricing from current
+  // dist_pricing silently rewrote an old invoice's total (even a notes-only
+  // save) at today's rates. Current pricing applies to new invoices/lines only.
+  const _existingItems = existingId ? ((DB.a('dist_invoices').find(x => x.id === existingId) || {}).items || []) : [];
+  const _unpriced = [];
+  const items = SKUS.map(s => {
+    const cases = parseInt(qs('#mdinv-cases-' + s.id)?.value) || 0;
+    const stored = _existingItems.find(i => i.sku === s.id);
+    const listPrice = parseFloat(pricing.find(p => p.sku === s.id)?.pricePerCase);
+    const ppc = (stored && stored.pricePerCase > 0) ? stored.pricePerCase : (isNaN(listPrice) ? 0 : listPrice);
+    if (cases > 0 && !(ppc > 0)) _unpriced.push(s.label || s.id);
+    return { sku: s.id, cases, pricePerCase: ppc };
+  }).filter(i => i.cases > 0);
   if (!items.length) { toast('Enter at least one SKU quantity'); return; }
+  // A $0 line means no dist_pricing row exists — say so instead of silently billing $0.
+  if (_unpriced.length && !confirm2(`No distributor price set for: ${_unpriced.join(', ')} — those lines will bill at $0. Save anyway? (Set prices in the distributor Pricing tab.)`)) return;
 
   const total = items.reduce((s, i) => s + i.cases * i.pricePerCase, 0);
   const dist = DB.a('dist_profiles').find(x => x.id === distId);
