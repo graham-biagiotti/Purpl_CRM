@@ -15172,6 +15172,16 @@ async function confirmPortalOrder() {
     const hasLf    = lfDoc && (lfDoc.lineItems||[]).length > 0;
     const isDual   = hasPurpl && hasLf;
 
+    // Merge staff notes typed in the confirm modal into the order notes — the
+    // field was populated but never read. Ignore the untouched
+    // "Delivery: {window}" prefill (the window is stored separately).
+    const _staffNotes = qs('#mcpo-notes')?.value?.trim() || '';
+    const _notePrefills = new Set([d.deliveryWindow, purplDoc?.deliveryWindow, lfDoc?.deliveryWindow]
+      .filter(Boolean).map(w => 'Delivery: ' + w));
+    if (_staffNotes && !_notePrefills.has(_staffNotes)) {
+      d.notes = [d.notes, _staffNotes].filter(Boolean).join(' — ');
+    }
+
     // Build purpl items
     let purplItems = [], purplCases = 0, purplCans = 0;
     if (hasPurpl) {
@@ -15179,6 +15189,13 @@ async function confirmPortalOrder() {
       const portalItems = (purplDoc.items || []).filter(i => i.cases > 0);
       if (portalItems.length) {
         purplItems = portalItems.map(i => ({ sku: i.sku || 'classic', label: i.label || 'Classic Lavender Lemonade', qty: i.cases }));
+        // The modal shows an editable Cases field — honor it. For single-item
+        // orders an edited value overrides the portal quantity (it used to be
+        // silently ignored, so adjusting 10→8 at confirm still invoiced 10).
+        // Multi-SKU orders keep per-item portal quantities.
+        if (purplItems.length === 1 && casesFromModal > 0 && casesFromModal !== purplItems[0].qty) {
+          purplItems[0].qty = casesFromModal;
+        }
       } else if (casesFromModal > 0) {
         purplItems = [{ sku: 'classic', label: 'Classic Lavender Lemonade', qty: casesFromModal }];
       }
