@@ -1138,6 +1138,11 @@ exports.stripeWebhook = onRequest(
         paidVia: 'stripe',
         stripeSessionId: session.id,
         stripePaymentIntent: session.payment_intent,
+        // Amount actually charged (dollars). Pay links embed a fixed amount at
+        // send time — if the invoice was edited afterwards, the customer pays
+        // the OLD figure. Record it and flag a mismatch instead of silently
+        // booking the invoice as fully paid at the new total.
+        paidAmount: session.amount_total != null ? session.amount_total / 100 : null,
       };
 
       // Update the correct invoice collection based on type
@@ -1149,6 +1154,24 @@ exports.stripeWebhook = onRequest(
       };
       const colPath = colMap[invoiceType] || colMap.retail;
       try {
+        if (paidData.paidAmount != null) {
+          try {
+            const invSnap = await db.doc(`${colPath}/${invoiceId}`).get();
+            if (invSnap.exists) {
+              const d = invSnap.data();
+              const curTotal = parseFloat(d.grandTotal != null ? d.grandTotal : (d.total != null ? d.total : d.amount)) || 0;
+              if (curTotal > 0 && Math.abs(curTotal - paidData.paidAmount) > 0.01) {
+                paidData.paidAmountMismatch = true;
+                paidData.notes = ((d.notes || '') + `\n⚠ Stripe payment $${paidData.paidAmount.toFixed(2)} differs from invoice total $${curTotal.toFixed(2)} — pay link may predate an edit.`).trim();
+                await db.collection('workspace/main/audit_log').add({
+                  timestamp: now, action: 'paid_amount_mismatch',
+                  entityType: invoiceType + '_invoice', entityId: invoiceId,
+                  detail: `paid $${paidData.paidAmount.toFixed(2)} vs total $${curTotal.toFixed(2)}`,
+                });
+              }
+            }
+          } catch (cmpErr) { console.warn('paid-amount compare failed:', cmpErr.message); }
+        }
         await db.doc(`${colPath}/${invoiceId}`).update(paidData);
       } catch (updateErr) {
         // Legacy purpl invoices live in workspace/main/iv — try there before
