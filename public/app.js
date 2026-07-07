@@ -120,11 +120,18 @@ function deleteInvoiceWithCleanup(id) {
 function _invAmt(inv) { return parseFloat(inv.grandTotal || inv.amount || inv.total || 0); }
 
 function _onHand(skuId, pool) {
+  return Math.max(0, _onHandRaw(skuId, pool));
+}
+// Unclamped balance — negative means more was deducted from a pool than it
+// held (deductions never check availability). _onHand hides this, which makes
+// Warehouse + Farm quietly stop summing to Total; the inventory page surfaces
+// raw negatives as an explicit warning instead.
+function _onHandRaw(skuId, pool) {
   const iv = DB.a('iv');
   const match = i => i.sku === skuId && (pool ? (i.pool || 'warehouse') === pool : true);
   const ins  = iv.filter(i => match(i) && (i.type === 'in' || i.type === 'return')).reduce((t, i) => t + i.qty, 0);
   const outs = iv.filter(i => match(i) && i.type === 'out').reduce((t, i) => t + i.qty, 0);
-  return Math.max(0, ins - outs);
+  return ins - outs;
 }
 
 // Look up email tracking status for an invoice from the account's cadence array
@@ -8007,6 +8014,23 @@ function _invSummary() {
       <div>${kpiHtml('Warehouse', fmt(whTotal)+' cans', 'blue')}</div>
       <div>${kpiHtml('Farm', fmt(farmTotal)+' cans', 'purple')}</div>
       <div>${kpiHtml('Stock Value (COGS)', fmtC(totalVal), 'amber')}</div>`;
+    // Surface hidden negative pools (deduction from an empty pool) — clamping
+    // silently made Warehouse + Farm stop summing to Total with no indicator.
+    const negs = [];
+    SKUS.forEach(sk => ['warehouse','farm'].forEach(p => {
+      const raw = _onHandRaw(sk.id, p);
+      if (raw < 0) negs.push(`${sk.label || sk.id} @ ${p}: ${raw} cans`);
+    }));
+    let negEl = document.getElementById('inv-neg-warning');
+    if (negs.length) {
+      if (!negEl) {
+        negEl = document.createElement('div');
+        negEl.id = 'inv-neg-warning';
+        negEl.style.cssText = 'margin:10px 0;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#991b1b';
+        cards.parentNode.insertBefore(negEl, cards.nextSibling);
+      }
+      negEl.innerHTML = `⚠️ <strong>Pool over-deducted</strong> — more was taken from a pool than it held, so pool cards won't sum to Total Stock. Fix with a stock transfer or adjustment: ${negs.map(escHtml).join(' · ')}`;
+    } else if (negEl) negEl.remove();
   }
 
   const el = qs('#inv-table-body');
@@ -16694,7 +16718,10 @@ function _listenPortalOrders() {
   try {
     _portalOrderUnsub = firebase.firestore().collection('portal_orders')
       .orderBy('submittedAt', 'desc')
-      .limit(50)
+      // This snapshot OVERWRITES PortalDB._orders (the full load), so its
+      // window is the effective cap on what the Portal Orders tabs/KPIs/badge
+      // can see — at limit(50) the 51st-oldest submission silently vanished.
+      .limit(500)
       .onSnapshot(snap => {
         let newCount = 0;
         const unconfirmed = [];
