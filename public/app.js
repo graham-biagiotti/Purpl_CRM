@@ -15876,7 +15876,7 @@ function renderInvUnifiedList() {
       name: x.distName || '—',
       issued: x.dateIssued || '', due: x.dueDate || '',
       amt: parseFloat(x.total || 0),
-      edit: `editDistInvoice('${x.id}')`, print: null,
+      edit: `editDistInvoice('${x.id}')`, print: `openInvoicePreview('dist','${x.id}')`,
       paidFn: `markDistInvoicePaid('${x.id}','${x.distId||''}')`,
     }));
   }
