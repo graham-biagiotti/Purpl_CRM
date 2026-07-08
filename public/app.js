@@ -13181,6 +13181,18 @@ async function openInvoicePreview(type, id) {
   if (qs('#civ-edit-due')) qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
   if (qs('#civ-edit-terms')) qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
   if (qs('#civ-edit-notes')) qs('#civ-edit-notes').value = rec.notes || '';
+  // Dist workflow: terms run from DELIVERY. Setting the Issue Date to the
+  // delivery day auto-fills Due = issue + the distributor's terms (default
+  // Net 30) — the clock is always right, no manual date math. Dist-only;
+  // other types keep their existing behavior (handler cleared for them).
+  const _issueEl = qs('#civ-edit-date');
+  if (_issueEl) _issueEl.onchange = type === 'dist' ? (() => {
+    const v = _issueEl.value;
+    if (!v) return;
+    const days = parseInt(_distProfile?.paymentTermsDays) || 30;
+    const dueEl = qs('#civ-edit-due');
+    if (dueEl) dueEl.value = new Date(new Date(v + 'T12:00:00').getTime() + days * 864e5).toISOString().slice(0, 10);
+  }) : null;
   const delivSel = qs('#civ-edit-delivery');
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
   const fulfillSel = qs('#civ-edit-fulfillment');
