@@ -169,13 +169,13 @@ exports.sendOrderConfirmation = onCall(
         <table cellpadding="0" cellspacing="0" width="auto">
           <tr>
             <td width="auto" valign="middle" style="padding-right:16px">
-              <span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span>
+              <table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="56" height="56" style="display:block"></td></tr></table>
             </td>
             <td width="1px" valign="middle">
               <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
             </td>
             <td width="auto" valign="middle" style="padding-left:16px">
-              <span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span>
+              <table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="56" height="52" style="display:block"></td></tr></table>
             </td>
           </tr>
         </table>
@@ -318,9 +318,9 @@ exports.sendApplicationConfirmation = onCall(
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span></td>
+      <td valign="middle" style="padding-right:16px"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="56" height="56" style="display:block"></td></tr></table></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span></td>
+      <td valign="middle"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="56" height="52" style="display:block"></td></tr></table></td>
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
@@ -1495,9 +1495,9 @@ exports.shipStationWebhook = onRequest(
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span></td>
+      <td valign="middle" style="padding-right:16px"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="56" height="56" style="display:block"></td></tr></table></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span></td>
+      <td valign="middle"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="56" height="52" style="display:block"></td></tr></table></td>
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
