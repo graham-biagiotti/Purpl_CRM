@@ -811,6 +811,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const contactName = escHtml(primary.name||account.contact||'there');
   const businessName = escHtml(account.name||'your store');
   const businessNameRaw = account.name || 'your store'; // subjects are plain text — escHtml entities (&#39;) render literally there
+  const _hasPortalToken = !!account.orderPortalToken; // copy below adapts — never claim 'no password needed' on the password-gated URL
   const portalLink = account.orderPortalToken
     ? `https://pbfwholesale.com/order?t=${account.orderPortalToken}`
     : 'https://pbfwholesale.com/order';
@@ -865,7 +866,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
-              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below. Goes straight to your order form, no password needed.</div>
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
               <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Pre-Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
@@ -902,7 +903,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
-              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> Click your personalized link below. Goes straight to your order form, no password needed.</div>
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
               <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
