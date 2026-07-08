@@ -701,14 +701,14 @@ async function _getStripePayLink(invoice, type) {
       return d.url;
     }
     _stickyError('Stripe pay link failed: ' + (d.error || 'no link returned') + ' — the invoice will send without a pay button.');
-    return DB.obj('invoice_settings', {}).stripeLink || null;
+    return null; // no generic-link fallback — unmatchable payments
   } catch (e) {
     console.error('Stripe link generation failed:', e);
     const hint = String(e?.code || '').includes('not-found')
       ? 'The createPayLink function is not deployed yet — run: firebase deploy --only functions --project default'
       : (e?.message || 'unknown error');
     _stickyError('⚠ Stripe pay link failed: ' + hint + ' — the invoice will go out WITHOUT a pay button.');
-    return DB.obj('invoice_settings', {}).stripeLink || null;
+    return null; // no generic-link fallback — unmatchable payments
   }
 }
 
@@ -12671,7 +12671,10 @@ async function saveNewCombinedInvoice() {
 // `payLink` is the per-invoice Stripe Checkout URL (or null).
 function _buildPaymentHTML(payLink) {
   const s = DB.obj('invoice_settings', {});
-  const link = payLink || s.stripeLink || '';
+  // Only a per-invoice Checkout link gets a Pay button. The generic account
+  // stripeLink carried no invoice metadata, so the webhook could not match
+  // the payment — customer paid, CRM kept dunning them.
+  const link = payLink || '';
   const otherMethods = [];
   if (s.achRouting) otherMethods.push(`<strong>ACH / Wire:</strong> Routing ${s.achRouting} · Account ${s.achAccount || '—'}`);
   if (s.checkInstructions || s.paymentInstructions) otherMethods.push(escHtml(s.checkInstructions || s.paymentInstructions));
