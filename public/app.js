@@ -2309,7 +2309,7 @@ async function sendInvoiceReminder(invId, collection) {
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (inv.amount || inv.total || 0);
+  const amount = collection === 'lf_invoices' ? (inv.total || 0) : (parseFloat(inv.grandTotal != null ? inv.grandTotal : (inv.amount != null ? inv.amount : inv.total)) || 0); // combined parents carry grandTotal only — omitting it emailed "Amount Due $0.00"
   const invSettings = DB.obj('invoice_settings') || {};
   const _remDue = inv.dueDate || inv.due;
   const dueLabel = _remDue ? new Date(_remDue+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
