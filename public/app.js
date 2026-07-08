@@ -13331,6 +13331,9 @@ async function openCombinedInvoicePreview(combinedId) {
   const _lr = qs('#civ-lf-sub')?.parentElement; if (_lr) _lr.style.display = '';
   const _pb = qs('#civ-btn-paid'); if (_pb) { _pb.textContent = 'Mark Both Paid'; _pb.style.display = ''; }
   const _vb = qs('#civ-btn-void'); if (_vb) _vb.style.display = '';
+  // Dist preview hides the delivery/fulfillment rows — restore them here too.
+  const _ds = qs('#civ-edit-delivery'); if (_ds?.parentElement) _ds.parentElement.style.display = '';
+  const _fs = qs('#civ-edit-fulfillment'); if (_fs?.parentElement) _fs.parentElement.style.display = '';
   // Older combined invoices were created without a number — backfill one,
   // since Stripe link generation requires it.
   if (!rec.number && !rec.invoiceNumber) {
