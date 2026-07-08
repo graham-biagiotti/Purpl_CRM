@@ -1274,6 +1274,10 @@ exports.pushToShipStation = onCall(
 
     const orderPayload = {
       orderNumber: data.invoiceNumber,
+      // orderKey makes /orders/createorder idempotent — ShipStation updates
+      // the existing order instead of creating a duplicate shipment when the
+      // same invoice is pushed twice.
+      orderKey: 'inv-' + (data.invoiceId || data.invoiceNumber),
       orderDate: new Date().toISOString(),
       orderStatus: 'awaiting_shipment',
       customerEmail: data.customerEmail || '',
@@ -1552,12 +1556,21 @@ exports.shipStationWebhook = onRequest(
         }
 
         // ── Regular invoice shipments ─────────────────────────
-        // Find the invoice by number across all collections
+        // Find the invoice by number across all collections. Match on
+        // `number` OR `invoiceNumber` — delivery-run invoices store only
+        // invoiceNumber, so their shipments never matched (tracking + the
+        // shipping charge were silently lost).
         const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
+        let _matched = false;
         for (const col of cols) {
-          const snap = await db.collection('workspace/main/' + col)
+          let snap = await db.collection('workspace/main/' + col)
             .where('number', '==', orderNumber).limit(1).get();
+          if (snap.empty) {
+            snap = await db.collection('workspace/main/' + col)
+              .where('invoiceNumber', '==', orderNumber).limit(1).get();
+          }
           if (!snap.empty) {
+            _matched = true;
             const doc = snap.docs[0];
             const inv = doc.data();
 
@@ -1632,10 +1645,27 @@ exports.shipStationWebhook = onRequest(
             break;
           }
         }
+        // No invoice matched this shipment — leave a visible trace instead of
+        // silently dropping the tracking number + shipping charge.
+        if (!_matched) {
+          await db.collection('workspace/main/audit_log').add({
+            timestamp: new Date().toISOString(), action: 'shipstation_unmatched',
+            entityType: 'shipment', entityId: orderNumber,
+            detail: `ShipStation shipment for order "${orderNumber}" matched no invoice (number/invoiceNumber) — tracking + shipping charge not recorded`,
+          }).catch(() => {});
+        }
       }
       res.status(200).send('ok');
     } catch (e) {
+      // Still ACK (ShipStation retries otherwise) but leave an audit trail —
+      // every failure used to be a silent no-op.
       console.error('ShipStation webhook error:', e.message);
+      try {
+        await admin.firestore().collection('workspace/main/audit_log').add({
+          timestamp: new Date().toISOString(), action: 'shipstation_webhook_error',
+          entityType: 'shipment', entityId: '', detail: String(e.message || e).slice(0, 500),
+        });
+      } catch (_) {}
       res.status(200).send('error logged');
     }
   }

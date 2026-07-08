@@ -567,6 +567,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
     const fn = firebase.functions().httpsCallable('pushToShipStation');
     const result = await fn({
       invoiceNumber: invNum,
+      invoiceId: inv.id || null,
       accountName: ac.name || inv.accountName || '',
       customerEmail: ac.email || '',
       brand,
