@@ -7324,7 +7324,7 @@ function saveDistShipment() {
       type: 'out',
       qty: item.cases * CANS_PER_CASE,
       date,
-      pool: 'warehouse',
+      pool: qs('#dship-pool')?.value || 'warehouse', // user-selected pool (was hardcoded warehouse)
       source: 'dist_shipment',
       ref: shipId,
       note: `Shipment to ${dist?.name||'distributor'}${poRef?' — '+poRef:''}`,
