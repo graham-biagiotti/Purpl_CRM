@@ -392,13 +392,13 @@ const PBF_HEADER_HTML = `
           <table cellpadding="0" cellspacing="0" width="auto">
             <tr>
               <td width="auto" valign="middle" style="padding-right:16px">
-                <table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="56" height="56" style="display:block"></td></tr></table>
+                <img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="72" height="72" style="display:block">
               </td>
               <td width="1px" valign="middle">
                 <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
               </td>
               <td width="auto" valign="middle" style="padding-left:16px">
-                <table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="56" height="52" style="display:block"></td></tr></table>
+                <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="58" height="54" style="display:block">
               </td>
             </tr>
           </table>
@@ -2331,9 +2331,9 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
     <table width="100%"><tr>
       <td>
         <table cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle" style="padding-right:16px"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="56" height="56" style="display:block"></td></tr></table></td>
+          <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="72" height="72" style="display:block"></td>
           <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-          <td valign="middle"><table cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:10px"><tr><td style="padding:8px 16px"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="56" height="52" style="display:block"></td></tr></table></td>
+          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="58" height="54" style="display:block"></td>
         </tr></table>
         <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
       </td>
