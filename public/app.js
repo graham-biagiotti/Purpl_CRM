@@ -13112,35 +13112,45 @@ async function openInvoicePreview(type, id) {
   if (type === 'combined') return openCombinedInvoicePreview(id);
   // _invoiceCol so legacy purpl invoices stored in the iv collection preview
   // and save to the right place instead of "Invoice not found".
-  const col = type === 'lf' ? 'lf_invoices' : _invoiceCol(id);
+  const col = type === 'dist' ? 'dist_invoices' : (type === 'lf' ? 'lf_invoices' : _invoiceCol(id));
   const rec = DB.a(col).find(x => x.id === id);
   if (!rec) { toast('Invoice not found'); return; }
   toast('Loading preview…');
   if (!rec.number && !rec.invoiceNumber) {
-    const n = await getNextInvoiceNumber(type === 'lf' ? 'lf' : 'purpl');
+    const n = await getNextInvoiceNumber(type === 'dist' ? 'dist' : (type === 'lf' ? 'lf' : 'purpl'));
     DB.update(col, id, x => ({ ...x, number: n, invoiceNumber: n }));
     rec.number = n; rec.invoiceNumber = n;
   }
-  const account = DB.a('ac').find(x => x.id === rec.accountId) || {};
+  // Recipient identity: accounts for retail/LF; distributor profile + primary rep for dist.
+  const _distProfile = type === 'dist' ? (DB.a('dist_profiles').find(x => x.id === rec.distId) || {}) : null;
+  const _distRep = type === 'dist' ? (DB.a('dist_reps').find(r => r.distId === rec.distId && r.email) || {}) : null;
+  const account = type === 'dist'
+    ? { name: _distProfile.name || rec.distName || '', email: _distRep.email || _distProfile.email || '' }
+    : (DB.a('ac').find(x => x.id === rec.accountId) || {});
   let payLink = null;
-  if (rec.status !== 'paid') { try { payLink = await _getStripePayLink(rec, type === 'lf' ? 'lf' : 'retail'); } catch (e) { payLink = null; } }
+  if (rec.status !== 'paid') { try { payLink = await _getStripePayLink(rec, type === 'dist' ? 'dist' : (type === 'lf' ? 'lf' : 'retail')); } catch (e) { payLink = null; } }
   const recForDoc = payLink ? { ...rec, _payLink: payLink } : rec;
-  const buildDoc = opts => type === 'lf' ? buildLfInvoiceEmailHTML(recForDoc, opts) : buildPurplInvoiceEmailHTML(recForDoc, opts);
+  const buildDoc = opts => type === 'dist' ? buildDistInvoiceEmailHTML(recForDoc, opts)
+    : (type === 'lf' ? buildLfInvoiceEmailHTML(recForDoc, opts) : buildPurplInvoiceEmailHTML(recForDoc, opts));
   const html = buildDoc({});
-  const total = type === 'lf' ? (rec.total || 0) : (rec.amount != null ? rec.amount : (rec.total || 0));
+  const total = (type === 'lf' || type === 'dist') ? (parseFloat(rec.total) || 0) : (rec.amount != null ? rec.amount : (rec.total || 0));
   const st = rec.status || 'draft';
   const stColor = { draft:'gray', sent:'blue', paid:'green', overdue:'red', void:'red' };
 
   const h2 = document.querySelector('#modal-combined-invoice .modal-hdr h2');
-  if (h2) h2.textContent = type === 'lf' ? 'Lavender Fields Invoice' : 'purpl Invoice';
-  if (qs('#civ-account-name')) qs('#civ-account-name').textContent = rec.accountName || account.name || '';
+  if (h2) h2.textContent = type === 'dist' ? 'Distributor Invoice' : (type === 'lf' ? 'Lavender Fields Invoice' : 'purpl Invoice');
+  if (qs('#civ-account-name')) qs('#civ-account-name').textContent = rec.accountName || rec.distName || account.name || '';
   if (qs('#civ-invoice-nums')) qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') +
     ` <span class="badge ${stColor[st]||'gray'}" style="margin-left:8px;text-transform:uppercase;font-size:10px">${st}</span>`;
 
   // Single brand: show only this brand's subtotal row + grand total
   const purplRow = qs('#civ-purpl-sub')?.parentElement;
   const lfRow = qs('#civ-lf-sub')?.parentElement;
-  if (type === 'lf') {
+  if (type === 'dist') {
+    // Dist has no brand subtotals — grand total only.
+    if (purplRow) purplRow.style.display = 'none';
+    if (lfRow) lfRow.style.display = 'none';
+  } else if (type === 'lf') {
     if (purplRow) purplRow.style.display = 'none';
     if (lfRow) { lfRow.style.display = ''; qs('#civ-lf-sub').textContent = '$' + total.toFixed(2); }
   } else {
@@ -13149,7 +13159,7 @@ async function openInvoicePreview(type, id) {
   }
   if (qs('#civ-grand-total')) qs('#civ-grand-total').textContent = '$' + total.toFixed(2);
 
-  if (qs('#civ-edit-date')) qs('#civ-edit-date').value = rec.date || rec.issued || today();
+  if (qs('#civ-edit-date')) qs('#civ-edit-date').value = rec.dateIssued || rec.date || rec.issued || today();
   if (qs('#civ-edit-due')) qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
   if (qs('#civ-edit-terms')) qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
   if (qs('#civ-edit-notes')) qs('#civ-edit-notes').value = rec.notes || '';
@@ -13173,6 +13183,17 @@ async function openInvoicePreview(type, id) {
     }
   };
   _updateFulfillBtns();
+  if (type === 'dist') {
+    // Delivery/fulfillment workflow doesn't apply to distributor invoices —
+    // stock moves at Log Shipment, not invoice send.
+    if (delivSel?.parentElement) delivSel.parentElement.style.display = 'none';
+    if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = 'none';
+    if (shipBtn) shipBtn.style.display = 'none';
+    if (whBtn) whBtn.style.display = 'none';
+  } else {
+    if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
+    if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
+  }
   if (delivSel) delivSel.onchange = _updateFulfillBtns;
   if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
   if (shipBtn) shipBtn.onclick = async () => {
@@ -13187,12 +13208,14 @@ async function openInvoicePreview(type, id) {
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
     const nd = qs('#civ-edit-date').value, ndu = qs('#civ-edit-due').value;
-    const patch = {
-      date: nd, dueDate: ndu, issued: nd, due: ndu,
-      paymentTerms: qs('#civ-edit-terms').value, notes: qs('#civ-edit-notes').value,
-      deliveryMethod: qs('#civ-edit-delivery')?.value || 'deliver',
-      fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
-    };
+    const patch = type === 'dist'
+      ? { dateIssued: nd, dueDate: ndu, notes: qs('#civ-edit-notes').value } // dist has no delivery/fulfillment; dates live in dateIssued/dueDate
+      : {
+          date: nd, dueDate: ndu, issued: nd, due: ndu,
+          paymentTerms: qs('#civ-edit-terms').value, notes: qs('#civ-edit-notes').value,
+          deliveryMethod: qs('#civ-edit-delivery')?.value || 'deliver',
+          fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
+        };
     DB.update(col, id, x => ({ ...x, ...patch }));
     toast('Invoice updated ✓');
     setTimeout(() => openInvoicePreview(type, id), 200);
@@ -13218,9 +13241,11 @@ async function openInvoicePreview(type, id) {
         const subject = 'Invoice from Pumpkin Blossom Farm — ' + (rec.accountName || account.name || '');
         const result = await callSendEmail(to, 'lavender@pbfwholesale.com', subject, html);
         toast('Invoice sent ✓');
-        // purpl deducts inventory via markInvoiceSent; LF is Wix-managed (no iv ledger)
-        if (type === 'lf') DB.update('lf_invoices', id, x => ({ ...x, status: (x.status === 'draft' || !x.status) ? 'sent' : x.status, sentAt: new Date().toISOString() }));
+        // purpl deducts inventory via markInvoiceSent; LF is Wix-managed; dist
+        // stock already moved at Log Shipment — status flip only for both.
+        if (type === 'lf' || type === 'dist') DB.update(col, id, x => ({ ...x, status: (x.status === 'draft' || !x.status) ? 'sent' : x.status, sentAt: new Date().toISOString() }));
         else markInvoiceSent(id);
+        if (type === 'dist') auditLog('send', 'dist_invoice', id, rec.number || rec.invoiceNumber || id);
         const entry = { id: uid(), stage: 'invoice_sent', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', invoiceId: id, invoiceRef: rec.number || rec.invoiceNumber || '' };
         if (result?.id) entry.sentMessageId = result.id;
         if (rec.accountId) DB.update('ac', rec.accountId, a => ({ ...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry) }));
@@ -13238,7 +13263,11 @@ async function openInvoicePreview(type, id) {
   if (paidBtn) {
     paidBtn.textContent = 'Mark Paid';
     paidBtn.style.display = (st === 'paid' || st === 'void') ? 'none' : '';
-    paidBtn.onclick = () => { (type === 'lf' ? markLfInvPaid : markRetailInvPaid)(id); closeModal('modal-combined-invoice'); };
+    paidBtn.onclick = () => {
+      if (type === 'dist') markDistInvoicePaid(id, rec.distId);
+      else (type === 'lf' ? markLfInvPaid : markRetailInvPaid)(id);
+      closeModal('modal-combined-invoice');
+    };
   }
 
   const voidBtn = qs('#civ-btn-void');
@@ -13250,7 +13279,7 @@ async function openInvoicePreview(type, id) {
         const arr = cache[col] || [];
         const i2 = arr.findIndex(x => x.id === id);
         if (i2 >= 0) arr[i2] = { ...arr[i2], status: 'void' };
-        if (type !== 'lf') cache.iv = (cache.iv || []).filter(x => !(x.type === 'out' && x.invoiceId === id));
+        if (type !== 'lf' && type !== 'dist') cache.iv = (cache.iv || []).filter(x => !(x.type === 'out' && x.invoiceId === id)); // purpl only — dist deductions belong to the shipment PO
       });
       toast('Invoice voided');
       closeModal('modal-combined-invoice');
@@ -13261,7 +13290,7 @@ async function openInvoicePreview(type, id) {
   const delBtn = qs('#civ-btn-delete');
   if (delBtn) {
     delBtn.style.display = _isAdmin() ? '' : 'none';
-    delBtn.onclick = () => { closeModal('modal-combined-invoice'); (type === 'lf' ? deleteLfInvoice : deleteRetailInv)(id); };
+    delBtn.onclick = () => { closeModal('modal-combined-invoice'); (type === 'dist' ? deleteDistInvoice : (type === 'lf' ? deleteLfInvoice : deleteRetailInv))(id); };
   }
 
   const copyBtn = qs('#civ-btn-copy');
