@@ -1139,6 +1139,19 @@ function submitOrder() {
   btn.textContent = 'Submitting...';
   errEl.style.display = 'none';
 
+  // Offline watchdog: batch.commit() never rejects while offline, so on flaky
+  // wifi the customer sat on "Submitting..." forever with no explanation (and
+  // a refresh silently lost the order). After 15s, tell them what's happening.
+  // The commit is queued by the SDK and completes automatically when the
+  // connection returns, so we keep the button disabled (a retry would create
+  // duplicate order docs) and the success screen still fires on completion.
+  if (window._submitWatchdog) clearTimeout(window._submitWatchdog);
+  window._submitWatchdog = setTimeout(function() {
+    errEl.textContent = 'Still submitting — your internet connection looks offline. Please KEEP THIS PAGE OPEN: your order will send automatically as soon as the connection returns. (Closing or refreshing will lose it.)';
+    errEl.style.display = 'block';
+    btn.textContent = 'Waiting for connection…';
+  }, 15000);
+
   const cases = parseInt(document.getElementById('classic-cases').value) || 0;
 
   let billingEmail = '';
@@ -1284,6 +1297,7 @@ function submitOrder() {
 
   _batch.commit()
     .then(function() {
+      if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
 
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
@@ -1367,6 +1381,7 @@ function submitOrder() {
       });
     })
     .catch(function(e) {
+      if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
       console.error('SUBMIT ERROR:', e.code, e.message, e);
       var errEl = document.getElementById('error-msg');
       if (errEl) {
