@@ -169,7 +169,7 @@ exports.sendOrderConfirmation = onCall(
         <table cellpadding="0" cellspacing="0" width="auto">
           <tr>
             <td width="auto" valign="middle" style="padding-right:16px">
-              <img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="72" height="72" style="display:block">
+              <img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="120" height="46" style="display:block">
             </td>
             <td width="1px" valign="middle">
               <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
@@ -318,7 +318,7 @@ exports.sendApplicationConfirmation = onCall(
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="72" height="72" style="display:block"></td>
+      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="120" height="46" style="display:block"></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
       <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="58" height="54" style="display:block"></td>
     </tr></table>
@@ -1495,7 +1495,7 @@ exports.shipStationWebhook = onRequest(
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
   <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="72" height="72" style="display:block"></td>
+      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-logo-white.png" alt="purpl" width="120" height="46" style="display:block"></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
       <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="58" height="54" style="display:block"></td>
     </tr></table>
