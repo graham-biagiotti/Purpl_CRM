@@ -810,6 +810,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
   const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
   const contactName = escHtml(primary.name||account.contact||'there');
   const businessName = escHtml(account.name||'your store');
+  const businessNameRaw = account.name || 'your store'; // subjects are plain text — escHtml entities (&#39;) render literally there
   const portalLink = account.orderPortalToken
     ? `https://pbfwholesale.com/order?t=${account.orderPortalToken}`
     : 'https://pbfwholesale.com/order';
@@ -891,7 +892,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'approved': {
-      subject: `Your wholesale account is ready — ${businessName}`,
+      subject: `Your wholesale account is ready — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
@@ -984,7 +985,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'order-confirmation': {
-      subject: `Order confirmed — ${businessName}`,
+      subject: `Order confirmed — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
@@ -1020,7 +1021,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'payment-overdue': {
-      subject: `Past due — Invoice ${extra.invoiceNumber||''} for ${businessName}`,
+      subject: `Past due — Invoice ${extra.invoiceNumber||''} for ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
@@ -1038,7 +1039,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
     },
     'reorder-reminder': {
-      subject: `Time to restock? — ${businessName}`,
+      subject: `Time to restock? — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
@@ -1054,7 +1055,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'delivery-followup': {
-      subject: `How did your delivery go? — ${businessName}`,
+      subject: `How did your delivery go? — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
@@ -1089,7 +1090,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
     'thank-you': {
-      subject: `Thank you, ${businessName} — we appreciate your partnership`,
+      subject: `Thank you, ${businessNameRaw} — we appreciate your partnership`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
