@@ -437,6 +437,17 @@ exports.checkDuplicateApplication = onCall(async (request) => {
 });
 
 // ── 3f. Get Portal Config (public, no password) ──────────
+// ── 3g. Get LF Catalog (public) ───────────────────────────
+// The portal cannot read workspace/* (rules are staff-only), so customers
+// always saw the hardcoded LF_SKU_FALLBACK — staff price/catalog edits never
+// reached the order form. Product catalog only; no PII.
+exports.getLfCatalog = onCall(async () => {
+  const db = admin.firestore();
+  const doc = await db.collection("workspace").doc("main").collection("config").doc("main").get();
+  const skus = doc.exists ? (doc.data().lf_skus || []) : [];
+  return { skus: skus.filter(s => !s.archived) };
+});
+
 // Returns only public-safe fields from portal_settings.
 exports.getPortalConfig = onCall(async (request) => {
   const db = admin.firestore();

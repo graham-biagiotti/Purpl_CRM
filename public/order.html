@@ -817,14 +817,17 @@ function getLfTotal() {
 }
 
 function loadLfSkus(prevOrder) {
-  db.collection('workspace').doc('main').collection('config').doc('main').get()
-    .then(function(doc) {
-      var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
+  // Via Cloud Function — direct workspace reads are denied by rules for
+  // customers, so this ALWAYS fell back to the stale hardcoded catalog and
+  // staff price/product edits never reached the order form.
+  firebase.functions().httpsCallable('getLfCatalog')({})
+    .then(function(result) {
+      var skus = ((result.data && result.data.skus) || []).filter(function(s){return !s.archived;});
       if (skus.length) {
-        console.log('LF SKUs loaded from Firestore: ' + skus.length + ' skus');
+        console.log('LF SKUs loaded via getLfCatalog: ' + skus.length + ' skus');
         renderLfSkus(skus, prevOrder);
       } else {
-        console.log('LF SKUs: Firestore returned 0 skus (doc.exists=' + doc.exists + ') — using fallback');
+        console.log('LF SKUs: catalog returned 0 skus — using fallback');
         renderLfSkus(LF_SKU_FALLBACK, prevOrder);
       }
     })
