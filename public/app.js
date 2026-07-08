@@ -7660,15 +7660,28 @@ function _openDistInvModal(distId, existingId) {
   }
 
   const el = qs('#mdinv-sku-inputs');
-  if (el) el.innerHTML = SKUS.map(s => `
+  // Per-line editable price: prefilled from the stored line (edit) or the
+  // distributor's price list (new). A special-price order is just typed on
+  // the line — no more editing the Pricing tab and reverting it after.
+  const _mdPricing = DB.a('dist_pricing').filter(p => p.distId === (distId || existing?.distId));
+  if (el) el.innerHTML = SKUS.map(s => {
+    const storedLine = existing?.items?.find(i => i.sku === s.id);
+    const listP = parseFloat(_mdPricing.find(p => p.sku === s.id)?.pricePerCase);
+    const preP = (storedLine && storedLine.pricePerCase != null) ? storedLine.pricePerCase : (isNaN(listP) ? '' : listP);
+    return `
     <div class="sku-row inv-sku-row ${s.bg}">
       ${skuBadge(s.id)}
       <div class="inv-sku-inputs">
         <input type="number" id="mdinv-cases-${s.id}" min="0" step="1" placeholder="0" class="inv-qty-input"
-          value="${existing ? (existing.items?.find(i => i.sku === s.id)?.cases || '') : ''}">
+          value="${storedLine?.cases || ''}">
         <span class="inv-line-unit">cases</span>
+        <span style="margin-left:8px;color:var(--muted);font-size:12px">@&nbsp;$</span>
+        <input type="number" id="mdinv-price-${s.id}" min="0" step="0.01" class="inv-qty-input" style="width:84px"
+          placeholder="${isNaN(listP) ? 'no list price' : listP.toFixed(2)}" value="${preP !== '' ? preP : ''}">
+        <span class="inv-line-unit">/case</span>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   qs('#mdinv-number').value  = existing?.invoiceNumber || peekNextInvoiceNumber();
   qs('#mdinv-date').value    = existing?.dateIssued || today();
@@ -7718,9 +7731,14 @@ async function saveDistInvoice(existingId) {
   const _unpriced = [];
   const items = SKUS.map(s => {
     const cases = parseInt(qs('#mdinv-cases-' + s.id)?.value) || 0;
+    // Per-line price input wins (special-price orders typed right on the
+    // line); else the stored line price (edits never silently reprice); else
+    // the distributor's list price (new lines).
+    const typedRaw = qs('#mdinv-price-' + s.id)?.value;
+    const typed = (typedRaw === '' || typedRaw == null) ? NaN : parseFloat(typedRaw);
     const stored = _existingItems.find(i => i.sku === s.id);
     const listPrice = parseFloat(pricing.find(p => p.sku === s.id)?.pricePerCase);
-    const ppc = (stored && stored.pricePerCase > 0) ? stored.pricePerCase : (isNaN(listPrice) ? 0 : listPrice);
+    const ppc = !isNaN(typed) ? typed : ((stored && stored.pricePerCase > 0) ? stored.pricePerCase : (isNaN(listPrice) ? 0 : listPrice));
     if (cases > 0 && !(ppc > 0)) _unpriced.push(s.label || s.id);
     return { sku: s.id, cases, pricePerCase: ppc };
   }).filter(i => i.cases > 0);
