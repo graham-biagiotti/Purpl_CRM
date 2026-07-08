@@ -13028,6 +13028,49 @@ function buildLfInvoiceEmailHTML(inv, opts) {
   });
 }
 
+// Distributor invoice → the same shared branded document as retail/LF.
+// Dist records store items[{sku,cases,pricePerCase}], billed-to comes from the
+// distributor profile + primary rep, and the PO reference rides in the notes line.
+function buildDistInvoiceEmailHTML(inv, opts) {
+  const d  = DB.a('dist_profiles').find(x => x.id === inv.distId) || {};
+  const rep = DB.a('dist_reps').find(r => r.distId === inv.distId && r.email) || {};
+  const s  = DB.obj('invoice_settings', {});
+  const lines = (inv.items || []).map(it => {
+    const skuObj = SKUS.find(k => k.id === it.sku);
+    const ppc = parseFloat(it.pricePerCase) || 0;
+    const cases = it.cases || 0;
+    return {
+      name: skuObj?.label || skuObj?.name || it.sku,
+      sub: `${cases * CANS_PER_CASE} cans · 12-pack cases`,
+      qty: cases + ' cs',
+      price: '$' + ppc.toFixed(2) + '/cs',
+      total: cases * ppc,
+    };
+  });
+  const poLine = [inv.poRef ? 'PO: ' + inv.poRef : '', inv.externalRef ? 'Ref: ' + inv.externalRef : '']
+    .filter(Boolean).join(' · ');
+  return buildInvoiceDocHTML({
+    number: inv.number || inv.invoiceNumber || '',
+    status: inv.status,
+    paidAt: inv.paidAt,
+    accountName: d.name || inv.distName || '',
+    accountEmail: rep.email || d.email || '',
+    accountAddress: d.address || '',
+    issueDate: inv.dateIssued || inv.date,
+    dueDate: inv.dueDate || inv.due,
+    terms: 'Net ' + (s.terms || 30),
+    deliveryDate: '',
+    tracking: '',
+    purplLines: lines,
+    lfLines: [],
+    shippingLines: [],
+    grandTotal: parseFloat(inv.total) || 0,
+    notes: [poLine, inv.notes || ''].filter(Boolean).join('\n'),
+    payLink: inv._payLink || null,
+    printButton: !!(opts && opts.printButton),
+  });
+}
+
 // Combined invoice → same shared document as purpl/LF, with both the purpl and
 // LF line sections populated from the two child invoices, so the Preview looks
 // identical across all invoice types.
