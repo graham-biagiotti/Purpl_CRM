@@ -163,23 +163,19 @@ exports.sendOrderConfirmation = onCall(
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr><td align="center">
         <table cellpadding="0" cellspacing="0" width="auto">
           <tr>
             <td width="auto" valign="middle" style="padding-right:16px">
-              <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                alt="purpl" width="120" height="48"
-                style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+              <span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span>
             </td>
             <td width="1px" valign="middle">
               <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
             </td>
             <td width="auto" valign="middle" style="padding-left:16px">
-              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="48" height="48"
-                style="display:block;margin:0 auto;filter:brightness(0) invert(1)">
+              <span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span>
             </td>
           </tr>
         </table>
@@ -320,11 +316,11 @@ exports.sendApplicationConfirmation = onCall(
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="120" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle" style="padding-right:16px"><span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="48" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle"><span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span></td>
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
@@ -876,7 +872,7 @@ exports.inviteEmployee = onCall(
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="500" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:28px 32px;text-align:center">
+  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:28px 32px;text-align:center">
     <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px">purpl CRM</div>
     <div style="color:rgba(255,255,255,0.9);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Pumpkin Blossom Farm</div>
   </td></tr>
@@ -1486,11 +1482,11 @@ exports.shipStationWebhook = onRequest(
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" alt="purpl" width="120" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle" style="padding-right:16px"><span style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:700;color:#ffffff;letter-spacing:1px">purpl</span></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="48" height="48" style="display:block;filter:brightness(0) invert(1)"></td>
+      <td valign="middle"><span style="font-family:Georgia,'Times New Roman',serif;font-size:15px;color:#ffffff;white-space:nowrap">Lavender Fields</span></td>
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
