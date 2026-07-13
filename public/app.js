@@ -12502,7 +12502,7 @@ function _ncivRenderSkuRows() {
       return `<div class="nciv-lf-row inv-line-block" data-sku="${sku.id}" data-casesize="${cs}">
         <div class="inv-line-head">
           <span class="inv-line-name">${escHtml(sku.name)} <span class="inv-line-unit">(${cs}/case)</span></span>
-          <input class="nciv-lf-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="1" value="0" oninput="_ncivCalcTotals()">
+          <input class="nciv-lf-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="0.5" value="0" oninput="_ncivCalcTotals()">
           <span class="inv-line-unit">cases</span>
           <input class="nciv-lf-ppc inv-price-input" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" oninput="_ncivCalcTotals()">
           <span class="inv-line-unit">/unit</span>
@@ -12549,7 +12549,7 @@ function _ncivCalcTotals() {
         }
       }
     } else {
-      const cases = parseInt(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
+      const cases = parseFloat(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
       line = cases * caseSize * unitPrice;
     }
     lfSub += line;
@@ -12608,7 +12608,7 @@ async function saveNewCombinedInvoice() {
       lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: totalCases, cases: totalCases, units: totalUnits, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: true, variantLines });
       return;
     }
-    const cases = parseInt(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
+    const cases = parseFloat(rowEl.querySelector('.nciv-lf-cases')?.value) || 0;
     if (!cases) return;
     const units = cases * caseSize;
     const lineTotal = units * unitPrice;
