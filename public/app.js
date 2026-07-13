@@ -11950,7 +11950,7 @@ function _lfInvBuildVariantArea(rowId, item) {
     area.innerHTML = `
       <div class="inv-variant-row" style="padding-left:18px">
         <span class="inv-variant-name inv-line-unit" style="font-size:12.5px">Quantity</span>
-        <input class="lfi-cases inv-qty-input" type="number" min="0" step="1" value="${item?.cases||0}"
+        <input class="lfi-cases inv-qty-input" type="number" min="0" step="0.5" value="${item?.cases||0}"
           oninput="_lfInvRowCalc('${rowId}')">
         <span class="inv-line-unit">cases</span>
         <span class="inv-line-unit">= <strong class="lfi-units">${item?.units||0}</strong> units</span>
@@ -11996,7 +11996,7 @@ function _lfInvRowCalc(rowId) {
       }
     }
   } else {
-    const cases   = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+    const cases   = parseFloat(row.querySelector('.lfi-cases')?.value) || 0;
     const unitsEl = row.querySelector('.lfi-units');
     if (unitsEl) unitsEl.textContent = cases * caseSize;
     rowTotal = cases * caseSize * unitPrice;
@@ -12028,7 +12028,7 @@ function _lfInvCalcTotal() {
         total += units * unitPrice;
       });
     } else {
-      const cases = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+      const cases = parseFloat(row.querySelector('.lfi-cases')?.value) || 0;
       total += cases * caseSize * unitPrice;
     }
   });
@@ -12097,7 +12097,7 @@ function _saveLfInvoiceCore(id, isNew) {
         variantLines, cases: totalCases, units: totalUnits, lineTotal: totalLine,
       });
     } else {
-      const cases = parseInt(row.querySelector('.lfi-cases')?.value || 0);
+      const cases = parseFloat(row.querySelector('.lfi-cases')?.value) || 0;
       if (!cases) return;
       const units = cases * caseSize;
       lineItems.push({
