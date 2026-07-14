@@ -996,7 +996,9 @@ function init() {
     firebase.functions().httpsCallable('getPortalOrderHistory')({ accountId: accountId, token: token })
       .then(function(result) {
         var orders = (result.data?.orders || []).map(function(o) {
-          if (o.submittedAt && typeof o.submittedAt === 'string') o.submittedAt = { toDate: function() { return new Date(o.submittedAt); } };
+          // capture the string BEFORE overwriting: the old wrapper read o.submittedAt
+          // after reassignment (i.e. itself) -> new Date(object) = 'Invalid Date' on every history row
+          if (o.submittedAt && typeof o.submittedAt === 'string') { var _sa = o.submittedAt; o.submittedAt = { toDate: function() { return new Date(_sa); } }; }
           return o;
         });
         renderPastOrders(orders);
@@ -1061,6 +1063,10 @@ function toggleDistributorOther() {}
 function getDistributors() { return []; }
 
 function showError(msg) {
+  // Cancel the offline watchdog — it was armed before validation, so 15s
+  // after any validation error it REPLACED the real message with the scary
+  // offline warning and a stuck 'Waiting for connection' button.
+  if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
   const el = document.getElementById('error-msg');
   el.textContent = msg;
   el.style.display = 'block';
