@@ -4936,6 +4936,8 @@ async function meBroadcastSend() {
     if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 300));
   }
 
+  _meSelectedIds.clear(); // same stale-selection hazard as template send
+  if (typeof renderMeBatchList === 'function') renderMeBatchList();
   const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meBroadcastInFlight = false;
@@ -5068,6 +5070,10 @@ async function meTemplateSend() {
     }
   }
 
+  // Clear selections — they persisted across sessions/filters, so the NEXT
+  // blast silently targeted every previously-checked (now hidden) account.
+  _meSelectedIds.clear();
+  if (typeof renderMeAccountList === 'function') renderMeAccountList();
   const summary = `Template send complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meTemplateInFlight = false;
