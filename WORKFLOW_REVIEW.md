@@ -36,7 +36,7 @@ Residual papercuts (Tier-2/3 backlog): match-twice friction, pay-link race banne
 |---|---|
 | Preview/send (all 4 types incl. dist) | ✅ PROVEN (dist sent to a real customer) |
 | Pay Online button = real invoice-bound link | ✅ PROVEN (button renders only on success) |
-| Customer completes payment → Stripe calls our webhook → invoice flips paid, Collected updates | 📄 **CODE-ONLY — CRITICAL GAP.** No customer has paid yet, and the Stripe webhook endpoint registration in the Stripe Dashboard has never been verified. If it isn't registered (same disease as ShipStation), customers WILL pay and invoices will silently stay "sent" — you'd dun people who already paid. |
+| Customer completes payment → Stripe webhook → paid | ✅ PROVEN — owner tested with a $1 invoice (INV-0019, auto-marked paid). |
 
 ### C. Ship lane: push → label → tracking/shipping back → send w/ tracking — ❌ BROKEN (root-caused)
 | Step | Status |
@@ -53,8 +53,7 @@ terms-from-delivery autofill 📄 (built+verified, not yet used).
 
 ### E. Email lane — ⚠️ sends proven, feedback loop unproven
 All sends ✅ (blast, invoices, confirmations, reminders exist). But:
-**Resend webhook (open/click badges): 📄 likely never registered** — you've never
-seen a 🔗 Clicked badge; same silent-callback disease. (Open tracking additionally
+**Resend webhook: ✅ registered** (click tracking works per TODO). Open-pixel tracking stays OFF — owner decision, settled. (Open tracking additionally
 OFF by design until the custom tracking subdomain — in TODO.)
 
 ### F. Inventory & ops — ✅ core proven, edges code-only
@@ -74,8 +73,8 @@ API key (pushes work) · hosting targets · portal config docs · Places key (ma
 | # | What | Where | How |
 |---|---|---|---|
 | 1 | **ShipStation webhook secret** ❌ | shipstation.com → Settings → Integrations → Webhooks | Edit webhook URL to `https://shipstationwebhook-4x6d5mugza-uc.a.run.app?secret=<LAST-8 of firebase functions:secrets:access SHIPSTATION_API_KEY>` · event "On Items Shipped" |
-| 2 | **Stripe webhook endpoint** ⚠️ unverified | dashboard.stripe.com → Developers → Webhooks | Must have an endpoint `https://stripewebhook-4x6d5mugza-uc.a.run.app` with event `checkout.session.completed`, and its **Signing secret** stored via `firebase functions:secrets:set STRIPE_WEBHOOK_SECRET`. If the endpoint list is empty → this was never done → payments won't mark paid. |
-| 3 | **Resend webhook** ⚠️ unverified | resend.com → Webhooks | Endpoint `https://resendwebhook-4x6d5mugza-uc.a.run.app` for click/open/delivery events + its secret stored as `RESEND_WEBHOOK_SECRET`. Without it: no 🔗/👁 badges ever. |
+| 2 | **Stripe webhook** ✅ CONFIRMED working (owner $1 test) | — | nothing to do |
+| 3 | **Resend webhook** ✅ registered; open-pixel OFF by owner decision | — | nothing to do |
 
 Also found: `callAnthropic` function has **no secret binding** (its own setup
 instruction can't work — AI drafting is dead until bound) · `.env.local` in git holds
