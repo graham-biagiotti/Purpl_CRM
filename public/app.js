@@ -1195,9 +1195,14 @@ function migrateLfSkuVariants() {
   });
 }
 
-// ── LF SKU price migration (idempotent) ───────────────────
+// ── LF SKU price migration (one-shot) ───────────────────
 function migrateLfSkuPrices() {
   if (!DB._firestoreReady) return;
+  // ONE-SHOT: this used to run on every boot and force-reverted any staff
+  // price/caseSize edit back to the hardcoded catalog — silently defeating
+  // the live portal catalog. Runs once, then never again.
+  if (DB.obj('settings', {}).lfPriceMigrationDone) return;
+  DB.setObj('settings', { ...DB.obj('settings', {}), lfPriceMigrationDone: true });
   const PRICE_CATALOG = {
     'Lavender Simple Syrup 12.7oz': {wholesalePrice:8.99,  caseSize:12, msrp:17.99},
     'Lavender Simple Syrup 1 gal':  {wholesalePrice:49.99, caseSize:1,  msrp:null},
