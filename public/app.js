@@ -12235,6 +12235,9 @@ async function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrder
 function markCombinedPaid(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
+  // A voided invoice must not be resurrected to paid — inventory was already
+  // restored by the void, so books and stock would disagree.
+  if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
   const now = new Date().toISOString();
   const pd = now.slice(0,10);
   DB.atomicUpdate(cache => {
@@ -13351,7 +13354,10 @@ async function openCombinedInvoicePreview(combinedId) {
   if (_h2) _h2.textContent = 'Combined Invoice';
   const _pr = qs('#civ-purpl-sub')?.parentElement; if (_pr) _pr.style.display = '';
   const _lr = qs('#civ-lf-sub')?.parentElement; if (_lr) _lr.style.display = '';
-  const _pb = qs('#civ-btn-paid'); if (_pb) { _pb.textContent = 'Mark Both Paid'; _pb.style.display = ''; }
+  const _pb = qs('#civ-btn-paid'); if (_pb) { _pb.textContent = 'Mark Both Paid'; _pb.style.display = ['paid','void'].includes(rec.status) ? 'none' : ''; }
+  // Clear the dist-only Issue-date onchange (auto-fills Due from that
+  // distributor's terms) — it survived into combined previews and rewrote Due.
+  const _ie = qs('#civ-edit-date'); if (_ie) _ie.onchange = null;
   const _vb = qs('#civ-btn-void'); if (_vb) _vb.style.display = '';
   // Dist preview hides the delivery/fulfillment rows — restore them here too.
   const _ds = qs('#civ-edit-delivery'); if (_ds?.parentElement) _ds.parentElement.style.display = '';
