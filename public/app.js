@@ -551,8 +551,13 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
       items.push({
         sku: li.skuId || li.sku || '',
         name: li.skuName || li.sku || li.description || 'Item',
-        quantity: li.cases || li.qty || li.units || 1,
-        unitPrice: parseFloat(li.pricePerCase || li.unitPrice || 0),
+        // LF lines (they carry caseSize) ship as UNITS — a 1-case syrup order
+        // is 12 bottles, but the slip printed quantity 1. purpl/dist/delivery
+        // lines have no caseSize and correctly ship as cases.
+        quantity: li.caseSize
+          ? (li.units != null ? li.units : Math.round((li.cases || 0) * li.caseSize) || 1)
+          : (li.cases || li.qty || li.units || 1),
+        unitPrice: parseFloat(li.caseSize ? (li.unitPrice || 0) : (li.pricePerCase || li.unitPrice || 0)),
       });
     }
   });
@@ -15289,6 +15294,13 @@ function openConfirmPortalOrder(id) {
   `;
 
   const qtyInput = qs('#mcpo-classic-qty');
+  // LF-only orders have no purpl quantity — showing the Classic cases row
+  // (with a 0) confused the confirm flow into looking like a purpl order.
+  const _qtyRow = qtyInput?.closest('div[style*="margin-bottom:16px"]');
+  const _hasPurplItems = purplCases > 0;
+  if (_qtyRow) _qtyRow.style.display = _hasPurplItems ? '' : 'none';
+  const _qtyHdr = _qtyRow?.previousElementSibling;
+  if (_qtyHdr && _qtyHdr.textContent.includes('EDIT QUANTITIES')) _qtyHdr.style.display = _hasPurplItems ? '' : 'none';
   if (qtyInput) {
     qtyInput.value = purplCases;
     qtyInput.oninput = () => {
