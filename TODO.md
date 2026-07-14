@@ -22,6 +22,11 @@ until after launch so they don't destabilize the blast._
       prospects → "pending"; report date-axis → issue/order date.
 
 ## 🔴 Open — needs your DECISION
+- [ ] **Pay-link race on just-created invoices** — createPayLink can read before the
+      invoice write lands ("Invoice not found" banner; reopening Preview fixes it).
+      Fix: auto-retry once after ~1s before showing the banner. Low risk, bundle
+      with the BUG_SWEEP_2 tier-1 batch.
+
 - [ ] **Opt-out on transactional/invoice emails** (email-R1). Policy choice: should
       invoices skip opted-out accounts, or send regardless (usual default)? Not a
       bug — current behavior (send regardless) is the standard default; leave unless
