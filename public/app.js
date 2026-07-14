@@ -162,7 +162,7 @@ function _pushCadence(existing, entry) {
   return arr.length > 500 ? arr.slice(-500) : arr;
 }
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }; // LOCAL date — toISOString() is UTC and rolled to tomorrow after 8pm ET (wrong invoice dates, next-month Collected, next-YEAR Dec-31 tax export, premature OVERDUE)
 const fmt   = (n, d=0) => (+n||0).toLocaleString(undefined, {minimumFractionDigits:d, maximumFractionDigits:d});
 const fmtC  = (n) => '$' + fmt(n,2);
 const _parseD = (s) => { if (!s) return NaN; return s.includes('T') ? new Date(s) : new Date(s+'T12:00:00'); };

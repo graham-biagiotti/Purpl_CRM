@@ -3,6 +3,10 @@ const {defineSecret} = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
 if (!admin.apps.length) admin.initializeApp();
+// Business-local (US Eastern) calendar date. Webhooks stamped UTC dates, which
+// after 8pm ET land on TOMORROW — evening payments booked into next month's
+// Collected and (Dec 31) the next tax year. en-CA gives YYYY-MM-DD.
+const etDate = (d) => new Date(d || Date.now()).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
@@ -1140,7 +1144,7 @@ exports.stripeWebhook = onRequest(
 
       const paidData = {
         status: 'paid',
-        paidDate: now.slice(0, 10),
+        paidDate: etDate(),
         paidAt: now,
         paidVia: 'stripe',
         stripeSessionId: session.id,
@@ -1428,7 +1432,7 @@ exports.shipStationWebhook = onRequest(
       }
 
       const now = new Date().toISOString();
-      const shipDate = now.slice(0, 10);
+      const shipDate = etDate();
 
       for (const [orderNumber, info] of Object.entries(byOrder)) {
         if (!info.trackingNumbers.length) continue;
@@ -1618,7 +1622,7 @@ exports.shipStationWebhook = onRequest(
               const configSnap = await db.doc('workspace/main/config/main').get();
               const configData = configSnap.exists ? configSnap.data() : {};
               const terms = (configData.invoice_settings || {}).terms || (configData.settings || {}).payment_terms || 30;
-              const dueDate = new Date(Date.now() + terms * 86400000).toISOString().slice(0, 10);
+              const dueDate = etDate(Date.now() + terms * 86400000);
               update.shippedAt = now;
               update.date = shipDate;
               update.issued = shipDate;
