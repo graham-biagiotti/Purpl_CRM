@@ -1603,7 +1603,12 @@ exports.shipStationWebhook = onRequest(
             } : null;
 
             const updatedItems = shippingLine ? [...itemsNoShip, shippingLine] : itemsNoShip;
-            const newTotal = Math.round(updatedItems.reduce((s, li) => s + parseFloat(li.lineTotal || li.total || 0), 0) * 100) / 100;
+            const newTotal = Math.round(updatedItems.reduce((s, li) => {
+              // delivery-run lines store their money in 'amount' (and legacy shapes in cases*pricePerCase);
+              // summing only lineTotal||total zeroed the product dollars and clobbered the invoice total to shipping-only
+              const v = li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases) || 0) * (parseFloat(li.pricePerCase) || 0))));
+              return s + (parseFloat(v) || 0);
+            }, 0) * 100) / 100;
 
             const update = {
               trackingNumber: trackingStr,
