@@ -11780,6 +11780,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = 'farm';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
+    if (qs('#lfi-shipping'))      qs('#lfi-shipping').value      = '';
     if (qs('#lfi-ship-status'))   qs('#lfi-ship-status').style.display = 'none';
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
   } else {
@@ -11793,6 +11794,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-fulfillment')) qs('#lfi-fulfillment').value = inv.fulfillmentSource||'farm';
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
+    if (qs('#lfi-shipping'))      qs('#lfi-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
     lfiDeliveryMethodChange();
     if (qs('#lfi-delete-btn')) {
       qs('#lfi-delete-btn').style.display = _isAdmin() ? '' : 'none';
@@ -12128,9 +12130,20 @@ function _saveLfInvoiceCore(id, isNew) {
   const existing = isNew ? null : DB.a('lf_invoices').find(x => x.id === id);
   const saveId   = isNew ? uid() : id;
 
-  // Preserve the ShipStation __shipping__ line — the modal renders SKU rows
-  // only, so rebuilding from the DOM dropped the shipping charge on re-edit.
-  lineItems.push(...((existing?.lineItems || []).filter(li => li.skuId === '__shipping__')));
+  // Shipping line: the modal's Shipping-charge field wins when set; otherwise
+  // carry the existing (webhook-written) __shipping__ line unchanged. The
+  // record shape is EXACTLY what shipStationWebhook writes — every consumer
+  // (doc shipping section, totals, Wix-pull exclusion, send-deduction skip,
+  // re-edit carry) already handles it.
+  const _shipRaw = qs('#lfi-shipping')?.value;
+  const _shipTyped = (_shipRaw === '' || _shipRaw == null) ? null : (parseFloat(_shipRaw) || 0);
+  const _existingShip = (existing?.lineItems || []).filter(li => li.skuId === '__shipping__');
+  if (_shipTyped != null) {
+    if (_shipTyped > 0) lineItems.push({ skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: _shipTyped, lineTotal: _shipTyped, total: _shipTyped });
+    // typed 0 = explicitly remove shipping
+  } else {
+    lineItems.push(..._existingShip);
+  }
 
   const total    = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0);
 
