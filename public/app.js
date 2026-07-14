@@ -12245,7 +12245,7 @@ function markCombinedPaid(combinedId) {
   // restored by the void, so books and stock would disagree.
   if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
   const now = new Date().toISOString();
-  const pd = now.slice(0,10);
+  const pd = today(); // local date (was UTC — tomorrow after 8pm ET)
   DB.atomicUpdate(cache => {
     const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
     if (ci >= 0) cache.combined_invoices[ci] = {...cache.combined_invoices[ci], status:'paid', paidDate:pd, paidAt:now};
@@ -12299,7 +12299,7 @@ function _syncCombinedParentForChild(childId) {
       cache.combined_invoices[ci] = cur;
     }
     if (bothPaid && cur.status !== 'paid') {
-      cache.combined_invoices[ci] = {...cur, status:'paid', paidDate: cur.paidDate || now.slice(0,10), paidAt: cur.paidAt || now};
+      cache.combined_invoices[ci] = {...cur, status:'paid', paidDate: cur.paidDate || today(), paidAt: cur.paidAt || now};
     } else if (!bothPaid && cur.status === 'paid') {
       cache.combined_invoices[ci] = {...cur, status:'sent', paidDate:null, paidAt:null};
     }
