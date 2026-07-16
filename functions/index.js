@@ -7,10 +7,23 @@ if (!admin.apps.length) admin.initializeApp();
 // after 8pm ET land on TOMORROW — evening payments booked into next month's
 // Collected and (Dec 31) the next tax year. en-CA gives YYYY-MM-DD.
 const etDate = (d) => new Date(d || Date.now()).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+// Webhook health ledger: every accepted/rejected inbound call stamps
+// integration_health/{service} so a dead or misconfigured callback is visible
+// in Settings instead of silently invisible (the ShipStation secret misconfig
+// hid for weeks because rejections left no trace).
+async function recordWebhookHealth(service, ok, note) {
+  try {
+    await admin.firestore().collection('workspace/main/integration_health').doc(service).set(
+      ok ? { lastReceivedAt: new Date().toISOString(), lastResult: 'ok', lastNote: note || '' }
+        : { lastRejectedAt: new Date().toISOString(), lastResult: 'rejected', lastRejectNote: note || '' },
+      { merge: true });
+  } catch (e) { console.warn('health record failed:', e.message); }
+}
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY'); // was never bound — callAnthropic's own setup hint could not work
 const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const shipStationApiKey = defineSecret('SHIPSTATION_API_KEY');
 
@@ -391,6 +404,7 @@ exports.sendApplicationConfirmation = onCall(
 
 // ── 3c. AI Proxy — keeps Anthropic key server-side ───────
 exports.callAnthropic = onCall(
+  {secrets: [anthropicApiKey]},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
@@ -726,10 +740,12 @@ exports.resendWebhook = onRequest(
       });
     } catch (err) {
       console.warn('Webhook signature verification failed:', err.message);
+      await recordWebhookHealth('resend', false, 'signature verification failed');
       res.status(401).send('Invalid signature');
       return;
     }
 
+    await recordWebhookHealth('resend', true, 'event received');
     const event = req.body;
     const type    = event?.type;
     const emailId = event?.data?.email_id;
@@ -1110,9 +1126,11 @@ exports.stripeWebhook = onRequest(
       );
     } catch (err) {
       console.warn('Stripe webhook signature failed:', err.message);
+      await recordWebhookHealth('stripe', false, 'signature verification failed');
       res.status(400).send('Invalid signature');
       return;
     }
+    await recordWebhookHealth('stripe', true, 'event received');
 
     if (event.type !== 'checkout.session.completed') {
       res.status(200).send('ignored');
@@ -1391,9 +1409,11 @@ exports.shipStationWebhook = onRequest(
       const expectedSecret = (process.env.SHIPSTATION_API_KEY || '').trim().slice(-8);
       if (!webhookSecret || webhookSecret !== expectedSecret) {
         console.warn('ShipStation webhook: invalid or missing secret');
+        await recordWebhookHealth('shipstation', false, webhookSecret ? 'wrong secret' : 'missing ?secret= on the webhook URL');
         res.status(403).send('Forbidden');
         return;
       }
+      await recordWebhookHealth('shipstation', true, 'event received');
 
       const payload = req.body || {};
       const resourceUrl = payload.resource_url;
