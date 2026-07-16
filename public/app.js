@@ -696,7 +696,19 @@ async function _getStripePayLink(invoice, type) {
       accountName: invoice.accountName || '',
       accountId: invoice.accountId || '',
     });
-    const d = result.data || {};
+    let d = result.data || {};
+    // Just-created invoices can lose the race between the client write and the
+    // server's lookup ("Invoice not found" banner on a fresh preview). Retry
+    // once after the write has had time to land, before alarming the user.
+    if (!d.ok && /not found/i.test(d.error || '')) {
+      await new Promise(r => setTimeout(r, 1500));
+      try { d = (await fn({
+        amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
+        invoiceNumber: invoice.number || invoice.invoiceNumber || ('INV-' + String(invoice.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()),
+        invoiceId: invoice.id, invoiceType: type || 'retail',
+        accountName: invoice.accountName || '', accountId: invoice.accountId || '',
+      })).data || {}; } catch (_) {}
+    }
     if (d.ok && d.url) {
       const old = document.getElementById('sticky-error');
       if (old) old.remove();
@@ -2456,6 +2468,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-delivery-method'))qs('#iv-delivery-method').value = 'deliver';
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = '';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = '';
+    if (qs('#iv-shipping'))      qs('#iv-shipping').value      = '';
     if (qs('#iv-ship-status'))   qs('#iv-ship-status').style.display = 'none';
     if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
   } else if (inv) {
@@ -2468,6 +2481,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-fulfillment'))   qs('#iv-fulfillment').value   = inv.fulfillmentSource||'warehouse';
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = inv.deliveryDate||'';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
+    if (qs('#iv-shipping'))      qs('#iv-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
     ivDeliveryMethodChange();
     const savedTerms = inv.paymentTerms || 'net30';
     if (qs('#iv-terms')) qs('#iv-terms').value = savedTerms;
@@ -16690,11 +16704,17 @@ async function _saveInvCore(id, isNew) {
   const existing = _isNew ? null : findInvoice(id);
   const saveId   = _isNew ? uid() : id;
 
-  // Preserve non-SKU lines (ShipStation writes a __shipping__ line after
-  // shipment) — the modal only renders SKU rows, so rebuilding from the DOM
-  // alone silently deleted the shipping charge on any later edit.
+  // Shipping: typed Shipping-charge field wins; blank carries the existing
+  // (webhook-written) __shipping__ line; explicit 0 removes it. Same proven
+  // shape + rules as the LF modal.
+  const _shipRaw2 = qs('#iv-shipping')?.value;
+  const _shipTyped2 = (_shipRaw2 === '' || _shipRaw2 == null) ? null : (parseFloat(_shipRaw2) || 0);
   const _carryLines = (existing?.lineItems || []).filter(li => li.skuId === '__shipping__');
-  lineItems.push(..._carryLines);
+  if (_shipTyped2 != null) {
+    if (_shipTyped2 > 0) lineItems.push({ skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: _shipTyped2, lineTotal: _shipTyped2, total: _shipTyped2 });
+  } else {
+    lineItems.push(..._carryLines);
+  }
 
   const totalCases = lineItems.filter(l => l.skuId !== '__shipping__').reduce((s, l) => s + l.cases, 0);
   const totalCans  = totalCases * CANS_PER_CASE;
