@@ -10739,6 +10739,50 @@ function renderIntegrations() {
   const urlDisplay = qs('#zapier-webhook-url');
   if (urlDisplay && settings.zapierWebhookUrl) urlDisplay.textContent = settings.zapierWebhookUrl;
   _renderLLImportHistory();
+  _renderWebhookHealth();
+}
+
+// Webhook health panel — reads integration_health/{service} stamped by the
+// Cloud Functions on every accepted/rejected inbound call. Makes a dead or
+// misconfigured callback (the ShipStation ?secret bug) visible in seconds.
+async function _renderWebhookHealth() {
+  const page = qs('#page-integrations');
+  if (!page) return;
+  let el = document.getElementById('webhook-health-card');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'webhook-health-card';
+    el.className = 'card';
+    el.style.marginBottom = '16px';
+    page.insertBefore(el, page.firstChild?.nextSibling || page.firstChild);
+  }
+  el.innerHTML = '<div class="section-hdr"><h2>🔌 Webhook Health</h2><small style="color:var(--muted)">Last inbound call from each service</small></div><div style="color:var(--muted);font-size:13px;padding:6px 0">Loading…</div>';
+  const services = [
+    { id: 'stripe', label: 'Stripe (payments → mark paid)' },
+    { id: 'shipstation', label: 'ShipStation (labels → tracking + shipping)' },
+    { id: 'resend', label: 'Resend (email clicks)' },
+  ];
+  const rows = [];
+  for (const s of services) {
+    let d = null;
+    try {
+      const snap = await firebase.firestore().collection('workspace/main/integration_health').doc(s.id).get();
+      d = snap.exists ? snap.data() : null;
+    } catch (e) { d = { _err: e.message }; }
+    let status, color, detail;
+    if (d?._err) { status = '? unreadable'; color = 'var(--muted)'; detail = escHtml(d._err); }
+    else if (!d) { status = '⚪ never received'; color = 'var(--muted)'; detail = 'No call has ever reached this endpoint — check registration in the service’s dashboard.'; }
+    else if (d.lastResult === 'rejected' && (!d.lastReceivedAt || (d.lastRejectedAt > d.lastReceivedAt))) {
+      status = '🔴 rejecting calls'; color = 'var(--red)'; detail = `${escHtml(d.lastRejectNote || 'rejected')} — last attempt ${fmtD((d.lastRejectedAt || '').slice(0, 10))}`;
+    } else {
+      status = '🟢 healthy'; color = '#16a34a'; detail = `last received ${fmtD((d.lastReceivedAt || '').slice(0, 10))}`;
+    }
+    rows.push(`<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <div><strong>${escHtml(s.label)}</strong><div style="font-size:12px;color:var(--muted)">${detail}</div></div>
+      <div style="white-space:nowrap;font-weight:600;color:${color}">${status}</div>
+    </div>`);
+  }
+  el.innerHTML = `<div class="section-hdr"><h2>🔌 Webhook Health</h2><small style="color:var(--muted)">Last inbound call from each service</small></div>${rows.join('')}`;
 }
 
 function saveWebhookUrl() {
