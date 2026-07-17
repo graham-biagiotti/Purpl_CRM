@@ -23,7 +23,6 @@ async function recordWebhookHealth(service, ok, note) {
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
 const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
-const anthropicApiKey = defineSecret('ANTHROPIC_API_KEY'); // was never bound — callAnthropic's own setup hint could not work
 const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 const shipStationApiKey = defineSecret('SHIPSTATION_API_KEY');
 
@@ -404,7 +403,6 @@ exports.sendApplicationConfirmation = onCall(
 
 // ── 3c. AI Proxy — keeps Anthropic key server-side ───────
 exports.callAnthropic = onCall(
-  {secrets: [anthropicApiKey]},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
