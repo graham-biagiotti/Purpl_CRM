@@ -38,17 +38,17 @@ Residual papercuts (Tier-2/3 backlog): match-twice friction, pay-link race banne
 | Pay Online button = real invoice-bound link | ✅ PROVEN (button renders only on success) |
 | Customer completes payment → Stripe webhook → paid | ✅ PROVEN — owner tested with a $1 invoice (INV-0019, auto-marked paid). |
 
-### C. Ship lane: push → label → tracking/shipping back → send w/ tracking — ❌ BROKEN (root-caused)
+### C. Ship lane — ✅ PROVEN END TO END (7/17: webhook secret fixed; 4 real sample shipments processed — tracking, farm deductions, customer emails all confirmed via audit log)
 | Step | Status |
 |---|---|
 | Push invoice → ShipStation order (idempotent orderKey) | ✅ PROVEN |
 | Packing slip quantities | ✅ fixed (units for LF) — re-verify on next push |
-| Label purchase → webhook → tracking + shipping line + "Ready to send" badge | ❌ **BROKEN — CONFIRMED.** Webhook registered without the required `?secret=` param → every call 403'd silently since day one. Also kills the sample-shipped email (same webhook). Fix is a URL edit in ShipStation (below). |
+| Label purchase → webhook → tracking + shipping + badge | ✅ PROVEN 7/17 (secret added to webhook URL; 4 sample_shipped audit rows by shipstation) |
 | Manual fallback (shipping charge + tracking fields on the invoice) | ✅ built this week (LF modal; purpl modal lacks the shipping field — parity item) |
 
 ### D. Distributor lane — ✅ mostly proven
 Shipment→PO+pool deduction ✅ · special-price invoice ✅ · branded doc + send ✅ ·
-pay link generated ✅ · **payment completion 📄 (same Stripe gap as B)** ·
+pay link generated ✅ · payment completion ✅ (real Stripe payments INV-0046/47 auto-marked paid) ·
 terms-from-delivery autofill 📄 (built+verified, not yet used).
 
 ### E. Email lane — ⚠️ sends proven, feedback loop unproven
@@ -72,7 +72,7 @@ API key (pushes work) · hosting targets · portal config docs · Places key (ma
 
 | # | What | Where | How |
 |---|---|---|---|
-| 1 | **ShipStation webhook secret** ❌ | shipstation.com → Settings → Integrations → Webhooks | Edit webhook URL to `https://shipstationwebhook-4x6d5mugza-uc.a.run.app?secret=<LAST-8 of firebase functions:secrets:access SHIPSTATION_API_KEY>` · event "On Items Shipped" |
+| 1 | **ShipStation webhook** ✅ FIXED 7/17 (secret added; proven with 4 shipments) | — | nothing to do |
 | 2 | **Stripe webhook** ✅ CONFIRMED working (owner $1 test) | — | nothing to do |
 | 3 | **Resend webhook** ✅ registered; open-pixel OFF by owner decision | — | nothing to do |
 
