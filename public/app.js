@@ -1442,7 +1442,10 @@ function renderDash() {
   const allPurplInv = _allPurplInvoices();
   const purplOutstanding = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
   const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
-  const combinedOutstanding  = purplOutstanding + lfOutstanding;
+  // dist invoices were missing entirely — the dashboard disagreed with the
+  // Invoices page by exactly the open distributor balance.
+  const distOutstanding  = DB.a('dist_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + parseFloat(i.total||0), 0);
+  const combinedOutstanding  = purplOutstanding + lfOutstanding + distOutstanding;
   const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
   const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
   const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
@@ -1773,8 +1776,17 @@ function renderAttention() {
   const ac = DB.a('ac');
   const todayStr = today();
 
+  // Dashboard renders before the accounts page may have built the invoice
+  // index — build it here if needed so attention uses real invoice recency.
+  if (!_acIdxInv) {
+    _acIdxInv = new Map();
+    _allInvoices({ excludeChildren: true }).forEach(inv => {
+      const arr = _acIdxInv.get(inv.accountId);
+      if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
+    });
+  }
   ac.filter(a=>a.status==='active').forEach(a=>{
-    const last = a.lastOrder;
+    const last = _acLastInvoiceDate(a);
     const days = daysAgo(last);
     if (days >= 30) {
       const urgency = days >= 60 ? 'red' : 'amber';
@@ -2095,20 +2107,25 @@ const INVOICE_STATUS = {
 };
 
 function renderInvoiceStatus() {
-  const delivered = DB.a('orders').filter(o=>o.status==='delivered');
-  const terms     = _payTerms();
-
+  // Rewired to the real invoice collections. The old version counted
+  // orders' invoiceStatus flags, which the current invoice flows never set —
+  // so the widget showed everything as Not Invoiced forever.
+  const todayStr = today();
+  const _all = [
+    ..._allPurplInvoices().filter(x => !x.combinedInvoiceId),
+    ...DB.a('lf_invoices').filter(x => !x.combinedInvoiceId),
+    ...DB.a('combined_invoices'),
+    ...DB.a('dist_invoices'),
+  ];
   let notInvoiced=0, invoiced=0, paid=0, overdueList=[];
-
-  delivered.forEach(o=>{
-    const st = o.invoiceStatus||'none';
-    if (st==='paid')     { paid++; return; }
-    if (st==='invoiced') {
-      if (daysAgo(o.invoiceDate||o.dueDate) > terms) overdueList.push(o);
-      else invoiced++;
-      return;
-    }
-    notInvoiced++;
+  _all.forEach(inv => {
+    const st = inv.status || 'draft';
+    if (st === 'void') return;
+    const due = inv.dueDate || inv.due || '';
+    if (st === 'paid') { paid++; return; }
+    if (st === 'draft') { notInvoiced++; return; }
+    if (due && due < todayStr) overdueList.push({ id: inv.id, accountId: inv.accountId, accountName: inv.accountName || inv.distName || '', dueDate: due, number: inv.number || inv.invoiceNumber || '' });
+    else invoiced++;
   });
 
   const el = qs('#dash-invoice-status');
@@ -2118,11 +2135,11 @@ function renderInvoiceStatus() {
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
       <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
         <div style="font-size:20px;font-weight:700">${notInvoiced}</div>
-        <div style="font-size:11px;color:var(--muted)">Not Invoiced</div>
+        <div style="font-size:11px;color:var(--muted)">Drafts</div>
       </div>
       <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
         <div style="font-size:20px;font-weight:700;color:var(--blue)">${invoiced}</div>
-        <div style="font-size:11px;color:var(--muted)">Invoiced</div>
+        <div style="font-size:11px;color:var(--muted)">Sent</div>
       </div>
       <div style="text-align:center;padding:10px;background:var(--surface);border-radius:8px;border:1px solid var(--border)">
         <div style="font-size:20px;font-weight:700;color:var(--green)">${paid}</div>
@@ -2134,11 +2151,11 @@ function renderInvoiceStatus() {
       </div>
     </div>
     ${overdueList.length ? overdueList.map(o=>{
-      const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
+      const nm = o.accountName || DB.a('ac').find(a=>a.id===o.accountId)?.name || 'Unknown';
       return `<div class="attn-item">
         <div class="attn-icon">💰</div>
-        <div class="attn-info"><div class="attn-name">${escHtml(ac2?.name||'Unknown')}</div><div class="attn-reason">Invoice overdue &middot; ${fmtD(o.dueDate)}</div></div>
-        <button class="btn xs green" onclick="setInvStatus('${o.id}','paid')">Mark Paid</button>
+        <div class="attn-info"><div class="attn-name">${escHtml(nm)} — ${escHtml(o.number)}</div><div class="attn-reason">Invoice overdue &middot; due ${fmtD(o.dueDate)}</div></div>
+        <button class="btn xs" onclick="nav('invoices')">View</button>
       </div>`;
     }).join('') : '<div class="empty">No invoice issues</div>'}
     ${(()=>{
@@ -3144,15 +3161,28 @@ function toggleAccountStar(id) {
 // once in renderAccounts so each card is an O(1) lookup instead of re-scanning
 // all orders + rebuilding the unified invoice array per card.
 let _acIdxOrders = null, _acIdxInv = null;
+// Latest invoice date for an account — invoices are the real business record;
+// a.lastOrder is only stamped by a few paths (delivery runs, convert) and sat
+// stale/"Never" for accounts billed any other way.
+function _acLastInvoiceDate(a) {
+  const invs = _acIdxInv ? (_acIdxInv.get(a.id) || []) : [];
+  let last = '';
+  invs.forEach(i => {
+    const d = i.date || i.issued || i.dateIssued || (i.createdAt || '').slice(0, 10) || '';
+    if (d > last) last = d;
+  });
+  return last || a.lastOrder || null;
+}
 function _acCardHTML(a, muted) {
   const lastContact  = acLastContacted(a);
   // Pending accounts are leads who haven't placed a first order yet — don't
   // flag them as neglected ("Needs Attention" / red "Never").
   const isPending    = a.status === 'pending';
-  const needsAttn    = !muted && !isPending && (daysAgo(a.lastOrder)>=30 || daysAgo(lastContact)>=30);
+  const needsAttn    = !muted && !isPending && (daysAgo(_acLastInvoiceDate(a))>=30 || daysAgo(lastContact)>=30);
 
-  const lastOrderHtml = a.lastOrder
-    ? `<span class="ac-metric-val${daysAgo(a.lastOrder)>=30?' red':''}">${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d)</span>`
+  const _lastInv = _acLastInvoiceDate(a);
+  const lastOrderHtml = _lastInv
+    ? `<span class="ac-metric-val${daysAgo(_lastInv)>=30?' red':''}">${fmtD(_lastInv)} (${daysAgo(_lastInv)}d)</span>`
     : isPending
       ? `<span class="ac-metric-val" style="color:var(--muted)">No order yet</span>`
       : `<span class="ac-metric-val red">Never</span>`;
@@ -3234,7 +3264,7 @@ function _acCardHTML(a, muted) {
         </div>
       </div>`).join('')}</div>`:''}
     <div class="ac-card-metrics">
-      <div><div class="ac-metric-label">Last Order</div>${lastOrderHtml}</div>
+      <div><div class="ac-metric-label">Last Invoice</div>${lastOrderHtml}</div>
       <div><div class="ac-metric-label">Last Contacted</div>${lastContactHtml}</div>
       <div><div class="ac-metric-label">Velocity</div>${velocityHtml}</div>
       <div><div class="ac-metric-label">Outstanding</div>${outstandingHtml}</div>
