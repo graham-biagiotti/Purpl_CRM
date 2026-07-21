@@ -13620,7 +13620,9 @@ async function openCombinedInvoicePreview(combinedId) {
       await pushInvoiceToShipStation(combinedId, 'combined_invoices');
     }
     const sendHtml = html;
-    callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
+    // AWAIT the chain — it was fire-and-forget, so the finally re-enabled the
+    // button mid-send and a double-click emailed the customer twice.
+    await callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
       .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = rec.number || rec.invoiceNumber || '';
@@ -13678,9 +13680,10 @@ async function openCombinedInvoicePreview(combinedId) {
         setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
       })
       .catch(() => {
+        toast('Send failed — opening your email app as a fallback', 6000);
         window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       });
-    } finally { if (_gmailBtn) { _gmailBtn.disabled = false; _gmailBtn.textContent = 'Send'; } }
+    } finally { if (_gmailBtn) { _gmailBtn.disabled = false; _gmailBtn.textContent = 'Send Invoice to Customer'; } }
   };
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) voidBtn.style.display = _isAdmin() ? '' : 'none';
