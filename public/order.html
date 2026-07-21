@@ -816,12 +816,19 @@ function getLfTotal() {
   },0);
 }
 
+var _lfSkusLoadInFlight = false;
 function loadLfSkus(prevOrder) {
+  // Concurrent-call guard: the token path fired this twice at init, and the
+  // second response re-rendered the section and silently wiped any LF
+  // quantities the customer had already typed.
+  if (_lfSkusLoadInFlight) return;
+  _lfSkusLoadInFlight = true;
   // Via Cloud Function — direct workspace reads are denied by rules for
   // customers, so this ALWAYS fell back to the stale hardcoded catalog and
   // staff price/product edits never reached the order form.
   firebase.functions().httpsCallable('getLfCatalog')({})
     .then(function(result) {
+      _lfSkusLoadInFlight = false;
       var skus = ((result.data && result.data.skus) || []).filter(function(s){return !s.archived;});
       if (skus.length) {
         console.log('LF SKUs loaded via getLfCatalog: ' + skus.length + ' skus');
@@ -832,6 +839,7 @@ function loadLfSkus(prevOrder) {
       }
     })
     .catch(function(err) {
+      _lfSkusLoadInFlight = false;
       console.error('LF SKU load error — using fallback:', err);
       renderLfSkus(LF_SKU_FALLBACK, prevOrder);
     });
@@ -1729,7 +1737,7 @@ function loadOutstandingInvoices(acId) {
       .then(function(snap) {
         snap.docs.forEach(function(d) {
           var inv = d.data();
-          if (inv.status !== 'paid') invoices.push(inv);
+          if (inv.status !== "paid" && !inv.combinedInvoiceId) invoices.push(inv); // children would double-list the combined charge
         });
       })
       .catch(function() {})
@@ -1749,7 +1757,7 @@ function renderOutstandingInvoices(invoices, settings) {
   var rows = invoices.map(function(inv) {
     var num    = inv.number || inv.invoiceNumber || '—';
     var due    = inv.due || inv.dueDate || '';
-    var amt    = parseFloat(inv.amount || 0);
+    var amt    = parseFloat(inv.amount || inv.total || inv.grandTotal || 0); // LF stores total, combined stores grandTotal — amount-only rendered $0.00 rows
     var status = inv.status || 'unpaid';
     var isOver = due && due < today;
     var color  = isOver ? '#dc2626' : '#d97706';
@@ -1767,7 +1775,7 @@ function renderOutstandingInvoices(invoices, settings) {
       '</div></div>';
   }).join('');
 
-  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || 0); }, 0);
+  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || i.grandTotal || 0); }, 0);
   el.innerHTML = '<div class="card" style="border-left:3px solid #7B4FA0;padding:16px 20px;margin-bottom:16px">' +
     '<div style="font-size:14px;font-weight:600;color:#4B2082;margin-bottom:12px">' +
     '💜 Outstanding Invoices' +

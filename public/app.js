@@ -13542,11 +13542,15 @@ async function openCombinedInvoicePreview(combinedId) {
     const isWh = fulfillSel?.value === 'warehouse';
     if (shipBtn) {
       shipBtn.style.display = isShip ? '' : 'none';
+      // else-reset added: the shared shell kept a previous invoice's
+      // "✓ Pushed" disabled state, wedging the button for unpushed invoices.
       if (rec.shipStationOrderId) { shipBtn.textContent = '✓ Pushed to ShipStation'; shipBtn.disabled = true; }
+      else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
     }
     if (whBtn) {
       whBtn.style.display = isWh ? '' : 'none';
       if (rec.warehousePushedAt) { whBtn.textContent = '✓ Sent to Warehouse'; whBtn.disabled = true; }
+      else { whBtn.textContent = '🏭 Push to Warehouse'; whBtn.disabled = false; }
     }
   };
   _updateFulfillBtns();

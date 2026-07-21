@@ -1,5 +1,5 @@
 // purpl CRM Service Worker — offline shell caching
-const CACHE = 'purpl-crm-v145'; // bump on every deploy
+const CACHE = 'purpl-crm-v146'; // bump on every deploy
 const SHELL = [
   '/',
   '/index.html',
