@@ -12082,7 +12082,7 @@ function _lfInvBuildVariantArea(rowId, item) {
     area.innerHTML = `
       <div class="inv-variant-row" style="padding-left:18px">
         <span class="inv-variant-name inv-line-unit" style="font-size:12.5px">Quantity</span>
-        <input class="lfi-cases inv-qty-input" type="number" min="0" step="0.5" value="${item?.cases||0}"
+        <input class="lfi-cases inv-qty-input" type="number" min="0" step="any" value="${item?.cases||0}"
           oninput="_lfInvRowCalc('${rowId}')">
         <span class="inv-line-unit">cases</span>
         <span class="inv-line-unit">= <strong class="lfi-units">${item?.units||0}</strong> units</span>
@@ -12648,7 +12648,7 @@ function _ncivRenderSkuRows() {
       return `<div class="nciv-lf-row inv-line-block" data-sku="${sku.id}" data-casesize="${cs}">
         <div class="inv-line-head">
           <span class="inv-line-name">${escHtml(sku.name)} <span class="inv-line-unit">(${cs}/case)</span></span>
-          <input class="nciv-lf-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="0.5" value="0" oninput="_ncivCalcTotals()">
+          <input class="nciv-lf-cases inv-qty-input" data-sku="${sku.id}" type="number" min="0" step="any" value="0" oninput="_ncivCalcTotals()">
           <span class="inv-line-unit">cases</span>
           <input class="nciv-lf-ppc inv-price-input" data-sku="${sku.id}" type="number" min="0" step="0.01" value="${unitPrice.toFixed(2)}" oninput="_ncivCalcTotals()">
           <span class="inv-line-unit">/unit</span>
