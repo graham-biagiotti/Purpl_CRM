@@ -7317,6 +7317,7 @@ function openDistShipmentModal(distId) {
   qs('#dship-dist-id').value = distId;
   qs('#dship-dist-name').textContent = d.name;
   qs('#dship-date').value = today();
+  if (qs('#dship-pool')) qs('#dship-pool').value = 'warehouse'; // was never reset — stuck on Farm after one farm shipment
   qs('#dship-po-ref').value = '';
   qs('#dship-notes').value = '';
   qs('#dship-status').value = 'fulfilled';
@@ -7729,7 +7730,19 @@ function _openDistInvModal(distId, existingId) {
     sel.innerHTML = '<option value="">Select distributor...</option>' +
       DB.a('dist_profiles').map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
     sel.value = distId || existing?.distId || '';
-    sel.onchange = () => _mdinvUpdateDueDate();
+    sel.onchange = () => {
+      _mdinvUpdateDueDate();
+      // Refresh per-line price prefills from the NEW distributor's price list —
+      // switching used to keep the previous distributor's prices (typed cases kept).
+      const _newPricing = DB.a('dist_pricing').filter(p => p.distId === sel.value);
+      SKUS.forEach(s => {
+        const pEl = qs('#mdinv-price-' + s.id);
+        if (!pEl) return;
+        const lp = parseFloat(_newPricing.find(p => p.sku === s.id)?.pricePerCase);
+        pEl.value = isNaN(lp) ? '' : lp;
+        pEl.placeholder = isNaN(lp) ? 'no list price' : lp.toFixed(2);
+      });
+    };
   }
 
   const el = qs('#mdinv-sku-inputs');
