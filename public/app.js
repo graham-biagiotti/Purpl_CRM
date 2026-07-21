@@ -3297,7 +3297,9 @@ function renderAccounts() {
     const _dOpts = DB.a('dist_profiles').filter(d=>d.status==='active')
       .sort((a,b)=>(a.name||'')<(b.name||'')?-1:1)
       .map(d=>`<option value="${d.id}">via ${escHtml(d.name)}</option>`).join('');
-    _ffSel.innerHTML = `<option value="">All Fulfillment</option><option value="direct">Direct</option><option value="__any_dist__">Via distributor (any)</option>${_dOpts}`;
+    const _cbOpts = DB.a('dist_profiles').sort((x,y)=>(x.name||'')<(y.name||'')?-1:1)
+      .map(d=>`<option value="closedby:${d.id}">Closed by ${escHtml(d.name)}</option>`).join('');
+    _ffSel.innerHTML = `<option value="">All Fulfillment</option><option value="direct">Direct</option><option value="__any_dist__">Via distributor (any)</option>${_dOpts}${_cbOpts}`;
     _ffSel.value = _cur;
   }
   const search        = qs('#ac-search')?.value?.toLowerCase().trim() || '';
@@ -3319,6 +3321,7 @@ function renderAccounts() {
   else if (_acBrandFilter === 'both')  list = list.filter(a=>!!a.isPbf && a.skus && a.skus.length > 0); // both lines
   if (fulfillFilter === 'direct') list = list.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct');
   else if (fulfillFilter === '__any_dist__') list = list.filter(a=>a.fulfilledBy && a.fulfilledBy!=='direct');
+  else if (fulfillFilter.startsWith('closedby:')) list = list.filter(a=>a.closedBy === fulfillFilter.slice(9)); // bookkeeping tag, no pricing coupling
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
   list = list.slice().sort((a,b)=>{
@@ -5433,6 +5436,15 @@ function editAccount(id) {
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
   if (qs('#eac-ispbf')) qs('#eac-ispbf').checked = !!a.isPbf;
+  // Closed-by: pure bookkeeping tag (who landed the account) — deliberately
+  // decoupled from fulfilledBy so it can never touch pricing.
+  const _cbSel = qs('#eac-closedby');
+  if (_cbSel) {
+    _cbSel.innerHTML = '<option value="">— (self)</option>' + DB.a('dist_profiles')
+      .sort((x,y)=>(x.name||'')<(y.name||'')?-1:1)
+      .map(d=>`<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+    _cbSel.value = a.closedBy || '';
+  }
 
   // Populate fulfilled-by dropdown with active distributors
   const ffSel = qs('#eac-fulfilled-by');
@@ -5563,6 +5575,7 @@ async function saveAccount(id, isNew) {
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
     isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
+    closedBy:     qs('#eac-closedby')?.value || '',
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
     pricePerCaseDirect: (v=>isNaN(v)?null:v)(parseFloat(qs('#ac-price-direct')?.value)),
