@@ -14688,9 +14688,10 @@ async function renderPreOrders(forceReload) {
 
 function _renderPoKpis() {
   const orders = PortalDB.getOrders();
-  const total   = orders.length;
-  const matched = orders.filter(o => o.isMatched).length;
-  const unmatched = orders.filter(o => !o.isMatched).length;
+  const groups  = _portalSubmissionGroups(orders); // dual-brand pair = ONE submission
+  const total   = groups.length;
+  const matched = groups.filter(o => o.isMatched).length;
+  const unmatched = total - matched;
   const purplCasesTotal = orders.reduce((s,o) => {
     return s + (o.items||[]).reduce((ss,i) => ss + (i.cases||0), 0);
   }, 0);
@@ -14849,6 +14850,21 @@ function _fmtPoDate(d) {
   if (!d) return '—';
   if (d instanceof Date) return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
   return d;
+}
+
+// Collapse dual-brand pairs into single submissions for COUNTING — the list
+// already displays them as one row, but every counter (KPIs, nav badge)
+// counted raw docs, so a both-brands order showed as 2.
+function _portalSubmissionGroups(list) {
+  const used = new Set(), reps = [];
+  (list || []).forEach(o => {
+    if (used.has(o.id)) return;
+    used.add(o.id);
+    const partner = (list || []).find(p => !used.has(p.id) && _samePortalSubmission(o, p));
+    if (partner) used.add(partner.id);
+    reps.push(o);
+  });
+  return reps;
 }
 
 function _poTsMs(t) {
@@ -17056,7 +17072,7 @@ function _listenPortalOrders() {
           // or the nav badge stays lit forever (confirm bails on no-items).
           const sampleOnly = !((d.items||[]).some(i => (i.cases||0) > 0)) && !(d.lineItems||[]).length;
           const sampleHandled = sampleOnly && (d.sampleApproved || d.sampleDeclined);
-          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined' && !sampleHandled) unconfirmed.push(doc.id);
+          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined' && !sampleHandled) unconfirmed.push({ id: doc.id, ...d });
           if (!_portalOrderIds.has(doc.id) && _portalOrderIds.size > 0) {
             newCount++;
           }
@@ -17067,7 +17083,7 @@ function _listenPortalOrders() {
           renderDashQuickActions();
         }
         _portalOrderIds = new Set(snap.docs.map(d => d.id));
-        _updatePortalOrdersBadge(unconfirmed.length);
+        _updatePortalOrdersBadge(_portalSubmissionGroups(unconfirmed).length); // dual-brand pair = 1 waiting, not 2
         PortalDB._orders = snap.docs.map(d => {
           const data = d.data();
           return { ...data, id: d.id, submittedAt: data.submittedAt?.toDate?.() || null };
