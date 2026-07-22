@@ -1,5 +1,5 @@
 // purpl CRM Service Worker — offline shell caching
-const CACHE = 'purpl-crm-v161'; // bump on every deploy
+const CACHE = 'purpl-crm-v162'; // bump on every deploy
 const SHELL = [
   '/',
   '/index.html',
@@ -24,9 +24,11 @@ self.addEventListener('activate', e => {
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
-  // Notify all open tabs that a new version is active
+  // Notify all open tabs that a new version is active. The cache name carries
+  // the version so pages already running this version can ignore the message
+  // (kills the false "new version" banner right after a deploy+refresh).
   self.clients.matchAll({type: 'window'}).then(clients => {
-    clients.forEach(c => c.postMessage({type: 'SW_UPDATED'}));
+    clients.forEach(c => c.postMessage({type: 'SW_UPDATED', cache: CACHE}));
   });
 });
 

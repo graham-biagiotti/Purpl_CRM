@@ -3512,6 +3512,11 @@ if ('serviceWorker' in navigator) {
     if (!e.data || e.data.type !== 'SW_UPDATED') return;
     if (!_swHadController) return;                              // first install, not a real update
     if (document.getElementById('sw-update-banner')) return;   // already showing — never stack
+    // If this page already runs the version the worker announces, a reload
+    // would change nothing — a hard refresh loads new code AND triggers the
+    // worker update, so without this check every deploy cried wolf once.
+    var m = e.data.cache && String(e.data.cache).match(/v\d+$/);
+    if (m && typeof APP_VERSION !== 'undefined' && APP_VERSION === m[0]) return;
     var banner = document.createElement('div');
     banner.id = 'sw-update-banner';
     banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#4B2082;color:#fff;padding:10px 16px;text-align:center;z-index:99999;font-size:14px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:12px';
