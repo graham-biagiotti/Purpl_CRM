@@ -13117,7 +13117,6 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
         <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
-        ${dueDate ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>` : ''}
         ${o.terms ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(o.terms)}</strong></div>` : ''}
         ${_deliveryDetailsHTML(o.deliveryDate, o.tracking, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
       </td>
@@ -13142,7 +13141,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <td style="padding-top:16px;text-align:right;font-size:26px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${grandTotal.toFixed(2)}</td>
       </tr>
     </table>
-    ${(o.terms || dueDate) ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(o.terms || '')}${o.terms && dueDate ? ' · ' : ''}${dueDate ? 'Due ' + dueDate : ''}</div>` : ''}
+    ${o.terms ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(o.terms)}</div>` : ''}
   </td></tr>
 
   <tr><td style="padding:0 48px 24px">
@@ -13170,21 +13169,9 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
 // ── Per-type wrappers — all feed the same unified template ───
 
-// Terms label for the printed doc, derived from the invoice's OWN dates so it
-// can never contradict the printed Due date. (Bug class this kills: LF/dist/
-// combined docs printed the GLOBAL settings default — e.g. "Net 30" next to a
-// due date that was actually issue+60.) Falls back to the stored label only
-// when either date is missing.
-function _docTermsLabel(issueDate, dueDate, fallback) {
-  const p = v => { const d = v ? new Date(String(v).slice(0, 10) + 'T12:00:00') : null; return d && !isNaN(d) ? d : null; };
-  const i = p(issueDate), d = p(dueDate);
-  if (i && d) {
-    const days = Math.round((d - i) / 864e5);
-    return days <= 0 ? 'Due on Receipt' : 'Net ' + days;
-  }
-  return fallback || 'Net 30';
-}
-
+// The printed doc shows "Terms: Net 30" style labels only — no Due date line
+// (owner decision 7/22: the Issued/Due/Delivery pile-up read as confusing).
+// Due dates still live on the records for status/reminders.
 function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
@@ -13203,7 +13190,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     accountAddress: account.address || '',
     issueDate: rec.date,
     dueDate: rec.dueDate || rec.due,
-    terms: _docTermsLabel(rec.date, rec.dueDate || rec.due, rec.paymentTerms),
+    terms: rec.paymentTerms || 'Net 30',
     deliveryDate: rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '',
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
     purplLines: _normPurplLines(purplInv),
@@ -13229,7 +13216,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.date,
     dueDate: inv.due || inv.dueDate,
-    terms: _docTermsLabel(inv.date, inv.due || inv.dueDate, _invTermsLabel(inv)),
+    terms: _invTermsLabel(inv),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: _normPurplLines(inv),
@@ -13255,7 +13242,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.issued || inv.date,
     dueDate: inv.due || inv.dueDate,
-    terms: _docTermsLabel(inv.issued || inv.date, inv.due || inv.dueDate, 'Net ' + (s.terms || 30)),
+    terms: 'Net ' + (s.terms || 30),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: [],
@@ -13298,7 +13285,7 @@ function buildDistInvoiceEmailHTML(inv, opts) {
     accountAddress: d.address || '',
     issueDate: inv.dateIssued || inv.date,
     dueDate: inv.dueDate || inv.due,
-    terms: _docTermsLabel(inv.dateIssued || inv.date, inv.dueDate || inv.due, 'Net ' + (d.paymentTermsDays || s.terms || 30)),
+    terms: 'Net ' + (d.paymentTermsDays || s.terms || 30),
     deliveryDate: '',
     tracking: '',
     purplLines: lines,
@@ -13328,7 +13315,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.date || inv.issued,
     dueDate: inv.dueDate || inv.due,
-    terms: _docTermsLabel(inv.date || inv.issued, inv.dueDate || inv.due, inv.paymentTerms || 'Net ' + (s.terms || 30)),
+    terms: inv.paymentTerms || 'Net ' + (s.terms || 30),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: purplChild ? _normPurplLines(purplChild) : [],
@@ -16254,19 +16241,18 @@ async function pushToWarehouse(invoiceId, collection) {
   const invNum = inv.number || inv.invoiceNumber || invoiceId;
   const isRepush = !!inv.warehousePushedAt;
   const subject = (isRepush ? 'UPDATED — ' : '') + `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
-  // Attach the invoice as a standalone HTML file: open → Ctrl+P gives a clean
-  // full-page print (printing the email itself crops and adds Gmail chrome).
-  const fileName = String(invNum).replace(/[^A-Za-z0-9._-]+/g, '-') + '-invoice.html';
-  const fileHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(invNum)} — ${escHtml(acName)}</title>` +
-    `<style>body{margin:0;background:#fff}@page{margin:0.4in}</style></head><body>${docHtml}</body></html>`;
+  // Attach the invoice as a PDF: the sendEmail function renders the exact doc
+  // HTML to PDF server-side (headless Chromium), so the printed page matches
+  // the emailed invoice one-for-one.
+  const fileName = String(invNum).replace(/[^A-Za-z0-9._-]+/g, '-') + '-invoice.pdf';
   const bodyHtml = `<div style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
     (isRepush ? `<b>UPDATED COPY</b> — this replaces the earlier version of this invoice; discard any previous printout. ` : '') +
-    `<b>To print:</b> open the attached file <b>${escHtml(fileName)}</b> and print it (Ctrl+P) — it prints as a clean full page. ` +
+    `<b>To print:</b> open the attached PDF <b>${escHtml(fileName)}</b> and print it. ` +
     `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>` + docHtml;
-  toast('Sending to warehouse…');
+  toast('Sending to warehouse… (PDF render takes a few seconds)');
   try {
     await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, bodyHtml,
-      [{filename: fileName, content: _b64utf8(fileHtml)}]);
+      [{filename: fileName, htmlToPdf: _b64utf8(docHtml)}]);
     DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
     auditLog('warehouse_push', 'invoice', invoiceId, `${inv.number || inv.invoiceNumber || invoiceId} → ${whEmail}`);
     toast('Invoice emailed to warehouse ✓ — ' + whEmail);

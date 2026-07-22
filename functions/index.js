@@ -34,9 +34,33 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Render an HTML document to a PDF buffer (headless Chromium). Lazy-required
+// so ordinary sends never pay the chromium startup cost.
+async function _htmlToPdf(html) {
+  const chromium = require('@sparticuz/chromium');
+  const puppeteer = require('puppeteer-core');
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath(),
+    headless: true,
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, {waitUntil: 'networkidle0', timeout: 30000});
+    const pdf = await page.pdf({
+      format: 'Letter',
+      printBackground: true,
+      margin: {top: '0.35in', bottom: '0.35in', left: '0.35in', right: '0.35in'},
+    });
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
+}
+
 // ── 1. Send Email ─────────────────────────────────────────
 exports.sendEmail = onCall(
-  {secrets: [resendApiKey]},
+  {secrets: [resendApiKey], memory: '1GiB', timeoutSeconds: 120},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
     const data = request.data;
@@ -50,19 +74,37 @@ exports.sendEmail = onCall(
     const {Resend} = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    // Optional attachments: [{filename, content(base64)}] — max 5, ~5MB total base64
+    // Optional attachments — max 5, ~5MB total base64. Two shapes:
+    //   {filename, content(base64)}  → passed through to Resend as-is
+    //   {filename, htmlToPdf(base64 HTML)} → rendered to a PDF server-side
     let attachments;
     if (Array.isArray(data.attachments) && data.attachments.length) {
       attachments = data.attachments
-        .filter(a => a && typeof a.filename === 'string' && typeof a.content === 'string')
-        .slice(0, 5)
-        .map(a => ({filename: a.filename, content: a.content}));
-      const totalLen = attachments.reduce((s, a) => s + a.content.length, 0);
+        .filter(a => a && typeof a.filename === 'string' &&
+          (typeof a.content === 'string' || typeof a.htmlToPdf === 'string'))
+        .slice(0, 5);
+      const totalLen = attachments.reduce((s, a) => s + (a.content || a.htmlToPdf).length, 0);
       if (!attachments.length) attachments = undefined;
       // Refuse loudly rather than silently sending without the file the body
       // tells the recipient to open.
       else if (totalLen > 5 * 1024 * 1024) {
         throw new HttpsError('invalid-argument', 'Attachment too large (5MB max) — email NOT sent');
+      } else {
+        const out = [];
+        for (const a of attachments) {
+          if (a.htmlToPdf) {
+            const html = Buffer.from(a.htmlToPdf, 'base64').toString('utf8');
+            try {
+              out.push({filename: a.filename, content: await _htmlToPdf(html)});
+            } catch (err) {
+              console.error('PDF render error:', err.message);
+              throw new HttpsError('internal', 'PDF render failed — email NOT sent: ' + (err.message || 'unknown'));
+            }
+          } else {
+            out.push({filename: a.filename, content: a.content});
+          }
+        }
+        attachments = out;
       }
     }
 
