@@ -13430,7 +13430,9 @@ async function openInvoicePreview(type, id) {
     }
     if (whBtn) {
       whBtn.style.display = fulfillSel?.value === 'warehouse' ? '' : 'none';
-      if (rec.warehousePushedAt) { whBtn.textContent = '✓ Sent to Warehouse'; whBtn.disabled = true; }
+      // Stays clickable after a push so an edited invoice can be re-sent
+      // (subject + banner mark the re-send as an UPDATED copy).
+      if (rec.warehousePushedAt) { whBtn.textContent = '↻ Re-send to Warehouse'; whBtn.disabled = false; }
       else { whBtn.textContent = '🏭 Push to Warehouse'; whBtn.disabled = false; }
     }
   };
@@ -13455,7 +13457,10 @@ async function openInvoicePreview(type, id) {
     if (ok) setTimeout(() => openInvoicePreview(type, id), 300);
     else { shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
   };
-  if (whBtn) whBtn.onclick = async () => { whBtn.disabled = true; await pushToWarehouse(id, col); openInvoicePreview(type, id); };
+  if (whBtn) whBtn.onclick = async () => {
+    if (rec.warehousePushedAt && !confirm('This invoice was already sent to the warehouse. Send an UPDATED copy?')) return;
+    whBtn.disabled = true; await pushToWarehouse(id, col); openInvoicePreview(type, id);
+  };
 
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
@@ -13625,7 +13630,9 @@ async function openCombinedInvoicePreview(combinedId) {
     }
     if (whBtn) {
       whBtn.style.display = isWh ? '' : 'none';
-      if (rec.warehousePushedAt) { whBtn.textContent = '✓ Sent to Warehouse'; whBtn.disabled = true; }
+      // Stays clickable after a push so an edited invoice can be re-sent
+      // (subject + banner mark the re-send as an UPDATED copy).
+      if (rec.warehousePushedAt) { whBtn.textContent = '↻ Re-send to Warehouse'; whBtn.disabled = false; }
       else { whBtn.textContent = '🏭 Push to Warehouse'; whBtn.disabled = false; }
     }
   };
@@ -13646,6 +13653,7 @@ async function openCombinedInvoicePreview(combinedId) {
     }
   };
   if (whBtn) whBtn.onclick = async () => {
+    if (rec.warehousePushedAt && !confirm('This invoice was already sent to the warehouse. Send an UPDATED copy?')) return;
     whBtn.disabled = true;
     await pushToWarehouse(combinedId, 'combined_invoices');
     openCombinedInvoicePreview(combinedId);
@@ -16223,15 +16231,25 @@ async function pushToWarehouse(invoiceId, collection) {
   if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false });
   else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, {});
   else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, {});
-  const delivDate = inv.date || inv.dateIssued || inv.issued || today();
+  // Delivery date for the subject: the invoice's real deliveryDate field first
+  // (combined: check the child invoices), issue date only as a last resort.
+  let delivDate = inv.deliveryDate || '';
+  if (!delivDate && collection === 'combined_invoices') {
+    const pChild = findInvoice(inv.purplInvoiceId);
+    const lChild = DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId);
+    delivDate = pChild?.deliveryDate || lChild?.deliveryDate || '';
+  }
+  if (!delivDate) delivDate = inv.date || inv.dateIssued || inv.issued || today();
   const invNum = inv.number || inv.invoiceNumber || invoiceId;
-  const subject = `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
+  const isRepush = !!inv.warehousePushedAt;
+  const subject = (isRepush ? 'UPDATED — ' : '') + `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
   // Attach the invoice as a standalone HTML file: open → Ctrl+P gives a clean
   // full-page print (printing the email itself crops and adds Gmail chrome).
   const fileName = String(invNum).replace(/[^A-Za-z0-9._-]+/g, '-') + '-invoice.html';
   const fileHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(invNum)} — ${escHtml(acName)}</title>` +
     `<style>body{margin:0;background:#fff}@page{margin:0.4in}</style></head><body>${docHtml}</body></html>`;
   const bodyHtml = `<div style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
+    (isRepush ? `<b>UPDATED COPY</b> — this replaces the earlier version of this invoice; discard any previous printout. ` : '') +
     `<b>To print:</b> open the attached file <b>${escHtml(fileName)}</b> and print it (Ctrl+P) — it prints as a clean full page. ` +
     `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>` + docHtml;
   toast('Sending to warehouse…');
