@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v167';
+const APP_VERSION = 'v168';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -5569,6 +5569,14 @@ async function saveAccount(id, isNew) {
       const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
       if (coords) { lat = coords.lat; lng = coords.lng; }
     }
+    // Never wipe known-good coordinates: if the lookup came back empty but the
+    // address text didn't change, keep the coords already on the record
+    // (autocomplete-picked or map-geocoded).
+    if (lat == null) {
+      const prevLoc = (existing?.locs||[]).find(l=>l.id===locId);
+      if (prevLoc && prevLoc.address === address && prevLoc.lat && prevLoc.lng) { lat = prevLoc.lat; lng = prevLoc.lng; }
+      else if (!existing?.locs?.length && existing?.address === address && existing?.lat && existing?.lng) { lat = existing.lat; lng = existing.lng; }
+    }
     locs.push({id: locId, label, address, lat, lng, contact, phone, dropOffRules});
   }
 
@@ -5603,6 +5611,8 @@ async function saveAccount(id, isNew) {
     address:      locs[0]?.address||'',
     lat:          locs[0]?.lat||null,
     lng:          locs[0]?.lng||null,
+    // Changed address gets a fresh shot at map geocoding
+    geocodeFailed: ((locs[0]?.address||'') === (existing?.address||'')) ? (existing?.geocodeFailed || null) : null,
     locs,
     type:         qs('#eac-type')?.value||'Grocery',
     territory:    qs('#eac-territory')?.value?.trim()||'',
