@@ -13166,7 +13166,9 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
-  if (payLink) rec._payLink = payLink;
+  // NEVER mutate the cached rec: a previous preview's pay link leaked into
+  // every later render (incl. the warehouse print copy) and got persisted.
+  // The pay button renders ONLY when this call explicitly passes a link.
   const purplInv = findInvoice(rec.purplInvoiceId) || {};
   const lfInv    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) || {};
   const account  = DB.a('ac').find(x => x.id === rec.accountId) || {};
@@ -13189,7 +13191,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     lfSubtotal: rec.lfSubtotal,
     grandTotal: rec.grandTotal,
     notes: rec.notes || '',
-    payLink: rec._payLink || null,
+    payLink: payLink || null,
     printButton: !!(opts && opts.printButton),
   });
 }
