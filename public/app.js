@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v165';
+const APP_VERSION = 'v166';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -14606,12 +14606,12 @@ function _renderDistMapLegend() {
   legend.innerHTML = `
     <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--muted)">Distributors</div>
-      <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 18px">
         ${dists.map((d,idx)=>{
           const color = DIST_PIN_PALETTE[idx%DIST_PIN_PALETTE.length];
           const visible = _mapDistLayers[d.id] !== false;
-          return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="checkbox" ${visible?'checked':''} onchange="toggleDistMapLayer('${d.id}',this.checked)" style="accent-color:${color}">
+          return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+            <input type="checkbox" ${visible?'checked':''} onchange="toggleDistMapLayer('${d.id}',this.checked)" style="width:auto;margin:0;padding:0;accent-color:${color}">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></span>
             ${escHtml(d.name)}
           </label>`;
