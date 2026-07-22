@@ -50,12 +50,24 @@ exports.sendEmail = onCall(
     const {Resend} = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
 
+    // Optional attachments: [{filename, content(base64)}] — max 5, ~5MB total base64
+    let attachments;
+    if (Array.isArray(data.attachments) && data.attachments.length) {
+      attachments = data.attachments
+        .filter(a => a && typeof a.filename === 'string' && typeof a.content === 'string')
+        .slice(0, 5)
+        .map(a => ({filename: a.filename, content: a.content}));
+      const totalLen = attachments.reduce((s, a) => s + a.content.length, 0);
+      if (!attachments.length || totalLen > 5 * 1024 * 1024) attachments = undefined;
+    }
+
     try {
       const result = await resend.emails.send({
         from: data.from,
         to: data.to,
         subject: data.subject,
         html: data.html,
+        ...(attachments ? {attachments} : {}),
       });
       const messageId = result.data?.id || result.id;
 

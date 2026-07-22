@@ -415,15 +415,22 @@ const PBF_HEADER_HTML = `
 </table>`;
 
 // ── Firebase Functions client helpers ─────────────────────
-async function callSendEmail(to, from, subject, html) {
+async function callSendEmail(to, from, subject, html, attachments) {
   try {
     const fn = firebase.functions().httpsCallable('sendEmail');
-    const result = await fn({to, from, subject, html});
+    const payload = {to, from, subject, html};
+    if (attachments && attachments.length) payload.attachments = attachments;
+    const result = await fn(payload);
     return result.data;
   } catch (err) {
     console.error('Send email error:', err);
     throw err;
   }
+}
+
+// UTF-8-safe base64 for email attachments (btoa alone chokes on non-ASCII)
+function _b64utf8(str) {
+  return btoa(unescape(encodeURIComponent(str)));
 }
 
 function _stripeErrHint(e) {
@@ -16200,10 +16207,20 @@ async function pushToWarehouse(invoiceId, collection) {
   else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML(inv, {});
   else docHtml = buildPurplInvoiceEmailHTML(inv, {});
   const delivDate = inv.date || inv.dateIssued || inv.issued || today();
-  const subject = `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${inv.number || inv.invoiceNumber || ''}`;
+  const invNum = inv.number || inv.invoiceNumber || invoiceId;
+  const subject = `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
+  // Attach the invoice as a standalone HTML file: open → Ctrl+P gives a clean
+  // full-page print (printing the email itself crops and adds Gmail chrome).
+  const fileName = String(invNum).replace(/[^A-Za-z0-9._-]+/g, '-') + '-invoice.html';
+  const fileHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(invNum)} — ${escHtml(acName)}</title>` +
+    `<style>body{margin:0;background:#fff}@page{margin:0.4in}</style></head><body>${docHtml}</body></html>`;
+  const bodyHtml = `<div style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
+    `<b>To print:</b> open the attached file <b>${escHtml(fileName)}</b> and print it (Ctrl+P) — it prints as a clean full page. ` +
+    `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>` + docHtml;
   toast('Sending to warehouse…');
   try {
-    await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, docHtml);
+    await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, bodyHtml,
+      [{filename: fileName, content: _b64utf8(fileHtml)}]);
     DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
     auditLog('warehouse_push', 'invoice', invoiceId, `${inv.number || inv.invoiceNumber || invoiceId} → ${whEmail}`);
     toast('Invoice emailed to warehouse ✓ — ' + whEmail);
