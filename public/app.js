@@ -13464,7 +13464,10 @@ async function openInvoicePreview(type, id) {
 
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
-    const nd = qs('#civ-edit-date').value, ndu = qs('#civ-edit-due').value;
+    // A cleared date field must never persist '' — the doc would print
+    // Issued=today with a terms label that contradicts the stored due date.
+    const nd = qs('#civ-edit-date').value || rec.date || rec.dateIssued || today();
+    const ndu = qs('#civ-edit-due').value;
     const patch = type === 'dist'
       ? { dateIssued: nd, dueDate: ndu, notes: qs('#civ-edit-notes').value } // dist has no delivery/fulfillment; dates live in dateIssued/dueDate
       : {
@@ -13661,7 +13664,7 @@ async function openCombinedInvoicePreview(combinedId) {
 
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
-    const newDate = qs('#civ-edit-date').value;
+    const newDate = qs('#civ-edit-date').value || rec.date || today();
     const newDue = qs('#civ-edit-due').value;
     const newTerms = qs('#civ-edit-terms').value;
     const newNotes = qs('#civ-edit-notes').value;
@@ -16222,7 +16225,15 @@ function renderInvUnifiedList() {
 async function pushToWarehouse(invoiceId, collection) {
   const whEmail = DB.obj('settings', {}).warehouseEmail || '';
   if (!whEmail) { toast('Set the warehouse partner email first: Settings → Business Info', 7000); return; }
-  const inv = DB.a(collection).find(x => x.id === invoiceId);
+  let inv = DB.a(collection).find(x => x.id === invoiceId);
+  if (!inv) {
+    // Legacy purpl invoices live in 'iv', but list rows pass 'retail_invoices'
+    // for anything typed purpl — resolve across all invoice collections.
+    for (const c of _INV_COLS) {
+      const hit = DB.a(c).find(x => x.id === invoiceId);
+      if (hit) { inv = hit; collection = c; break; }
+    }
+  }
   if (!inv) { toast('Invoice not found'); return; }
   const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name || '';
   let docHtml;

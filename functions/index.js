@@ -58,7 +58,12 @@ exports.sendEmail = onCall(
         .slice(0, 5)
         .map(a => ({filename: a.filename, content: a.content}));
       const totalLen = attachments.reduce((s, a) => s + a.content.length, 0);
-      if (!attachments.length || totalLen > 5 * 1024 * 1024) attachments = undefined;
+      if (!attachments.length) attachments = undefined;
+      // Refuse loudly rather than silently sending without the file the body
+      // tells the recipient to open.
+      else if (totalLen > 5 * 1024 * 1024) {
+        throw new HttpsError('invalid-argument', 'Attachment too large (5MB max) — email NOT sent');
+      }
     }
 
     try {
