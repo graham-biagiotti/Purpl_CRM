@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v168';
+const APP_VERSION = 'v169';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -12616,7 +12616,24 @@ async function getNextInvoiceNumber(type) {
 
 // ── New combined invoice modal ────────────────────────────
 
+let _editingCombinedId = null;
+
+function _ncivSetMode(editing) {
+  const hdr = document.querySelector('#modal-new-combined .modal-hdr h2');
+  if (hdr) hdr.textContent = editing ? 'Edit Combined Invoice' : 'New Combined Invoice';
+  const saveBtn = document.querySelector('#modal-new-combined .modal-footer .btn.primary');
+  if (saveBtn) saveBtn.textContent = editing ? 'Save Changes' : 'Create Combined Invoice';
+  // Account and status are locked while editing: switching accounts would
+  // orphan the child invoices, and status changes must go through the normal
+  // Send/Paid buttons so inventory deduction logic stays in one place.
+  if (qs('#nciv-account')) qs('#nciv-account').disabled = !!editing;
+  if (qs('#nciv-status'))  qs('#nciv-status').disabled  = !!editing;
+  if (qs('#nciv-number'))  qs('#nciv-number').disabled  = !!editing;
+}
+
 function openNewCombinedModal() {
+  _editingCombinedId = null;
+  _ncivSetMode(false);
   const accts = DB.a('ac').filter(a => a.isPbf).sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
   _populateAccountSelect('nciv-account', accts, '', 'Select account...');
 
@@ -12633,6 +12650,63 @@ function openNewCombinedModal() {
 
   _ncivRenderSkuRows();
   openModal('modal-new-combined');
+}
+
+// Edit an existing combined invoice: reuse the combined modal pre-filled from
+// the child invoices. Drafts only — items on a sent/paid invoice shouldn't
+// change under the customer; dates/terms/shipping stay editable in Preview.
+function editCombinedInvoice(combinedId) {
+  const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
+  if (!rec) { toast('Invoice not found'); return; }
+  if (rec.status !== 'draft') {
+    toast('Only draft invoices can have items edited. Use Preview to change dates, terms, notes, or shipping.', 6000);
+    openCombinedInvoicePreview(combinedId);
+    return;
+  }
+  const purplChild = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
+  const lfChild    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId);
+
+  openNewCombinedModal();
+  _editingCombinedId = combinedId;
+  _ncivSetMode(true);
+
+  if (qs('#nciv-account')) qs('#nciv-account').value = rec.accountId || '';
+  if (qs('#nciv-number')) qs('#nciv-number').value = rec.number || rec.invoiceNumber || '';
+  if (qs('#nciv-date')) qs('#nciv-date').value = rec.date || today();
+  if (qs('#nciv-due')) qs('#nciv-due').value = rec.dueDate || rec.due || '';
+  if (qs('#nciv-status')) qs('#nciv-status').value = rec.status || 'draft';
+  if (qs('#nciv-notes')) qs('#nciv-notes').value = rec.notes || '';
+  if (qs('#nciv-delivery-method')) qs('#nciv-delivery-method').value = rec.deliveryMethod || 'deliver';
+  if (qs('#nciv-fulfillment')) qs('#nciv-fulfillment').value = rec.fulfillmentSource || 'warehouse';
+  if (qs('#nciv-delivery-date')) qs('#nciv-delivery-date').value = rec.deliveryDate || '';
+  if (qs('#nciv-tracking')) qs('#nciv-tracking').value = rec.trackingNumber || '';
+  if (qs('#nciv-shipping')) qs('#nciv-shipping').value =
+    (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+
+  // Re-render SKU rows for this account's pricing, then overlay the stored lines
+  _ncivRenderSkuRows();
+  (purplChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__').forEach(l => {
+    const cEl = document.querySelector(`.nciv-p-cases[data-sku="${l.skuId}"]`);
+    const pEl = document.querySelector(`.nciv-p-ppc[data-sku="${l.skuId}"]`);
+    if (cEl) cEl.value = l.cases || l.qty || 0;
+    if (pEl && (l.pricePerCase != null || l.unitPrice != null)) pEl.value = parseFloat(l.pricePerCase != null ? l.pricePerCase : l.unitPrice).toFixed(2);
+  });
+  (lfChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__').forEach(l => {
+    const rowEl = document.querySelector(`#nciv-lf-skus .nciv-lf-row[data-sku="${l.skuId}"]`);
+    if (!rowEl) return;
+    const pEl = rowEl.querySelector(`.nciv-lf-ppc[data-sku="${l.skuId}"]`);
+    if (pEl && (l.pricePerUnit != null || l.unitPrice != null)) pEl.value = parseFloat(l.pricePerUnit != null ? l.pricePerUnit : l.unitPrice).toFixed(2);
+    if (l.hasVariants && (l.variantLines||[]).length) {
+      l.variantLines.forEach(v => {
+        const vEl = rowEl.querySelector(`.nciv-lf-var-units[data-variant="${v.variantId}"]`);
+        if (vEl) vEl.value = v.units || 0;
+      });
+    } else {
+      const cEl = rowEl.querySelector('.nciv-lf-cases');
+      if (cEl) cEl.value = l.cases || l.qty || 0;
+    }
+  });
+  _ncivCalcTotals();
 }
 
 function ncivAccountChanged() {
@@ -12825,6 +12899,40 @@ async function saveNewCombinedInvoice() {
   const trackingNumber = qs('#nciv-tracking')?.value?.trim() || '';
   const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
   const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
+
+  // ── EDIT MODE: update parent + children in place. No new invoice numbers,
+  // no status change (locked in the modal), no inventory movement (drafts
+  // only — deduction happens at send). ──
+  if (_editingCombinedId) {
+    const combId = _editingCombinedId;
+    const rec = DB.a('combined_invoices').find(x => x.id === combId);
+    if (!rec) { _saveCombInFlight = false; toast('Invoice not found'); return; }
+    const editShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
+    const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber };
+    DB.atomicUpdate(cache => {
+      const pi = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
+      if (pi >= 0) cache.retail_invoices[pi] = { ...cache.retail_invoices[pi], ...shared, lineItems: purplLines, total: purplSub, amount: purplSub };
+      const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
+      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: lfLines, total: lfSub };
+      const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combId);
+      if (ci >= 0) {
+        const p = cache.combined_invoices[ci];
+        const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+        cache.combined_invoices[ci] = {
+          ...p, ...shared,
+          purplSubtotal: purplSub, lfSubtotal: lfSub,
+          grandTotal: Math.round((purplSub + lfSub + editShip) * 100) / 100,
+          lineItems: editShip > 0 ? [...rest, { skuId:'__shipping__', skuName:'Shipping', description:'Shipping', qty:1, cases:0, unitPrice:editShip, lineTotal:editShip, total:editShip }] : rest,
+        };
+      }
+    });
+    _editingCombinedId = null;
+    closeModal('modal-new-combined');
+    renderInvoicesPage();
+    toast('Combined invoice updated — ' + (rec.number || rec.invoiceNumber || ''));
+    setTimeout(() => openCombinedInvoicePreview(combId), 300);
+    return;
+  }
 
   // Read next numbers atomically before any write
   const purplNum = await getNextInvoiceNumber('purpl');
@@ -16246,7 +16354,7 @@ function renderInvUnifiedList() {
       name: x.accountName || '—',
       issued: x.date || (x.createdAt||'').slice(0,10), due: x.dueDate || x.due || '',
       amt: parseFloat(x.grandTotal || 0),
-      edit: null, print: `openInvoicePreview('combined','${x.id}')`,
+      edit: `editCombinedInvoice('${x.id}')`, print: `openInvoicePreview('combined','${x.id}')`,
       paidFn: `markCombinedPaid('${x.id}')`,
     }));
   }
