@@ -59,8 +59,33 @@ OFF by design until the custom tracking subdomain — in TODO.)
 ### F. Inventory & ops — ✅ core proven, edges code-only
 Confirm/send deductions ✅ · pools + shipment pool choice ✅ (select-reset bug in
 Tier-2) · production/repack/pallets 📄 (light use) · delivery runs 📄 (not yet used
-for real) · **Warehouse push 🔧 STUB** — sets a badge, sends nothing (TODO decision:
-your warehouse email + price visibility).
+for real) · Warehouse push → see lane G.
+
+### G. Warehouse-partner lane — 📄 built + adversarially verified 7/22, awaiting first real push
+Partner (Millennial Moving) is 3PL + closes accounts; owner still invoices retailers
+directly. Push = email the invoice doc to settings.warehouseEmail with a printable
+HTML attachment (subject: PRINT & LEAVE WITH CUSTOMER — store — deliver {date} — INV).
+The printed copy doubles as pick sheet + customer leave-behind.
+
+| Step | Status |
+|---|---|
+| Settings → warehouseEmail (save/populate, live save fn) | 📄 verified |
+| Fulfilled-by=Warehouse flag on purpl/LF/combined; dist correctly excluded | 📄 verified |
+| Push from list row + both preview modals; legacy `iv` invoices resolve | 📄 verified (iv fix 7/22) |
+| Attachment: UTF-8-safe base64 HTML, prints clean full page; >5MB refuses loudly | 📄 verified |
+| No Pay button possible on warehouse copy (param-only + _payLink stripped) | 📄 verified adversarially |
+| Subject uses REAL deliveryDate (combined: children), not issue date | 📄 verified (fix 7/22) |
+| Re-send after edits: "↻ Re-send" + confirm; UPDATED subject/banner | 📄 verified |
+| Failure honesty: failed send marks nothing, sticky error | 📄 verified |
+| Terms label derived from invoice's own dates on ALL doc types | 📄 verified (fix 7/22) |
+| Inventory: warehouse-fulfilled sends deduct the 'warehouse' pool | 📄 code-verified — stock must be transferred into that pool |
+
+Known residuals (accepted): doc's address block is the account's single address
+(billing=delivery assumed) · bounce after Resend accepts is only visible in the
+Resend dashboard · cross-tab simultaneous push can skip the re-send confirm (still
+sends a correctly-marked UPDATED copy) · .html attachments could be stripped by
+strict corporate filters (Gmail delivers them; PDF fallback on request).
+**To turn ✅ PROVEN:** dry-run to your own email, then the first real push to Tim.
 
 ---
 
