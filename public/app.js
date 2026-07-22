@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v159';
+const APP_VERSION = 'v160';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13124,7 +13124,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         ${o.warehouseCopy ? '' : `<div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>`}
         ${o.terms ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(o.terms)}${o.warehouseCopy ? ' — from delivery date' : ''}</strong></div>` : ''}
         ${dueDate && !o.warehouseCopy ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>` : ''}
-        ${_deliveryDetailsHTML(o.deliveryDate, o.tracking, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
+        ${o.warehouseCopy ? '' : _deliveryDetailsHTML(o.deliveryDate, o.tracking, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
       </td>
     </tr></table>
   </td></tr>
@@ -16240,18 +16240,19 @@ async function pushToWarehouse(invoiceId, collection) {
   if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false, warehouseCopy: true });
   else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
   else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
-  // Delivery date for the subject: the invoice's real deliveryDate field first
-  // (combined: check the child invoices), issue date only as a last resort.
+  // Subject mentions a delivery date ONLY when one was actually set on the
+  // invoice (combined: check the child invoices) — the partner picks the day
+  // otherwise, so never imply a date from the issue date.
   let delivDate = inv.deliveryDate || '';
   if (!delivDate && collection === 'combined_invoices') {
     const pChild = findInvoice(inv.purplInvoiceId);
     const lChild = DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId);
     delivDate = pChild?.deliveryDate || lChild?.deliveryDate || '';
   }
-  if (!delivDate) delivDate = inv.date || inv.dateIssued || inv.issued || today();
   const invNum = inv.number || inv.invoiceNumber || invoiceId;
   const isRepush = !!inv.warehousePushedAt;
-  const subject = (isRepush ? 'UPDATED — ' : '') + `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
+  const subject = (isRepush ? 'UPDATED — ' : '') + `PRINT & LEAVE WITH CUSTOMER — ${acName}` +
+    (delivDate ? ` — deliver ${fmtD(delivDate)}` : '') + ` — ${invNum}`;
   // Attach the invoice as a PDF: the sendEmail function renders the exact doc
   // HTML to PDF server-side (headless Chromium), so the printed page matches
   // the emailed invoice one-for-one.
