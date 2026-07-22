@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v158';
+const APP_VERSION = 'v159';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13121,9 +13121,9 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
-        <div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>
-        ${o.terms ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(o.terms)}</strong></div>` : ''}
-        ${dueDate && !o.hideDue ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>` : ''}
+        ${o.warehouseCopy ? '' : `<div style="font-size:13px;color:#1a1a2e">Issued: <strong>${issueDate}</strong></div>`}
+        ${o.terms ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Terms: <strong>${escHtml(o.terms)}${o.warehouseCopy ? ' — from delivery date' : ''}</strong></div>` : ''}
+        ${dueDate && !o.warehouseCopy ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">Due: <strong>${dueDate}</strong></div>` : ''}
         ${_deliveryDetailsHTML(o.deliveryDate, o.tracking, 'font-size:13px;color:#1a1a2e;margin-top:2px')}
       </td>
     </tr></table>
@@ -13147,7 +13147,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <td style="padding-top:16px;text-align:right;font-size:26px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${grandTotal.toFixed(2)}</td>
       </tr>
     </table>
-    ${o.terms ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(o.terms)}</div>` : ''}
+    ${o.terms ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">${escHtml(o.terms)}${o.warehouseCopy ? ' — payment runs from the delivery date' : ''}</div>` : ''}
   </td></tr>
 
   <tr><td style="padding:0 48px 24px">
@@ -13175,9 +13175,9 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
 // ── Per-type wrappers — all feed the same unified template ───
 
-// Customer copies show Issued / Terms / Due / Delivery; the warehouse print
-// copy passes opts.hideDue (owner 7/22: pick-sheet dates read as confusing —
-// but the customer still needs to see when payment is due).
+// Customer copies show Issued / Terms / Due / Delivery. The warehouse print
+// copy passes opts.warehouseCopy: NO invoice dates at all — just
+// "Terms: Net 30 — from delivery date" + the Delivery date (owner 7/22).
 function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
@@ -13208,7 +13208,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     notes: rec.notes || '',
     payLink: payLink || null,
     printButton: !!(opts && opts.printButton),
-    hideDue: !!(opts && opts.hideDue),
+    warehouseCopy: !!(opts && opts.warehouseCopy),
   });
 }
 
@@ -13234,7 +13234,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     payLink: inv._payLink || null,
     portalLink: ac.orderPortalToken ? `https://pbfwholesale.com/order?t=${ac.orderPortalToken}` : null,
     printButton: !!(opts && opts.printButton),
-    hideDue: !!(opts && opts.hideDue),
+    warehouseCopy: !!(opts && opts.warehouseCopy),
   });
 }
 
@@ -13260,7 +13260,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     notes: inv.notes || '',
     payLink: inv._payLink || null,
     printButton: !!(opts && opts.printButton),
-    hideDue: !!(opts && opts.hideDue),
+    warehouseCopy: !!(opts && opts.warehouseCopy),
   });
 }
 
@@ -13304,7 +13304,7 @@ function buildDistInvoiceEmailHTML(inv, opts) {
     notes: [poLine, inv.notes || ''].filter(Boolean).join('\n'),
     payLink: inv._payLink || null,
     printButton: !!(opts && opts.printButton),
-    hideDue: !!(opts && opts.hideDue),
+    warehouseCopy: !!(opts && opts.warehouseCopy),
   });
 }
 
@@ -13338,7 +13338,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     notes: inv.notes || '',
     payLink: inv._payLink || null,
     printButton: !!(opts && opts.printButton),
-    hideDue: !!(opts && opts.hideDue),
+    warehouseCopy: !!(opts && opts.warehouseCopy),
   });
 }
 
@@ -16237,9 +16237,9 @@ async function pushToWarehouse(invoiceId, collection) {
   let docHtml;
   // _payLink stripped: the warehouse print copy must never carry a Pay button
   // (a stale persisted _payLink on the record would otherwise render one).
-  if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false, hideDue: true });
-  else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, { hideDue: true });
-  else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, { hideDue: true });
+  if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false, warehouseCopy: true });
+  else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
+  else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
   // Delivery date for the subject: the invoice's real deliveryDate field first
   // (combined: check the child invoices), issue date only as a last resort.
   let delivDate = inv.deliveryDate || '';
