@@ -13170,6 +13170,21 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
 // ── Per-type wrappers — all feed the same unified template ───
 
+// Terms label for the printed doc, derived from the invoice's OWN dates so it
+// can never contradict the printed Due date. (Bug class this kills: LF/dist/
+// combined docs printed the GLOBAL settings default — e.g. "Net 30" next to a
+// due date that was actually issue+60.) Falls back to the stored label only
+// when either date is missing.
+function _docTermsLabel(issueDate, dueDate, fallback) {
+  const p = v => { const d = v ? new Date(String(v).slice(0, 10) + 'T12:00:00') : null; return d && !isNaN(d) ? d : null; };
+  const i = p(issueDate), d = p(dueDate);
+  if (i && d) {
+    const days = Math.round((d - i) / 864e5);
+    return days <= 0 ? 'Due on Receipt' : 'Net ' + days;
+  }
+  return fallback || 'Net 30';
+}
+
 function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return '';
@@ -13188,7 +13203,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     accountAddress: account.address || '',
     issueDate: rec.date,
     dueDate: rec.dueDate || rec.due,
-    terms: rec.paymentTerms || 'Net 30',
+    terms: _docTermsLabel(rec.date, rec.dueDate || rec.due, rec.paymentTerms),
     deliveryDate: rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '',
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
     purplLines: _normPurplLines(purplInv),
@@ -13214,7 +13229,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.date,
     dueDate: inv.due || inv.dueDate,
-    terms: _invTermsLabel(inv),
+    terms: _docTermsLabel(inv.date, inv.due || inv.dueDate, _invTermsLabel(inv)),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: _normPurplLines(inv),
@@ -13240,7 +13255,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.issued || inv.date,
     dueDate: inv.due || inv.dueDate,
-    terms: 'Net ' + (s.terms || 30),
+    terms: _docTermsLabel(inv.issued || inv.date, inv.due || inv.dueDate, 'Net ' + (s.terms || 30)),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: [],
@@ -13283,7 +13298,7 @@ function buildDistInvoiceEmailHTML(inv, opts) {
     accountAddress: d.address || '',
     issueDate: inv.dateIssued || inv.date,
     dueDate: inv.dueDate || inv.due,
-    terms: 'Net ' + (s.terms || 30),
+    terms: _docTermsLabel(inv.dateIssued || inv.date, inv.dueDate || inv.due, 'Net ' + (d.paymentTermsDays || s.terms || 30)),
     deliveryDate: '',
     tracking: '',
     purplLines: lines,
@@ -13313,7 +13328,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.date || inv.issued,
     dueDate: inv.dueDate || inv.due,
-    terms: 'Net ' + (s.terms || 30),
+    terms: _docTermsLabel(inv.date || inv.issued, inv.dueDate || inv.due, inv.paymentTerms || 'Net ' + (s.terms || 30)),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: purplChild ? _normPurplLines(purplChild) : [],
@@ -16203,9 +16218,11 @@ async function pushToWarehouse(invoiceId, collection) {
   if (!inv) { toast('Invoice not found'); return; }
   const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name || '';
   let docHtml;
+  // _payLink stripped: the warehouse print copy must never carry a Pay button
+  // (a stale persisted _payLink on the record would otherwise render one).
   if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false });
-  else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML(inv, {});
-  else docHtml = buildPurplInvoiceEmailHTML(inv, {});
+  else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, {});
+  else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, {});
   const delivDate = inv.date || inv.dateIssued || inv.issued || today();
   const invNum = inv.number || inv.invoiceNumber || invoiceId;
   const subject = `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${invNum}`;
