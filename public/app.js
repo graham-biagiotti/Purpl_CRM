@@ -11103,6 +11103,7 @@ function renderSettings() {
 
   // Tab 1: Business Info
   if(qs('#set-company'))              qs('#set-company').value              = s.company||'';
+  if(qs('#set-warehouse-email'))      qs('#set-warehouse-email').value      = s.warehouseEmail||'';
   if(qs('#set-address'))              qs('#set-address').value              = s.address||'';
   if(qs('#set-warehouse-radius'))    qs('#set-warehouse-radius').value    = s.warehouseRadiusMiles||'';
   if(qs('#set-warehouse-lat'))       qs('#set-warehouse-lat').value       = s.warehouseLat||'';
@@ -11265,6 +11266,7 @@ function saveSettings() {
 
   const s = {
     company:               qs('#set-company')?.value?.trim()||'',
+    warehouseEmail:        qs('#set-warehouse-email')?.value?.trim()||'',
     payment_terms:         parseInt(qs('#set-default-terms')?.value)||DB.obj('settings',{}).payment_terms||30,
     production_lead_time:  parseInt(qs('#set-lead-time')?.value)||14,
     default_state:         qs('#set-default-state')?.value?.trim()||'',
@@ -11300,6 +11302,7 @@ function saveBusinessSettings() {
   DB.setObj('settings', {
     ...existing,
     company:               qs('#set-company')?.value?.trim()||'',
+    warehouseEmail:        qs('#set-warehouse-email')?.value?.trim()||'',
     address:               qs('#set-address')?.value?.trim()||'',
     phone:                 qs('#set-phone')?.value?.trim()||'',
     website:               qs('#set-website')?.value?.trim()||'',
@@ -13428,7 +13431,7 @@ async function openInvoicePreview(type, id) {
     if (ok) setTimeout(() => openInvoicePreview(type, id), 300);
     else { shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
   };
-  if (whBtn) whBtn.onclick = () => { pushToWarehouse(id, col); setTimeout(() => openInvoicePreview(type, id), 300); };
+  if (whBtn) whBtn.onclick = async () => { whBtn.disabled = true; await pushToWarehouse(id, col); openInvoicePreview(type, id); };
 
   const saveBtn = qs('#civ-btn-save');
   if (saveBtn) saveBtn.onclick = () => {
@@ -13618,9 +13621,10 @@ async function openCombinedInvoicePreview(combinedId) {
       shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation';
     }
   };
-  if (whBtn) whBtn.onclick = () => {
-    pushToWarehouse(combinedId, 'combined_invoices');
-    setTimeout(() => openCombinedInvoicePreview(combinedId), 300);
+  if (whBtn) whBtn.onclick = async () => {
+    whBtn.disabled = true;
+    await pushToWarehouse(combinedId, 'combined_invoices');
+    openCombinedInvoicePreview(combinedId);
   };
 
   const saveBtn = qs('#civ-btn-save');
@@ -16176,9 +16180,35 @@ function renderInvUnifiedList() {
   </tr>`).join('') || `<tr><td colspan="7" class="empty">No invoices match${q ? ' "' + escHtml(q) + '"' : ''}</td></tr>`;
 }
 
-function pushToWarehouse(invoiceId, collection) {
-  DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
-  toast('Marked for warehouse fulfillment ✓');
+// 🏭 Push to Warehouse: emails the INVOICE DOCUMENT to the warehouse partner
+// (settings.warehouseEmail) — they print it, pick against it, and leave the
+// copy with the customer at delivery. The paper copy IS the pick sheet.
+// Workflow: set Issue Date = planned delivery date and add any quoted
+// delivery charge (Shipping field) BEFORE pushing, so the printed copy is
+// final. No pay link on this copy (customer gets the emailed version with
+// the Pay button on delivery day); check/ACH instructions still render.
+async function pushToWarehouse(invoiceId, collection) {
+  const whEmail = DB.obj('settings', {}).warehouseEmail || '';
+  if (!whEmail) { toast('Set the warehouse partner email first: Settings → Business Info', 7000); return; }
+  const inv = DB.a(collection).find(x => x.id === invoiceId);
+  if (!inv) { toast('Invoice not found'); return; }
+  const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name || '';
+  let docHtml;
+  if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false });
+  else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML(inv, {});
+  else docHtml = buildPurplInvoiceEmailHTML(inv, {});
+  const delivDate = inv.date || inv.dateIssued || inv.issued || today();
+  const subject = `PRINT & LEAVE WITH CUSTOMER — ${acName} — deliver ${fmtD(delivDate)} — ${inv.number || inv.invoiceNumber || ''}`;
+  toast('Sending to warehouse…');
+  try {
+    await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, docHtml);
+    DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
+    auditLog('warehouse_push', 'invoice', invoiceId, `${inv.number || inv.invoiceNumber || invoiceId} → ${whEmail}`);
+    toast('Invoice emailed to warehouse ✓ — ' + whEmail);
+  } catch (e) {
+    _stickyError('Warehouse push failed: ' + (e?.message || 'unknown') + ' — nothing was marked as pushed.');
+    return;
+  }
   renderInvoicesPage();
 }
 
