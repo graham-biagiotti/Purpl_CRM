@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v160';
+const APP_VERSION = 'v161';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -12645,6 +12645,7 @@ function openNewCombinedModal() {
   if (qs('#nciv-notes')) qs('#nciv-notes').value = '';
   if (qs('#nciv-delivery-date')) qs('#nciv-delivery-date').value = '';
   if (qs('#nciv-tracking')) qs('#nciv-tracking').value = '';
+  if (qs('#nciv-shipping')) qs('#nciv-shipping').value = '';
 
   _ncivRenderSkuRows();
   openModal('modal-new-combined');
@@ -12769,7 +12770,8 @@ function _ncivCalcTotals() {
 
   document.getElementById('nciv-purpl-sub').textContent = '$' + purplSub.toFixed(2);
   document.getElementById('nciv-lf-sub').textContent = '$' + lfSub.toFixed(2);
-  document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub).toFixed(2);
+  const _ncivShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
+  document.getElementById('nciv-grand-total').textContent = '$' + (purplSub + lfSub + _ncivShip).toFixed(2);
 }
 
 let _saveCombInFlight = false;
@@ -12859,14 +12861,18 @@ async function saveNewCombinedInvoice() {
     lineItems: lfLines,
     notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
+  // Manual shipping charge lives on the combined PARENT as a __shipping__ line
+  // (same place the ShipStation webhook writes it for combined pushes).
+  const shipVal = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
   const combInv = {
     id: combId, number: combNum, invoiceNumber: combNum,
     purplInvoiceId: purplId, lfInvoiceId: lfId,
     accountId, accountName: account.name||'', status,
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
-    purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub,
+    purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub + shipVal,
     notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, source: 'manual',
+    ...(shipVal > 0 ? { lineItems: [{ skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }] } : {}),
   };
 
   DB.atomicUpdate(cache => {
@@ -13201,7 +13207,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
     purplLines: _normPurplLines(purplInv),
     lfLines: _normLfLines(lfInv),
-    shippingLines: _normShippingLines(rec),
+    shippingLines: [..._normShippingLines(rec), ..._normShippingLines(purplInv), ..._normShippingLines(lfInv)],
     purplSubtotal: rec.purplSubtotal,
     lfSubtotal: rec.lfSubtotal,
     grandTotal: rec.grandTotal,
@@ -13331,6 +13337,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     purplLines: purplChild ? _normPurplLines(purplChild) : [],
     lfLines:    lfChild ? _normLfLines(lfChild) : [],
     shippingLines: [
+      ..._normShippingLines(inv),
       ...(purplChild ? _normShippingLines(purplChild) : []),
       ...(lfChild ? _normShippingLines(lfChild) : []),
     ],
@@ -13417,6 +13424,8 @@ async function openInvoicePreview(type, id) {
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
   const fulfillSel = qs('#civ-edit-fulfillment');
   if (fulfillSel) fulfillSel.value = rec.fulfillmentSource || 'warehouse';
+  const shipChargeEl = qs('#civ-edit-shipping');
+  if (shipChargeEl) shipChargeEl.value = (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
 
   const shipBtn = qs('#civ-btn-ship');
   const whBtn = qs('#civ-btn-warehouse');
@@ -13440,11 +13449,13 @@ async function openInvoicePreview(type, id) {
     // stock moves at Log Shipment, not invoice send.
     if (delivSel?.parentElement) delivSel.parentElement.style.display = 'none';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = 'none';
+    if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
     if (whBtn) whBtn.style.display = 'none';
   } else {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
+    if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = '';
   }
   if (delivSel) delivSel.onchange = _updateFulfillBtns;
   if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
@@ -13474,7 +13485,24 @@ async function openInvoicePreview(type, id) {
           deliveryMethod: qs('#civ-edit-delivery')?.value || 'deliver',
           fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
         };
-    DB.update(col, id, x => ({ ...x, ...patch }));
+    const shipRaw = type === 'dist' ? '' : (qs('#civ-edit-shipping')?.value ?? '');
+    DB.update(col, id, x => {
+      const nx = { ...x, ...patch };
+      // Blank = leave shipping untouched; a number (incl. 0) replaces the
+      // __shipping__ line and shifts the invoice total by the difference.
+      if (shipRaw !== '') {
+        const shipVal = Math.max(0, parseFloat(shipRaw) || 0);
+        const oldShip = (x.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0);
+        const rest = (x.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+        nx.lineItems = shipVal > 0
+          ? [...rest, { skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }]
+          : rest;
+        const delta = shipVal - oldShip;
+        if (nx.total != null)  nx.total  = Math.round(((parseFloat(nx.total)||0)  + delta) * 100) / 100;
+        if (nx.amount != null) nx.amount = Math.round(((parseFloat(nx.amount)||0) + delta) * 100) / 100;
+      }
+      return nx;
+    });
     toast('Invoice updated ✓');
     setTimeout(() => openInvoicePreview(type, id), 200);
   };
@@ -13617,6 +13645,11 @@ async function openCombinedInvoicePreview(combinedId) {
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
   const fulfillSel = qs('#civ-edit-fulfillment');
   if (fulfillSel) fulfillSel.value = rec.fulfillmentSource || 'warehouse';
+  const shipChargeEl = qs('#civ-edit-shipping');
+  if (shipChargeEl) {
+    shipChargeEl.parentElement.style.display = '';
+    shipChargeEl.value = (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+  }
   const shipBtn = qs('#civ-btn-ship');
   const whBtn = qs('#civ-btn-warehouse');
   const _updateFulfillBtns = () => {
@@ -13669,9 +13702,26 @@ async function openCombinedInvoicePreview(combinedId) {
     const newDelivery = qs('#civ-edit-delivery')?.value || 'deliver';
     const newFulfillment = qs('#civ-edit-fulfillment')?.value || 'warehouse';
     const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery, fulfillmentSource: newFulfillment };
+    const shipRaw = qs('#civ-edit-shipping')?.value ?? '';
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
+      // Shipping lives on the combined PARENT (same as the ShipStation
+      // webhook). Blank = untouched; a number (incl. 0) replaces the line and
+      // shifts grandTotal by the difference. Child subtotals are not touched.
+      if (ci >= 0 && shipRaw !== '') {
+        const p = cache.combined_invoices[ci];
+        const shipVal = Math.max(0, parseFloat(shipRaw) || 0);
+        const oldShip = (p.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0);
+        const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+        cache.combined_invoices[ci] = {
+          ...p,
+          lineItems: shipVal > 0
+            ? [...rest, { skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }]
+            : rest,
+          grandTotal: Math.round(((parseFloat(p.grandTotal)||0) + (shipVal - oldShip)) * 100) / 100,
+        };
+      }
       if (rec.purplInvoiceId) {
         const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
         if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...patch };
