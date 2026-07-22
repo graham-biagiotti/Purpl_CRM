@@ -909,6 +909,54 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         Pumpkin Blossom Farm<br>
         <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
     },
+    'launch-announcement': {
+      subject: `purpl is here — lavender lemonade, ready to order`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">The wait is over — <strong>purpl is officially here.</strong> Cans are stocked, the truck is loaded, and first deliveries are going out now.</p>
+        <p style="line-height:1.7">If you pre-ordered: you're all set — your order is in the first delivery run, no need to do anything. If you haven't ordered yet, now's the moment: first orders in are first on the truck.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
+          <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
+            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
+              <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
+              <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
+              <tr><td style="padding-right:24px">Suggested retail</td><td style="font-weight:600">$3.29</td></tr>
+              <tr><td style="padding-right:24px">Format</td><td>12 fl oz cans</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
+          <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
+            <div style="margin-bottom:16px">
+              <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your Order</a></div>
+            </div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:12px">
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword || 'purpleherb')}</div>
+            </div>
+          </td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px">
+          <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #1a1a2e">
+            <div style="font-size:13px;color:#374151;line-height:1.8">
+              <strong>purpl orders:</strong> Free delivery on 8+ cases throughout NH, MA, Southern ME, and Southern VT. Smaller orders — warehouse pickup or parcel ship (billed at cost).<br>
+              <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
+              <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you hit 8 cases of purpl or $250 total, in one drop.<br>
+              <strong>Payment:</strong> Net 30 from invoice date.<br>
+              <strong>Samples:</strong> Request a free 3-can taster right on the order form, no obligation.<br>
+              <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
+            </div>
+          </td></tr>
+        </table>
+        <p style="line-height:1.7;font-size:14px">Thank you for being part of the launch — I can't wait to see purpl on your shelves. Reply, call, or click the link. I'm here for anything you need.</p>
+        <p>Graham Biagiotti<br>
+        Pumpkin Blossom Farm<br>
+        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+    },
     'approved': {
       subject: `Your wholesale account is ready — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
@@ -4306,6 +4354,7 @@ function _renderEmailsTemplatesCol() {
   if (!el) return;
   const TEMPLATES = [
     {id:'preorder-announcement', name:'Pre-Order Announcement', desc:'Introduce purpl + personalized order link'},
+    {id:'launch-announcement', name:'purpl Is Here — Launch', desc:'purpl is live: get orders in + personalized link'},
     {id:'application-received', name:'Application Received',    desc:'Thank you for applying'},
     {id:'approved',             name:'Approved — Welcome',      desc:'Portal link + password + catalog'},
     {id:'rejected',             name:'Rejected — Decline',      desc:'Polite decline email'},
@@ -4400,7 +4449,7 @@ async function _renderEmailsRightCol() {
       }
     }
     // Fetch portal password for templates that need it
-    if (['preorder-announcement', 'approved'].includes(_emailsSelectedTemplate)) {
+    if (['preorder-announcement', 'launch-announcement', 'approved'].includes(_emailsSelectedTemplate)) {
       try {
         const _cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
         extra.portalPassword = _cfg.exists ? (_cfg.data().portalPassword || '') : '';
@@ -5014,7 +5063,7 @@ function meTemplatePreview() {
 let _meTemplateInFlight = false;
 // Templates whose body shows a "personalized order link / no password needed"
 // button — every recipient needs a portal token for that link to actually work.
-const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'approved'];
+const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'launch-announcement', 'approved'];
 async function meTemplateSend() {
   if (_meTemplateInFlight) { toast('Send already in progress'); return; }
   const tplId = qs('#me-template-select')?.value || '';
@@ -5076,7 +5125,7 @@ async function meTemplateSend() {
   }
 
   let portalPassword = '';
-  if (['preorder-announcement', 'approved'].includes(tplId)) {
+  if (['preorder-announcement', 'launch-announcement', 'approved'].includes(tplId)) {
     try {
       const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
       portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
