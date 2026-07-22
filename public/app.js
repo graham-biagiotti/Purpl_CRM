@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v164';
+const APP_VERSION = 'v165';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -922,8 +922,11 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">The wait is over — <strong>purpl is officially here.</strong> Cans are stocked, the truck is loaded, and first deliveries are going out now.</p>
-        <p style="line-height:1.7">If you pre-ordered: you're all set — your order is in the first delivery run, no need to do anything. If you haven't ordered yet, now's the moment: first orders in are first on the truck.</p>
+        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm — and today's the day. <strong>purpl is officially here.</strong> The lavender lemonade we've been telling you about is canned, cased, and rolling out to shelves across New England this week.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:14px 20px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:14px;color:#166534;line-height:1.6">
+          <strong>Already pre-ordered?</strong> You're all set — your order is on the first delivery run. Nothing to do but make some shelf space. 💜
+        </td></tr></table>
+        <p style="line-height:1.7">If you haven't ordered yet, now's the moment — first orders in are first on the truck. Here's the lineup:</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
@@ -931,6 +934,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
               <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
               <tr><td style="padding-right:24px">Suggested retail</td><td style="font-weight:600">$3.29</td></tr>
+              <tr><td style="padding-right:24px">Your margin</td><td style="font-weight:600">~30% at suggested retail</td></tr>
               <tr><td style="padding-right:24px">Format</td><td>12 fl oz cans</td></tr>
             </table>
           </td></tr>
@@ -955,12 +959,12 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
               <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you hit 8 cases of purpl or $250 total, in one drop.<br>
               <strong>Payment:</strong> Net 30 from invoice date.<br>
-              <strong>Samples:</strong> Request a free 3-can taster right on the order form, no obligation.<br>
               <strong>Wholesale site:</strong> <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>
             </div>
           </td></tr>
         </table>
-        <p style="line-height:1.7;font-size:14px">Thank you for being part of the launch — I can't wait to see purpl on your shelves. Reply, call, or click the link. I'm here for anything you need.</p>
+        <p style="line-height:1.7">And if you'd like to taste it before committing — completely fair — there's a <strong>free 3-can taster</strong> right on the order form. No obligation.</p>
+        <p style="line-height:1.7;font-size:14px">Thank you for being part of this launch. We're a small farm putting something we love into the world, and having purpl on your shelves means a lot. Reply, call, or click the link above — whatever's easiest, I'm here for anything you need.</p>
 `, account.id)
     },
     'approved': {
