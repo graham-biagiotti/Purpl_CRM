@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v166';
+const APP_VERSION = 'v167';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -14456,19 +14456,22 @@ function _renderMapPins() {
     hasPoints = true;
   };
 
-  // Accounts — plot each location as its own pin; color by fulfillment
+  // Accounts — plot each location as its own pin; color by fulfillment.
+  // Everything except 'inactive' is shown (pending/paused accounts were
+  // silently missing from the map pre-launch).
   {
-    DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
+    DB.a('ac').filter(a=>a.status!=='inactive').forEach(a=>{
       const locs = (a.locs && a.locs.length) ? a.locs
         : (a.lat && a.lng ? [{id:'legacy', label:'', address:a.address||'', lat:a.lat, lng:a.lng, dropOffRules:''}] : []);
       const isDistFulfilled = a.fulfilledBy && a.fulfilledBy !== 'direct';
       const distName = isDistFulfilled ? DB.a('dist_profiles').find(d=>d.id===a.fulfilledBy)?.name : null;
       const pinColor = isDistFulfilled ? MAP_PIN_COLORS.accountDist : MAP_PIN_COLORS.account;
+      const stPrefix = a.status!=='active' ? `${AC_STATUS[a.status]?.label||a.status} · ` : '';
       locs.filter(l=>l.lat&&l.lng).forEach(l=>{
         const pinName = locs.length > 1 ? `${a.name} – ${l.label||l.address||'Location'}` : a.name;
         addPin(parseFloat(l.lat), parseFloat(l.lng), {
           name: pinName,
-          sub: isDistFulfilled ? `via ${distName||'distributor'} · ${l.address||a.type||''}` : (l.address||a.type||''),
+          sub: stPrefix + (isDistFulfilled ? `via ${distName||'distributor'} · ${l.address||a.type||''}` : (l.address||a.type||'')),
           color: pinColor,
           action: `openAccount('${a.id}')`,
           actionLabel: 'View Account',
@@ -14590,6 +14593,44 @@ function _renderMapPins() {
   if (hasPoints) _mapInstance.fitBounds(bounds);
   _updateRunModeBar();
   _renderDistMapLegend();
+  _geocodeMissingAccounts();
+}
+
+// Accounts created without the address autocomplete (portal applications,
+// hand-typed addresses) have an address but no coordinates, so they silently
+// never appeared on the map. Geocode them once and cache lat/lng on the
+// record. Batches of 10 per pass (re-render triggers the next batch); a
+// failed address is marked geocodeFailed and never retried automatically.
+function _acHasPin(a) { return !!((a.lat && a.lng) || (a.locs||[]).some(l=>l.lat&&l.lng)); }
+function _acMapMissing() {
+  return DB.a('ac').filter(a=>a.status!=='inactive' && !_acHasPin(a) && (a.address||'').trim() && !a.geocodeFailed);
+}
+let _geocodeInFlight = false;
+async function _geocodeMissingAccounts() {
+  if (_geocodeInFlight || typeof google === 'undefined' || !google.maps?.Geocoder) return;
+  const missing = _acMapMissing();
+  if (!missing.length) return;
+  _geocodeInFlight = true;
+  let done = 0;
+  try {
+    const geocoder = new google.maps.Geocoder();
+    for (const a of missing.slice(0, 10)) {
+      try {
+        const res = await geocoder.geocode({ address: a.address });
+        const loc = res.results?.[0]?.geometry?.location;
+        if (loc) { DB.update('ac', a.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()})); done++; }
+        else DB.update('ac', a.id, x=>({...x, geocodeFailed: new Date().toISOString()}));
+      } catch (e) {
+        const msg = String(e?.code || e?.message || e);
+        if (msg.includes('OVER_QUERY_LIMIT') || msg.includes('REQUEST_DENIED')) break; // quota/key problem — stop, retry next visit
+        DB.update('ac', a.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
+      }
+      await new Promise(r=>setTimeout(r, 300));
+    }
+  } finally {
+    _geocodeInFlight = false;
+  }
+  if (done) { toast(`Located ${done} account${done===1?'':'s'} on the map`); _renderMapPins(); }
 }
 
 function _clearCoverageOverlays() {
@@ -14602,7 +14643,12 @@ function _renderDistMapLegend() {
   if (!legend) return;
   const DIST_PIN_PALETTE = ['#e11d48','#0891b2','#16a34a','#9333ea','#ea580c','#0d9488'];
   const dists = DB.a('dist_profiles').filter(d=>['active','submitted','under_review'].includes(d.status));
-  if (!dists.length) { legend.innerHTML=''; return; }
+  // Accounts that can't be plotted: no address at all, or geocoding failed.
+  const _unplottable = DB.a('ac').filter(a=>a.status!=='inactive' && !_acHasPin(a) && (!(a.address||'').trim() || a.geocodeFailed));
+  const unplotHtml = _unplottable.length
+    ? `<div style="margin-top:8px;font-size:12px;color:#d97706">⚠️ ${_unplottable.length} account${_unplottable.length===1?'':'s'} not on the map (missing or unrecognized address): ${_unplottable.slice(0,5).map(a=>escHtml(a.name)).join(', ')}${_unplottable.length>5?'…':''}</div>`
+    : '';
+  if (!dists.length) { legend.innerHTML = unplotHtml; return; }
   legend.innerHTML = `
     <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--muted)">Distributors</div>
@@ -14622,6 +14668,7 @@ function _renderDistMapLegend() {
         <span>● Account (direct)</span>
         <span style="color:#d97706">● Account (via dist)</span>
       </div>
+      ${unplotHtml}
     </div>`;
 }
 
