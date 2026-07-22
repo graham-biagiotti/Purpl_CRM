@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v162';
+const APP_VERSION = 'v163';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -380,7 +380,7 @@ function _signatureHTML() {
         <a href="mailto:lavender@pbfwholesale.com"
           style="color:#8B5FBF;text-decoration:none">
           lavender@pbfwholesale.com
-        </a> · 603-748-3038
+        </a>
       </div>
     </td>
   </tr>
@@ -866,9 +866,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:14px;color:#1a1a2e">We review every application personally. You'll hear from us within 1 business day.</div>
           </td></tr>
         </table>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'preorder-announcement': {
       subject: `Something new from the farm — purpl lavender lemonade`,
@@ -917,9 +915,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7;font-size:14px">I'd love to have purpl on your shelves. Reply to this email, give me a call, or just click the link above. Whatever's easiest, I'm here for anything you need.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'launch-announcement': {
       subject: `purpl is here — lavender lemonade, ready to order`,
@@ -965,9 +961,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7;font-size:14px">Thank you for being part of the launch — I can't wait to see purpl on your shelves. Reply, call, or click the link. I'm here for anything you need.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'approved': {
       subject: `Your wholesale account is ready — ${businessNameRaw}`,
@@ -1001,9 +995,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text. Whatever's easiest.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'rejected': {
       subject: `Re: Your wholesale application — Pumpkin Blossom Farm`,
@@ -1013,9 +1005,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>Thank you for your interest in carrying our products at <strong>${businessName}</strong>.</p>
         <p>After reviewing your application, we don't think it's the right fit at this time. We genuinely appreciate you reaching out and wish you all the best.</p>
         <p>Please don't hesitate to apply again in the future if circumstances change.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'invoice-sent': {
       subject: `Invoice ${extra.invoiceNumber||''} from Pumpkin Blossom Farm`,
@@ -1043,9 +1033,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>Please reach out with any questions.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'first-order': {
       subject: `Thanks for your order — we're on it`,
@@ -1058,9 +1046,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:14px;color:#1a1a2e">We're excited to have <strong>${businessName}</strong> as a retail partner.</div>
           </td></tr>
         </table>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'order-confirmation': {
       subject: `Order confirmed — ${businessNameRaw}`,
@@ -1075,9 +1061,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>Questions? Just reply to this email.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'invoice-reminder': {
       subject: `Friendly reminder — Invoice ${extra.invoiceNumber||''} due soon`,
@@ -1094,9 +1078,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>If you've already sent payment, please disregard this note. Otherwise, please remit at your earliest convenience.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'payment-overdue': {
       subject: `Past due — Invoice ${extra.invoiceNumber||''} for ${businessNameRaw}`,
@@ -1112,9 +1094,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </table>
         <p>If payment has already been sent, we apologize for the reminder. Otherwise, we'd appreciate payment as soon as possible.</p>
         <p>Please don't hesitate to reach out if you have any questions or need to discuss payment arrangements.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     },
     'reorder-reminder': {
       subject: `Time to restock? — ${businessNameRaw}`,
@@ -1128,9 +1108,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>If you need anything adjusted (quantities, delivery schedule, or product mix) just let us know.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'delivery-followup': {
       subject: `How did your delivery go? — ${businessNameRaw}`,
@@ -1145,9 +1123,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <li>Any feedback on the delivery process?</li>
         </ul>
         <p>Your feedback helps us serve you better. Just reply to this email with any thoughts.</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'new-product': {
       subject: `New from Pumpkin Blossom Farm — you'll want to see this`,
@@ -1163,9 +1139,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </table>
         <p>Interested in adding this to your next order? Reply to this email or place an order through your portal:</p>
         <p style="text-align:center"><a href="${portalLink}" style="color:${accentColor};font-weight:500">Open Your Portal →</a></p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'thank-you': {
       subject: `Thank you, ${businessNameRaw} — we appreciate your partnership`,
@@ -1180,9 +1154,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </table>
         <p>If there's ever anything we can do better, please don't hesitate to let us know.</p>
         <p>With gratitude,</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`, account.id)
+`, account.id)
     },
     'custom': {
       subject: `A message from Pumpkin Blossom Farm`,
@@ -1190,9 +1162,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p>[Your message here]</p>
-        <p>Graham Biagiotti<br>
-        Pumpkin Blossom Farm<br>
-        <a href="tel:6037483038" style="color:${accentColor}">603-748-3038</a> · <a href="mailto:graham@pumpkinblossomfarm.com" style="color:${accentColor}">graham@pumpkinblossomfarm.com</a></p>`)
+`)
     }
   };
   return templates[stage] || null;
