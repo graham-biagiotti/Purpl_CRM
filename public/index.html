@@ -1722,8 +1722,13 @@
         <div class="tbl-wrap" style="border:none;border-radius:0">
           <table>
             <thead><tr>
-              <th>Invoice</th><th>Account</th><th>Issued</th><th>Due</th>
-              <th style="text-align:right">Amount</th><th>Status</th><th></th>
+              <th class="inv-sort-th" data-key="num" onclick="setInvSort('num')" style="cursor:pointer;user-select:none">Invoice</th>
+              <th class="inv-sort-th" data-key="name" onclick="setInvSort('name')" style="cursor:pointer;user-select:none">Account</th>
+              <th class="inv-sort-th" data-key="issued" onclick="setInvSort('issued')" style="cursor:pointer;user-select:none">Issued</th>
+              <th class="inv-sort-th" data-key="due" onclick="setInvSort('due')" style="cursor:pointer;user-select:none">Due</th>
+              <th class="inv-sort-th" data-key="amt" onclick="setInvSort('amt')" style="cursor:pointer;user-select:none;text-align:right">Amount</th>
+              <th class="inv-sort-th" data-key="st" onclick="setInvSort('st')" style="cursor:pointer;user-select:none">Status</th>
+              <th></th>
             </tr></thead>
             <tbody id="inv-unified-tbody"></tbody>
           </table>

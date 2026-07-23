@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v173';
+const APP_VERSION = 'v174';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -16312,6 +16312,25 @@ function editInv(id) {
 
 let _invTypeFilter = 'all';
 
+// Sort state for the unified invoice list. Display-only: sorting reorders the
+// already-built row array and persists nothing. Default = invoice number,
+// newest first (one global sequence across all types, so this matches
+// creation order instead of clustering by type on tied issue dates).
+let _invSortState = { key: 'num', dir: 'desc' };
+
+function setInvSort(key) {
+  if (_invSortState.key === key) _invSortState.dir = _invSortState.dir === 'desc' ? 'asc' : 'desc';
+  else _invSortState = { key, dir: ['name', 'st'].includes(key) ? 'asc' : 'desc' };
+  renderInvUnifiedList();
+}
+
+// Numeric part of an invoice number ("INV-0082" → 82). Uses the LAST digit
+// run so odd legacy formats still compare sanely; no digits sorts to the end.
+function _invNumVal(r) {
+  const m = String(r.num || '').match(/\d+/g);
+  return m ? parseInt(m[m.length - 1], 10) : -1;
+}
+
 function setInvTypeFilter(t) {
   _invTypeFilter = t;
   document.querySelectorAll('#inv-type-pills .ac-brand-btn').forEach(b =>
@@ -16407,7 +16426,27 @@ function renderInvUnifiedList() {
   if (statusFilter === 'open')        list = list.filter(r => !['paid','void'].includes(r.st));
   else if (statusFilter !== 'all')    list = list.filter(r => r.st === statusFilter);
   if (q) list = list.filter(r => (r.num + ' ' + r.name).toLowerCase().includes(q));
-  list.sort((a,b) => (b.issued||'').localeCompare(a.issued||''));
+
+  const dirMul = _invSortState.dir === 'desc' ? -1 : 1;
+  list.sort((a, b) => {
+    let d = 0;
+    switch (_invSortState.key) {
+      case 'num':    d = _invNumVal(a) - _invNumVal(b); break;
+      case 'name':   d = String(a.name||'').localeCompare(String(b.name||'')); break;
+      case 'issued': d = String(a.issued||'').localeCompare(String(b.issued||'')); break;
+      case 'due':    d = String(a.due||'').localeCompare(String(b.due||'')); break;
+      case 'amt':    d = (a.amt||0) - (b.amt||0); break;
+      case 'st':     d = String(a.st||'').localeCompare(String(b.st||'')); break;
+    }
+    if (d !== 0) return d * dirMul;
+    return _invNumVal(b) - _invNumVal(a); // tiebreak: newest number first
+  });
+
+  // Arrow on the active sort column (base label cached on first touch)
+  document.querySelectorAll('.inv-sort-th').forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    th.textContent = th.dataset.label + (_invSortState.key === th.dataset.key ? (_invSortState.dir === 'desc' ? ' ▼' : ' ▲') : '');
+  });
 
   const typeBadge = {
     purpl:    '<span class="badge purple">purpl</span>',
