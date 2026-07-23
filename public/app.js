@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v170';
+const APP_VERSION = 'v171';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -922,11 +922,11 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm — and today's the day. <strong>purpl is officially here.</strong> The lavender lemonade we've been telling you about is canned, cased, and rolling out to shelves across New England this week.</p>
+        <p style="line-height:1.7">It's Graham from Pumpkin Blossom Farm, and today's the day. <strong>purpl is officially here.</strong> The lavender lemonade we've been telling you about is canned, cased, and rolling out to shelves across New England this week.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:14px 20px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:14px;color:#166534;line-height:1.6">
-          <strong>Already pre-ordered?</strong> You're all set — your order is on the first delivery run. Nothing to do but make some shelf space. 💜
+          <strong>Already pre-ordered?</strong> You're all set. Your order is in the first delivery run, so all that's left is making some shelf space. 💜
         </td></tr></table>
-        <p style="line-height:1.7">If you haven't ordered yet, now's the moment — first orders in are first on the truck. Here's the lineup:</p>
+        <p style="line-height:1.7">If you haven't ordered yet, now's the moment. Early orders go out with the first deliveries. Here's the lineup:</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
@@ -963,8 +963,8 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             </div>
           </td></tr>
         </table>
-        <p style="line-height:1.7">And if you'd like to taste it before committing — completely fair — there's a <strong>free 3-can taster</strong> right on the order form. No obligation.</p>
-        <p style="line-height:1.7;font-size:14px">Thank you for being part of this launch. We're a small farm putting something we love into the world, and having purpl on your shelves means a lot. Reply, call, or click the link above — whatever's easiest, I'm here for anything you need.</p>
+        <p style="line-height:1.7">Want to taste it before committing? Completely fair. There's a <strong>free 3-can taster</strong> right on the order form, no obligation.</p>
+        <p style="line-height:1.7;font-size:14px">Thank you for being part of this launch. We're a small farm putting something we love into the world, and having purpl on your shelves means a lot. Reply, call, or click the link above. Whatever's easiest, I'm here for anything you need.</p>
 `, account.id)
     },
     'approved': {
