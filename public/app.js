@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v171';
+const APP_VERSION = 'v172';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -762,12 +762,13 @@ async function callSendOrderConfirmation(to, accountName, contactName, orderSumm
 
 function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn}) {
   const fn = sendFn || ((t,s,h) => callSendEmail(t, 'lavender@pbfwholesale.com', s, h));
+  const stamp = _TRANSACTIONAL_STAGES.includes(stage) ? {} : {lastContacted: today()};
   return fn(to, subject, html)
     .then(result => {
       if (accountId && stage) {
         const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', ...extra};
         if (result?.id) entry.sentMessageId = result.id;
-        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
+        DB.update('ac', accountId, a => ({...a, ...stamp, cadence: _pushCadence(a.cadence, entry)}));
       }
       toast('Email sent ✓');
       return result;
@@ -778,7 +779,7 @@ function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       if (accountId && stage) {
         const entry = {id: uid(), stage, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail', ...extra};
-        DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
+        DB.update('ac', accountId, a => ({...a, ...stamp, cadence: _pushCadence(a.cadence, entry)}));
       }
       return null;
     });
@@ -2611,7 +2612,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
         };
         if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', ac.id, a => ({
-          ...a, lastContacted: today(),
+          ...a,
           cadence: _pushCadence(a.cadence, entry),
         }));
         closeModal('modal-add-inv');
@@ -3149,20 +3150,34 @@ function _latestByDate(arr) {
   if (!arr || !arr.length) return null;
   return arr.reduce((best, x) => (!best || (x?.date || '') > (best.date || '')) ? x : best, null);
 }
+// Stages that are bookkeeping, not contact: confirming a portal order sends
+// no email at all, and invoice emails/reminders are transactional. None of
+// these should move "Last Contacted" (owner: "I didn't contact this account").
+const _TRANSACTIONAL_STAGES = ['order_confirmation', 'invoice_sent', 'invoice_reminder'];
+
 function acLastContacted(a) {
-  // Consider ALL contact signals, not just notes/outreach: the top-level
-  // `lastContacted` field (written by email + invoice sends) and the latest
-  // cadence entry (mass/template sends append to `cadence`, not `outreach`).
-  // Without this, an account you just emailed shows "Last Contacted: —" and
-  // gets falsely flagged "Needs Attention". All values normalized to YYYY-MM-DD.
-  const cadenceDate = (a.cadence || []).reduce((m, c) => {
+  // Consider real contact signals: notes, outreach, and non-transactional
+  // cadence entries (mass/template sends append to `cadence`, not `outreach`).
+  // Without the cadence signal, an account you just emailed shows
+  // "Last Contacted: —" and gets falsely flagged "Needs Attention".
+  const cad = a.cadence || [];
+  const cadenceDate = cad.filter(c => !_TRANSACTIONAL_STAGES.includes(c.stage)).reduce((m, c) => {
     const d = (c.sentAt || '').slice(0, 10);
     return d > m ? d : m;
   }, '');
+  // Heal old data: earlier code stamped a.lastContacted on transactional
+  // events. If the stored date matches a transactional cadence entry and no
+  // real signal (note/outreach/real cadence) corroborates that day, ignore it.
+  let lc = a.lastContacted || null;
+  if (lc) {
+    const transDates = cad.filter(c => _TRANSACTIONAL_STAGES.includes(c.stage)).map(c => (c.sentAt || '').slice(0, 10));
+    const hasOn = arr => (arr || []).some(x => (x?.date || '') === lc);
+    if (transDates.includes(lc) && cadenceDate !== lc && !hasOn(a.notes) && !hasOn(a.outreach)) lc = null;
+  }
   const candidates = [
     _maxDate(a.notes),
     _maxDate(a.outreach),
-    a.lastContacted || null,
+    lc,
     cadenceDate || null,
   ].filter(Boolean);
   if (!candidates.length) return null;
@@ -12056,7 +12071,7 @@ function openLfInvoiceModal(id) {
         };
         if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', ac.id, a => ({
-          ...a, lastContacted: today(),
+          ...a,
           cadence: _pushCadence(a.cadence, entry),
         }));
         _clearReadyToSend(inv.id, 'lf_invoices');
@@ -13645,7 +13660,7 @@ async function openInvoicePreview(type, id) {
         if (type === 'dist') auditLog('send', 'dist_invoice', id, rec.number || rec.invoiceNumber || id);
         const entry = { id: uid(), stage: 'invoice_sent', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', invoiceId: id, invoiceRef: rec.number || rec.invoiceNumber || '' };
         if (result?.id) entry.sentMessageId = result.id;
-        if (rec.accountId) DB.update('ac', rec.accountId, a => ({ ...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry) }));
+        if (rec.accountId) DB.update('ac', rec.accountId, a => ({ ...a, cadence: _pushCadence(a.cadence, entry) }));
         _clearReadyToSend(id, col);
         setTimeout(() => openInvoicePreview(type, id), 400);
       } catch (e) {
@@ -13917,7 +13932,6 @@ async function openCombinedInvoicePreview(combinedId) {
         if (sentMessageId) entry.sentMessageId = sentMessageId;
         DB.update('ac', rec.accountId, a => ({
           ...a,
-          lastContacted: today(),
           cadence: _pushCadence(a.cadence, entry),
         }));
         renderAccounts();
@@ -16117,7 +16131,6 @@ async function confirmPortalOrder() {
       };
       DB.update('ac', d.accountId, a => ({
         ...a,
-        lastContacted: today(),
         cadence: _pushCadence(a.cadence, entry),
       }));
     }
