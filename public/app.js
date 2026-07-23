@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v172';
+const APP_VERSION = 'v173';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -4743,6 +4743,9 @@ function renderEmailsTabHistory(accounts) {
   const allEntries = [];
   accounts.forEach(a => {
     (a.cadence||[]).forEach(c => {
+      // crm_confirm entries are bookkeeping (confirming a portal order sends
+      // no email) — they belong on the account timeline, not in EMAIL history.
+      if (c.method === 'crm_confirm') return;
       allEntries.push({...c, accountName: a.name, accountId: a.id});
     });
   });
