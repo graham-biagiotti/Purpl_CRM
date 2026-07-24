@@ -61,7 +61,7 @@ Confirm/send deductions ✅ · pools + shipment pool choice ✅ (select-reset bu
 Tier-2) · production/repack/pallets 📄 (light use) · delivery runs 📄 (not yet used
 for real) · Warehouse push → see lane G.
 
-### G. Warehouse-partner lane — ✅ PROVEN by owner dry-run 7/22 (PDF attachment received + verified; awaiting first real push to the partner)
+### G. Warehouse-partner lane — ✅ PROVEN IN PRODUCTION 7/23 (full launch batch pushed to the real partner; audit log confirms delivery address)
 Partner (Millennial Moving) is 3PL + closes accounts; owner still invoices retailers
 directly. Push = email the invoice doc to settings.warehouseEmail with a printable
 HTML attachment (subject: PRINT & LEAVE WITH CUSTOMER — store — deliver {date} — INV).
