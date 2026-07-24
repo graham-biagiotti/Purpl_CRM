@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v178';
+const APP_VERSION = 'v179';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -831,6 +831,77 @@ font-family:Inter,Arial,sans-serif">
     </table>
   </td></tr>
 </table></body></html>`;
+}
+
+// ── Prospect outreach templates (curated cold outreach — no portal tokens;
+// the CTA is the wholesale site + free samples, feeding the proven
+// application → approve → account funnel) ─────────────────
+const PROSPECT_TEMPLATES = [
+  {id:'prospect-intro',    name:'Cold Intro — purpl + samples', desc:'Introduce purpl, margin math, free sample offer'},
+  {id:'prospect-followup', name:'Sample Follow-up',             desc:'After samples went out'},
+  {id:'prospect-checkin',  name:'Check-in',                     desc:'Nudge a prospect gone quiet'},
+];
+
+function getProspectEmailTemplate(tplId, p) {
+  const header = PBF_HEADER_HTML;
+  const accentColor = '#8B5FBF';
+  const contactName = escHtml(p.contact || 'there');
+  const storeName = escHtml(p.name || 'your store');
+  const storeNameRaw = p.name || 'your store';
+  // Prospects aren't accounts, so no /unsubscribe link — a reply-to-decline
+  // line keeps low-volume curated outreach polite and compliant.
+  const optOut = `<p style="font-size:11px;color:#9ca3af;margin-top:24px">Not the right fit? Just reply "no thanks" and you won't hear from me again.</p>`;
+  const pricingBox = `
+        <div style="text-align:center;margin:8px 0 20px">
+          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="200" style="width:200px;max-width:55%;height:auto;border-radius:12px;display:inline-block">
+        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
+          <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
+            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
+              <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
+              <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
+              <tr><td style="padding-right:24px">Suggested retail</td><td style="font-weight:600">$3.29</td></tr>
+              <tr><td style="padding-right:24px">Your margin</td><td style="font-weight:600">~30% at suggested retail</td></tr>
+              <tr><td style="padding-right:24px">Shelf life</td><td>18 months · shelf stable</td></tr>
+            </table>
+          </td></tr>
+        </table>`;
+  const tpls = {
+    'prospect-intro': {
+      subject: `purpl lavender lemonade — wholesale for ${storeNameRaw}`,
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">I'm Graham from Pumpkin Blossom Farm, a family lavender farm in Warner, NH. We just launched <strong>purpl</strong>, a classic lemonade crafted with real lavender from our farm, and I think it would be a great fit at ${storeName}.</p>
+        ${pricingBox}
+        <p style="line-height:1.7">We also wholesale our <strong>Lavender Fields</strong> farm line (simple syrup, candles, sachets, roll-ons) if you like carrying local gift products alongside the drinks.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:14px 20px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0;font-size:14px;color:#166534;line-height:1.6">
+          <strong>Want to taste it first?</strong> Reply to this email and I'll ship you a free 3-can taster. No strings attached.
+        </td></tr></table>
+        <p style="line-height:1.7">You can see the full lineup and set up a wholesale account at <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>. Net 30 terms, free local delivery on 8+ cases across NH, MA, southern ME and VT.</p>
+        <p style="line-height:1.7;font-size:14px">Happy to answer anything — just reply or call. Thanks for reading this far.</p>
+        ${optOut}`)
+    },
+    'prospect-followup': {
+      subject: `How were the samples? — purpl`,
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">Just checking in on the purpl samples we sent over. How did they taste? I'd love to hear what you (and anyone else who snagged a can) thought.</p>
+        <p style="line-height:1.7">If ${storeName} wants to give it a run on the shelf, I can have your first case order delivered quickly. Wholesale is $27.60 a case (12 cans), about a 30% margin at the $3.29 suggested retail, and it's shelf stable for 18 months.</p>
+        <p style="line-height:1.7">Setting up an account takes two minutes at <a href="https://pbfwholesale.com" style="color:${accentColor}">pbfwholesale.com</a>, or just reply and I'll handle it for you.</p>
+        ${optOut}`)
+    },
+    'prospect-checkin': {
+      subject: `Checking in — purpl & Lavender Fields wholesale`,
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">Graham from Pumpkin Blossom Farm here. I reached out a little while back about carrying <strong>purpl</strong> lavender lemonade at ${storeName} and didn't want it to slip through the cracks.</p>
+        <p style="line-height:1.7">The short version: local NH farm product, $27.60/case wholesale, ~30% margin, 18-month shelf life, and a free 3-can taster if you'd like to try it first. Just reply and I'll take care of it.</p>
+        ${optOut}`)
+    },
+  };
+  const t = tpls[tplId];
+  return t ? { ...t, from: 'lavender@pbfwholesale.com', name: (PROSPECT_TEMPLATES.find(x=>x.id===tplId)||{}).name || tplId } : null;
 }
 
 function getCadenceEmailTemplate(stage, account, extra={}) {
@@ -4399,12 +4470,82 @@ function selectEmailsAccount(accountId) {
   _renderEmailsRightCol();
 }
 
+let _emailsAudience = 'accounts';
+let _emailsSelectedProspectTpl = 'prospect-intro';
+let _emailsSelectedProspectId = null;
+
+function setEmailsAudience(aud) { _emailsAudience = aud; _renderEmailsRightCol(); }
+function setEmailsProspectTpl(id) { _emailsSelectedProspectTpl = id; _renderEmailsRightCol(); }
+function selectEmailsProspect(id) { _emailsSelectedProspectId = id || null; _renderEmailsRightCol(); }
+
+function _emailsAudienceToggleHtml() {
+  return `<div style="display:flex;gap:6px;margin-bottom:12px">
+    <button class="btn xs ${_emailsAudience==='accounts'?'primary':''}" onclick="setEmailsAudience('accounts')">🏬 Accounts</button>
+    <button class="btn xs ${_emailsAudience==='prospects'?'primary':''}" onclick="setEmailsAudience('prospects')">🎯 Prospects</button>
+  </div>`;
+}
+
 async function _renderEmailsRightCol() {
   const el = document.getElementById('emails-preview-col');
   if (!el) return;
 
+  // ── Prospect outreach branch: its own template picker (prospect templates
+  // are a separate set — no tokens, no portal password) ──
+  if (_emailsAudience === 'prospects') {
+    const prospects = DB.a('pr').filter(p => !['won','lost'].includes(p.status))
+      .sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
+    const pOptions = prospects.map(p =>
+      `<option value="${p.id}"${_emailsSelectedProspectId === p.id ? ' selected' : ''}>${escHtml(p.name)}${p.email ? '' : ' (no email)'}</option>`).join('');
+    const tplOptions = PROSPECT_TEMPLATES.map(t =>
+      `<option value="${t.id}"${_emailsSelectedProspectTpl === t.id ? ' selected' : ''}>${escHtml(t.name)} — ${escHtml(t.desc)}</option>`).join('');
+    const p = _emailsSelectedProspectId ? prospects.find(x => x.id === _emailsSelectedProspectId) : null;
+    let previewHtml = `<div class="emails-placeholder" style="height:200px"><div style="font-size:24px">👆</div><div>Select a prospect to preview</div></div>`;
+    if (p) {
+      if (!p.email) {
+        previewHtml = `<div style="padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:13px;color:#92400e">⚠️ No email on this prospect — add one via the Prospects page first.</div>`;
+      } else {
+        const tpl = getProspectEmailTemplate(_emailsSelectedProspectTpl, p);
+        previewHtml = tpl ? `
+          <div style="margin-bottom:8px">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Subject</div>
+            <div style="font-size:13px;font-weight:600;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">${escHtml(tpl.subject)}</div>
+          </div>
+          <div style="margin-bottom:8px;font-size:12px;color:var(--muted)">To: ${escHtml(p.contact || '')}${p.contact ? ' — ' : ''}${escHtml(p.email)}</div>
+          <iframe class="emails-preview-frame" srcdoc="${tpl.body.replace(/"/g,'&quot;')}"></iframe>
+          <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
+            <button class="btn xs" onclick="emailsProspectOpenGmail()">Open in Gmail</button>
+            <button class="btn xs primary" id="emails-prospect-send-btn" onclick="emailsSendProspectEmail()">Send Email</button>
+          </div>` : '';
+      }
+    }
+    el.innerHTML = `
+      ${_emailsAudienceToggleHtml()}
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">TEMPLATE</label>
+        <select onchange="setEmailsProspectTpl(this.value)" style="width:100%">${tplOptions}</select>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">PROSPECT</label>
+        <input id="emails-prospect-search" type="search" placeholder="Type to search prospects…"
+          autocomplete="off" oninput="filterAccountSelect('emails-prospect',this.value)"
+          style="width:100%;margin-bottom:4px">
+        <select id="emails-prospect" onchange="selectEmailsProspect(this.value)" style="width:100%">
+          <option value="">Select prospect...</option>
+          ${pOptions}
+        </select>
+      </div>
+      ${previewHtml}`;
+    const _pSel = document.getElementById('emails-prospect');
+    if (_pSel) {
+      _pSel._accounts = prospects.map(x => ({ id: x.id, name: x.name }));
+      _pSel._placeholder = 'Select prospect...';
+      if (_emailsSelectedProspectId) _pSel.value = _emailsSelectedProspectId;
+    }
+    return;
+  }
+
   if (!_emailsSelectedTemplate) {
-    el.innerHTML = `<div class="emails-placeholder">
+    el.innerHTML = `${_emailsAudienceToggleHtml()}<div class="emails-placeholder">
       <div style="font-size:32px">📧</div>
       <div>Select a template to get started</div>
     </div>`;
@@ -4496,6 +4637,7 @@ async function _renderEmailsRightCol() {
   }
 
   el.innerHTML = `
+    ${_emailsAudienceToggleHtml()}
     <div style="margin-bottom:12px">
       <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px">ACCOUNT</label>
       <input id="emails-account-search" type="search" placeholder="Type to search accounts…"
@@ -4643,6 +4785,51 @@ function emailsPageMarkSent() {
   }));
   toast('Email marked as sent');
   renderEmailsPage();
+}
+
+// ── Prospect outreach send: logs to the prospect's outreach history, stamps
+// lastContacted, bumps lead → contacted. No tokens, no cadence machinery.
+let _prospectSendInFlight = false;
+async function emailsSendProspectEmail() {
+  if (_prospectSendInFlight || !_emailsSelectedProspectId) return;
+  const p = DB.a('pr').find(x => x.id === _emailsSelectedProspectId);
+  if (!p || !p.email) { toast('No email on this prospect'); return; }
+  const tpl = getProspectEmailTemplate(_emailsSelectedProspectTpl, p);
+  if (!tpl) return;
+  _prospectSendInFlight = true;
+  const btn = document.getElementById('emails-prospect-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    await callSendEmail(p.email, tpl.from, tpl.subject, tpl.body);
+    DB.update('pr', p.id, x => ({
+      ...x,
+      lastContacted: today(),
+      status: x.status === 'lead' ? 'contacted' : x.status,
+      outreach: [...(x.outreach||[]), { id: uid(), date: today(), type: 'email', regarding: tpl.name, notes: 'Sent: ' + tpl.subject, outcome: '' }],
+    }));
+    toast('Email sent ✓ — logged to prospect outreach');
+  } catch (e) {
+    console.error('Prospect send failed:', e);
+    toast('Send failed — ' + (e?.message || 'try again'), 6000);
+  } finally {
+    _prospectSendInFlight = false;
+    _renderEmailsRightCol();
+  }
+}
+
+function emailsProspectOpenGmail() {
+  const p = DB.a('pr').find(x => x.id === _emailsSelectedProspectId);
+  if (!p || !p.email) { toast('No email on this prospect'); return; }
+  const tpl = getProspectEmailTemplate(_emailsSelectedProspectTpl, p);
+  if (!tpl) return;
+  window.open(`mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
+  DB.update('pr', p.id, x => ({
+    ...x,
+    lastContacted: today(),
+    status: x.status === 'lead' ? 'contacted' : x.status,
+    outreach: [...(x.outreach||[]), { id: uid(), date: today(), type: 'email', regarding: tpl.name, notes: 'Drafted in Gmail: ' + tpl.subject, outcome: '' }],
+  }));
+  toast('Opened in Gmail — logged to prospect outreach');
 }
 
 // Mint a portal token for an account that has none — NEVER rotates an
@@ -6374,24 +6561,54 @@ function _parseCSV(text) {
   });
 }
 
+function _csvDateISO(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`; }
+  return '';
+}
+
 function _csvMapProspect(row) {
   const get = (...keys) => { for (const k of keys) { if (row[k] !== undefined && row[k] !== '') return row[k]; } return ''; };
-  const name = get('business name', 'name', 'company', 'business');
+  const name = get('business name', 'name', 'company', 'business', 'store', 'store name');
   if (!name) return null;
-  const stageRaw = get('stage', 'status').toLowerCase();
-  const stageMap = { cold:'lead', lead:'lead', new:'lead', contacted:'contacted', sampling:'sampling', negotiating:'negotiating', won:'won', lost:'lost' };
+  // Stage labels from the owner's tracking sheet map onto the CRM pipeline
+  // (On Hold / Needs Follow-up → contacted; Proposal Sent / Negotiation → negotiating)
+  const stageRaw = get('stage', 'status').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const stageMap = {
+    'cold':'lead', 'lead':'lead', 'new':'lead',
+    'contacted':'contacted', 'on hold':'contacted', 'needs follow up':'contacted', 'needs followup':'contacted',
+    'sampling':'sampling', 'samples':'sampling', 'samples sent':'sampling',
+    'negotiating':'negotiating', 'negotiation':'negotiating', 'negotiation review':'negotiating',
+    'proposal sent':'negotiating', 'proposal':'negotiating', 'review':'negotiating',
+    'won':'won', 'lost':'lost',
+  };
   const status = stageMap[stageRaw] || 'lead';
   const priRaw = get('priority').toLowerCase();
   const priority = ({ high:'high', medium:'medium', med:'medium', low:'low' })[priRaw] || 'medium';
-  const noteText = get('notes', 'note');
+  // Address may be one column or split street/city/state/zip
+  const street = get('address', 'street', 'street address', 'location');
+  const city   = get('city', 'town');
+  const state  = get('state', 'st');
+  const zip    = get('zip', 'zip code', 'postal code');
+  const address = [street, city, state, zip].filter(Boolean).join(', ');
+  // Notes can live in more than one column — keep them all
+  const noteText = [get('notes', 'note', 'activity', 'latest activity'), get('misc', 'extra', 'other', 'round', 'source notes')]
+    .filter(Boolean).join(' · ');
+  const nextDate = _csvDateISO(get('follow up', 'followup', 'follow up date', 'next follow up', 'next date', 'date'));
   return {
     id: uid(), name,
-    contact: get('contact name', 'contact', 'owner', 'contact person'),
-    email:   get('email', 'email address'),
+    contact: get('contact name', 'contact', 'owner', 'contact person', 'buyer'),
+    email:   (get('email', 'email address') || '').replace(/^"|"$/g, '').trim(),
     phone:   get('phone', 'phone number', 'tel'),
-    address: get('address', 'location', 'city'),
+    address,
     type:    get('type', 'business type') || 'Grocery',
+    territory: get('territory', 'region') || (state || ''),
     status, priority,
+    source:  get('source') || 'Sheet import',
+    nextDate,
     notes:    noteText ? [{ id: uid(), date: today(), text: noteText }] : [],
     outreach: [], lastContact: '', isPbf: false, samples: [],
   };
@@ -6417,11 +6634,22 @@ function _runImportProspects() {
   if (!text) { toast('No CSV data to import'); return; }
   const rows = _parseCSV(text);
   const parsed = rows.map(_csvMapProspect).filter(Boolean);
-  const existingNames = new Set(DB.a('pr').map(x => x.name.toLowerCase().trim()));
-  const prospects = parsed.filter(p => !existingNames.has(p.name.toLowerCase().trim()));
+  // Dedupe against existing prospects AND accounts (by name and by email) —
+  // a current customer must never come back in as a cold-outreach prospect.
+  const existingNames = new Set([
+    ...DB.a('pr').map(x => (x.name || '').toLowerCase().trim()),
+    ...DB.a('ac').map(x => (x.name || '').toLowerCase().trim()),
+  ].filter(Boolean));
+  const existingEmails = new Set([
+    ...DB.a('pr').map(x => (x.email || '').toLowerCase().trim()),
+    ...DB.a('ac').map(x => (x.email || '').toLowerCase().trim()),
+  ].filter(Boolean));
+  const prospects = parsed.filter(p =>
+    !existingNames.has((p.name || '').toLowerCase().trim()) &&
+    !((p.email || '').trim() && existingEmails.has(p.email.toLowerCase().trim())));
   const dupes = parsed.length - prospects.length;
   const skipped = rows.length - parsed.length;
-  if (!prospects.length) { toast(dupes > 0 ? `All ${parsed.length} rows already exist` : 'No valid rows — ensure a "Business Name" column is present'); return; }
+  if (!prospects.length) { toast(dupes > 0 ? `All ${parsed.length} rows already exist as prospects or accounts` : 'No valid rows — ensure a "Business Name" column is present'); return; }
   DB.atomicUpdate(cache => { cache['pr'] = [...(cache['pr'] || []), ...prospects]; });
   closeModal('modal-import-prospects');
   renderProspects();
@@ -14831,32 +15059,40 @@ function _acHasPin(a) { return !!((a.lat && a.lng) || (a.locs||[]).some(l=>l.lat
 function _acMapMissing() {
   return DB.a('ac').filter(a=>a.status!=='inactive' && !_acHasPin(a) && (a.address||'').trim() && !a.geocodeFailed);
 }
+function _prMapMissing() {
+  return DB.a('pr').filter(p=>!['won','lost'].includes(p.status) && !(p.lat&&p.lng) && (p.address||'').trim() && !p.geocodeFailed);
+}
 let _geocodeInFlight = false;
 async function _geocodeMissingAccounts() {
   if (_geocodeInFlight || typeof google === 'undefined' || !google.maps?.Geocoder) return;
-  const missing = _acMapMissing();
+  // Accounts first, then prospects (CSV-imported prospects arrive with an
+  // address but no coordinates) — same batch budget, caches, and guards.
+  const missing = [
+    ..._acMapMissing().map(rec => ({ col: 'ac', rec })),
+    ..._prMapMissing().map(rec => ({ col: 'pr', rec })),
+  ];
   if (!missing.length) return;
   _geocodeInFlight = true;
   let done = 0;
   try {
     const geocoder = new google.maps.Geocoder();
-    for (const a of missing.slice(0, 10)) {
+    for (const { col, rec } of missing.slice(0, 10)) {
       try {
-        const res = await geocoder.geocode({ address: a.address });
+        const res = await geocoder.geocode({ address: rec.address });
         const loc = res.results?.[0]?.geometry?.location;
-        if (loc) { DB.update('ac', a.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()})); done++; }
-        else DB.update('ac', a.id, x=>({...x, geocodeFailed: new Date().toISOString()}));
+        if (loc) { DB.update(col, rec.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()})); done++; }
+        else DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()}));
       } catch (e) {
         const msg = String(e?.code || e?.message || e);
         if (msg.includes('OVER_QUERY_LIMIT') || msg.includes('REQUEST_DENIED')) break; // quota/key problem — stop, retry next visit
-        DB.update('ac', a.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
+        DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
       }
       await new Promise(r=>setTimeout(r, 300));
     }
   } finally {
     _geocodeInFlight = false;
   }
-  if (done) { toast(`Located ${done} account${done===1?'':'s'} on the map`); _renderMapPins(); }
+  if (done) { toast(`Located ${done} pin${done===1?'':'s'} on the map`); _renderMapPins(); }
 }
 
 function _clearCoverageOverlays() {
