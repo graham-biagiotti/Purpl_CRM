@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v177';
+const APP_VERSION = 'v178';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -4462,14 +4462,14 @@ async function _renderEmailsRightCol() {
     }
     const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
     if (tpl) {
-      const isApproved = _emailsSelectedTemplate === 'approved';
-      const hasToken   = !!(account.orderPortalToken);
-      const tokenUi = isApproved
+      const needsLink = _TEMPLATES_NEED_LINK.includes(_emailsSelectedTemplate);
+      const hasToken  = !!(account.orderPortalToken);
+      const tokenUi = needsLink
         ? (hasToken
-            ? `<div style="margin-top:8px;font-size:12px;color:#16a34a">✓ Portal link included — token exists</div>`
+            ? `<div style="margin-top:8px;font-size:12px;color:#16a34a">✓ Personalized portal link included — token exists</div>`
             : `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <span>⚠️ No portal link yet — generate one before sending</span>
-                <button class="btn xs" onclick="_emailsApprovedGenerateToken()">Generate Portal Link</button>
+                <span>⚠️ No portal link yet — one will be generated automatically when you hit Send</span>
+                <button class="btn xs" onclick="_emailsApprovedGenerateToken()">Generate Now</button>
                </div>`)
         : '';
       previewHtml = `
@@ -4483,7 +4483,7 @@ async function _renderEmailsRightCol() {
         <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap">
           <button class="btn xs" onclick="emailsPageCopyHTML()">Copy HTML</button>
           <button class="btn xs" onclick="emailsPageOpenGmail()">Open in Gmail</button>
-          <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()"${isApproved && !hasToken ? ' disabled' : ''}>Send Email</button>
+          <button class="btn xs primary" id="emails-page-send-btn" onclick="emailsPageSendEmail()">Send Email</button>
         </div>`;
     } else {
       previewHtml = `<div class="emails-placeholder"><div>No template available for this combination</div></div>`;
@@ -4543,9 +4543,11 @@ function _getEmailsRecipients(account) {
   return [primary.email || account.email || ''].filter(Boolean);
 }
 
-function emailsPageSendEmail() {
+let _emailsSendInFlight = false;
+async function emailsPageSendEmail() {
   if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
-  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
+  if (_emailsSendInFlight) return;
+  let account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
   if (!account) return;
   const extra = {};
   if (_emailsSelectedTemplate === 'invoice-sent') {
@@ -4555,6 +4557,30 @@ function emailsPageSendEmail() {
       extra.invoiceNumber = inv.number || inv.invoiceNumber || '';
       extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0);
     }
+  }
+  // Link templates: fetch the REAL portal password (the send path used to
+  // rebuild the template without it, so sent emails carried the hardcoded
+  // fallback while the preview looked right) and auto-mint a portal token
+  // for new accounts, exactly like mass email does. Existing tokens are
+  // never touched.
+  if (_TEMPLATES_NEED_LINK.includes(_emailsSelectedTemplate)) {
+    _emailsSendInFlight = true;
+    try {
+      try {
+        const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
+        extra.portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
+      } catch (e) { console.warn('Portal password fetch failed:', e); }
+      if (!account.orderPortalToken) {
+        try {
+          await _ensurePortalToken(account.id);
+          account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId) || account;
+        } catch (e) {
+          console.error('Token generation failed:', e);
+          toast('Portal link generation failed — nothing was sent. Check your connection and try again.', 8000);
+          return;
+        }
+      }
+    } finally { _emailsSendInFlight = false; }
   }
   const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
   if (!tpl) return;
@@ -4576,20 +4602,20 @@ function emailsPageSendEmail() {
     try {
       const result = await callSendEmail(addr, 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+      const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
       const entry = {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', to: addr};
       if (result?.id) entry.sentMessageId = result.id;
       DB.update('ac', account.id, a => ({
-        ...a,
-        lastContacted: today(),
+        ...a, ...stamp,
         cadence: _pushCadence(a.cadence, entry)
       }));
       return true;
     } catch(_) {
       window.open(`mailto:${encodeURIComponent(addr)}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
       const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
+      const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
       DB.update('ac', account.id, a => ({
-        ...a,
-        lastContacted: today(),
+        ...a, ...stamp,
         cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'gmail', to: addr})
       }));
       return false;
@@ -4619,19 +4645,28 @@ function emailsPageMarkSent() {
   renderEmailsPage();
 }
 
+// Mint a portal token for an account that has none — NEVER rotates an
+// existing token (returns it untouched). Writes the top-level accounts doc
+// (what lookupPortalToken reads) and the local cache, same as mass email.
+async function _ensurePortalToken(accountId) {
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) throw new Error('Account not found');
+  if (a.orderPortalToken) return a.orderPortalToken;
+  const token = generateSecureToken(a.id);
+  const stamp = new Date().toISOString().slice(0, 10);
+  await firebase.firestore().collection('accounts').doc(a.id).set({
+    orderPortalToken: token, name: a.name, email: a.email || '', orderPortalTokenCreatedAt: stamp
+  }, { merge: true });
+  DB.update('ac', a.id, x => ({ ...x, orderPortalToken: token, orderPortalTokenCreatedAt: stamp }));
+  return token;
+}
+
 async function _emailsApprovedGenerateToken() {
   if (!_emailsSelectedAccountId) return;
-  const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
-  if (!account) return;
-  const token = generateSecureToken(account.id);
   try {
-    await firebase.firestore().collection('accounts').doc(account.id).set({
-      orderPortalToken: token,
-      orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)
-    }, { merge: true });
-    DB.update('ac', account.id, a => ({...a, orderPortalToken: token, orderPortalTokenCreatedAt: new Date().toISOString().slice(0,10)}));
+    const token = await _ensurePortalToken(_emailsSelectedAccountId);
     const link = 'https://pbfwholesale.com/order?t=' + token;
-    await navigator.clipboard.writeText(link);
+    try { await navigator.clipboard.writeText(link); } catch (e) {}
     toast('Portal link generated & copied ✓');
     _renderEmailsRightCol();
   } catch(e) {
@@ -5165,9 +5200,10 @@ async function meTemplateSend() {
       try {
         const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
         const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
+        const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
         const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', to: email };
         if (result?.id) entry.sentMessageId = result.id;
-        DB.update('ac', a.id, ac => ({ ...ac, lastContacted: today(), cadence: _pushCadence(ac.cadence, entry) }));
+        DB.update('ac', a.id, ac => ({ ...ac, ...stamp, cadence: _pushCadence(ac.cadence, entry) }));
         sent++;
       } catch(_) { failed++; }
       await new Promise(r => setTimeout(r, 500)); // ~2/sec — gentle on Resend rate limits
