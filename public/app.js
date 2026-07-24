@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v176';
+const APP_VERSION = 'v177';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -928,6 +928,9 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           <strong>Already pre-ordered?</strong> You're all set. Your order is in the first delivery run, so all that's left is making some shelf space. 💜
         </td></tr></table>
         <p style="line-height:1.7">If you haven't ordered yet, now's the moment. Early orders go out with the first deliveries. Here's the lineup:</p>
+        <div style="text-align:center;margin:8px 0 20px">
+          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="220" style="width:220px;max-width:60%;height:auto;border-radius:12px;display:inline-block">
+        </div>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
             <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
@@ -937,6 +940,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <tr><td style="padding-right:24px">Suggested retail</td><td style="font-weight:600">$3.29</td></tr>
               <tr><td style="padding-right:24px">Your margin</td><td style="font-weight:600">~30% at suggested retail</td></tr>
               <tr><td style="padding-right:24px">Format</td><td>12 fl oz cans</td></tr>
+              <tr><td style="padding-right:24px">Shelf life</td><td>18 months · shelf stable</td></tr>
             </table>
           </td></tr>
         </table>
