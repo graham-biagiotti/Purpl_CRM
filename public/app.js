@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v174';
+const APP_VERSION = 'v175';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -12720,29 +12720,61 @@ function editCombinedInvoice(combinedId) {
   if (qs('#nciv-shipping')) qs('#nciv-shipping').value =
     (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
 
-  // Re-render SKU rows for this account's pricing, then overlay the stored lines
+  // Re-render SKU rows for this account's pricing, then overlay the stored
+  // lines. Portal-created LF lines can carry the sku NAME as skuId (portal
+  // fallback), so rows are resolved by id first, then by name. Any line that
+  // still can't be placed ABORTS the edit — saving would silently drop it.
   _ncivRenderSkuRows();
-  (purplChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__').forEach(l => {
-    const cEl = document.querySelector(`.nciv-p-cases[data-sku="${l.skuId}"]`);
-    const pEl = document.querySelector(`.nciv-p-ppc[data-sku="${l.skuId}"]`);
-    if (cEl) cEl.value = l.cases || l.qty || 0;
+  const unmatched = [];
+  (purplChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__' && (l.cases||l.qty)).forEach(l => {
+    const cEl = document.querySelector(`.nciv-p-cases[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
+    const pEl = document.querySelector(`.nciv-p-ppc[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
+    if (!cEl) { unmatched.push(l.sku || l.skuName || l.skuId || 'purpl item'); return; }
+    cEl.value = l.cases || l.qty || 0;
     if (pEl && (l.pricePerCase != null || l.unitPrice != null)) pEl.value = parseFloat(l.pricePerCase != null ? l.pricePerCase : l.unitPrice).toFixed(2);
   });
-  (lfChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__').forEach(l => {
-    const rowEl = document.querySelector(`#nciv-lf-skus .nciv-lf-row[data-sku="${l.skuId}"]`);
-    if (!rowEl) return;
-    const pEl = rowEl.querySelector(`.nciv-lf-ppc[data-sku="${l.skuId}"]`);
+  const lfSkusAll = DB.a('lf_skus');
+  const _lfRowFor = (l) => {
+    let row = document.querySelector(`#nciv-lf-skus .nciv-lf-row[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
+    if (row) return row;
+    const key = String(l.skuName || l.skuId || '').trim().toLowerCase();
+    const byName = key && lfSkusAll.find(s => (s.name||'').trim().toLowerCase() === key);
+    return byName ? document.querySelector(`#nciv-lf-skus .nciv-lf-row[data-sku="${CSS.escape(byName.id)}"]`) : null;
+  };
+  (lfChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__' && (l.cases||l.qty||l.units)).forEach(l => {
+    const rowEl = _lfRowFor(l);
+    if (!rowEl) { unmatched.push(l.skuName || l.skuId || 'LF item'); return; }
+    const pEl = rowEl.querySelector('.nciv-lf-ppc');
     if (pEl && (l.pricePerUnit != null || l.unitPrice != null)) pEl.value = parseFloat(l.pricePerUnit != null ? l.pricePerUnit : l.unitPrice).toFixed(2);
-    if (l.hasVariants && (l.variantLines||[]).length) {
+    const hasVarInputs = rowEl.querySelectorAll('.nciv-lf-var-units').length > 0;
+    if ((l.variantLines||[]).length && hasVarInputs) {
+      const skuObj = lfSkusAll.find(s => s.id === rowEl.dataset.sku);
       l.variantLines.forEach(v => {
-        const vEl = rowEl.querySelector(`.nciv-lf-var-units[data-variant="${v.variantId}"]`);
+        let vEl = v.variantId ? rowEl.querySelector(`.nciv-lf-var-units[data-variant="${CSS.escape(String(v.variantId))}"]`) : null;
+        if (!vEl && v.variantName) {
+          const vObj = (skuObj?.variants||[]).find(x => (x.name||'').trim().toLowerCase() === String(v.variantName).trim().toLowerCase());
+          if (vObj) vEl = rowEl.querySelector(`.nciv-lf-var-units[data-variant="${CSS.escape(String(vObj.id))}"]`);
+        }
         if (vEl) vEl.value = v.units || 0;
+        else unmatched.push(`${l.skuName || 'LF item'} — ${v.variantName || 'variant'}`);
       });
+    } else if (hasVarInputs && !(l.variantLines||[]).length) {
+      // Stored as a plain case count but the sku now has variant inputs:
+      // there is no single input to hold it — refuse rather than lose it.
+      unmatched.push(l.skuName || l.skuId || 'LF item');
     } else {
       const cEl = rowEl.querySelector('.nciv-lf-cases');
       if (cEl) cEl.value = l.cases || l.qty || 0;
+      else unmatched.push(l.skuName || l.skuId || 'LF item');
     }
   });
+  if (unmatched.length) {
+    _editingCombinedId = null;
+    closeModal('modal-new-combined');
+    _stickyError(`Can't edit ${rec.number || 'this invoice'} safely: ${unmatched.slice(0,4).join(', ')}${unmatched.length>4?'…':''} couldn't be loaded into the editor (sku renamed/archived or older data shape). Saving would have dropped ${unmatched.length===1?'that line':'those lines'}. Use Preview for dates/notes/shipping, or void & recreate to change items.`);
+    openCombinedInvoicePreview(combinedId);
+    return;
+  }
   _ncivCalcTotals();
 }
 
