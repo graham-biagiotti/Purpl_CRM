@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v175';
+const APP_VERSION = 'v176';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -16455,8 +16455,9 @@ function renderInvUnifiedList() {
   }
 
   let list = rows;
-  if (statusFilter === 'open')        list = list.filter(r => !['paid','void'].includes(r.st));
-  else if (statusFilter !== 'all')    list = list.filter(r => r.st === statusFilter);
+  if (statusFilter === 'open')             list = list.filter(r => !['paid','void'].includes(r.st));
+  else if (statusFilter === 'warehouse')   list = list.filter(r => r.rawSt === 'draft' && r.inv.warehousePushedAt);
+  else if (statusFilter !== 'all')         list = list.filter(r => r.st === statusFilter);
   if (q) list = list.filter(r => (r.num + ' ' + r.name).toLowerCase().includes(q));
 
   const dirMul = _invSortState.dir === 'desc' ? -1 : 1;
@@ -16486,9 +16487,16 @@ function renderInvUnifiedList() {
     combined: '<span class="badge amber">Combined</span>',
     dist:     '<span class="badge gray">Dist</span>',
   };
+  // Workflow stage, not just raw status — "draft" alone hid the difference
+  // between not-started, at-the-warehouse-awaiting-delivery, and own-drop.
   const stBadge = r => {
-    const cls = {paid:'green', draft:'gray', sent:'blue', overdue:'red', void:'red'}[r.st] || 'gray';
-    return `<span class="badge ${cls}">${r.st}</span>`;
+    if (r.rawSt === 'void') return '<span class="badge red">Void</span>';
+    if (r.rawSt === 'paid') return '<span class="badge green">Paid</span>';
+    if (r.st === 'overdue') return '<span class="badge red">Overdue</span>';
+    if (r.rawSt === 'sent') return '<span class="badge blue">Sent</span><div style="font-size:10px;color:var(--muted);margin-top:2px">awaiting payment</div>';
+    if (r.inv.warehousePushedAt) return '<span class="badge" style="background:#cffafe;color:#0e7490">🏭 At warehouse</span><div style="font-size:10px;color:#d97706;margin-top:2px">delivered? set dates → send invoice</div>';
+    if (r.inv.shipStationOrderId) return '<span class="badge" style="background:#dbeafe;color:#1d4ed8">📦 At ShipStation</span><div style="font-size:10px;color:var(--muted);margin-top:2px">awaiting label/ship</div>';
+    return '<span class="badge gray">Draft</span><div style="font-size:10px;color:var(--muted);margin-top:2px">not pushed / own drop</div>';
   };
 
   tbody.innerHTML = list.map(r => `<tr>
