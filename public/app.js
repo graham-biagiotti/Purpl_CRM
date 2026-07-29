@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v180';
+const APP_VERSION = 'v181';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -14084,7 +14084,13 @@ async function openCombinedInvoicePreview(combinedId) {
   const shipChargeEl = qs('#civ-edit-shipping');
   if (shipChargeEl) {
     shipChargeEl.parentElement.style.display = '';
-    shipChargeEl.value = (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+    // Shipping can live on the PARENT (manual entry, combined SS push) or on
+    // a CHILD (webhook matched a child's invoice number — e.g. an invoice
+    // pushed to ShipStation before it was combined). Show the true total.
+    const _shipOf = r => (r?.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0);
+    shipChargeEl.value = (_shipOf(rec)
+      + _shipOf(DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId))
+      + _shipOf(DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId))) || '';
   }
   const shipBtn = qs('#civ-btn-ship');
   const whBtn = qs('#civ-btn-warehouse');
@@ -14139,32 +14145,48 @@ async function openCombinedInvoicePreview(combinedId) {
     const newFulfillment = qs('#civ-edit-fulfillment')?.value || 'warehouse';
     const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery, fulfillmentSource: newFulfillment };
     const shipRaw = qs('#civ-edit-shipping')?.value ?? '';
+    const _lineVal = li => parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases)||0) * (parseFloat(li.pricePerCase)||0))))) || 0;
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
-      // Shipping lives on the combined PARENT (same as the ShipStation
-      // webhook). Blank = untouched; a number (incl. 0) replaces the line and
-      // shifts grandTotal by the difference. Child subtotals are not touched.
+      const ri = rec.purplInvoiceId ? (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId) : -1;
+      const li = rec.lfInvoiceId ? (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId) : -1;
+      if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...patch };
+      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...patch, issued: newDate, due: newDue };
+      // Shipping reconciliation: the charge may sit on the parent OR a child
+      // (webhook matches by invoice number and can hit a child). A typed value
+      // (incl. 0) becomes ONE canonical line on the parent: child __shipping__
+      // lines are removed, child totals recomputed from their product lines,
+      // subtotals refreshed, grandTotal = products + shipping. Blank = leave
+      // everything exactly as it is.
       if (ci >= 0 && shipRaw !== '') {
-        const p = cache.combined_invoices[ci];
         const shipVal = Math.max(0, parseFloat(shipRaw) || 0);
-        const oldShip = (p.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0);
+        let purplSub = null, lfSub = null;
+        if (ri >= 0) {
+          const c = cache.retail_invoices[ri];
+          const prod = (c.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+          purplSub = Math.round(prod.reduce((s,l)=>s+_lineVal(l),0) * 100) / 100;
+          cache.retail_invoices[ri] = { ...c, lineItems: prod, total: purplSub, amount: purplSub };
+        }
+        if (li >= 0) {
+          const c = cache.lf_invoices[li];
+          const prod = (c.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+          lfSub = Math.round(prod.reduce((s,l)=>s+_lineVal(l),0) * 100) / 100;
+          cache.lf_invoices[li] = { ...c, lineItems: prod, total: lfSub };
+        }
+        const p = cache.combined_invoices[ci];
         const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+        const finalPurpl = purplSub != null ? purplSub : (parseFloat(p.purplSubtotal)||0);
+        const finalLf    = lfSub    != null ? lfSub    : (parseFloat(p.lfSubtotal)||0);
         cache.combined_invoices[ci] = {
           ...p,
           lineItems: shipVal > 0
             ? [...rest, { skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }]
             : rest,
-          grandTotal: Math.round(((parseFloat(p.grandTotal)||0) + (shipVal - oldShip)) * 100) / 100,
+          purplSubtotal: finalPurpl,
+          lfSubtotal: finalLf,
+          grandTotal: Math.round((finalPurpl + finalLf + shipVal) * 100) / 100,
         };
-      }
-      if (rec.purplInvoiceId) {
-        const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-        if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...patch };
-      }
-      if (rec.lfInvoiceId) {
-        const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-        if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...patch, issued: newDate, due: newDue };
       }
     });
     toast('Invoice updated ✓');
