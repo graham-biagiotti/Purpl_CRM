@@ -1692,8 +1692,11 @@ exports.shipStationWebhook = onRequest(
               carrier: carrierStr,
               deliveryMethod: 'ship',
               lineItems: updatedItems,
-              readyToSend: true,
             };
+            // readyToSend is a "draft is ready — go send it" nudge. If the
+            // invoice was already sent/paid (owner sent first, label came
+            // after), setting it would pulse a stale badge nothing clears.
+            if (!['sent', 'paid', 'void'].includes(inv.status)) update.readyToSend = true;
             // M7: set the financial dates (issued/date and the Net-X dueDate)
             // ONLY on the first shipment event. ShipStation re-delivers webhooks
             // (on non-2xx and operator replays); without this guard every

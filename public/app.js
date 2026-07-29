@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v179';
+const APP_VERSION = 'v180';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -618,6 +618,12 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
 const _notifiedShipIds = new Set();
 function _checkShippedInvoices() {
   if (_notifiedShipIds.size > 500) _notifiedShipIds.clear();
+  // Heal stale flags: readyToSend on an already-sent/paid invoice means the
+  // label event landed AFTER the owner sent the invoice — the nudge is moot
+  // and the badge would pulse forever. Clear instead of notifying.
+  [['retail_invoices', _allPurplInvoices()], ['lf_invoices', DB.a('lf_invoices')], ['combined_invoices', DB.a('combined_invoices')]]
+    .forEach(([col, list]) => list.filter(x => x.readyToSend && ['sent', 'paid', 'void'].includes(x.status))
+      .forEach(x => _clearReadyToSend(x.id, DB.a(col).some(r => r.id === x.id) ? col : 'iv')));
   const allInvs = [
     ..._allPurplInvoices().filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
     ...DB.a('lf_invoices').filter(x => x.readyToSend && !_notifiedShipIds.has(x.id)),
@@ -13874,13 +13880,14 @@ async function openInvoicePreview(type, id) {
   };
   _updateFulfillBtns();
   if (type === 'dist') {
-    // Delivery/fulfillment workflow doesn't apply to distributor invoices —
-    // stock moves at Log Shipment, not invoice send.
+    // Delivery/fulfillment selects don't apply to distributor invoices —
+    // stock moves at Log Shipment (pool picker there covers warehouse stock).
+    // The warehouse PUSH button stays: the partner fulfills dist POs too.
     if (delivSel?.parentElement) delivSel.parentElement.style.display = 'none';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = 'none';
     if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
-    if (whBtn) whBtn.style.display = 'none';
+    if (whBtn) whBtn.style.display = '';
   } else {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
@@ -16776,7 +16783,7 @@ function renderInvUnifiedList() {
   };
 
   tbody.innerHTML = list.map(r => `<tr>
-    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.fulfillmentSource==='warehouse'?' <span class="badge" style="font-size:10px;background:#e0f2fe;color:#0369a1">🏭 Warehouse'+(r.inv.warehousePushedAt?' ✓':'')+'</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${r.inv.paidAmountMismatch?' <span class="badge red" style="font-size:10px" title="Stripe payment amount differs from the invoice total — see invoice notes">⚠ Paid ≠ total</span>':''}${_invEmailBadge(r.inv)}</td>
+    <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend && !['sent','paid','void'].includes(r.rawSt)?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.fulfillmentSource==='warehouse'?' <span class="badge" style="font-size:10px;background:#e0f2fe;color:#0369a1">🏭 Warehouse'+(r.inv.warehousePushedAt?' ✓':'')+'</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${r.inv.paidAmountMismatch?' <span class="badge red" style="font-size:10px" title="Stripe payment amount differs from the invoice total — see invoice notes">⚠ Paid ≠ total</span>':''}${_invEmailBadge(r.inv)}</td>
     <td>${escHtml(r.name)}</td>
     <td style="white-space:nowrap">${fmtD(r.issued)}</td>
     <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>
@@ -16812,12 +16819,14 @@ async function pushToWarehouse(invoiceId, collection) {
     }
   }
   if (!inv) { toast('Invoice not found'); return; }
-  const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name || '';
+  const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name
+    || DB.a('dist_profiles').find(d => d.id === inv.distId)?.name || '';
   let docHtml;
   // _payLink stripped: the warehouse print copy must never carry a Pay button
   // (a stale persisted _payLink on the record would otherwise render one).
   if (collection === 'combined_invoices') docHtml = buildCombinedInvoiceHTML(invoiceId, null, { printButton: false, warehouseCopy: true });
   else if (collection === 'lf_invoices') docHtml = buildLfInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
+  else if (collection === 'dist_invoices') docHtml = buildDistInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
   else docHtml = buildPurplInvoiceEmailHTML({...inv, _payLink: null}, { warehouseCopy: true });
   // Subject mentions a delivery date ONLY when one was actually set on the
   // invoice (combined: check the child invoices) — the partner picks the day
@@ -16830,7 +16839,9 @@ async function pushToWarehouse(invoiceId, collection) {
   }
   const invNum = inv.number || inv.invoiceNumber || invoiceId;
   const isRepush = !!inv.warehousePushedAt;
-  const subject = (isRepush ? 'UPDATED — ' : '') + `PRINT & LEAVE WITH CUSTOMER — ${acName}` +
+  const isDistPush = collection === 'dist_invoices';
+  const subject = (isRepush ? 'UPDATED — ' : '') +
+    (isDistPush ? `DISTRIBUTOR ORDER — PREP FOR PICKUP — ${acName}` : `PRINT & LEAVE WITH CUSTOMER — ${acName}`) +
     (delivDate ? ` — deliver ${fmtD(delivDate)}` : '') + ` — ${invNum}`;
   // Attach the invoice as a PDF: the sendEmail function renders the exact doc
   // HTML to PDF server-side (headless Chromium), so the printed page matches
@@ -16839,7 +16850,9 @@ async function pushToWarehouse(invoiceId, collection) {
   const bodyHtml = `<div style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
     (isRepush ? `<b>UPDATED COPY</b> — this replaces the earlier version of this invoice; discard any previous printout. ` : '') +
     `<b>To print:</b> open the attached PDF <b>${escHtml(fileName)}</b> and print it. ` +
-    `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>` + docHtml;
+    (isDistPush
+      ? `This is a <b>distributor order</b> — prep it for pickup and include the printed copy with the shipment. The order is also shown below for reference.</div>`
+      : `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>`) + docHtml;
   toast('Sending to warehouse… (PDF render takes a few seconds)');
   try {
     await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, bodyHtml,
