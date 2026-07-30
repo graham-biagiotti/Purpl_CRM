@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v181';
+const APP_VERSION = 'v182';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -4981,6 +4981,19 @@ function renderEmailsTabHistory(accounts) {
       allEntries.push({...c, accountName: a.name, accountId: a.id});
     });
   });
+  // One send = one row: combined sends used to be logged BOTH server-side and
+  // client-side with the same Resend message id. Collapse duplicates,
+  // preferring the entry that knows who sent it.
+  const _byMsg = new Map();
+  const dedupedEntries = [];
+  allEntries.forEach(e => {
+    const k = e.sentMessageId;
+    if (!k) { dedupedEntries.push(e); return; }
+    const prev = _byMsg.get(k);
+    if (!prev) { _byMsg.set(k, e); dedupedEntries.push(e); }
+    else if (!prev.sentBy && e.sentBy) { dedupedEntries[dedupedEntries.indexOf(prev)] = e; _byMsg.set(k, e); }
+  });
+  allEntries.length = 0; allEntries.push(...dedupedEntries);
   allEntries.sort((a,b) => (b.sentAt||'') > (a.sentAt||'') ? 1 : -1);
 
   const engagement = e => e.clicked

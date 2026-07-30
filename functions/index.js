@@ -158,14 +158,9 @@ exports.sendCombinedInvoice = onCall(
       });
       const messageId = result.data?.id || result.id;
 
-      if (data.accountId && messageId) {
-        await _logCadenceEntry(data.accountId, {
-          stage: 'invoice_sent',
-          sentMessageId: messageId,
-          subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
-          invoiceNumber: data.invoiceNumber || null,
-        });
-      }
+      // No server-side cadence log here: the CRM client logs this send itself
+      // (with sentBy/method/invoiceRef). Logging in both places produced two
+      // "Invoice Sent" history rows for every combined send.
 
       return {success: true, id: messageId};
     } catch (err) {
