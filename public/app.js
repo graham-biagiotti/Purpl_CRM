@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v182';
+const APP_VERSION = 'v183';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -14080,7 +14080,15 @@ async function openCombinedInvoicePreview(combinedId) {
     if (trackEntry.clicked) statusHtml += ` <span class="badge blue" style="margin-left:4px;font-size:10px" title="Clicked ${fmtD(trackEntry.clickedAt)}">🔗 Clicked</span>`;
     if (!trackEntry.opened && !trackEntry.clicked && rec.status === 'sent') statusHtml += ` <span style="margin-left:6px;font-size:11px;color:var(--muted)">Not yet opened</span>`;
   }
-  qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') + statusHtml;
+  // Show child numbers: a combined invoice claims THREE numbers from the one
+  // shared sequence (purpl child, LF child, parent) — without this the two
+  // hidden child numbers read as gaps in the invoice list.
+  const _pcNum = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId)?.number;
+  const _lcNum = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId)?.number;
+  const childNums = (_pcNum || _lcNum)
+    ? `<span style="margin-left:8px;font-size:11px;color:var(--muted);font-weight:400">(${[_pcNum ? 'purpl ' + _pcNum : '', _lcNum ? 'LF ' + _lcNum : ''].filter(Boolean).join(' · ')})</span>`
+    : '';
+  qs('#civ-invoice-nums').innerHTML = (rec.number || rec.invoiceNumber || '') + childNums + statusHtml;
   qs('#civ-purpl-sub').textContent    = '$' + (rec.purplSubtotal||0).toFixed(2);
   qs('#civ-lf-sub').textContent       = '$' + (rec.lfSubtotal||0).toFixed(2);
   qs('#civ-grand-total').textContent  = '$' + (rec.grandTotal||0).toFixed(2);
