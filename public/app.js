@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v183';
+const APP_VERSION = 'v184';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -78,6 +78,13 @@ function findInvoice(id) {
     if (found) return found;
   }
   return null;
+}
+
+// Invoice email recipient: the billing email the customer typed on the portal
+// order wins over the account's stored email (it's stored on the invoice at
+// confirm). Combined parents check their children too.
+function _invRecipient(inv, account) {
+  return (inv?.billingEmail || '').trim() || account?.email || '';
 }
 
 function _invoiceCol(id) {
@@ -2682,7 +2689,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
         const html    = buildPurplInvoiceEmailHTML(sendInv);
         const subject = `Invoice ${rec.number||''} from Pumpkin Blossom Farm — ${ac.name||rec.accountName||''}`;
         ivSendBtn.textContent = 'Sending…';
-        const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
+        const result = await callSendEmail(_invRecipient(rec, ac), 'lavender@pbfwholesale.com', subject, html);
         // Sending flips Draft → Sent (and deducts inventory once)
         if ((rec.status || 'draft') === 'draft') markInvoiceSent(rec.id);
         const entry = {
@@ -12348,7 +12355,7 @@ function openLfInvoiceModal(id) {
         const html    = buildLfInvoiceEmailHTML(sendInv);
         const subject = `Invoice ${inv.number||''} from Lavender Fields at Pumpkin Blossom Farm — ${ac.name||inv.accountName||''}`;
         lfiSendBtn.textContent = 'Sending…';
-        const result = await callSendEmail(ac.email, 'lavender@pbfwholesale.com', subject, html);
+        const result = await callSendEmail(_invRecipient(inv, ac), 'lavender@pbfwholesale.com', subject, html);
         // Sending flips Draft → Sent automatically
         if ((inv.status || 'draft') === 'draft') {
           DB.update('lf_invoices', inv.id, x => ({ ...x, status: 'sent', sentAt: today() }));
@@ -13968,7 +13975,7 @@ async function openInvoicePreview(type, id) {
   if (sendBtn) {
     sendBtn.disabled = false; sendBtn.textContent = 'Send Invoice to Customer';
     sendBtn.onclick = async () => {
-      const to = account.email || '';
+      const to = _invRecipient(rec, account);
       if (!to) { toast('No email address on file for this account'); return; }
       sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
       try {
@@ -14233,7 +14240,9 @@ async function openCombinedInvoicePreview(combinedId) {
     _gmailBtn.disabled = true; _gmailBtn.textContent = 'Sending…';
     try {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
-    const to = account.email || '';
+    const _pcInv = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
+    const _lcInv = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId);
+    const to = (rec.billingEmail||'').trim() || (_pcInv?.billingEmail||'').trim() || (_lcInv?.billingEmail||'').trim() || account.email || '';
     if (!to) { toast('No email address on file for this account'); return; }
     if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
       await pushInvoiceToShipStation(combinedId, 'combined_invoices');
@@ -16412,6 +16421,7 @@ async function confirmPortalOrder() {
           date: todayStr, dueDate: dueDateStr, deliveryMethod, fulfillmentSource,
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
+          billingEmail: d.billingEmail || acct.email || '',
           notes: 'Auto-drafted from portal order.', source: 'portal',
           portalOrderId: _portalOrderId,
         }];
