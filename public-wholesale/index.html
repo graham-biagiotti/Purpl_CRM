@@ -296,6 +296,16 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-farm-text .ws-eyebrow{color:#9dc4a8}
 .ws-farm-text p{color:rgba(255,255,255,0.7);font-size:16px;line-height:1.75;font-family:Inter,sans-serif;font-weight:300}
 @media(max-width:768px){.ws-farm-band-inner{grid-template-columns:1fr;gap:32px}}
+/* ── HOW IT WORKS + TERMS (merged) ─────── */
+.ws-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:48px}
+.ws-step{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:12px;padding:26px 22px;text-align:center}
+.ws-step-num{width:34px;height:34px;border-radius:50%;background:#9B73C4;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:15px;line-height:34px;margin:0 auto 14px}
+.ws-step h4{font-family:'Playfair Display',serif;font-size:18px;color:#fff;margin-bottom:8px}
+.ws-step p{font-family:Inter,sans-serif;font-size:13.5px;color:rgba(255,255,255,0.78);line-height:1.7;margin:0}
+.ws-terms2{display:grid;grid-template-columns:1fr 1fr;gap:10px 28px;max-width:760px;margin:0 auto}
+.ws-terms2 .ws-term-item{display:flex;gap:10px;font-family:Inter,sans-serif;font-size:13.5px;color:rgba(255,255,255,0.82);line-height:1.65}
+.ws-terms2 .ws-term-dot{color:#c4b5fd;font-weight:700}
+@media(max-width:760px){.ws-steps{grid-template-columns:1fr}.ws-terms2{grid-template-columns:1fr}}
 </style>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon-180.png">
@@ -516,34 +526,40 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 </div>
 
 <div class="section" id="how-it-works-section" style="background:var(--purpl-dark);padding:80px 24px">
-  <div class="container ws-section-inner" style="max-width:680px;text-align:center">
-    <h3 style="font-family:'Playfair Display',serif;font-size:clamp(24px,4vw,36px);color:#fff;margin-bottom:20px">How It Works</h3>
-    <p style="font-size:16px;color:rgba(255,255,255,0.85);line-height:1.75;margin-bottom:16px">We work directly with retailers — no brokers, no middlemen. Submit an application below and we will follow up within one business day. Approved accounts receive a personalized ordering portal, Net 30 payment terms, and direct access to our team.</p>
-    <p style="font-size:16px;color:rgba(255,255,255,0.85);line-height:1.75">We deliver across New Hampshire and New England and work with regional distributors for broader coverage. Minimum order quantities are kept reasonable — we would rather build a real relationship than push volume you cannot move.</p>
-  </div>
-</div>
+  <div class="container ws-section-inner" style="max-width:900px">
+    <h3 style="font-family:'Playfair Display',serif;font-size:clamp(24px,4vw,36px);color:#fff;margin-bottom:14px;text-align:center">How It Works</h3>
+    <p style="font-family:Inter,sans-serif;font-size:15px;color:rgba(255,255,255,0.8);text-align:center;max-width:620px;margin:0 auto 40px;line-height:1.7">We work directly with retailers — no brokers, no middlemen. Minimums are kept reasonable; we'd rather build a real relationship than push volume you can't move.</p>
 
-<!-- SECTION 4 — TERMS -->
-<div class="section ws-section" id="terms-section" style="background:var(--white)">
-  <div class="container ws-section-inner">
-    <div class="terms-grid ws-terms-grid" style="grid-template-columns:1fr;max-width:640px;margin:0 auto">
-      <div>
-        <h3 class="terms-h3">Wholesale Terms</h3>
-        <ul class="terms-list">
-          <li class="ws-term-item"><span class="ws-term-dot">·</span><span class="ws-term-text">Free delivery in NH, MA, Southern ME &amp; Southern VT — on 8+ cases of purpl, or $250+ of Lavender Fields (cases and totals combine on mixed orders)</span></li>
-          <li class="ws-term-item"><span class="ws-term-dot">·</span><span class="ws-term-text">Net-30 payment terms</span></li>
-          <li class="ws-term-item"><span class="ws-term-dot">·</span><span class="ws-term-text">Smaller orders: warehouse pickup or parcel shipping, billed at cost</span></li>
-          <li class="ws-term-item"><span class="ws-term-dot">·</span><span class="ws-term-text">Nationwide shipping available</span></li>
-          <li class="ws-term-item"><span class="ws-term-dot">·</span><span class="ws-term-text">Turnaround time: 1 day to 6 weeks depending on order size and product availability</span></li>
-        </ul>
+    <div class="ws-steps">
+      <div class="ws-step">
+        <div class="ws-step-num">1</div>
+        <h4>Apply</h4>
+        <p>Submit the application below. We review every one personally and follow up within one business day.</p>
+      </div>
+      <div class="ws-step">
+        <div class="ws-step-num">2</div>
+        <h4>Get your portal</h4>
+        <p>Approved accounts receive a personalized ordering portal, Net 30 payment terms, and direct access to our team.</p>
+      </div>
+      <div class="ws-step">
+        <div class="ws-step-num">3</div>
+        <h4>We deliver</h4>
+        <p>Free delivery across NH, MA, southern ME &amp; VT on qualifying orders — and we work with regional distributors for broader coverage.</p>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- CATALOG STRIP -->
-<div style="background:var(--purpl-dark);padding:28px 24px;text-align:center">
-  <p style="color:rgba(255,255,255,0.75);font-size:15px;margin:0">Our full product catalog with pricing is shared with approved retail partners. <a href="#apply-section" style="color:#c4b5fd;text-decoration:none;font-weight:600">Apply below &rarr;</a></p>
+    <h3 id="terms-section" style="font-family:'Playfair Display',serif;font-size:22px;color:#fff;margin-bottom:20px;text-align:center">Wholesale Terms</h3>
+    <div class="ws-terms2">
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>Free delivery in NH, MA, Southern ME &amp; VT — on 8+ cases of purpl, or $250+ of Lavender Fields (cases and totals combine on mixed orders)</span></div>
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>Net-30 payment terms</span></div>
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>Smaller orders: warehouse pickup or parcel shipping, billed at cost</span></div>
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>Nationwide shipping available</span></div>
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>Turnaround: 1 day to 6 weeks depending on order size and availability</span></div>
+      <div class="ws-term-item"><span class="ws-term-dot">·</span><span>18-month shelf life on purpl — shelf stable, no refrigeration</span></div>
+    </div>
+
+    <p style="font-family:Inter,sans-serif;color:rgba(255,255,255,0.75);font-size:14px;margin:40px 0 0;text-align:center">Our full product catalog with pricing is shared with approved retail partners. <a href="#apply-section" style="color:#c4b5fd;text-decoration:none;font-weight:600">Apply below &rarr;</a></p>
+  </div>
 </div>
 
 <!-- SECTION 5 — APPLICATION FORM -->
