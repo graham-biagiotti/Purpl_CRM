@@ -129,3 +129,28 @@ saved but never sent (dead field).
 against a test invoice · one test label on a $0 test order · one click on a test email.
 Each proves an inbound lane end-to-end. Then — and only then — the ledger above turns
 fully green and "it's verified" means verified.
+
+---
+
+## Rot-class review — 8/3 (time-bombs & external dependencies in customer-facing material)
+
+Trigger: pay links died at 24h (Stripe session limit) after passing every
+point-in-time review; invoice logo broke via Wix CDN hotlink. Both fixed
+(evergreen /pay endpoint; all assets self-hosted — zero external-host images
+remain anywhere customer-facing, portal included).
+
+**Standing doctrine (owner-acknowledged, no action):**
+- Portal password is permanent by decision ('purpleherb', printed in ~80 sent
+  emails). Owner matches all orders manually and accepts the exposure. If it
+  ever MUST rotate: build dual-accept window first.
+- `purpl-crm.web.app` + `pbfwholesale.com`, and the `/pay` + `/unsubscribe`
+  routes, are forever — renaming/moving any of them breaks every sent email.
+  Same class as never-rotate-tokens.
+- Password fetch-failure fallback prints the hardcoded password (correct
+  while the password never changes — revisit only if that decision changes).
+- Launch/pre-order templates carry launch-window copy; retire the pre-order
+  card eventually.
+
+**Owner dashboard tasks (open):** domain auto-renew + DNS record care for
+both domains (deepest silent single point of failure) · restrict the Google
+Maps key to purpl-crm.web.app + pbfwholesale.com (prereq for the public map).
