@@ -518,6 +518,43 @@ exports.getLfCatalog = onCall(async () => {
   return { skus: skus.filter(s => !s.archived) };
 });
 
+// ── Public stockist list for the Where to Find Us page ────
+// Whitelist by construction: entries are built field-by-field — name,
+// address, lat, lng, brands. Nothing else on an account (emails, tokens,
+// pricing) can ever reach the response.
+exports.getStockists = onCall(async () => {
+  const db = admin.firestore();
+  const out = [];
+  let skipped = 0;
+  const push = (name, address, lat, lng, brands) => {
+    if (!name) return;
+    const la = parseFloat(lat), ln = parseFloat(lng);
+    if (!la || !ln) { skipped++; return; }
+    out.push({
+      name: String(name),
+      address: String(address || ''),
+      lat: la, lng: ln,
+      brands: Array.isArray(brands) ? brands.filter(b => b === 'purpl' || b === 'lf') : [],
+    });
+  };
+  const acSnap = await db.collection('workspace/main/ac').get();
+  acSnap.forEach(d => {
+    const a = d.data();
+    if (!a.stockistListed || a.status === 'inactive') return;
+    const locs = (Array.isArray(a.locs) && a.locs.length)
+      ? a.locs
+      : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    locs.forEach(l => push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands));
+  });
+  const stSnap = await db.collection('workspace/main/stockist_locations').get();
+  stSnap.forEach(d => {
+    const s = d.data();
+    if (s.active === false) return;
+    push(s.name, s.address, s.lat, s.lng, s.brands);
+  });
+  return { stockists: out, skipped };
+});
+
 // Returns only public-safe fields from portal_settings.
 exports.getPortalConfig = onCall(async (request) => {
   const db = admin.firestore();
