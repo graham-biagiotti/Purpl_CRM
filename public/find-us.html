@@ -80,6 +80,7 @@ if (new URLSearchParams(location.search).get('embed')) {
 }
 firebase.initializeApp(window.FIREBASE_CONFIG);
 var ALL = [];            // full stockist list from the server
+var SKIPPED = 0;         // entries held back server-side (no coordinates yet)
 var BRAND = 'all';       // current filter
 var MAP = null, MARKERS = [], INFO = null;
 
@@ -110,9 +111,10 @@ function render() {
     BRAND === 'purpl' ? 'Where to Find purpl' : BRAND === 'lf' ? 'Where to Find Lavender Fields' : 'Where to Find Us';
 
   var list = visible();
-  document.getElementById('count').textContent = list.length
+  document.getElementById('count').textContent = (list.length
     ? 'Available at ' + list.length + ' location' + (list.length === 1 ? '' : 's') + ' across New England'
-    : 'Store list coming soon — check back shortly!';
+    : 'Store list coming soon — check back shortly!')
+    + (SKIPPED > 0 ? ' (+' + SKIPPED + ' more being located)' : '');
 
   // grouped cards
   var groups = {};
@@ -209,6 +211,7 @@ window.__findUsMapReady = function () {
 firebase.functions().httpsCallable('getStockists')({})
   .then(function (r) {
     ALL = (r.data && r.data.stockists) || [];
+    SKIPPED = (r.data && r.data.skipped) || 0;
     render();
   })
   .catch(function (e) {

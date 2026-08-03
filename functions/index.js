@@ -544,7 +544,15 @@ exports.getStockists = onCall(async () => {
     const locs = (Array.isArray(a.locs) && a.locs.length)
       ? a.locs
       : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    const before = out.length;
     locs.forEach(l => push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands));
+    // The Territory Map batch geocoder writes coordinates at the TOP LEVEL of
+    // the account; a locs[] entry without its own coords must not hide the
+    // store. If no location produced a pin, fall back to the account pin.
+    if (out.length === before && a.lat && a.lng) {
+      skipped = Math.max(0, skipped - locs.length);
+      push(a.name, a.address || (locs[0] && locs[0].address) || '', a.lat, a.lng, a.stockistBrands);
+    }
   });
   const stSnap = await db.collection('workspace/main/stockist_locations').get();
   stSnap.forEach(d => {
