@@ -67,7 +67,7 @@
 <div class="wrap">
   <div class="chips">
     <button class="chip" data-brand="all" onclick="setBrand('all')">All products</button>
-    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" style="height:34px"></button>
+    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="" style="height:28px"> <span style="color:#4B2082">purpl</span></button>
     <button class="chip" data-brand="lf" onclick="setBrand('lf')"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="border-radius:50%;height:26px"> Lavender Fields</button>
   </div>
   <div class="count" id="count">Loading stores…</div>
@@ -218,9 +218,19 @@ function rowHtml(s, dist) {
     '</div>';
 }
 
+function _scrollToResults() {
+  var el = document.getElementById('list');
+  if (el) setTimeout(function () { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+}
+
 function searchLocation() {
   var q = (document.getElementById('loc-input').value || '').trim();
   if (!q) return;
+  // If the Places suggestion dropdown is open, Enter belongs to it — the
+  // place_changed handler will run the search with exact coordinates.
+  var pac = document.querySelector('.pac-container');
+  if (pac && pac.offsetParent !== null && pac.querySelector('.pac-item')) return;
+  if (SEARCH && SEARCH.label === q) { _scrollToResults(); return; } // already applied via suggestion
   if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
     BROWSE = true; render();
     document.getElementById('count').textContent = 'Search is unavailable right now — browse the full list below.';
@@ -236,7 +246,10 @@ function searchLocation() {
   var lastStatus = '';
   var tryNext = function (i) {
     if (i >= attempts.length) {
-      document.getElementById('count').textContent = 'Couldn\'t find "' + q + '" — try picking a suggestion from the dropdown as you type. (' + lastStatus + ')';
+      // A suggestion-driven search may have landed while we were failing —
+      // never stamp an error over a working result.
+      if (SEARCH && SEARCH.label === q) return;
+      document.getElementById('count').textContent = 'Couldn\'t find "' + q + '" — pick a suggestion from the dropdown as you type. (' + lastStatus + ')';
       return;
     }
     geocoder.geocode(attempts[i], function (res, status) {
@@ -247,6 +260,7 @@ function searchLocation() {
         SEARCH = { lat: loc.lat(), lng: loc.lng(), label: q };
         SHOWN = 10;
         render();
+        _scrollToResults();
       } else tryNext(i + 1);
     });
   };
@@ -259,6 +273,7 @@ function useMyLocation() {
     SEARCH = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'your location' };
     SHOWN = 10;
     render();
+    _scrollToResults();
   }, function () {
     document.getElementById('count').textContent = 'Location unavailable — type your town or ZIP instead.';
   });
@@ -369,6 +384,7 @@ window.__findUsMapReady = function () {
           SEARCH = { lat: p.geometry.location.lat(), lng: p.geometry.location.lng(), label: acInput.value };
           SHOWN = 10;
           render();
+          _scrollToResults();
         }
       });
     }
