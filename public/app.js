@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v187';
+const APP_VERSION = 'v188';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -11460,6 +11460,30 @@ function deleteStockistLocation(id) {
   if (!confirm2('Delete this location from Where to Find Us?')) return;
   DB.atomicUpdate(c => { c.stockist_locations = (c.stockist_locations || []).filter(x => x.id !== id); });
   renderStockistLocations();
+}
+
+// One-click unpark: a failed geocode parks the record permanently (one
+// attempt per address, so bad addresses can't burn quota forever). After
+// fixing addresses — or when a batch failed for transient reasons — this
+// clears every parked flag and jumps to the Territory Map, whose batch
+// geocoder immediately re-attempts them all.
+function retryMissingPins() {
+  let cleared = 0;
+  DB.atomicUpdate(c => {
+    ['ac', 'pr', 'stockist_locations'].forEach(k => {
+      c[k] = (c[k] || []).map(r => {
+        if (!r.geocodeFailed) return r;
+        cleared++;
+        const copy = { ...r };
+        delete copy.geocodeFailed;
+        return copy;
+      });
+    });
+  });
+  toast(cleared
+    ? `Unparked ${cleared} address${cleared === 1 ? '' : 'es'} — the map will retry them now`
+    : 'No parked addresses found — the map will locate anything missing');
+  nav('map');
 }
 
 // One-click seed: every ACTIVE/PENDING account gets listed with evidence-based

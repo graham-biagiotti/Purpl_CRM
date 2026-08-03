@@ -1423,7 +1423,10 @@
         <div class="card" style="margin-bottom:16px">
           <div class="section-hdr">
             <h2>📍 Where to Find Us — extra locations</h2>
-            <button class="btn sm" onclick="seedStockistsFromAccounts()">Seed from active accounts</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn sm" onclick="retryMissingPins()">🔄 Retry missing pins</button>
+              <button class="btn sm" onclick="seedStockistsFromAccounts()">Seed from active accounts</button>
+            </div>
           </div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
             Chain doors and other spots without their own account (e.g. "Price Chopper — Concord").
