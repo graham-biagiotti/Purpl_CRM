@@ -46,6 +46,7 @@
       "rewrites": [
         { "source": "/order", "destination": "/order.html" },
         { "source": "/order.html", "destination": "/order.html" },
+        { "source": "/find-us", "destination": "/find-us.html" },
         { "source": "/privacy.html", "destination": "/privacy.html" },
         { "source": "/terms.html", "destination": "/terms.html" },
         { "source": "/404.html", "destination": "/404.html" }

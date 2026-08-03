@@ -176,7 +176,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 <!-- Header -->
 <div class="op-header">
   <div class="op-header-logos">
-    <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+    <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png"
       alt="purpl" style="max-width:120px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
     <div class="op-header-divider"></div>
     <img src="/images/lf-logo-circle-transparent.png"
@@ -219,7 +219,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="brand-card sel-purpl" id="brand-card-purpl" onclick="toggleBrand('purpl')">
           <div class="brand-checkmark bck-purpl">✓</div>
-          <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+          <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png"
             alt="purpl" style="max-width:110px;height:auto;margin:0 auto 10px;display:block" onerror="this.style.display='none'">
           <div style="font-family:'Playfair Display',Georgia,serif;font-size:15px;font-weight:500;color:var(--text)">purpl lemonade</div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px;font-family:Inter,sans-serif">Lavender-infused lemonade · 12-pack cases</div>
@@ -302,7 +302,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <!-- Classic — active -->
       <div class="product-card active">
         <div class="product-name">Classic Lavender Lemonade</div>
-        <div class="product-desc">12 fl oz · 12 cans per case</div>
+        <div class="product-desc">12 fl oz · 12 cans per case · shelf stable, 18-month shelf life</div>
         <div class="price-display" id="price-display"></div>
         <div class="form-group" style="margin-bottom:4px">
           <label>Cases (12 cans per case)</label>
@@ -470,7 +470,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   <!-- Thank You state -->
   <div class="thankyou" id="thankyou">
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px">
-      <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
+      <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png"
         alt="purpl" style="height:40px">
       <div style="width:1px;height:36px;background:#e5e7eb"></div>
       <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
@@ -816,19 +816,30 @@ function getLfTotal() {
   },0);
 }
 
+var _lfSkusLoadInFlight = false;
 function loadLfSkus(prevOrder) {
-  db.collection('workspace').doc('main').collection('config').doc('main').get()
-    .then(function(doc) {
-      var skus = (doc.exists ? (doc.data().lf_skus||[]) : []).filter(function(s){return !s.archived;});
+  // Concurrent-call guard: the token path fired this twice at init, and the
+  // second response re-rendered the section and silently wiped any LF
+  // quantities the customer had already typed.
+  if (_lfSkusLoadInFlight) return;
+  _lfSkusLoadInFlight = true;
+  // Via Cloud Function — direct workspace reads are denied by rules for
+  // customers, so this ALWAYS fell back to the stale hardcoded catalog and
+  // staff price/product edits never reached the order form.
+  firebase.functions().httpsCallable('getLfCatalog')({})
+    .then(function(result) {
+      _lfSkusLoadInFlight = false;
+      var skus = ((result.data && result.data.skus) || []).filter(function(s){return !s.archived;});
       if (skus.length) {
-        console.log('LF SKUs loaded from Firestore: ' + skus.length + ' skus');
+        console.log('LF SKUs loaded via getLfCatalog: ' + skus.length + ' skus');
         renderLfSkus(skus, prevOrder);
       } else {
-        console.log('LF SKUs: Firestore returned 0 skus (doc.exists=' + doc.exists + ') — using fallback');
+        console.log('LF SKUs: catalog returned 0 skus — using fallback');
         renderLfSkus(LF_SKU_FALLBACK, prevOrder);
       }
     })
     .catch(function(err) {
+      _lfSkusLoadInFlight = false;
       console.error('LF SKU load error — using fallback:', err);
       renderLfSkus(LF_SKU_FALLBACK, prevOrder);
     });
@@ -866,10 +877,11 @@ function init() {
       document.getElementById('submit-btn').textContent = 'Submit Pre-Order';
     } else {
       document.getElementById('submit-btn').textContent = 'Place Order';
-      if (pricePerCase) {
-        document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
-        document.getElementById('price-display').style.display = 'block';
-      }
+    }
+    // Show the per-case price in BOTH pre-order and regular mode when one is set.
+    if (pricePerCase) {
+      document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
+      document.getElementById('price-display').style.display = 'block';
     }
   }).catch(function() {});
 
@@ -992,7 +1004,9 @@ function init() {
     firebase.functions().httpsCallable('getPortalOrderHistory')({ accountId: accountId, token: token })
       .then(function(result) {
         var orders = (result.data?.orders || []).map(function(o) {
-          if (o.submittedAt && typeof o.submittedAt === 'string') o.submittedAt = { toDate: function() { return new Date(o.submittedAt); } };
+          // capture the string BEFORE overwriting: the old wrapper read o.submittedAt
+          // after reassignment (i.e. itself) -> new Date(object) = 'Invalid Date' on every history row
+          if (o.submittedAt && typeof o.submittedAt === 'string') { var _sa = o.submittedAt; o.submittedAt = { toDate: function() { return new Date(_sa); } }; }
           return o;
         });
         renderPastOrders(orders);
@@ -1057,6 +1071,10 @@ function toggleDistributorOther() {}
 function getDistributors() { return []; }
 
 function showError(msg) {
+  // Cancel the offline watchdog — it was armed before validation, so 15s
+  // after any validation error it REPLACED the real message with the scary
+  // offline warning and a stuck 'Waiting for connection' button.
+  if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
   const el = document.getElementById('error-msg');
   el.textContent = msg;
   el.style.display = 'block';
@@ -1137,6 +1155,19 @@ function submitOrder() {
   btn.disabled = true;
   btn.textContent = 'Submitting...';
   errEl.style.display = 'none';
+
+  // Offline watchdog: batch.commit() never rejects while offline, so on flaky
+  // wifi the customer sat on "Submitting..." forever with no explanation (and
+  // a refresh silently lost the order). After 15s, tell them what's happening.
+  // The commit is queued by the SDK and completes automatically when the
+  // connection returns, so we keep the button disabled (a retry would create
+  // duplicate order docs) and the success screen still fires on completion.
+  if (window._submitWatchdog) clearTimeout(window._submitWatchdog);
+  window._submitWatchdog = setTimeout(function() {
+    errEl.textContent = 'Still submitting — your internet connection looks offline. Please KEEP THIS PAGE OPEN: your order will send automatically as soon as the connection returns. (Closing or refreshing will lose it.)';
+    errEl.style.display = 'block';
+    btn.textContent = 'Waiting for connection…';
+  }, 15000);
 
   const cases = parseInt(document.getElementById('classic-cases').value) || 0;
 
@@ -1249,15 +1280,20 @@ function submitOrder() {
   if (!wantPurplDoc && !wantLfDoc && (requestSample || orderData.notifyMe.length > 0)) wantPurplDoc = true;
 
   var _batch = db.batch();
+  // One shared id per checkout so the purpl + LF halves of a single submission
+  // pair by strict identity — not a fuzzy account+time guess, which merged
+  // separate orders placed by the same account.
+  var _submissionId = db.collection('portal_orders').doc().id;
   var purplRef = wantPurplDoc ? db.collection('portal_orders').doc() : null;
   var lfRef    = wantLfDoc    ? db.collection('portal_orders').doc() : null;
-  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl' }));
+  if (purplRef) _batch.set(purplRef, Object.assign({}, orderData, { brand: 'purpl', submissionId: _submissionId }));
   if (lfRef) _batch.set(lfRef, {
     accountId: accountId || null,
     accountName: finalAccountName,
     submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
     mode: portalMode,
     brand: 'lf',
+    submissionId: _submissionId,
     lineItems: lfItems,
     total: lfTotal,
     contactName: contactName || null,
@@ -1278,6 +1314,7 @@ function submitOrder() {
 
   _batch.commit()
     .then(function() {
+      if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
 
       if (isMatched && accountId) {
         // Build lfLastOrder map {skuId: cases, 'variants_skuId': {variantId: cases}}
@@ -1361,6 +1398,7 @@ function submitOrder() {
       });
     })
     .catch(function(e) {
+      if (window._submitWatchdog) { clearTimeout(window._submitWatchdog); window._submitWatchdog = null; }
       console.error('SUBMIT ERROR:', e.code, e.message, e);
       var errEl = document.getElementById('error-msg');
       if (errEl) {
@@ -1536,7 +1574,7 @@ function _printPortalOrderDoc(o) {
         '@media print{button{display:none!important}}' +
         '</style></head><body>' +
         '<div class="hdr">' +
-        '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png">' +
+        '<img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png">' +
         '<h1>Order Confirmation</h1>' +
         '<div class="sub">' + _e(dt) + '</div>' +
         '</div>' +
@@ -1637,7 +1675,7 @@ function printCurrentOrder() {
     '</style></head><body>' +
     '<div class="hdr">' +
     '<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px">' +
-    '<img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png" style="height:40px">' +
+    '<img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" style="height:40px">' +
     '<div style="width:1px;height:36px;background:#e5e7eb"></div>' +
     '<img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" style="height:36px">' +
     '</div>' +
@@ -1699,7 +1737,7 @@ function loadOutstandingInvoices(acId) {
       .then(function(snap) {
         snap.docs.forEach(function(d) {
           var inv = d.data();
-          if (inv.status !== 'paid') invoices.push(inv);
+          if (inv.status !== "paid" && !inv.combinedInvoiceId) invoices.push(inv); // children would double-list the combined charge
         });
       })
       .catch(function() {})
@@ -1719,7 +1757,7 @@ function renderOutstandingInvoices(invoices, settings) {
   var rows = invoices.map(function(inv) {
     var num    = inv.number || inv.invoiceNumber || '—';
     var due    = inv.due || inv.dueDate || '';
-    var amt    = parseFloat(inv.amount || 0);
+    var amt    = parseFloat(inv.amount || inv.total || inv.grandTotal || 0); // LF stores total, combined stores grandTotal — amount-only rendered $0.00 rows
     var status = inv.status || 'unpaid';
     var isOver = due && due < today;
     var color  = isOver ? '#dc2626' : '#d97706';
@@ -1737,7 +1775,7 @@ function renderOutstandingInvoices(invoices, settings) {
       '</div></div>';
   }).join('');
 
-  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || 0); }, 0);
+  var total = invoices.reduce(function(s, i) { return s + parseFloat(i.amount || i.total || i.grandTotal || 0); }, 0);
   el.innerHTML = '<div class="card" style="border-left:3px solid #7B4FA0;padding:16px 20px;margin-bottom:16px">' +
     '<div style="font-size:14px;font-weight:600;color:#4B2082;margin-bottom:12px">' +
     '💜 Outstanding Invoices' +

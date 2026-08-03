@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where to Find Us — purpl &amp; Lavender Fields</title>
+<meta name="description" content="Stores across New England carrying purpl lavender lemonade and Lavender Fields farm products from Pumpkin Blossom Farm.">
+<link rel="icon" href="images/favicon-32.png">
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  :root { --purpl:#8B5FBF; --purpl-dark:#4B2082; --lf:#4a7c59; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:Georgia,'Times New Roman',serif; background:#faf9f7; color:var(--text); }
+  .hdr { background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%); padding:36px 20px 30px; text-align:center; color:#fff; }
+  .hdr .logos { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:14px; }
+  .hdr .logos .divider { width:1px; height:44px; background:rgba(255,255,255,.5); }
+  .hdr h1 { font-size:30px; font-weight:600; letter-spacing:.5px; }
+  .hdr .sub { font-family:Inter,Arial,sans-serif; font-size:14px; opacity:.92; margin-top:8px; }
+  .wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
+  .chips { display:flex; justify-content:center; gap:10px; margin:22px 0 6px; font-family:Inter,Arial,sans-serif; }
+  .chip { border:1.5px solid var(--border); background:#fff; border-radius:20px; padding:8px 20px; font-size:14px; cursor:pointer; color:var(--muted); }
+  .chip.on { border-color:var(--purpl); background:var(--purpl); color:#fff; }
+  .chip.on.lf { border-color:var(--lf); background:var(--lf); }
+  .count { text-align:center; font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--muted); margin:10px 0 18px; }
+  #map { width:100%; height:420px; border-radius:12px; border:1px solid var(--border); background:#eef; display:none; }
+  .state-hdr { font-family:Inter,Arial,sans-serif; font-size:13px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--purpl-dark); margin:30px 0 12px; border-bottom:2px solid var(--purpl); padding-bottom:6px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; font-family:Inter,Arial,sans-serif; }
+  .card.hl { border-color:var(--purpl); box-shadow:0 0 0 2px rgba(139,95,191,.25); }
+  .card .nm { font-weight:600; font-size:15px; margin-bottom:4px; }
+  .card .ad { font-size:13px; color:var(--muted); line-height:1.5; }
+  .card .tags { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; }
+  .tag { font-size:11px; font-weight:600; border-radius:12px; padding:3px 10px; }
+  .tag.p { background:#f3e8ff; color:var(--purpl-dark); }
+  .tag.l { background:#dcfce7; color:#166534; }
+  .card .dir { display:inline-block; margin-top:10px; font-size:13px; color:var(--purpl); text-decoration:none; font-weight:500; }
+  .empty { text-align:center; color:var(--muted); font-family:Inter,Arial,sans-serif; padding:50px 0; }
+  .foot { text-align:center; font-family:Inter,Arial,sans-serif; font-size:12px; color:var(--muted); padding:30px 16px 50px; line-height:1.8; }
+  .foot a { color:var(--purpl); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="logos">
+    <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="150" height="58" style="display:block">
+    <div class="divider"></div>
+    <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="74" height="69" style="display:block">
+  </div>
+  <h1 id="page-title">Where to Find Us</h1>
+  <div class="sub">purpl lavender lemonade &amp; Lavender Fields farm products · Pumpkin Blossom Farm, Warner NH</div>
+</div>
+
+<div class="wrap">
+  <div class="chips">
+    <button class="chip" data-brand="all" onclick="setBrand('all')">All</button>
+    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')">💜 purpl</button>
+    <button class="chip" data-brand="lf" onclick="setBrand('lf')">🪻 Lavender Fields</button>
+  </div>
+  <div class="count" id="count">Loading stores…</div>
+  <div id="map"></div>
+  <div id="list"></div>
+</div>
+
+<div class="foot">
+  Pumpkin Blossom Farm · 393 Pumpkin Hill Rd, Warner, NH 03278<br>
+  Interested in carrying us? <a href="https://pbfwholesale.com">Wholesale info &amp; application →</a>
+</div>
+
+<script>
+firebase.initializeApp(window.FIREBASE_CONFIG);
+var ALL = [];            // full stockist list from the server
+var BRAND = 'all';       // current filter
+var MAP = null, MARKERS = [], INFO = null;
+
+// URL param drives the initial filter (Wix links use ?brand=purpl / ?brand=lf)
+(function () {
+  var b = new URLSearchParams(location.search).get('brand');
+  if (b === 'purpl' || b === 'lf') BRAND = b;
+})();
+
+function visible() {
+  return BRAND === 'all' ? ALL : ALL.filter(function (s) { return (s.brands || []).indexOf(BRAND) >= 0; });
+}
+
+function stateOf(s) {
+  var m = (s.address || '').match(/\b(NH|MA|ME|VT|CT|RI|NY)\b/);
+  return m ? m[1] : 'More';
+}
+var STATE_NAMES = { NH:'New Hampshire', MA:'Massachusetts', ME:'Maine', VT:'Vermont', CT:'Connecticut', RI:'Rhode Island', NY:'New York', More:'More locations' };
+var STATE_ORDER = ['NH','MA','ME','VT','CT','RI','NY','More'];
+
+function render() {
+  // chips
+  document.querySelectorAll('.chip').forEach(function (c) {
+    c.classList.toggle('on', c.dataset.brand === BRAND);
+    c.classList.toggle('lf', c.dataset.brand === 'lf' && BRAND === 'lf');
+  });
+  document.getElementById('page-title').textContent =
+    BRAND === 'purpl' ? 'Where to Find purpl' : BRAND === 'lf' ? 'Where to Find Lavender Fields' : 'Where to Find Us';
+
+  var list = visible();
+  document.getElementById('count').textContent = list.length
+    ? 'Available at ' + list.length + ' location' + (list.length === 1 ? '' : 's') + ' across New England'
+    : 'Store list coming soon — check back shortly!';
+
+  // grouped cards
+  var groups = {};
+  list.forEach(function (s) { var st = stateOf(s); (groups[st] = groups[st] || []).push(s); });
+  var html = '';
+  STATE_ORDER.forEach(function (st) {
+    if (!groups[st]) return;
+    groups[st].sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+    html += '<div class="state-hdr">' + (STATE_NAMES[st] || st) + '</div><div class="cards">';
+    groups[st].forEach(function (s, i) {
+      var tags = (s.brands || []).map(function (b) {
+        return b === 'purpl' ? '<span class="tag p">💜 purpl</span>' : '<span class="tag l">🪻 Lavender Fields</span>';
+      }).join('');
+      html += '<div class="card" id="card-' + esc(s.name) .replace(/[^a-z0-9]/gi, '') + i + '">' +
+        '<div class="nm">' + esc(s.name) + '</div>' +
+        '<div class="ad">' + esc(s.address || '') + '</div>' +
+        '<div class="tags">' + tags + '</div>' +
+        '<a class="dir" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
+          encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a>' +
+        '</div>';
+    });
+    html += '</div>';
+  });
+  document.getElementById('list').innerHTML = html || '<div class="empty">No stores match this filter yet.</div>';
+
+  renderPins(list);
+}
+
+function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function setBrand(b) {
+  BRAND = b;
+  var url = new URL(location.href);
+  if (b === 'all') url.searchParams.delete('brand'); else url.searchParams.set('brand', b);
+  history.replaceState(null, '', url.toString());
+  render();
+}
+
+// ── Map layer (enhancement — the list works without it) ──
+function renderPins(list) {
+  if (!MAP) return;
+  MARKERS.forEach(function (m) { m.setMap(null); });
+  MARKERS = [];
+  if (!list.length) return;
+  var bounds = new google.maps.LatLngBounds();
+  list.forEach(function (s) {
+    var isP = (s.brands || []).indexOf('purpl') >= 0;
+    var isL = (s.brands || []).indexOf('lf') >= 0;
+    var color = isP && isL ? '#6B4F9A' : isL ? '#4a7c59' : '#8B5FBF';
+    var m = new google.maps.Marker({
+      map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 },
+    });
+    m.addListener('click', function () {
+      if (!INFO) INFO = new google.maps.InfoWindow();
+      INFO.setContent('<div style="font-family:Arial,sans-serif;min-width:170px">' +
+        '<div style="font-weight:700;font-size:14px;margin-bottom:3px">' + esc(s.name) + '</div>' +
+        '<div style="font-size:12px;color:#666">' + esc(s.address || '') + '</div>' +
+        '<div style="font-size:11px;margin-top:5px;color:#4B2082">' +
+          (isP ? '💜 purpl ' : '') + (isL ? '🪻 Lavender Fields' : '') + '</div>' +
+        '<a style="font-size:12px;color:#8B5FBF" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
+          encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a></div>');
+      INFO.open(MAP, m);
+    });
+    MARKERS.push(m);
+    bounds.extend(m.getPosition());
+  });
+  MAP.fitBounds(bounds);
+  if (list.length === 1) MAP.setZoom(13);
+}
+
+window.__findUsMapReady = function () {
+  try {
+    document.getElementById('map').style.display = 'block';
+    MAP = new google.maps.Map(document.getElementById('map'), {
+      center: { lat: 43.4, lng: -71.6 }, zoom: 8,
+      mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
+    });
+    renderPins(visible());
+  } catch (e) { /* list remains the product */ }
+};
+
+(function loadMap() {
+  var KEY = window.GOOGLE_PLACES_KEY || '';
+  if (!KEY) return;
+  var s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&callback=__findUsMapReady';
+  s.async = true; s.defer = true;
+  s.onerror = function () { /* map stays hidden; list unaffected */ };
+  document.head.appendChild(s);
+})();
+
+// ── Data ──
+firebase.functions().httpsCallable('getStockists')({})
+  .then(function (r) {
+    ALL = (r.data && r.data.stockists) || [];
+    render();
+  })
+  .catch(function (e) {
+    console.error(e);
+    document.getElementById('count').textContent = 'Store list is taking a moment — please refresh.';
+  });
+</script>
+</body>
+</html>
