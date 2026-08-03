@@ -70,6 +70,14 @@
 </div>
 
 <script>
+// Embed mode (?embed=1): the wholesale homepage inlines this page as its
+// "Where to Find Us" section via iframe — hide the hero header and footer so
+// it reads as part of that page, not a page within a page.
+if (new URLSearchParams(location.search).get('embed')) {
+  document.querySelector('.hdr').style.display = 'none';
+  document.querySelector('.foot').style.display = 'none';
+  document.body.style.background = 'transparent';
+}
 firebase.initializeApp(window.FIREBASE_CONFIG);
 var ALL = [];            // full stockist list from the server
 var BRAND = 'all';       // current filter
