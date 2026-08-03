@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v184';
+const APP_VERSION = 'v185';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -709,46 +709,14 @@ function lfiDeliveryMethodChange() {
 }
 
 async function _getStripePayLink(invoice, type) {
+  // Evergreen pay link: /pay mints a FRESH Stripe Checkout session per click,
+  // server-side, with the amount read from the invoice at click time. The old
+  // approach created the session at SEND time — Stripe sessions expire after
+  // 24 hours, so every Net-30 invoice's Pay button was dead before the
+  // customer clicked it ("my invoice timed out"). This also removes the
+  // send-time race and the pay-button-less failure mode entirely.
   if (!invoice?.id || !parseFloat(invoice.total || invoice.amount || invoice.grandTotal)) return null;
-  try {
-    const fn = firebase.functions().httpsCallable('createPayLink');
-    const result = await fn({
-      amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
-      invoiceNumber: invoice.number || invoice.invoiceNumber ||
-        ('INV-' + String(invoice.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()),
-      invoiceId: invoice.id,
-      invoiceType: type || 'retail',
-      accountName: invoice.accountName || '',
-      accountId: invoice.accountId || '',
-    });
-    let d = result.data || {};
-    // Just-created invoices can lose the race between the client write and the
-    // server's lookup ("Invoice not found" banner on a fresh preview). Retry
-    // once after the write has had time to land, before alarming the user.
-    if (!d.ok && /not found/i.test(d.error || '')) {
-      await new Promise(r => setTimeout(r, 1500));
-      try { d = (await fn({
-        amount: parseFloat(invoice.total || invoice.amount || invoice.grandTotal || 0),
-        invoiceNumber: invoice.number || invoice.invoiceNumber || ('INV-' + String(invoice.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()),
-        invoiceId: invoice.id, invoiceType: type || 'retail',
-        accountName: invoice.accountName || '', accountId: invoice.accountId || '',
-      })).data || {}; } catch (_) {}
-    }
-    if (d.ok && d.url) {
-      const old = document.getElementById('sticky-error');
-      if (old) old.remove();
-      return d.url;
-    }
-    _stickyError('Stripe pay link failed: ' + (d.error || 'no link returned') + ' — the invoice will send without a pay button.');
-    return null; // no generic-link fallback — unmatchable payments
-  } catch (e) {
-    console.error('Stripe link generation failed:', e);
-    const hint = String(e?.code || '').includes('not-found')
-      ? 'The createPayLink function is not deployed yet — run: firebase deploy --only functions --project default'
-      : (e?.message || 'unknown error');
-    _stickyError('⚠ Stripe pay link failed: ' + hint + ' — the invoice will go out WITHOUT a pay button.');
-    return null; // no generic-link fallback — unmatchable payments
-  }
+  return 'https://purpl-crm.web.app/pay?inv=' + encodeURIComponent(invoice.id) + '&t=' + encodeURIComponent(type || 'retail');
 }
 
 async function callSendCombinedInvoice(to, accountName, subject, html, accountId, invoiceNumber) {
@@ -13551,8 +13519,8 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <table cellpadding="0" cellspacing="0">
           <tr>
             <td style="vertical-align:middle;padding-right:18px">
-              <img src="https://static.wixstatic.com/media/81a2ff_1e3f6923c1d5495082d490b4cc229e1c~mv2.png/v1/fill/w_176,h_71,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Purpl%20Logo%20-%20Sprig%20in%20front%20-%20transparent.png"
-                alt="purpl" width="140" height="56" style="display:block">
+              <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png"
+                alt="purpl" width="140" style="display:block;height:auto">
             </td>
             <td style="vertical-align:middle;padding:0 4px">
               <div style="width:1px;height:44px;background:#d1d5db"></div>

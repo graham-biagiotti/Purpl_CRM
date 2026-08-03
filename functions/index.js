@@ -1093,6 +1093,79 @@ exports.createPayLink = onCall(
   }
 );
 
+// ── 8a½. Evergreen pay link ──────────────────────────────
+// Public GET /pay?inv=<docId>&t=<type> (hosting rewrite on purpl-crm.web.app).
+// Emails used to embed a Checkout Session URL minted at send time — Stripe
+// sessions expire after 24h, so every Net-30 invoice's Pay button was dead by
+// the time customers clicked. This mints a FRESH session per click, with the
+// amount read server-side from the invoice at click time (edits after send
+// charge the current total). The random doc id in the URL is the bearer
+// credential — same trust model as the emailed session URL it replaces.
+exports.payInvoice = onRequest(
+  {secrets: [stripeSecretKey], invoker: 'public'},
+  async (req, res) => {
+    const esc = s => String(s || '').replace(/[<>&"]/g, '');
+    const page = (title, body) => res.status(200).send(
+      `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>
+<body style="font-family:Arial,sans-serif;background:#f4f4f5;margin:0;padding:40px 16px;text-align:center">
+<div style="max-width:460px;margin:0 auto;background:#fff;border-radius:10px;padding:36px 28px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+<div style="font-size:22px;font-weight:700;color:#4B2082;margin-bottom:10px">${esc(title)}</div>
+<div style="font-size:15px;color:#374151;line-height:1.6">${body}</div>
+<div style="margin-top:18px;font-size:13px;color:#6b7280">Pumpkin Blossom Farm · <a href="mailto:lavender@pbfwholesale.com" style="color:#8B5FBF">lavender@pbfwholesale.com</a></div>
+</div></body></html>`);
+    try {
+      const invId = String(req.query.inv || '').trim();
+      const typeHint = String(req.query.t || 'retail').trim();
+      if (!invId) return page('Payment link problem', 'This link is missing its invoice reference. Please reply to your invoice email and we\'ll send a fresh one.');
+      const db = admin.firestore();
+      const COLS = { retail: 'retail_invoices', lf: 'lf_invoices', combined: 'combined_invoices', dist: 'dist_invoices', iv: 'iv' };
+      const TYPE_OF = Object.fromEntries(Object.entries(COLS).map(([k, v]) => [v, k]));
+      const firstCol = COLS[typeHint] || 'retail_invoices';
+      const tryCols = [firstCol, ...Object.values(COLS).filter(c => c !== firstCol)];
+      let inv = null, matchedCol = null;
+      for (const c of tryCols) {
+        const snap = await db.collection('workspace/main/' + c).doc(invId).get();
+        if (snap.exists) { inv = snap.data(); matchedCol = c; break; }
+      }
+      if (!inv) return page('Invoice not found', 'We couldn\'t find this invoice — it may have been replaced. Please reply to your invoice email and we\'ll send a fresh link.');
+      const invoiceNumber = inv.number || inv.invoiceNumber || '';
+      if (inv.status === 'paid') return page('Already paid — thank you! 💜', `Invoice <strong>${esc(invoiceNumber)}</strong> is marked paid. No further payment is needed.`);
+      if (inv.status === 'void') return page('Invoice no longer active', `Invoice <strong>${esc(invoiceNumber)}</strong> has been cancelled. If that seems wrong, just reply to your invoice email.`);
+      const serverTotal = parseFloat(inv.grandTotal || inv.total || inv.amount || 0);
+      if (!serverTotal || serverTotal < 0.50) return page('Nothing due', 'This invoice has no payable balance. Questions? Reply to your invoice email.');
+      const key = (process.env.STRIPE_SECRET_KEY || '').trim();
+      const stripe = require('stripe')(key);
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Invoice ${invoiceNumber}`,
+              description: inv.accountName ? `${inv.accountName} — Pumpkin Blossom Farm` : 'Pumpkin Blossom Farm',
+            },
+            unit_amount: Math.round(serverTotal * 100),
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        metadata: {
+          invoiceNumber,
+          invoiceId: invId,
+          invoiceType: TYPE_OF[matchedCol] || 'retail',
+          accountId: inv.accountId || '',
+        },
+        success_url: 'https://purpl-crm.web.app/payment-success.html?inv=' + encodeURIComponent(invoiceNumber),
+        cancel_url: 'https://purpl-crm.web.app/payment-success.html?cancelled=1&inv=' + encodeURIComponent(invoiceNumber),
+      });
+      return res.redirect(302, session.url);
+    } catch (err) {
+      console.error('payInvoice error:', err.message);
+      return page('Payment page hiccup', 'We couldn\'t open the payment page just now. Please try again in a minute, or reply to your invoice email — we\'re on it.');
+    }
+  }
+);
+
 // ── 8b. Create Stripe Payment Link ───────────────────────
 // Auth-required. Generates a unique Stripe Checkout Session link for an invoice.
 // Returns {ok, url, error} instead of throwing — Firebase v2 onCall wraps

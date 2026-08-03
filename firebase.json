@@ -15,6 +15,7 @@
       ],
       "rewrites": [
         { "source": "/unsubscribe", "function": "unsubscribe" },
+        { "source": "/pay", "function": "payInvoice" },
         { "source": "/order", "destination": "/order.html" },
         { "source": "/wholesale.html", "destination": "/wholesale.html" },
         { "source": "/privacy.html", "destination": "/privacy.html" },
