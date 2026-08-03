@@ -352,11 +352,35 @@ function searchLocation() {
   // If the Places suggestion dropdown is open, Enter belongs to it.
   var pac = document.querySelector('.pac-container');
   if (pac && pac.offsetParent !== null && pac.querySelector('.pac-item')) return;
-  if (SEARCH && SEARCH.label === q) return; // already applied via suggestion
-  if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
+  if (SEARCH && (SEARCH.label === q || SEARCH.q === q)) return; // already applied
+  if (typeof google === 'undefined' || !google.maps) {
     BROWSE = true; render();
     return;
   }
+  // Primary path: the Places API (the same service the dropdown uses, proven
+  // enabled on this key) — fetch the top prediction for the typed text and
+  // resolve its coordinates. The Geocoding API stays as a last resort only.
+  if (google.maps.places && google.maps.places.AutocompleteService) {
+    var svc = new google.maps.places.AutocompleteService();
+    svc.getPlacePredictions({ input: q, componentRestrictions: { country: 'us' }, types: ['geocode'] }, function (preds, status) {
+      if (status === 'OK' && preds && preds[0]) {
+        var det = new google.maps.places.PlacesService(MAP || document.createElement('div'));
+        det.getDetails({ placeId: preds[0].place_id, fields: ['geometry', 'formatted_address'] }, function (place, st2) {
+          if (st2 === 'OK' && place && place.geometry && place.geometry.location) {
+            SEARCH = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng(), label: preds[0].description || q, q: q };
+            SHOWN = 10;
+            render();
+          } else _geocoderFallback(q);
+        });
+      } else _geocoderFallback(q);
+    });
+    return;
+  }
+  _geocoderFallback(q);
+}
+
+function _geocoderFallback(q) {
+  if (!google.maps.Geocoder) { BROWSE = true; render(); return; }
   var geocoder = new google.maps.Geocoder();
   var isZip = /^\d{5}(-\d{4})?$/.test(q);
   var attempts = isZip
