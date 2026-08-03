@@ -24,7 +24,7 @@
   .chip img { height:22px; width:auto; display:block; }
   .chip.on { border-color:var(--purpl); background:#faf5ff; box-shadow:0 0 0 1px var(--purpl); }
   .chip.on.lf { border-color:var(--lf); background:#f0fdf4; box-shadow:0 0 0 1px var(--lf); }
-  .bl { height:18px; width:auto; vertical-align:-4px; }
+  .bdot { display:inline-block; width:13px; height:13px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px #d1d5db; vertical-align:-2px; margin-right:2px; }
   .count { text-align:center; font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--muted); margin:10px 0 18px; }
   #map { width:100%; height:560px; border-radius:12px; border:1px solid var(--border); background:#eef; display:none; }
   @media (max-width:640px) { #map { height:420px; } }
@@ -67,8 +67,8 @@
 <div class="wrap">
   <div class="chips">
     <button class="chip" data-brand="all" onclick="setBrand('all')">All products</button>
-    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="" style="height:28px"> <span style="color:#4B2082">purpl</span></button>
-    <button class="chip" data-brand="lf" onclick="setBrand('lf')"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="border-radius:50%;height:26px"> Lavender Fields</button>
+    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><span class="bdot" style="background:#8B5FBF"></span><span style="color:#4B2082">purpl</span></button>
+    <button class="chip" data-brand="lf" onclick="setBrand('lf')"><span class="bdot" style="background:#4a7c59"></span><span style="color:#166534">Lavender Fields</span></button>
   </div>
   <div class="count" id="count">Loading stores…</div>
   <div class="searchbar">
@@ -82,6 +82,7 @@
     <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> Lavender Fields</span>
     <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:linear-gradient(90deg,#8B5FBF 50%,#4a7c59 50%);border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> carries both</span>
   </div>
+  <div id="results"></div>
   <div id="map"></div>
   <div id="list"></div>
 </div>
@@ -162,6 +163,7 @@ function render() {
     : 'Store list coming soon — check back shortly!')
     + (SKIPPED > 0 ? ' (+' + SKIPPED + ' more being located)' : '');
 
+  var resultsHtml = '';
   var html = '';
 
   if (SEARCH) {
@@ -169,16 +171,16 @@ function render() {
       return { s: s, d: milesBetween(SEARCH.lat, SEARCH.lng, s.lat, s.lng) };
     }).sort(function (a, b) { return a.d - b.d; });
     var shown = ranked.slice(0, SHOWN);
-    html += '<div class="results-hdr"><strong>' + (shown.length ? 'Stores near ' + esc(SEARCH.label) : 'No stores found near ' + esc(SEARCH.label)) + '</strong>' +
+    resultsHtml += '<div class="results-hdr"><strong>' + (shown.length ? 'Stores near ' + esc(SEARCH.label) : 'No stores found near ' + esc(SEARCH.label)) + '</strong>' +
       '<span class="clr" onclick="clearSearch()">✕ clear search</span></div>';
     if (shown.length && shown[0].d > 50) {
       var links = BRAND === 'purpl' ? '<a href="https://drinkpurpl.com" target="_blank" rel="noopener">drinkpurpl.com</a>'
         : BRAND === 'lf' ? '<a href="https://pumpkinblossomfarm.com" target="_blank" rel="noopener">pumpkinblossomfarm.com</a>'
         : '<a href="https://drinkpurpl.com" target="_blank" rel="noopener">drinkpurpl.com</a> · <a href="https://pumpkinblossomfarm.com" target="_blank" rel="noopener">pumpkinblossomfarm.com</a>';
-      html += '<div class="shipnote">We\'re still growing toward you — but we ship! ' + links + '</div>';
+      resultsHtml += '<div class="shipnote">We\'re still growing toward you — but we ship! ' + links + '</div>';
     }
-    shown.forEach(function (r) { html += rowHtml(r.s, r.d); });
-    if (ranked.length > SHOWN) html += '<button class="morebtn" onclick="SHOWN+=10;render()">Show more</button>';
+    shown.forEach(function (r) { resultsHtml += rowHtml(r.s, r.d); });
+    if (ranked.length > SHOWN) resultsHtml += '<button class="morebtn" onclick="SHOWN+=10;render()">Show more</button>';
   }
 
   // Collapsed browse-all (SEO + skimmers) — always available at the bottom
@@ -196,14 +198,15 @@ function render() {
     if (!list.length) html += '<div class="empty">No stores match this filter yet.</div>';
   }
 
+  document.getElementById('results').innerHTML = resultsHtml;
   document.getElementById('list').innerHTML = html;
   renderPins(list);
   applySearchToMap();
 }
 
 function brandTiles(s) {
-  return ((s.brands || []).indexOf('purpl') >= 0 ? '<img class="bl" src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" title="purpl"> ' : '') +
-         ((s.brands || []).indexOf('lf') >= 0 ? '<img class="bl" src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" title="Lavender Fields" style="border-radius:50%">' : '');
+  return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#8B5FBF" title="purpl"></span>' : '') +
+         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4a7c59" title="Lavender Fields"></span>' : '');
 }
 
 function rowHtml(s, dist) {
@@ -218,11 +221,6 @@ function rowHtml(s, dist) {
     '</div>';
 }
 
-function _scrollToResults() {
-  var el = document.getElementById('list');
-  if (el) setTimeout(function () { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
-}
-
 function searchLocation() {
   var q = (document.getElementById('loc-input').value || '').trim();
   if (!q) return;
@@ -230,7 +228,7 @@ function searchLocation() {
   // place_changed handler will run the search with exact coordinates.
   var pac = document.querySelector('.pac-container');
   if (pac && pac.offsetParent !== null && pac.querySelector('.pac-item')) return;
-  if (SEARCH && SEARCH.label === q) { _scrollToResults(); return; } // already applied via suggestion
+  if (SEARCH && SEARCH.label === q) return; // already applied via suggestion
   if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
     BROWSE = true; render();
     document.getElementById('count').textContent = 'Search is unavailable right now — browse the full list below.';
@@ -260,7 +258,6 @@ function searchLocation() {
         SEARCH = { lat: loc.lat(), lng: loc.lng(), label: q };
         SHOWN = 10;
         render();
-        _scrollToResults();
       } else tryNext(i + 1);
     });
   };
@@ -273,7 +270,6 @@ function useMyLocation() {
     SEARCH = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'your location' };
     SHOWN = 10;
     render();
-    _scrollToResults();
   }, function () {
     document.getElementById('count').textContent = 'Location unavailable — type your town or ZIP instead.';
   });
@@ -384,7 +380,6 @@ window.__findUsMapReady = function () {
           SEARCH = { lat: p.geometry.location.lat(), lng: p.geometry.location.lng(), label: acInput.value };
           SHOWN = 10;
           render();
-          _scrollToResults();
         }
       });
     }
