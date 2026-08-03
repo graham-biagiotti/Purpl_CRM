@@ -25,17 +25,12 @@
   .chip.on.lf { border-color:var(--lf); background:var(--lf); }
   .count { text-align:center; font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--muted); margin:10px 0 18px; }
   #map { width:100%; height:420px; border-radius:12px; border:1px solid var(--border); background:#eef; display:none; }
-  .state-hdr { font-family:Inter,Arial,sans-serif; font-size:13px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--purpl-dark); margin:30px 0 12px; border-bottom:2px solid var(--purpl); padding-bottom:6px; }
-  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
-  .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; font-family:Inter,Arial,sans-serif; }
-  .card.hl { border-color:var(--purpl); box-shadow:0 0 0 2px rgba(139,95,191,.25); }
-  .card .nm { font-weight:600; font-size:15px; margin-bottom:4px; }
-  .card .ad { font-size:13px; color:var(--muted); line-height:1.5; }
-  .card .tags { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; }
-  .tag { font-size:11px; font-weight:600; border-radius:12px; padding:3px 10px; }
-  .tag.p { background:#f3e8ff; color:var(--purpl-dark); }
-  .tag.l { background:#dcfce7; color:#166534; }
-  .card .dir { display:inline-block; margin-top:10px; font-size:13px; color:var(--purpl); text-decoration:none; font-weight:500; }
+  .state-hdr { font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--purpl-dark); margin:22px 0 8px; border-bottom:2px solid var(--purpl); padding-bottom:5px; }
+  .srow { display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 14px; margin-bottom:6px; font-family:Inter,Arial,sans-serif; font-size:14px; flex-wrap:wrap; }
+  .srow .nm { font-weight:600; }
+  .srow .ad { color:var(--muted); font-size:12.5px; flex:1; min-width:130px; }
+  .srow .icons { font-size:14px; letter-spacing:2px; }
+  .srow .dir { margin-left:auto; font-size:13px; color:var(--purpl); text-decoration:none; font-weight:500; white-space:nowrap; }
   .empty { text-align:center; color:var(--muted); font-family:Inter,Arial,sans-serif; padding:50px 0; }
   .foot { text-align:center; font-family:Inter,Arial,sans-serif; font-size:12px; color:var(--muted); padding:30px 16px 50px; line-height:1.8; }
   .foot a { color:var(--purpl); text-decoration:none; }
@@ -103,6 +98,19 @@ function stateOf(s) {
   var m = (s.address || '').match(/\b(NH|MA|ME|VT|CT|RI|NY)\b/);
   return m ? m[1] : 'More';
 }
+
+// "Town, ST" for the compact rows (full address stays in the tooltip and
+// the Directions link)
+function townOf(s) {
+  var parts = (s.address || '').split(',');
+  if (parts.length >= 2) {
+    var town = parts[parts.length - 2].replace(/\b(NH|MA|ME|VT|CT|RI|NY)\b|\d{5}(-\d{4})?/g, '').trim();
+    if (!town && parts.length >= 3) town = parts[parts.length - 3].trim();
+    var st = stateOf(s);
+    return town ? town + (st !== 'More' ? ', ' + st : '') : (s.address || '');
+  }
+  return s.address || '';
+}
 var STATE_NAMES = { NH:'New Hampshire', MA:'Massachusetts', ME:'Maine', VT:'Vermont', CT:'Connecticut', RI:'Rhode Island', NY:'New York', More:'More locations' };
 var STATE_ORDER = ['NH','MA','ME','VT','CT','RI','NY','More'];
 
@@ -128,20 +136,18 @@ function render() {
   STATE_ORDER.forEach(function (st) {
     if (!groups[st]) return;
     groups[st].sort(function (a, b) { return a.name < b.name ? -1 : 1; });
-    html += '<div class="state-hdr">' + (STATE_NAMES[st] || st) + '</div><div class="cards">';
-    groups[st].forEach(function (s, i) {
-      var tags = (s.brands || []).map(function (b) {
-        return b === 'purpl' ? '<span class="tag p">💜 purpl</span>' : '<span class="tag l">🪻 Lavender Fields</span>';
-      }).join('');
-      html += '<div class="card" id="card-' + esc(s.name) .replace(/[^a-z0-9]/gi, '') + i + '">' +
-        '<div class="nm">' + esc(s.name) + '</div>' +
-        '<div class="ad">' + esc(s.address || '') + '</div>' +
-        '<div class="tags">' + tags + '</div>' +
+    html += '<div class="state-hdr">' + (STATE_NAMES[st] || st) + ' (' + groups[st].length + ')</div>';
+    groups[st].forEach(function (s) {
+      var icons = ((s.brands || []).indexOf('purpl') >= 0 ? '<span title="purpl">💜</span>' : '') +
+                  ((s.brands || []).indexOf('lf') >= 0 ? '<span title="Lavender Fields">🪻</span>' : '');
+      html += '<div class="srow">' +
+        '<span class="nm">' + esc(s.name) + '</span>' +
+        '<span class="ad" title="' + esc(s.address || '') + '">' + esc(townOf(s)) + '</span>' +
+        '<span class="icons">' + icons + '</span>' +
         '<a class="dir" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
           encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a>' +
         '</div>';
     });
-    html += '</div>';
   });
   document.getElementById('list').innerHTML = html || '<div class="empty">No stores match this filter yet.</div>';
 
