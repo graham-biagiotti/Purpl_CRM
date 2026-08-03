@@ -24,7 +24,7 @@
   .chip img { height:22px; width:auto; display:block; }
   .chip.on { border-color:var(--purpl); background:#faf5ff; box-shadow:0 0 0 1px var(--purpl); }
   .chip.on.lf { border-color:var(--lf); background:#f0fdf4; box-shadow:0 0 0 1px var(--lf); }
-  .bl { height:15px; width:auto; vertical-align:-2px; }
+  .bl { height:18px; width:auto; vertical-align:-4px; }
   .count { text-align:center; font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--muted); margin:10px 0 18px; }
   #map { width:100%; height:560px; border-radius:12px; border:1px solid var(--border); background:#eef; display:none; }
   @media (max-width:640px) { #map { height:420px; } }
@@ -67,8 +67,8 @@
 <div class="wrap">
   <div class="chips">
     <button class="chip" data-brand="all" onclick="setBrand('all')">All products</button>
-    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl"></button>
-    <button class="chip" data-brand="lf" onclick="setBrand('lf')"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="border-radius:50%"> Lavender Fields</button>
+    <button class="chip" data-brand="purpl" onclick="setBrand('purpl')"><img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" style="height:34px"></button>
+    <button class="chip" data-brand="lf" onclick="setBrand('lf')"><img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="border-radius:50%;height:26px"> Lavender Fields</button>
   </div>
   <div class="count" id="count">Loading stores…</div>
   <div class="searchbar">
@@ -233,12 +233,15 @@ function searchLocation() {
   var attempts = isZip
     ? [{ componentRestrictions: { country: 'US', postalCode: q.slice(0, 5) } }, { address: q + ', USA' }]
     : [{ address: q, componentRestrictions: { country: 'US' } }, { address: q + ', New England, USA' }];
+  var lastStatus = '';
   var tryNext = function (i) {
     if (i >= attempts.length) {
-      document.getElementById('count').textContent = 'Couldn\'t find "' + q + '" — try a town name or a 5-digit ZIP.';
+      document.getElementById('count').textContent = 'Couldn\'t find "' + q + '" — try picking a suggestion from the dropdown as you type. (' + lastStatus + ')';
       return;
     }
     geocoder.geocode(attempts[i], function (res, status) {
+      lastStatus = status;
+      console.warn('find-us geocode attempt', i, JSON.stringify(attempts[i]), '→', status);
       if (status === 'OK' && res && res[0]) {
         var loc = res[0].geometry.location;
         SEARCH = { lat: loc.lat(), lng: loc.lng(), label: q };
@@ -350,6 +353,25 @@ window.__findUsMapReady = function () {
     });
     renderPins(visible());
     applySearchToMap();
+    // Suggestion dropdown on the search box — picking a suggestion carries
+    // its own coordinates, sidestepping the geocoder entirely (the reliable
+    // path for ZIPs). The Search button/Enter remain as the typed fallback.
+    if (google.maps.places && google.maps.places.Autocomplete) {
+      var acInput = document.getElementById('loc-input');
+      var ac = new google.maps.places.Autocomplete(acInput, {
+        types: ['geocode'],
+        componentRestrictions: { country: 'us' },
+        fields: ['geometry', 'formatted_address'],
+      });
+      ac.addListener('place_changed', function () {
+        var p = ac.getPlace();
+        if (p && p.geometry && p.geometry.location) {
+          SEARCH = { lat: p.geometry.location.lat(), lng: p.geometry.location.lng(), label: acInput.value };
+          SHOWN = 10;
+          render();
+        }
+      });
+    }
   } catch (e) { /* list remains the product */ }
 };
 
@@ -357,7 +379,7 @@ window.__findUsMapReady = function () {
   var KEY = window.GOOGLE_PLACES_KEY || '';
   if (!KEY) return;
   var s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&callback=__findUsMapReady';
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&libraries=places&callback=__findUsMapReady';
   s.async = true; s.defer = true;
   s.onerror = function () { /* map stays hidden; list unaffected */ };
   document.head.appendChild(s);
