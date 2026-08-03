@@ -18,6 +18,7 @@ const COLLECTION_KEYS = [
   'dist_invoices','dist_chains','dist_imports',
   'audit_log',
   'prod_hist','runs','shipments',
+  'stockist_locations',
 ];
 
 // Append-only collections: entries may be CREATED but never updated or

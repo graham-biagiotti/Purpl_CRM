@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v185';
+const APP_VERSION = 'v186';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -5710,6 +5710,20 @@ function editAccount(id) {
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
   if (qs('#eac-ispbf')) qs('#eac-ispbf').checked = !!a.isPbf;
+  if (qs('#eac-stockist')) {
+    qs('#eac-stockist').checked = !!a.stockistListed;
+    // Brand tags: stored value wins; first touch pre-suggests from invoice
+    // history (purpl/combined invoices → purpl, LF/combined → LF)
+    let sb = a.stockistBrands;
+    if (!Array.isArray(sb)) {
+      sb = [];
+      const hasComb = DB.a('combined_invoices').some(x => x.accountId === a.id);
+      if (hasComb || _allPurplInvoices().some(x => x.accountId === a.id)) sb.push('purpl');
+      if (hasComb || DB.a('lf_invoices').some(x => x.accountId === a.id)) sb.push('lf');
+    }
+    if (qs('#eac-stockist-purpl')) qs('#eac-stockist-purpl').checked = sb.includes('purpl');
+    if (qs('#eac-stockist-lf'))    qs('#eac-stockist-lf').checked    = sb.includes('lf');
+  }
   // Closed-by: pure bookkeeping tag (who landed the account) — deliberately
   // decoupled from fulfilledBy so it can never touch pricing.
   const _cbSel = qs('#eac-closedby');
@@ -5859,6 +5873,11 @@ async function saveAccount(id, isNew) {
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
     isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
+    stockistListed: qs('#eac-stockist')?.checked || false,
+    stockistBrands: [
+      ...(qs('#eac-stockist-purpl')?.checked ? ['purpl'] : []),
+      ...(qs('#eac-stockist-lf')?.checked ? ['lf'] : []),
+    ],
     closedBy:     qs('#eac-closedby')?.value || '',
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
@@ -11385,7 +11404,87 @@ function deleteLLImportLog(id) {
 // ══════════════════════════════════════════════════════════
 //  SETTINGS
 // ══════════════════════════════════════════════════════════
+// ── Where to Find Us: manual locations + seeding ─────────
+function renderStockistLocations() {
+  const el = qs('#stockist-loc-list');
+  if (!el) return;
+  const rows = DB.a('stockist_locations');
+  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted)">No extra locations yet.</div>'; return; }
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>Store</th><th>Address</th><th>Brands</th><th>Pin</th><th></th></tr></thead>
+    <tbody>${rows.map(s => `<tr style="${s.active === false ? 'opacity:.45' : ''}">
+      <td><strong>${escHtml(s.name)}</strong></td>
+      <td style="font-size:12px">${escHtml(s.address || '')}</td>
+      <td style="font-size:12px">${(s.brands || []).map(b => b === 'purpl' ? '💜 purpl' : '🪻 LF').join(' · ') || '—'}</td>
+      <td>${(s.lat && s.lng) ? '📍' : '<span title="No coordinates yet — geocodes on next Territory Map visit" style="color:#d97706">⚠️</span>'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn xs" onclick="toggleStockistLocation('${s.id}')">${s.active === false ? 'Enable' : 'Disable'}</button>
+        <button class="btn xs" style="color:var(--red)" onclick="deleteStockistLocation('${s.id}')">Delete</button>
+      </td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function addStockistLocation() {
+  const name = qs('#stk-name')?.value?.trim();
+  const address = qs('#stk-address')?.value?.trim();
+  if (!name || !address) { toast('Store name and address are both required'); return; }
+  const brands = [
+    ...(qs('#stk-purpl')?.checked ? ['purpl'] : []),
+    ...(qs('#stk-lf')?.checked ? ['lf'] : []),
+  ];
+  if (!brands.length) { toast('Pick at least one brand'); return; }
+  const rec = { id: uid(), name, address, brands, active: true, lat: null, lng: null, createdAt: today() };
+  // Geocode immediately when Maps is loaded; otherwise the shared map-page
+  // geocoder picks it up on the next Territory Map visit.
+  if (typeof google !== 'undefined' && google.maps?.Geocoder) {
+    try {
+      const res = await new google.maps.Geocoder().geocode({ address });
+      const loc = res.results?.[0]?.geometry?.location;
+      if (loc) { rec.lat = loc.lat(); rec.lng = loc.lng(); }
+      else rec.geocodeFailed = new Date().toISOString();
+    } catch (e) { /* leave for the batch geocoder */ }
+  }
+  DB.push('stockist_locations', rec);
+  if (qs('#stk-name')) qs('#stk-name').value = '';
+  if (qs('#stk-address')) qs('#stk-address').value = '';
+  renderStockistLocations();
+  toast('Location added' + (rec.lat ? ' 📍' : ' — pin resolves on next Territory Map visit'));
+}
+
+function toggleStockistLocation(id) {
+  DB.update('stockist_locations', id, x => ({ ...x, active: x.active === false }));
+  renderStockistLocations();
+}
+
+function deleteStockistLocation(id) {
+  if (!confirm2('Delete this location from Where to Find Us?')) return;
+  DB.atomicUpdate(c => { c.stockist_locations = (c.stockist_locations || []).filter(x => x.id !== id); });
+  renderStockistLocations();
+}
+
+// One-click seed: every ACTIVE/PENDING account gets listed with evidence-based
+// brand tags. Idempotent — accounts that already have a stockistListed value
+// (true OR explicitly unticked then saved) keep their setting.
+function seedStockistsFromAccounts() {
+  const candidates = DB.a('ac').filter(a =>
+    a.status !== 'inactive' && a.stockistListed === undefined && (a.address || (a.locs || []).length));
+  if (!candidates.length) { toast('Nothing to seed — all accounts already have a listing setting'); return; }
+  if (!confirm2(`List ${candidates.length} account(s) on Where to Find Us with brand tags from their invoice history? You can untick any account afterwards.`)) return;
+  DB.atomicUpdate(c => {
+    c.ac = (c.ac || []).map(a => {
+      if (a.status === 'inactive' || a.stockistListed !== undefined || !(a.address || (a.locs || []).length)) return a;
+      const hasComb = DB.a('combined_invoices').some(x => x.accountId === a.id);
+      const brands = [];
+      if (hasComb || _allPurplInvoices().some(x => x.accountId === a.id)) brands.push('purpl');
+      if (hasComb || DB.a('lf_invoices').some(x => x.accountId === a.id)) brands.push('lf');
+      return { ...a, stockistListed: true, stockistBrands: brands.length ? brands : ['purpl'] };
+    });
+  });
+  toast(`${candidates.length} account(s) listed ✓ — prune any from their account editor`);
+}
+
 function renderSettings() {
+  renderStockistLocations();
   // Non-admins can view but not save settings
   const settingsPage = document.getElementById('page-settings');
   if (settingsPage) {
@@ -15097,6 +15196,8 @@ async function _geocodeMissingAccounts() {
   const missing = [
     ..._acMapMissing().map(rec => ({ col: 'ac', rec })),
     ..._prMapMissing().map(rec => ({ col: 'pr', rec })),
+    ...DB.a('stockist_locations').filter(s => s.active !== false && !(s.lat && s.lng) && (s.address || '').trim() && !s.geocodeFailed)
+      .map(rec => ({ col: 'stockist_locations', rec })),
   ];
   if (!missing.length) return;
   _geocodeInFlight = true;
