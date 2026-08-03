@@ -12,97 +12,131 @@
 <style>
   :root { --purpl:#8B5FBF; --purpl-dark:#4B2082; --lf:#4a7c59; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:Georgia,'Times New Roman',serif; background:#faf9f7; color:var(--text); }
-  .hdr { background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%); padding:36px 20px 30px; text-align:center; color:#fff; }
-  .hdr .logos { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:14px; }
-  .hdr .logos .divider { width:1px; height:44px; background:rgba(255,255,255,.5); }
-  .hdr h1 { font-size:30px; font-weight:600; letter-spacing:.5px; }
-  .hdr .sub { font-family:Inter,Arial,sans-serif; font-size:14px; opacity:.92; margin-top:8px; }
-  .wrap { max-width:1000px; margin:0 auto; padding:0 16px 60px; }
-  .fu-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:520px; margin:22px auto 6px; }
-  .fu-card { border:2px solid var(--border); border-radius:10px; padding:20px 16px; text-align:center; cursor:pointer; transition:all .2s; background:#fff; position:relative; user-select:none; opacity:.55; }
+  html, body { height:100%; }
+  body { font-family:Inter,Arial,sans-serif; background:#faf9f7; color:var(--text); }
+
+  /* Slim brand strip */
+  .strip { background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%); height:58px; display:flex; align-items:center; justify-content:center; gap:14px; padding:0 16px; }
+  .strip img { display:block; }
+  .strip .divider { width:1px; height:28px; background:rgba(255,255,255,.5); }
+  .strip .strip-title { color:#fff; font-family:Georgia,serif; font-size:19px; letter-spacing:.4px; margin-left:10px; }
+
+  /* Map stage with floating panel */
+  .stage { position:relative; height:calc(100vh - 58px); min-height:540px; }
+  body.embed .stage { height:100vh; min-height:520px; }
+  #map { position:absolute; inset:0; background:#e8ecf1; }
+  .panel { position:absolute; top:14px; left:14px; bottom:14px; width:372px; max-width:calc(100% - 28px);
+    background:#fff; border-radius:14px; box-shadow:0 6px 24px rgba(0,0,0,.16); display:flex; flex-direction:column; overflow:hidden; z-index:5; }
+  .panel-head { padding:14px 14px 0; }
+  .panel-scroll { flex:1; min-height:0; overflow-y:auto; padding:0 14px 14px; }
+
+  .searchbar { display:flex; gap:7px; }
+  .searchbar input { flex:1; min-width:0; padding:10px 13px; font-size:14.5px; border:1.5px solid var(--border); border-radius:8px; outline:none; font-family:inherit; }
+  .searchbar input:focus { border-color:var(--purpl); }
+  .searchbar button { padding:10px 14px; font-size:13.5px; border:none; border-radius:8px; background:var(--purpl); color:#fff; cursor:pointer; font-weight:600; font-family:inherit; }
+  .searchbar .geo { background:#fff; border:1.5px solid var(--border); color:var(--text); padding:10px 11px; }
+
+  .fu-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .fu-card { border:2px solid var(--border); border-radius:10px; padding:10px 8px 9px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; position:relative; user-select:none; opacity:.5; }
   .fu-card.active { opacity:1; }
   .fu-card.active.fu-purpl { border-color:var(--purpl); background:#faf5ff; }
   .fu-card.active.fu-lf { border-color:var(--lf); background:#f0fdf4; }
-  .fu-card img { margin:0 auto 10px; display:block; height:auto; }
-  .fu-card .fu-name { font-family:Georgia,serif; font-size:15px; font-weight:500; color:var(--text); }
-  .fu-card .fu-sub { font-size:12px; color:var(--muted); margin-top:4px; font-family:Inter,Arial,sans-serif; }
-  .fu-check { display:none; position:absolute; top:8px; right:8px; width:22px; height:22px; border-radius:50%; color:#fff; font-size:13px; line-height:22px; text-align:center; font-family:Inter,Arial,sans-serif; }
+  .fu-card img { margin:0 auto 6px; display:block; height:auto; }
+  .fu-card .fu-name { font-family:Georgia,serif; font-size:12.5px; color:var(--text); }
+  .fu-check { display:none; position:absolute; top:5px; right:5px; width:17px; height:17px; border-radius:50%; color:#fff; font-size:10px; line-height:17px; text-align:center; }
   .fu-card.active .fu-check { display:block; }
   .fu-purpl .fu-check { background:var(--purpl); }
   .fu-lf .fu-check { background:var(--lf); }
-  .fu-hint { text-align:center; font-family:Inter,Arial,sans-serif; font-size:12px; color:var(--muted); margin-bottom:4px; }
-  .bdot { display:inline-block; width:13px; height:13px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px #d1d5db; vertical-align:-2px; margin-right:2px; }
-  .count { text-align:center; font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--muted); margin:10px 0 18px; }
-  #map { width:100%; height:560px; border-radius:12px; border:1px solid var(--border); background:#eef; display:none; }
-  @media (max-width:640px) { #map { height:420px; } }
-  .state-hdr { font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--purpl-dark); margin:22px 0 8px; border-bottom:2px solid var(--purpl); padding-bottom:5px; }
-  .srow { display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 14px; margin-bottom:6px; font-family:Inter,Arial,sans-serif; font-size:14px; flex-wrap:wrap; }
+
+  .count { font-size:12.5px; color:var(--muted); margin:10px 0 8px; text-align:center; }
+
+  .srow { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:8px 11px; margin-bottom:6px; font-size:13.5px; flex-wrap:wrap; cursor:pointer; }
+  .srow:hover { border-color:var(--purpl); }
   .srow .nm { font-weight:600; }
-  .srow .ad { color:var(--muted); font-size:12.5px; flex:1; min-width:130px; }
-  .srow .icons { font-size:14px; letter-spacing:2px; }
-  .srow .dir { margin-left:auto; font-size:13px; color:var(--purpl); text-decoration:none; font-weight:500; white-space:nowrap; }
-  .srow .mi { font-size:12.5px; font-weight:700; color:var(--purpl-dark); white-space:nowrap; }
-  .searchbar { display:flex; gap:8px; max-width:520px; margin:0 auto 16px; font-family:Inter,Arial,sans-serif; }
-  .searchbar input { flex:1; padding:11px 16px; font-size:15px; border:1.5px solid var(--border); border-radius:8px; outline:none; font-family:inherit; }
-  .searchbar input:focus { border-color:var(--purpl); }
-  .searchbar button { padding:11px 18px; font-size:14px; border:none; border-radius:8px; background:var(--purpl); color:#fff; cursor:pointer; font-weight:600; font-family:inherit; }
-  .searchbar .geo { background:#fff; border:1.5px solid var(--border); color:var(--text); font-size:16px; padding:11px 13px; }
-  .results-hdr { font-family:Inter,Arial,sans-serif; font-size:14px; color:var(--text); margin:18px 0 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .results-hdr .clr { font-size:12.5px; color:var(--muted); cursor:pointer; text-decoration:underline; }
-  .morebtn { display:block; margin:10px auto 0; padding:9px 22px; font-family:Inter,Arial,sans-serif; font-size:13.5px; border:1.5px solid var(--purpl); background:#fff; color:var(--purpl-dark); border-radius:8px; cursor:pointer; font-weight:600; }
-  .shipnote { font-family:Inter,Arial,sans-serif; font-size:13.5px; color:#374151; background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; padding:12px 16px; margin:14px 0; text-align:center; }
+  .srow .ad { color:var(--muted); font-size:12px; flex:1; min-width:90px; }
+  .srow .mi { font-size:12px; font-weight:700; color:var(--purpl-dark); white-space:nowrap; }
+  .srow .dir { font-size:12.5px; color:var(--purpl); text-decoration:none; font-weight:500; white-space:nowrap; }
+  .bdot { display:inline-block; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 1px #d1d5db; vertical-align:-1px; }
+
+  .results-hdr { font-size:13px; margin:4px 0 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .results-hdr .clr { font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline; }
+  .morebtn { display:block; margin:8px auto; padding:8px 18px; font-size:12.5px; border:1.5px solid var(--purpl); background:#fff; color:var(--purpl-dark); border-radius:8px; cursor:pointer; font-weight:600; }
+  .shipnote { font-size:12.5px; color:#374151; background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; padding:10px 12px; margin:8px 0; text-align:center; }
   .shipnote a { color:var(--purpl-dark); font-weight:600; text-decoration:none; }
-  .browse-toggle { text-align:center; margin:26px 0 8px; font-family:Inter,Arial,sans-serif; }
-  .browse-toggle a { font-size:13.5px; color:var(--muted); cursor:pointer; text-decoration:underline; }
-  .empty { text-align:center; color:var(--muted); font-family:Inter,Arial,sans-serif; padding:50px 0; }
-  .foot { text-align:center; font-family:Inter,Arial,sans-serif; font-size:12px; color:var(--muted); padding:30px 16px 50px; line-height:1.8; }
+  .state-hdr { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--purpl-dark); margin:14px 0 7px; border-bottom:2px solid var(--purpl); padding-bottom:4px; }
+  .browse-toggle { text-align:center; margin:12px 0 4px; }
+  .browse-toggle a { font-size:12.5px; color:var(--muted); cursor:pointer; text-decoration:underline; }
+  .prompt { text-align:center; color:var(--muted); font-size:13px; padding:26px 10px; line-height:1.6; }
+
+  .legend-pill { position:absolute; right:12px; bottom:24px; z-index:4; background:#fff; border-radius:20px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:8px 16px; display:none; gap:14px; font-size:12px; color:#374151; align-items:center; flex-wrap:wrap; }
+  .legend-pill span { display:flex; align-items:center; gap:5px; }
+
+  .foot { text-align:center; font-size:12px; color:var(--muted); padding:22px 16px 34px; line-height:1.8; }
   .foot a { color:var(--purpl); text-decoration:none; }
+
+  /* Map unavailable → panel becomes the page */
+  body.nomap #map, body.nomap .legend-pill { display:none !important; }
+  body.nomap .stage { height:auto; min-height:0; }
+  body.nomap .panel { position:static; width:auto; max-width:640px; margin:14px auto; box-shadow:0 2px 10px rgba(0,0,0,.08); }
+  body.nomap .panel-scroll { overflow:visible; }
+
+  /* Phones: map on top, panel below (bottom-sheet feel) */
+  @media (max-width:760px) {
+    .stage { height:auto; min-height:0; }
+    body.embed .stage { height:auto; }
+    #map { position:relative; inset:auto; height:44vh; min-height:300px; }
+    .panel { position:static; width:auto; max-width:none; margin:10px; box-shadow:0 2px 10px rgba(0,0,0,.10); }
+    .panel-scroll { overflow:visible; }
+    .legend-pill { position:static; margin:8px auto 0; justify-content:center; width:fit-content; }
+    .strip .strip-title { font-size:16px; }
+  }
 </style>
 </head>
-<body>
+<body class="nomap">
 
-<div class="hdr">
-  <div class="logos">
-    <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="150" height="58" style="display:block">
-    <div class="divider"></div>
-    <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="74" height="69" style="display:block">
-  </div>
-  <h1 id="page-title">Where to Find Us</h1>
-  <div class="sub">purpl lavender lemonade &amp; Lavender Fields farm products · Pumpkin Blossom Farm, Warner NH</div>
+<div class="strip">
+  <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="88" height="34">
+  <div class="divider"></div>
+  <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="38" height="35">
+  <span class="strip-title" id="page-title">Where to Find Us</span>
 </div>
 
-<div class="wrap">
-  <div class="fu-cards">
-    <div class="fu-card fu-purpl active" id="fu-card-purpl" onclick="toggleBrandCard('purpl')">
-      <div class="fu-check">✓</div>
-      <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" style="max-width:110px" onerror="this.style.display='none'">
-      <div class="fu-name">purpl lemonade</div>
-      <div class="fu-sub">Lavender-infused lemonade</div>
-    </div>
-    <div class="fu-card fu-lf active" id="fu-card-lf" onclick="toggleBrandCard('lf')">
-      <div class="fu-check">✓</div>
-      <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="max-width:72px" onerror="this.style.display='none'">
-      <div class="fu-name">Lavender Fields</div>
-      <div class="fu-sub">Farm products &amp; gifts</div>
-    </div>
-  </div>
-  <div class="fu-hint">Tap a brand to show only its stores</div>
-  <div class="count" id="count">Loading stores…</div>
-  <div class="searchbar">
-    <input id="loc-input" placeholder="Enter your town or ZIP…" autocomplete="postal-code"
-      onkeydown="if(event.key==='Enter')searchLocation()">
-    <button onclick="searchLocation()">Search</button>
-    <button class="geo" onclick="useMyLocation()" title="Use my location">📍</button>
-  </div>
-  <div id="maplegend" style="display:none;justify-content:center;gap:18px;font-family:Inter,Arial,sans-serif;font-size:13px;color:#374151;margin-bottom:10px;flex-wrap:wrap">
-    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#8B5FBF;border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> purpl</span>
-    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> Lavender Fields</span>
-    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:linear-gradient(90deg,#8B5FBF 50%,#4a7c59 50%);border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> carries both</span>
-  </div>
-  <div id="results"></div>
+<div class="stage">
   <div id="map"></div>
-  <div id="list"></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="searchbar">
+        <input id="loc-input" placeholder="Enter your town or ZIP…" autocomplete="postal-code"
+          onkeydown="if(event.key==='Enter')searchLocation()">
+        <button onclick="searchLocation()">Search</button>
+        <button class="geo" onclick="useMyLocation()" title="Use my location">📍</button>
+      </div>
+      <div class="fu-cards">
+        <div class="fu-card fu-purpl active" id="fu-card-purpl" onclick="toggleBrandCard('purpl')">
+          <div class="fu-check">✓</div>
+          <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" style="max-width:74px" onerror="this.style.display='none'">
+          <div class="fu-name">purpl lemonade</div>
+        </div>
+        <div class="fu-card fu-lf active" id="fu-card-lf" onclick="toggleBrandCard('lf')">
+          <div class="fu-check">✓</div>
+          <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="max-width:46px" onerror="this.style.display='none'">
+          <div class="fu-name">Lavender Fields</div>
+        </div>
+      </div>
+      <div class="count" id="count">Loading stores…</div>
+    </div>
+    <div class="panel-scroll">
+      <div id="results"></div>
+      <div id="list"></div>
+    </div>
+  </div>
+
+  <div id="maplegend" class="legend-pill">
+    <span><span class="bdot" style="background:#8B5FBF"></span> purpl</span>
+    <span><span class="bdot" style="background:#4a7c59"></span> Lavender Fields</span>
+    <span><span class="bdot" style="background:linear-gradient(90deg,#8B5FBF 50%,#4a7c59 50%)"></span> both</span>
+  </div>
 </div>
 
 <div class="foot">
@@ -111,13 +145,12 @@
 </div>
 
 <script>
-// Embed mode (?embed=1): the wholesale homepage inlines this page as its
-// "Where to Find Us" section via iframe — hide the hero header and footer so
-// it reads as part of that page, not a page within a page.
+// Embed mode (?embed=1): the wholesale homepage inlines this page via iframe —
+// hide the strip and footer so it reads as part of that page.
 if (new URLSearchParams(location.search).get('embed')) {
-  document.querySelector('.hdr').style.display = 'none';
+  document.body.classList.add('embed');
+  document.querySelector('.strip').style.display = 'none';
   document.querySelector('.foot').style.display = 'none';
-  document.body.style.background = 'transparent';
 }
 firebase.initializeApp(window.FIREBASE_CONFIG);
 var ALL = [];            // full stockist list from the server
@@ -125,10 +158,10 @@ var SKIPPED = 0;         // entries held back server-side (no coordinates yet)
 var BRAND = 'all';       // current filter
 var SEARCH = null;       // {lat, lng, label} once the visitor searches
 var SHOWN = 10;          // nearest-results page size
-var BROWSE = false;      // collapsed browse-all expanded?
+var BROWSE = false;      // browse-all expanded?
 var MAP = null, MARKERS = [], INFO = null, YOU_MARKER = null;
+var VISLIST = [];        // the currently-visible store array (marker order)
 
-// miles between two points
 function milesBetween(lat1, lng1, lat2, lng2) {
   var p = Math.PI / 180, R = 3958.8;
   var h = Math.pow(Math.sin((lat2 - lat1) * p / 2), 2) +
@@ -138,8 +171,6 @@ function milesBetween(lat1, lng1, lat2, lng2) {
 
 // Brand cards toggle like the portal's: both on = all stores.
 var SEL = { purpl: true, lf: true };
-
-// URL param drives the initial filter (Wix links use ?brand=purpl / ?brand=lf)
 (function () {
   var b = new URLSearchParams(location.search).get('brand');
   if (b === 'purpl') { BRAND = 'purpl'; SEL.lf = false; }
@@ -164,9 +195,9 @@ function stateOf(s) {
   var m = (s.address || '').match(/\b(NH|MA|ME|VT|CT|RI|NY)\b/);
   return m ? m[1] : 'More';
 }
+var STATE_NAMES = { NH:'New Hampshire', MA:'Massachusetts', ME:'Maine', VT:'Vermont', CT:'Connecticut', RI:'Rhode Island', NY:'New York', More:'More locations' };
+var STATE_ORDER = ['NH','MA','ME','VT','CT','RI','NY','More'];
 
-// "Town, ST" for the compact rows (full address stays in the tooltip and
-// the Directions link)
 function townOf(s) {
   var parts = (s.address || '').split(',');
   if (parts.length >= 2) {
@@ -177,32 +208,47 @@ function townOf(s) {
   }
   return s.address || '';
 }
-var STATE_NAMES = { NH:'New Hampshire', MA:'Massachusetts', ME:'Maine', VT:'Vermont', CT:'Connecticut', RI:'Rhode Island', NY:'New York', More:'More locations' };
-var STATE_ORDER = ['NH','MA','ME','VT','CT','RI','NY','More'];
+
+function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function brandTiles(s) {
+  return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#8B5FBF" title="purpl"></span>' : '') +
+         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4a7c59" title="Lavender Fields"></span>' : '');
+}
+
+function rowHtml(s, dist) {
+  var idx = VISLIST.indexOf(s);
+  return '<div class="srow" onclick="focusStore(' + idx + ')">' +
+    '<span class="nm">' + esc(s.name) + '</span>' +
+    '<span class="ad" title="' + esc(s.address || '') + '">' + esc(townOf(s)) + '</span>' +
+    '<span class="icons">' + brandTiles(s) + '</span>' +
+    (dist != null ? '<span class="mi">' + (dist < 10 ? dist.toFixed(1) : Math.round(dist)) + ' mi</span>' : '') +
+    '<a class="dir" target="_blank" rel="noopener" onclick="event.stopPropagation()" href="https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a>' +
+    '</div>';
+}
 
 function render() {
-  // brand cards
   document.getElementById('fu-card-purpl').classList.toggle('active', SEL.purpl);
   document.getElementById('fu-card-lf').classList.toggle('active', SEL.lf);
   document.getElementById('page-title').textContent =
     BRAND === 'purpl' ? 'Where to Find purpl' : BRAND === 'lf' ? 'Where to Find Lavender Fields' : 'Where to Find Us';
 
   var list = visible();
+  VISLIST = list;
   document.getElementById('count').textContent = (list.length
-    ? 'Available at ' + list.length + ' location' + (list.length === 1 ? '' : 's') + ' across New England'
+    ? list.length + ' location' + (list.length === 1 ? '' : 's') + ' across New England'
     : 'Store list coming soon — check back shortly!')
-    + (SKIPPED > 0 ? ' (+' + SKIPPED + ' more being located)' : '');
+    + (SKIPPED > 0 ? ' (+' + SKIPPED + ' being located)' : '');
 
   var resultsHtml = '';
-  var html = '';
-
   if (SEARCH) {
     var ranked = list.map(function (s) {
       return { s: s, d: milesBetween(SEARCH.lat, SEARCH.lng, s.lat, s.lng) };
     }).sort(function (a, b) { return a.d - b.d; });
     var shown = ranked.slice(0, SHOWN);
     resultsHtml += '<div class="results-hdr"><strong>' + (shown.length ? 'Stores near ' + esc(SEARCH.label) : 'No stores found near ' + esc(SEARCH.label)) + '</strong>' +
-      '<span class="clr" onclick="clearSearch()">✕ clear search</span></div>';
+      '<span class="clr" onclick="clearSearch()">✕ clear</span></div>';
     if (shown.length && shown[0].d > 50) {
       var links = BRAND === 'purpl' ? '<a href="https://drinkpurpl.com" target="_blank" rel="noopener">drinkpurpl.com</a>'
         : BRAND === 'lf' ? '<a href="https://pumpkinblossomfarm.com" target="_blank" rel="noopener">pumpkinblossomfarm.com</a>'
@@ -211,10 +257,11 @@ function render() {
     }
     shown.forEach(function (r) { resultsHtml += rowHtml(r.s, r.d); });
     if (ranked.length > SHOWN) resultsHtml += '<button class="morebtn" onclick="SHOWN+=10;render()">Show more</button>';
+  } else if (!BROWSE) {
+    resultsHtml = '<div class="prompt">Search your town or ZIP to see the stores nearest you,<br>or explore the map.</div>';
   }
 
-  // Collapsed browse-all (SEO + skimmers) — always available at the bottom
-  html += '<div class="browse-toggle"><a onclick="BROWSE=!BROWSE;render()">' +
+  var html = '<div class="browse-toggle"><a onclick="BROWSE=!BROWSE;render()">' +
     (BROWSE ? 'Hide full store list ▴' : 'Browse all locations ▾') + '</a></div>';
   if (BROWSE) {
     var groups = {};
@@ -225,7 +272,7 @@ function render() {
       html += '<div class="state-hdr">' + (STATE_NAMES[st] || st) + ' (' + groups[st].length + ')</div>';
       groups[st].forEach(function (s) { html += rowHtml(s, null); });
     });
-    if (!list.length) html += '<div class="empty">No stores match this filter yet.</div>';
+    if (!list.length) html += '<div class="prompt">No stores match this filter yet.</div>';
   }
 
   document.getElementById('results').innerHTML = resultsHtml;
@@ -234,48 +281,90 @@ function render() {
   applySearchToMap();
 }
 
-function brandTiles(s) {
-  return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#8B5FBF" title="purpl"></span>' : '') +
-         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4a7c59" title="Lavender Fields"></span>' : '');
+function focusStore(i) {
+  var s = VISLIST[i];
+  if (!s) return;
+  if (MAP) { MAP.panTo({ lat: s.lat, lng: s.lng }); if (MAP.getZoom() < 11) MAP.setZoom(11); }
+  if (MARKERS[i]) google.maps.event.trigger(MARKERS[i], 'click');
 }
 
-function rowHtml(s, dist) {
-  var icons = brandTiles(s);
-  return '<div class="srow">' +
-    '<span class="nm">' + esc(s.name) + '</span>' +
-    '<span class="ad" title="' + esc(s.address || '') + '">' + esc(townOf(s)) + '</span>' +
-    '<span class="icons">' + icons + '</span>' +
-    (dist != null ? '<span class="mi">' + (dist < 10 ? dist.toFixed(1) : Math.round(dist)) + ' mi</span>' : '') +
-    '<a class="dir" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
-      encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a>' +
-    '</div>';
+function _mapPad() {
+  return (window.innerWidth > 760)
+    ? { left: 410, top: 50, right: 50, bottom: 50 }
+    : { left: 30, top: 30, right: 30, bottom: 30 };
+}
+
+// ── Map layer (enhancement — the panel works without it) ──
+function renderPins(list) {
+  if (!MAP) return;
+  MARKERS.forEach(function (m) { m.setMap(null); });
+  MARKERS = [];
+  if (!list.length) return;
+  var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
+    '<circle cx="11" cy="11" r="9" fill="#4a7c59"/>' +
+    '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#8B5FBF"/>' +
+    '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
+  var DUAL_ICON = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dualSvg),
+    scaledSize: new google.maps.Size(22, 22),
+    anchor: new google.maps.Point(11, 11),
+  };
+  var bounds = new google.maps.LatLngBounds();
+  list.forEach(function (s) {
+    var isP = (s.brands || []).indexOf('purpl') >= 0;
+    var isL = (s.brands || []).indexOf('lf') >= 0;
+    var icon = (isP && isL) ? DUAL_ICON
+      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4a7c59' : '#8B5FBF', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
+    var m = new google.maps.Marker({ map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name, icon: icon });
+    m.addListener('click', function () {
+      if (!INFO) INFO = new google.maps.InfoWindow();
+      INFO.setContent('<div style="font-family:Arial,sans-serif;min-width:170px">' +
+        '<div style="font-weight:700;font-size:14px;margin-bottom:3px">' + esc(s.name) + '</div>' +
+        '<div style="font-size:12px;color:#666">' + esc(s.address || '') + '</div>' +
+        '<div style="margin-top:6px">' + brandTiles(s) + '</div>' +
+        '<a style="font-size:12px;color:#8B5FBF" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
+          encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a></div>');
+      INFO.open(MAP, m);
+    });
+    MARKERS.push(m);
+    bounds.extend(m.getPosition());
+  });
+  if (!SEARCH) MAP.fitBounds(bounds, _mapPad());
+}
+
+function applySearchToMap() {
+  if (!MAP) return;
+  if (YOU_MARKER) { YOU_MARKER.setMap(null); YOU_MARKER = null; }
+  if (!SEARCH) return;
+  YOU_MARKER = new google.maps.Marker({
+    map: MAP, position: { lat: SEARCH.lat, lng: SEARCH.lng }, title: 'You',
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+    zIndex: 999,
+  });
+  MAP.setCenter({ lat: SEARCH.lat, lng: SEARCH.lng });
+  MAP.setZoom(10);
+  if (window.innerWidth > 760) MAP.panBy(-190, 0); // shift focus right of the panel
 }
 
 function searchLocation() {
   var q = (document.getElementById('loc-input').value || '').trim();
   if (!q) return;
-  // If the Places suggestion dropdown is open, Enter belongs to it — the
-  // place_changed handler will run the search with exact coordinates.
+  // If the Places suggestion dropdown is open, Enter belongs to it.
   var pac = document.querySelector('.pac-container');
   if (pac && pac.offsetParent !== null && pac.querySelector('.pac-item')) return;
   if (SEARCH && SEARCH.label === q) return; // already applied via suggestion
   if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) {
     BROWSE = true; render();
-    document.getElementById('count').textContent = 'Search is unavailable right now — browse the full list below.';
     return;
   }
   var geocoder = new google.maps.Geocoder();
   var isZip = /^\d{5}(-\d{4})?$/.test(q);
-  // ZIPs need the postalCode component; free-text town names use address.
-  // Whichever ran first, fall back to the other shape before giving up.
   var attempts = isZip
     ? [{ componentRestrictions: { country: 'US', postalCode: q.slice(0, 5) } }, { address: q + ', USA' }]
     : [{ address: q, componentRestrictions: { country: 'US' } }, { address: q + ', New England, USA' }];
   var lastStatus = '';
   var tryNext = function (i) {
     if (i >= attempts.length) {
-      // A suggestion-driven search may have landed while we were failing —
-      // never stamp an error over a working result.
       if (SEARCH && SEARCH.label === q) return;
       document.getElementById('count').textContent = 'Couldn\'t find "' + q + '" — pick a suggestion from the dropdown as you type. (' + lastStatus + ')';
       return;
@@ -312,73 +401,13 @@ function clearSearch() {
   if (MAP && MARKERS.length) {
     var b = new google.maps.LatLngBounds();
     MARKERS.forEach(function (m) { b.extend(m.getPosition()); });
-    MAP.fitBounds(b);
-  }
-}
-
-function applySearchToMap() {
-  if (!MAP) return;
-  if (YOU_MARKER) { YOU_MARKER.setMap(null); YOU_MARKER = null; }
-  if (!SEARCH) return;
-  YOU_MARKER = new google.maps.Marker({
-    map: MAP, position: { lat: SEARCH.lat, lng: SEARCH.lng }, title: 'You',
-    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
-    zIndex: 999,
-  });
-  MAP.setCenter({ lat: SEARCH.lat, lng: SEARCH.lng });
-  MAP.setZoom(10);
-}
-
-function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-// ── Map layer (enhancement — the list works without it) ──
-function renderPins(list) {
-  if (!MAP) return;
-  MARKERS.forEach(function (m) { m.setMap(null); });
-  MARKERS = [];
-  if (!list.length) return;
-  var bounds = new google.maps.LatLngBounds();
-  // Half-purple/half-green split circle for stores carrying both brands
-  var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
-    '<circle cx="11" cy="11" r="9" fill="#4a7c59"/>' +
-    '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#8B5FBF"/>' +
-    '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
-  var DUAL_ICON = {
-    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dualSvg),
-    scaledSize: new google.maps.Size(22, 22),
-    anchor: new google.maps.Point(11, 11),
-  };
-  list.forEach(function (s) {
-    var isP = (s.brands || []).indexOf('purpl') >= 0;
-    var isL = (s.brands || []).indexOf('lf') >= 0;
-    var icon = (isP && isL) ? DUAL_ICON
-      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4a7c59' : '#8B5FBF', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
-    var m = new google.maps.Marker({
-      map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name,
-      icon: icon,
-    });
-    m.addListener('click', function () {
-      if (!INFO) INFO = new google.maps.InfoWindow();
-      INFO.setContent('<div style="font-family:Arial,sans-serif;min-width:170px">' +
-        '<div style="font-weight:700;font-size:14px;margin-bottom:3px">' + esc(s.name) + '</div>' +
-        '<div style="font-size:12px;color:#666">' + esc(s.address || '') + '</div>' +
-        '<div style="margin-top:6px">' + brandTiles(s) + '</div>' +
-        '<a style="font-size:12px;color:#8B5FBF" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
-          encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a></div>');
-      INFO.open(MAP, m);
-    });
-    MARKERS.push(m);
-    bounds.extend(m.getPosition());
-  });
-  if (!SEARCH) {
-    MAP.fitBounds(bounds);
-    if (list.length === 1) MAP.setZoom(13);
+    MAP.fitBounds(b, _mapPad());
   }
 }
 
 window.__findUsMapReady = function () {
   try {
-    document.getElementById('map').style.display = 'block';
+    document.body.classList.remove('nomap');
     document.getElementById('maplegend').style.display = 'flex';
     MAP = new google.maps.Map(document.getElementById('map'), {
       center: { lat: 43.4, lng: -71.6 }, zoom: 8,
@@ -386,9 +415,8 @@ window.__findUsMapReady = function () {
     });
     renderPins(visible());
     applySearchToMap();
-    // Suggestion dropdown on the search box — picking a suggestion carries
-    // its own coordinates, sidestepping the geocoder entirely (the reliable
-    // path for ZIPs). The Search button/Enter remain as the typed fallback.
+    // Suggestion dropdown — picking a suggestion carries its own coordinates,
+    // sidestepping the geocoder (the reliable path for ZIPs).
     if (google.maps.places && google.maps.places.Autocomplete) {
       var acInput = document.getElementById('loc-input');
       var ac = new google.maps.places.Autocomplete(acInput, {
@@ -405,7 +433,7 @@ window.__findUsMapReady = function () {
         }
       });
     }
-  } catch (e) { /* list remains the product */ }
+  } catch (e) { /* panel remains the product */ }
 };
 
 (function loadMap() {
@@ -414,7 +442,7 @@ window.__findUsMapReady = function () {
   var s = document.createElement('script');
   s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&libraries=places&callback=__findUsMapReady';
   s.async = true; s.defer = true;
-  s.onerror = function () { /* map stays hidden; list unaffected */ };
+  s.onerror = function () { /* panel remains the product */ };
   document.head.appendChild(s);
 })();
 
