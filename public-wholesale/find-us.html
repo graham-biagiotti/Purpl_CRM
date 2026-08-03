@@ -60,6 +60,11 @@
     <button class="chip" data-brand="lf" onclick="setBrand('lf')">🪻 Lavender Fields</button>
   </div>
   <div class="count" id="count">Loading stores…</div>
+  <div id="maplegend" style="display:none;justify-content:center;gap:18px;font-family:Inter,Arial,sans-serif;font-size:13px;color:#374151;margin-bottom:10px;flex-wrap:wrap">
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#8B5FBF;border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> purpl</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:#4a7c59;border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> Lavender Fields</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:50%;background:linear-gradient(90deg,#8B5FBF 50%,#4a7c59 50%);border:2px solid #fff;box-shadow:0 0 0 1px #ccc"></span> carries both</span>
+  </div>
   <div id="map"></div>
   <div id="list"></div>
 </div>
@@ -160,13 +165,24 @@ function renderPins(list) {
   MARKERS = [];
   if (!list.length) return;
   var bounds = new google.maps.LatLngBounds();
+  // Half-purple/half-green split circle for stores carrying both brands
+  var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
+    '<circle cx="11" cy="11" r="9" fill="#4a7c59"/>' +
+    '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#8B5FBF"/>' +
+    '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
+  var DUAL_ICON = {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dualSvg),
+    scaledSize: new google.maps.Size(22, 22),
+    anchor: new google.maps.Point(11, 11),
+  };
   list.forEach(function (s) {
     var isP = (s.brands || []).indexOf('purpl') >= 0;
     var isL = (s.brands || []).indexOf('lf') >= 0;
-    var color = isP && isL ? '#6B4F9A' : isL ? '#4a7c59' : '#8B5FBF';
+    var icon = (isP && isL) ? DUAL_ICON
+      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4a7c59' : '#8B5FBF', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
     var m = new google.maps.Marker({
       map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name,
-      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: color, fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 },
+      icon: icon,
     });
     m.addListener('click', function () {
       if (!INFO) INFO = new google.maps.InfoWindow();
@@ -189,6 +205,7 @@ function renderPins(list) {
 window.__findUsMapReady = function () {
   try {
     document.getElementById('map').style.display = 'block';
+    document.getElementById('maplegend').style.display = 'flex';
     MAP = new google.maps.Map(document.getElementById('map'), {
       center: { lat: 43.4, lng: -71.6 }, zoom: 8,
       mapTypeControl: false, streetViewControl: false, fullscreenControl: true,
