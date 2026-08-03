@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v188';
+const APP_VERSION = 'v189';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -11405,12 +11405,49 @@ function deleteLLImportLog(id) {
 //  SETTINGS
 // ══════════════════════════════════════════════════════════
 // ── Where to Find Us: manual locations + seeding ─────────
+// Every listed-but-unpinned entry with its reason — mirrors getStockists
+// exactly, so this list IS the public page's "being located" tail.
+function _stockistPinIssues() {
+  const issues = [];
+  const has = v => !!parseFloat(v);
+  DB.a('ac').filter(a => a.stockistListed && a.status !== 'inactive').forEach(a => {
+    const locs = (a.locs && a.locs.length) ? a.locs : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    const anyPinned = locs.some(l => has(l.lat) && has(l.lng));
+    locs.forEach((l, i) => {
+      if (has(l.lat) && has(l.lng)) return;
+      if (!anyPinned && has(a.lat) && has(a.lng)) return; // account-pin fallback covers it — shows fine
+      issues.push({
+        name: a.name + (locs.length > 1 ? ` (location ${i + 1}${l.label ? ': ' + l.label : ''})` : ''),
+        reason: !(l.address || a.address || '').trim() ? 'no address on file'
+          : (l.geocodeFailed || a.geocodeFailed) ? 'address failed lookup — re-pick it from the autocomplete on the account'
+          : 'awaiting geocode — open Territory Map',
+      });
+    });
+  });
+  DB.a('stockist_locations').filter(s => s.active !== false && !(has(s.lat) && has(s.lng))).forEach(s => {
+    issues.push({
+      name: s.name,
+      reason: !(s.address || '').trim() ? 'no address on file'
+        : s.geocodeFailed ? 'address failed lookup — delete & re-add with a fuller address'
+        : 'awaiting geocode — open Territory Map',
+    });
+  });
+  return issues;
+}
+
 function renderStockistLocations() {
   const el = qs('#stockist-loc-list');
   if (!el) return;
+  const issues = _stockistPinIssues();
+  const issuesHtml = issues.length
+    ? `<div style="margin-bottom:12px;padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px">⚠️ ${issues.length} listing${issues.length === 1 ? '' : 's'} not on the public map yet:</div>
+        ${issues.map(x => `<div style="font-size:12px;color:#78350f;padding:1px 0"><strong>${escHtml(x.name)}</strong> — ${escHtml(x.reason)}</div>`).join('')}
+      </div>`
+    : `<div style="margin-bottom:12px;font-size:12px;color:#16a34a">✓ Every listed store has a map pin.</div>`;
   const rows = DB.a('stockist_locations');
-  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted)">No extra locations yet.</div>'; return; }
-  el.innerHTML = `<div class="tbl-wrap"><table>
+  if (!rows.length) { el.innerHTML = issuesHtml + '<div style="font-size:12px;color:var(--muted)">No extra locations yet.</div>'; return; }
+  el.innerHTML = issuesHtml + `<div class="tbl-wrap"><table>
     <thead><tr><th>Store</th><th>Address</th><th>Brands</th><th>Pin</th><th></th></tr></thead>
     <tbody>${rows.map(s => `<tr style="${s.active === false ? 'opacity:.45' : ''}">
       <td><strong>${escHtml(s.name)}</strong></td>
@@ -11472,11 +11509,22 @@ function retryMissingPins() {
   DB.atomicUpdate(c => {
     ['ac', 'pr', 'stockist_locations'].forEach(k => {
       c[k] = (c[k] || []).map(r => {
-        if (!r.geocodeFailed) return r;
-        cleared++;
-        const copy = { ...r };
-        delete copy.geocodeFailed;
-        return copy;
+        let changed = false;
+        let copy = r;
+        if (r.geocodeFailed) { copy = { ...copy }; delete copy.geocodeFailed; cleared++; changed = true; }
+        // per-location parks inside accounts count too
+        if (k === 'ac' && (r.locs || []).some(l => l.geocodeFailed)) {
+          copy = changed ? copy : { ...copy };
+          copy.locs = copy.locs.map(l => {
+            if (!l.geocodeFailed) return l;
+            cleared++;
+            const lc = { ...l };
+            delete lc.geocodeFailed;
+            return lc;
+          });
+          changed = true;
+        }
+        return changed ? copy : r;
       });
     });
   });
@@ -15217,9 +15265,21 @@ async function _geocodeMissingAccounts() {
   if (_geocodeInFlight || typeof google === 'undefined' || !google.maps?.Geocoder) return;
   // Accounts first, then prospects (CSV-imported prospects arrive with an
   // address but no coordinates) — same batch budget, caches, and guards.
+  // Per-location rows inside accounts: a loc entry without its own pin never
+  // shows on the public map even when the account-level pin exists (multi-
+  // location stores). Geocode each unpinned loc row with an address.
+  const locJobs = [];
+  DB.a('ac').forEach(a => {
+    if (a.status === 'inactive') return;
+    (a.locs || []).forEach((l, i) => {
+      if ((parseFloat(l.lat) && parseFloat(l.lng)) || !(l.address || '').trim() || l.geocodeFailed) return;
+      locJobs.push({ col: 'ac-loc', rec: { id: a.id, address: l.address, locIndex: i } });
+    });
+  });
   const missing = [
     ..._acMapMissing().map(rec => ({ col: 'ac', rec })),
     ..._prMapMissing().map(rec => ({ col: 'pr', rec })),
+    ...locJobs,
     ...DB.a('stockist_locations').filter(s => s.active !== false && !(s.lat && s.lng) && (s.address || '').trim() && !s.geocodeFailed)
       .map(rec => ({ col: 'stockist_locations', rec })),
   ];
@@ -15228,16 +15288,25 @@ async function _geocodeMissingAccounts() {
   let done = 0;
   try {
     const geocoder = new google.maps.Geocoder();
+    const writeLoc = (id, locIndex, patch) => DB.update('ac', id, x => ({
+      ...x, locs: (x.locs || []).map((ll, idx) => idx === locIndex ? { ...ll, ...patch } : ll),
+    }));
     for (const { col, rec } of missing.slice(0, 10)) {
       try {
         const res = await geocoder.geocode({ address: rec.address });
         const loc = res.results?.[0]?.geometry?.location;
-        if (loc) { DB.update(col, rec.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()})); done++; }
+        if (loc) {
+          if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { lat: loc.lat(), lng: loc.lng() });
+          else DB.update(col, rec.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()}));
+          done++;
+        }
+        else if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { geocodeFailed: new Date().toISOString() });
         else DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()}));
       } catch (e) {
         const msg = String(e?.code || e?.message || e);
         if (msg.includes('OVER_QUERY_LIMIT') || msg.includes('REQUEST_DENIED')) break; // quota/key problem — stop, retry next visit
-        DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
+        if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { geocodeFailed: new Date().toISOString() });
+        else DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
       }
       await new Promise(r=>setTimeout(r, 300));
     }
