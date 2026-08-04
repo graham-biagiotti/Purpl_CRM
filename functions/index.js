@@ -1344,12 +1344,18 @@ exports.stripeWebhook = onRequest(
         paidAmount: session.amount_total != null ? session.amount_total / 100 : null,
       };
 
-      // Update the correct invoice collection based on type
+      // Update the correct invoice collection based on type. 'iv' is the
+      // legacy purpl invoice collection — payInvoice emits it as the metadata
+      // type when the doc matched there; without this key those payments fell
+      // to colMap.retail, the update threw (doc not in retail_invoices), and
+      // the iv fallback below never ran because invoiceType wasn't 'retail':
+      // customer paid, invoice stayed open.
       const colMap = {
         retail: 'workspace/main/retail_invoices',
         lf: 'workspace/main/lf_invoices',
         combined: 'workspace/main/combined_invoices',
         dist: 'workspace/main/dist_invoices',
+        iv: 'workspace/main/iv',
       };
       const colPath = colMap[invoiceType] || colMap.retail;
       try {
@@ -1373,14 +1379,19 @@ exports.stripeWebhook = onRequest(
         }
         await db.doc(`${colPath}/${invoiceId}`).update(paidData);
       } catch (updateErr) {
-        // Legacy purpl invoices live in workspace/main/iv — try there before
-        // declaring the payment orphaned.
+        // Cross-collection recovery before declaring the payment orphaned:
+        // retail↔iv are the same brand's two homes (legacy vs current), so a
+        // stale/wrong type hint must not orphan a real payment.
         let recovered = false;
-        if (invoiceType === 'retail') {
+        const altPaths = invoiceType === 'retail' ? ['workspace/main/iv']
+          : invoiceType === 'iv' ? ['workspace/main/retail_invoices']
+          : [];
+        for (const alt of altPaths) {
           try {
-            await db.doc(`workspace/main/iv/${invoiceId}`).update(paidData);
+            await db.doc(`${alt}/${invoiceId}`).update(paidData);
             recovered = true;
-          } catch (e2) { /* fall through to orphan handling */ }
+            break;
+          } catch (e2) { /* fall through */ }
         }
         if (!recovered) {
           // Invoice was deleted before payment completed — ack the webhook so
