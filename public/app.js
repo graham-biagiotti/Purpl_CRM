@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v190';
+const APP_VERSION = 'v191';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13462,6 +13462,7 @@ async function saveNewCombinedInvoice() {
         ...p, ...shared,
         purplSubtotal: purplSub, lfSubtotal: lfSub,
         grandTotal: Math.round((purplSub + lfSub + editShip) * 100) / 100,
+        shippingByOrder: editShip > 0 ? { manual: editShip } : {},
         lineItems: editShip > 0 ? [...rest, { skuId:'__shipping__', skuName:'Shipping', description:'Shipping', qty:1, cases:0, unitPrice:editShip, lineTotal:editShip, total:editShip }] : rest,
       };
     });
@@ -13509,6 +13510,10 @@ async function saveNewCombinedInvoice() {
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub + shipVal,
     notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, source: 'manual',
+    // shippingByOrder = the provenance map the ShipStation webhook maintains;
+    // a user-entered amount is the authoritative 'manual' entry (a later real
+    // charge replaces it server-side).
+    shippingByOrder: shipVal > 0 ? { manual: shipVal } : {},
     ...(shipVal > 0 ? { lineItems: [{ skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }] } : {}),
   };
 
@@ -14390,6 +14395,7 @@ async function openCombinedInvoicePreview(combinedId) {
         const finalLf    = lfSub    != null ? lfSub    : (parseFloat(p.lfSubtotal)||0);
         cache.combined_invoices[ci] = {
           ...p,
+          shippingByOrder: shipVal > 0 ? { manual: shipVal } : {},
           lineItems: shipVal > 0
             ? [...rest, { skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }]
             : rest,

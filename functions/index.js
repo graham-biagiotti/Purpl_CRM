@@ -1814,12 +1814,19 @@ exports.shipStationWebhook = onRequest(
               return s + (parseFloat(v) || 0);
             }, 0) * 100) / 100;
 
+            // Combined-family members get NO money writes here — shipping for
+            // a combined parent or child is managed exclusively by the
+            // provenance map below (writing a shipping line onto a child, or
+            // replacing a parent's lines here, was the source of double-count
+            // and legacy-child-zeroing bugs). Single invoices keep the
+            // replace-line semantics unchanged.
+            const isCombinedFamily = col === 'combined_invoices' || !!inv.combinedInvoiceId;
             const update = {
               trackingNumber: trackingStr,
               carrier: carrierStr,
               deliveryMethod: 'ship',
-              lineItems: updatedItems,
             };
+            if (!isCombinedFamily) update.lineItems = updatedItems;
             // readyToSend is a "draft is ready — go send it" nudge. If the
             // invoice was already sent/paid (owner sent first, label came
             // after), setting it would pulse a stale badge nothing clears.
@@ -1841,28 +1848,28 @@ exports.shipStationWebhook = onRequest(
               update.dueDate = dueDate;
               update.due = dueDate;
             }
-            // Update total on the right field(s) depending on collection
-            if (col === 'combined_invoices') {
-              // For combined: shipping goes on grand total; product subtotals unchanged
-              update.grandTotal = (parseFloat(inv.purplSubtotal || 0) + parseFloat(inv.lfSubtotal || 0) + shipCost);
-            } else {
+            // Update total on the right field(s) — single invoices only; the
+            // family block below owns all combined money.
+            if (!isCombinedFamily) {
               update.total = newTotal;
               update.amount = newTotal;
             }
 
             await doc.ref.update(update);
 
-            // Combined-family normalization: whenever a shipment touches a
-            // combined invoice OR one of its children, re-home ALL shipping
-            // into the canonical shape the client editor/preview produce —
-            // ONE __shipping__ line on the parent, product-only children,
-            // grandTotal = product subtotals + shipping. Anything else breaks
-            // _syncCombinedParentForChild's invariant (extra = grand − subs)
-            // and either under- or over-charges by the shipping amount on the
-            // next routine client write. Idempotent under redelivery.
+            // ── Combined-family shipping with PROVENANCE ─────────────────
+            // The parent carries `shippingByOrder`: {ssOrderNumber: cost,
+            // 'manual': estimate, 'moved-<childId>': migrated legacy line}.
+            // Each webhook event REPLACES its own key (redelivery-idempotent);
+            // distinct shipments SUM; the first real charge deletes 'manual'
+            // (actual replaces estimate). The rendered state derives from the
+            // map: ONE __shipping__ line on the parent, product-only children,
+            // grandTotal = product subtotals + sum(map). This keeps
+            // _syncCombinedParentForChild's invariant (extra = grand - subs).
             const familyParentId = col === 'combined_invoices' ? doc.id : inv.combinedInvoiceId;
             if (familyParentId) {
               try {
+                const r2 = n => Math.round(n * 100) / 100;
                 const shipOf = items => (items || []).filter(li => li.skuId === '__shipping__')
                   .reduce((s, li) => s + (parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0), 0);
                 const lineVal = li => parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases) || 0) * (parseFloat(li.pricePerCase) || 0))))) || 0;
@@ -1870,10 +1877,8 @@ exports.shipStationWebhook = onRequest(
                 const parentSnap = await parentRef.get();
                 if (parentSnap.exists) {
                   const p = parentSnap.data();
-                  // Fresh child reads; the matched child's post-write items are updatedItems.
                   const readChild = async (id, prefer) => {
                     if (!id) return null;
-                    if (id === doc.id) return { ref: doc.ref, data: { ...inv, lineItems: updatedItems } };
                     for (const c of prefer) {
                       const s = await db.doc('workspace/main/' + c + '/' + id).get();
                       if (s.exists) return { ref: s.ref, data: s.data() };
@@ -1882,37 +1887,66 @@ exports.shipStationWebhook = onRequest(
                   };
                   const pc = await readChild(p.purplInvoiceId, ['retail_invoices', 'iv']);
                   const lc = await readChild(p.lfInvoiceId, ['lf_invoices']);
-                  let familyShip = shipOf(p.lineItems);
-                  const childFix = child => {
-                    // Returns {sub, patch|null}: product-only subtotal + the
-                    // strip-shipping patch when the child holds a ship line.
-                    if (!child) return { sub: null, patch: null };
+
+                  // Build the map. Seed 'manual' once from a pre-map parent line.
+                  const map = { ...(p.shippingByOrder || {}) };
+                  if (!p.shippingByOrder && shipOf(p.lineItems) > 0) map['manual'] = r2(shipOf(p.lineItems));
+                  // Migrate legacy child-homed shipping lines into keyed entries
+                  // (idempotent: same key, same value) - ONLY when the child
+                  // also has product lines; a lineItems-less child is left
+                  // strictly untouched.
+                  const childPatches = [];
+                  const matchedChildId = col !== 'combined_invoices' ? doc.id : null;
+                  for (const child of [pc, lc]) {
+                    if (!child) continue;
                     const items = child.data.lineItems || [];
-                    if (!items.length) return { sub: parseFloat(child.data.total || child.data.amount) || 0, patch: null };
-                    const ship = shipOf(items);
-                    familyShip += ship;
-                    const prod = items.filter(li => li.skuId !== '__shipping__');
-                    const prodTotal = Math.round(prod.reduce((s, li) => s + lineVal(li), 0) * 100) / 100;
-                    return { sub: prodTotal, patch: ship > 0 ? { lineItems: prod, total: prodTotal, amount: prodTotal } : null };
-                  };
-                  const pcFix = childFix(pc);
-                  const lcFix = childFix(lc);
-                  if (pcFix.patch) await pc.ref.update(pcFix.patch);
-                  if (lcFix.patch) await lc.ref.update(lcFix.patch);
-                  const purplSub = pcFix.sub != null ? pcFix.sub : (parseFloat(p.purplSubtotal) || 0);
-                  const lfSub = lcFix.sub != null ? lcFix.sub : (parseFloat(p.lfSubtotal) || 0);
-                  familyShip = Math.round(familyShip * 100) / 100;
+                    const s = shipOf(items);
+                    if (s > 0 && items.some(li => li.skuId !== '__shipping__')) {
+                      // The MATCHED child's existing line is THIS order's old
+                      // charge under the pre-provenance code — the event key
+                      // supersedes it (strip, don't migrate, or the same
+                      // charge counts twice). Sibling lines are other orders'
+                      // charges and migrate under their own keys.
+                      if (child.ref.id !== matchedChildId) map['moved-' + child.ref.id] = r2(s);
+                      const prod = items.filter(li => li.skuId !== '__shipping__');
+                      const prodTotal = r2(prod.reduce((t, li) => t + lineVal(li), 0));
+                      childPatches.push({ ref: child.ref, patch: { lineItems: prod, total: prodTotal, amount: prodTotal } });
+                      child.data = { ...child.data, lineItems: prod, total: prodTotal, amount: prodTotal };
+                    }
+                  }
+                  // This event's charge replaces its own key.
+                  if (shipCost > 0 && orderNumber) map[String(orderNumber)] = r2(shipCost);
+                  // First real charge supersedes the manual estimate.
+                  if (map['manual'] != null && Object.keys(map).some(k => k !== 'manual')) delete map['manual'];
+
+                  const familyShip = r2(Object.values(map).reduce((s, v) => s + (parseFloat(v) || 0), 0));
+                  const subOf = child => child ? (parseFloat(child.data.total != null ? child.data.total : child.data.amount) || 0) : null;
+                  const purplSub = subOf(pc) != null ? subOf(pc) : (parseFloat(p.purplSubtotal) || 0);
+                  const lfSub = subOf(lc) != null ? subOf(lc) : (parseFloat(p.lfSubtotal) || 0);
                   const parentNonShip = (p.lineItems || []).filter(li => li.skuId !== '__shipping__');
+
+                  // Parent (the money) writes FIRST; child strips after - a
+                  // failure between them leaves shipping counted, never lost.
                   await parentRef.update({
+                    shippingByOrder: map,
                     purplSubtotal: purplSub,
                     lfSubtotal: lfSub,
-                    grandTotal: Math.round((purplSub + lfSub + familyShip) * 100) / 100,
+                    grandTotal: r2(purplSub + lfSub + familyShip),
                     lineItems: familyShip > 0
                       ? [...parentNonShip, { skuId: '__shipping__', skuName: 'Shipping', sku: 'Shipping', description: carrierStr ? ('Shipping via ' + carrierStr) : 'Shipping', cases: 1, qty: 1, units: 1, pricePerCase: familyShip, unitPrice: familyShip, lineTotal: familyShip, total: familyShip }]
                       : parentNonShip,
                   });
+                  for (const cp of childPatches) await cp.ref.update(cp.patch);
                 }
-              } catch (syncErr) { console.warn('combined family shipping normalize failed:', syncErr.message); }
+              } catch (syncErr) {
+                console.warn('combined family shipping sync failed:', syncErr.message);
+                await db.collection('workspace/main/audit_log').add({
+                  timestamp: now, action: 'combined_ship_sync_failed',
+                  entityType: 'combined_invoice', entityId: familyParentId,
+                  entityName: orderNumber, changedBy: 'shipstation',
+                  note: 'Shipping recorded on the shipment but combined totals may need a Preview re-save: ' + syncErr.message,
+                }).catch(() => {});
+              }
             }
 
             // Audit log
