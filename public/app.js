@@ -2420,7 +2420,7 @@ async function sendInvoiceReminder(invId, collection) {
   const inv = DB.a(collection).find(x => x.id === invId);
   if (!inv) return;
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
-  if (!ac || !ac.email) { toast('No email on file for this account'); return; }
+  if (!ac || !_invRecipient(inv, ac)) { toast('No email on file for this account or invoice'); return; }
 
   const type = collection === 'lf_invoices' ? 'lf' : collection === 'combined_invoices' ? 'combined' : 'retail';
   const payLink = await _getStripePayLink(inv, type);
