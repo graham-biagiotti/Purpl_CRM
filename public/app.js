@@ -5970,7 +5970,9 @@ async function saveAccount(id, isNew) {
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
-    isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
+    // Two-way: an unticked box must clear the flag — || made it a one-way
+    // ratchet (once LF, forever LF). Fallback only when the box isn't rendered.
+    isPbf:        qs('#eac-ispbf') ? qs('#eac-ispbf').checked : (existing?.isPbf || false),
     // Tri-state, not a trap: TRUE when ticked; FALSE only when the user
     // actively unticks a previously-true box (a real decision); otherwise
     // NULL = undecided — a routine save of an untouched account never
@@ -6008,8 +6010,11 @@ async function saveAccount(id, isNew) {
   if (!isNew) {
     let renamed = 0;
     DB.atomicUpdate(cache => {
-      ['retail_invoices','lf_invoices','combined_invoices'].forEach(col => {
+      ['retail_invoices','lf_invoices','combined_invoices','iv'].forEach(col => {
         (cache[col]||[]).forEach((inv, i) => {
+          // 'iv' is dual-purpose: inventory ledger rows carry no invoice
+          // number — only legacy purpl invoices do. Never touch ledger rows.
+          if (col === 'iv' && !(inv.number || inv.invoiceNumber)) return;
           if (inv.accountId === id && inv.accountName !== name) {
             cache[col][i] = { ...inv, accountName: name };
             renamed++;
@@ -14208,7 +14213,10 @@ async function openInvoicePreview(type, id) {
       else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
     }
     if (whBtn) {
-      whBtn.style.display = fulfillSel?.value === 'warehouse' ? '' : 'none';
+      // Never offer a paid/void invoice to the warehouse — the partner would
+      // prep a pickup for an order that's already settled or cancelled.
+      const _pushable = !['paid','void'].includes(rec.status || 'draft');
+      whBtn.style.display = (_pushable && fulfillSel?.value === 'warehouse') ? '' : 'none';
       // Stays clickable after a push so an edited invoice can be re-sent
       // (subject + banner mark the re-send as an UPDATED copy).
       if (rec.warehousePushedAt) { whBtn.textContent = '↻ Re-send to Warehouse'; whBtn.disabled = false; }
@@ -14227,7 +14235,8 @@ async function openInvoicePreview(type, id) {
     // never writes paymentTerms — the select was a fake edit. Hide it.
     if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
-    if (whBtn) whBtn.style.display = '';
+    // Force-show for dist (partner fulfills dist POs) — but still never on paid/void.
+    if (whBtn) whBtn.style.display = ['paid','void'].includes(rec.status || 'draft') ? 'none' : '';
   } else {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
@@ -14462,7 +14471,9 @@ async function openCombinedInvoicePreview(combinedId) {
       else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
     }
     if (whBtn) {
-      whBtn.style.display = isWh ? '' : 'none';
+      // Never offer a paid/void invoice to the warehouse (see single-brand shell).
+      const _pushable = !['paid','void'].includes(rec.status || 'draft');
+      whBtn.style.display = (_pushable && isWh) ? '' : 'none';
       // Stays clickable after a push so an edited invoice can be re-sent
       // (subject + banner mark the re-send as an UPDATED copy).
       if (rec.warehousePushedAt) { whBtn.textContent = '↻ Re-send to Warehouse'; whBtn.disabled = false; }
@@ -17255,6 +17266,12 @@ async function pushToWarehouse(invoiceId, collection) {
     }
   }
   if (!inv) { toast('Invoice not found'); return; }
+  // Hard stop regardless of entry point: a paid/void invoice must never
+  // reach the warehouse queue (the shells also hide their push buttons).
+  if (['paid','void'].includes(inv.status || 'draft')) {
+    toast(`This invoice is ${inv.status} — not sending it to the warehouse`, 6000);
+    return;
+  }
   const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name
     || DB.a('dist_profiles').find(d => d.id === inv.distId)?.name || '';
   let docHtml;
