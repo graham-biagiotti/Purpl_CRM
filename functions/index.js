@@ -1852,36 +1852,67 @@ exports.shipStationWebhook = onRequest(
 
             await doc.ref.update(update);
 
-            // If the matched invoice is a CHILD of a combined invoice (the
-            // shipment was pushed under the child's number), the parent's
-            // grandTotal — which the doc's Amount Due and the /pay charge both
-            // read — must absorb the shipping too. Without this, the customer
-            // sees an itemized Shipping line the Amount Due excludes and
-            // underpays by exactly that amount until someone manually
-            // re-saves the combined preview.
-            if (inv.combinedInvoiceId && col !== 'combined_invoices') {
+            // Combined-family normalization: whenever a shipment touches a
+            // combined invoice OR one of its children, re-home ALL shipping
+            // into the canonical shape the client editor/preview produce —
+            // ONE __shipping__ line on the parent, product-only children,
+            // grandTotal = product subtotals + shipping. Anything else breaks
+            // _syncCombinedParentForChild's invariant (extra = grand − subs)
+            // and either under- or over-charges by the shipping amount on the
+            // next routine client write. Idempotent under redelivery.
+            const familyParentId = col === 'combined_invoices' ? doc.id : inv.combinedInvoiceId;
+            if (familyParentId) {
               try {
-                const parentRef = db.doc('workspace/main/combined_invoices/' + inv.combinedInvoiceId);
+                const shipOf = items => (items || []).filter(li => li.skuId === '__shipping__')
+                  .reduce((s, li) => s + (parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0), 0);
+                const lineVal = li => parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases) || 0) * (parseFloat(li.pricePerCase) || 0))))) || 0;
+                const parentRef = db.doc('workspace/main/combined_invoices/' + familyParentId);
                 const parentSnap = await parentRef.get();
                 if (parentSnap.exists) {
                   const p = parentSnap.data();
-                  const shipOf = items => (items || []).filter(li => li.skuId === '__shipping__')
-                    .reduce((s, li) => s + (parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0), 0);
-                  // The just-written child's items are in `updatedItems`; the
-                  // sibling child and the parent are read fresh.
-                  let siblingShip = 0;
-                  const siblingId = doc.id === p.purplInvoiceId ? p.lfInvoiceId : p.purplInvoiceId;
-                  if (siblingId) {
-                    for (const sc of ['retail_invoices', 'lf_invoices', 'iv']) {
-                      const ss = await db.doc('workspace/main/' + sc + '/' + siblingId).get();
-                      if (ss.exists) { siblingShip = shipOf(ss.data().lineItems); break; }
+                  // Fresh child reads; the matched child's post-write items are updatedItems.
+                  const readChild = async (id, prefer) => {
+                    if (!id) return null;
+                    if (id === doc.id) return { ref: doc.ref, data: { ...inv, lineItems: updatedItems } };
+                    for (const c of prefer) {
+                      const s = await db.doc('workspace/main/' + c + '/' + id).get();
+                      if (s.exists) return { ref: s.ref, data: s.data() };
                     }
-                  }
-                  const totalShip = shipOf(p.lineItems) + shipOf(updatedItems) + siblingShip;
-                  const newGrand = Math.round(((parseFloat(p.purplSubtotal) || 0) + (parseFloat(p.lfSubtotal) || 0) + totalShip) * 100) / 100;
-                  await parentRef.update({ grandTotal: newGrand });
+                    return null;
+                  };
+                  const pc = await readChild(p.purplInvoiceId, ['retail_invoices', 'iv']);
+                  const lc = await readChild(p.lfInvoiceId, ['lf_invoices']);
+                  let familyShip = shipOf(p.lineItems);
+                  const childFix = child => {
+                    // Returns {sub, patch|null}: product-only subtotal + the
+                    // strip-shipping patch when the child holds a ship line.
+                    if (!child) return { sub: null, patch: null };
+                    const items = child.data.lineItems || [];
+                    if (!items.length) return { sub: parseFloat(child.data.total || child.data.amount) || 0, patch: null };
+                    const ship = shipOf(items);
+                    familyShip += ship;
+                    const prod = items.filter(li => li.skuId !== '__shipping__');
+                    const prodTotal = Math.round(prod.reduce((s, li) => s + lineVal(li), 0) * 100) / 100;
+                    return { sub: prodTotal, patch: ship > 0 ? { lineItems: prod, total: prodTotal, amount: prodTotal } : null };
+                  };
+                  const pcFix = childFix(pc);
+                  const lcFix = childFix(lc);
+                  if (pcFix.patch) await pc.ref.update(pcFix.patch);
+                  if (lcFix.patch) await lc.ref.update(lcFix.patch);
+                  const purplSub = pcFix.sub != null ? pcFix.sub : (parseFloat(p.purplSubtotal) || 0);
+                  const lfSub = lcFix.sub != null ? lcFix.sub : (parseFloat(p.lfSubtotal) || 0);
+                  familyShip = Math.round(familyShip * 100) / 100;
+                  const parentNonShip = (p.lineItems || []).filter(li => li.skuId !== '__shipping__');
+                  await parentRef.update({
+                    purplSubtotal: purplSub,
+                    lfSubtotal: lfSub,
+                    grandTotal: Math.round((purplSub + lfSub + familyShip) * 100) / 100,
+                    lineItems: familyShip > 0
+                      ? [...parentNonShip, { skuId: '__shipping__', skuName: 'Shipping', sku: 'Shipping', description: carrierStr ? ('Shipping via ' + carrierStr) : 'Shipping', cases: 1, qty: 1, units: 1, pricePerCase: familyShip, unitPrice: familyShip, lineTotal: familyShip, total: familyShip }]
+                      : parentNonShip,
+                  });
                 }
-              } catch (syncErr) { console.warn('combined parent grandTotal sync failed:', syncErr.message); }
+              } catch (syncErr) { console.warn('combined family shipping normalize failed:', syncErr.message); }
             }
 
             // Audit log
