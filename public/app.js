@@ -84,7 +84,17 @@ function findInvoice(id) {
 // order wins over the account's stored email (it's stored on the invoice at
 // confirm). Combined parents check their children too.
 function _invRecipient(inv, account) {
-  return (inv?.billingEmail || '').trim() || account?.email || '';
+  const own = (inv?.billingEmail || '').trim();
+  if (own) return own;
+  // Combined parents created before billingEmail landed on parents carry it
+  // on their children.
+  if (inv?.purplInvoiceId || inv?.lfInvoiceId) {
+    const pc = inv.purplInvoiceId ? findInvoice(inv.purplInvoiceId) : null;
+    const lc = inv.lfInvoiceId ? DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId) : null;
+    const kid = (pc?.billingEmail || '').trim() || (lc?.billingEmail || '').trim();
+    if (kid) return kid;
+  }
+  return account?.email || '';
 }
 
 function _invoiceCol(id) {
@@ -2340,7 +2350,7 @@ function renderInvoiceReminders() {
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
-    if (!ac || !ac.email) return;
+    if (!ac || !_invRecipient(inv, ac)) return;
     const coll = DB.a('retail_invoices').find(x => x.id === inv.id) ? 'retail_invoices' : 'iv';
     queue.push({ inv, ac, collection: coll, isOverdue: days > 0, amount: inv.total||inv.amount });
   });
@@ -2354,7 +2364,7 @@ function renderInvoiceReminders() {
     const days = daysAgo(inv.due||inv.dueDate);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
-    if (!ac || !ac.email) return;
+    if (!ac || !_invRecipient(inv, ac)) return;
     queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total });
   });
 
@@ -2368,7 +2378,7 @@ function renderInvoiceReminders() {
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
-    if (!ac || !ac.email) return;
+    if (!ac || !_invRecipient(inv, ac)) return;
     queue.push({ inv, ac, collection: 'combined_invoices', isOverdue: days > 0, amount: inv.grandTotal });
   });
 
@@ -2424,7 +2434,7 @@ async function sendInvoiceReminder(invId, collection) {
   const html = buildInvoiceReminderHTML(sendInv, collection, isOverdue);
 
   _sendWithCadence({
-    to: ac.email, subject, html, accountId: ac.id,
+    to: _invRecipient(inv, ac), subject, html, accountId: ac.id,
     stage: 'invoice_reminder',
     extra: { invoiceId: invId, invoiceRef: inv.number || '' },
   }).then(result => {
@@ -2648,7 +2658,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
           await pushInvoiceToShipStation(rec.id, 'retail_invoices');
         }
         const ac = DB.a('ac').find(x => x.id === rec.accountId) || {};
-        if (!ac.email) {
+        if (!_invRecipient(rec, ac)) {
           toast('Saved — but no email address on file for this account');
           closeModal('modal-add-inv');
           if (currentPage === 'invoices') renderInvoicesPage();
@@ -5377,7 +5387,12 @@ async function meTemplateSend() {
     const a = accounts[i];
     const contacts = (a.contacts || []).filter(c => c.email);
     const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
-    const recipients = allContacts ? contacts.map(c => c.email) : [primary.email || a.email || ''].filter(Boolean);
+    // "All contacts" must not silently drop accounts whose only email is the
+    // top-level one (empty contacts[] but a.email set)
+    const _allEmails = contacts.map(c => c.email).filter(Boolean);
+    const recipients = allContacts
+      ? (_allEmails.length ? _allEmails : [a.email || ''].filter(Boolean))
+      : [primary.email || a.email || ''].filter(Boolean);
     if (statusEl) statusEl.textContent = `Sending ${i + 1} of ${accounts.length}…`;
 
     if (a.emailOptOut) { skipped++; continue; }
@@ -12495,7 +12510,7 @@ function openLfInvoiceModal(id) {
           await pushInvoiceToShipStation(inv.id, 'lf_invoices');
         }
         const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
-        if (!ac.email) {
+        if (!_invRecipient(inv, ac)) {
           toast('Saved — but no email address on file for this account');
           closeModal('modal-lf-invoice');
           if (currentPage === 'invoices') renderInvoicesPage();
