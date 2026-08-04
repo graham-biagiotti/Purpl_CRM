@@ -6717,8 +6717,11 @@ function _csvMapProspect(row) {
   const status = stageMap[stageRaw] || 'lead';
   const priRaw = get('priority').toLowerCase();
   const priority = ({ high:'high', medium:'medium', med:'medium', low:'low' })[priRaw] || 'medium';
-  // Address may be one column or split street/city/state/zip
-  const street = get('address', 'street', 'street address', 'location');
+  // Address may be one column or split street/city/state/zip.
+  // Aliases include the punctuation-to-space normalized forms ('e mail',
+  // 'address 1') — the header normalizer keeps digits and turns punctuation
+  // into spaces, so hyphenated/numbered headers arrive in that shape.
+  const street = get('address', 'address 1', 'address line 1', 'street', 'street address', 'location');
   const city   = get('city', 'town');
   const state  = get('state', 'st');
   const zip    = get('zip', 'zip code', 'postal code');
@@ -6732,8 +6735,8 @@ function _csvMapProspect(row) {
   return {
     id: uid(), name,
     contact: get('contact name', 'contact', 'owner', 'contact person', 'buyer'),
-    email:   (get('email', 'email address') || '').replace(/^"|"$/g, '').trim(),
-    phone:   get('phone', 'phone number', 'tel'),
+    email:   (get('email', 'e mail', 'email address', 'e mail address', 'email 1', 'e mail 1') || '').replace(/^"|"$/g, '').trim(),
+    phone:   get('phone', 'phone number', 'phone 1', 'tel'),
     address,
     type:    get('type', 'business type') || 'Grocery',
     territory: get('territory', 'region') || (state || ''),
@@ -14228,9 +14231,10 @@ async function openInvoicePreview(type, id) {
       else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
     }
     if (whBtn) {
-      // Never offer a paid/void invoice to the warehouse — the partner would
-      // prep a pickup for an order that's already settled or cancelled.
-      const _pushable = !['paid','void'].includes(rec.status || 'draft');
+      // Void invoices never reach the warehouse. Paid stays pushable — a
+      // customer can pay the evergreen link BEFORE pickup and the order
+      // still needs fulfillment — but pushToWarehouse confirm-gates it.
+      const _pushable = (rec.status || 'draft') !== 'void';
       whBtn.style.display = (_pushable && fulfillSel?.value === 'warehouse') ? '' : 'none';
       // Stays clickable after a push so an edited invoice can be re-sent
       // (subject + banner mark the re-send as an UPDATED copy).
@@ -14250,8 +14254,9 @@ async function openInvoicePreview(type, id) {
     // never writes paymentTerms — the select was a fake edit. Hide it.
     if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
-    // Force-show for dist (partner fulfills dist POs) — but still never on paid/void.
-    if (whBtn) whBtn.style.display = ['paid','void'].includes(rec.status || 'draft') ? 'none' : '';
+    // Force-show for dist (partner fulfills dist POs) — but never on void.
+    // Paid stays pushable: a prepaid PO still needs warehouse prep.
+    if (whBtn) whBtn.style.display = (rec.status || 'draft') === 'void' ? 'none' : '';
   } else {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
@@ -14486,8 +14491,9 @@ async function openCombinedInvoicePreview(combinedId) {
       else { shipBtn.textContent = '📦 Push to ShipStation'; shipBtn.disabled = false; }
     }
     if (whBtn) {
-      // Never offer a paid/void invoice to the warehouse (see single-brand shell).
-      const _pushable = !['paid','void'].includes(rec.status || 'draft');
+      // Void never pushes; paid stays pushable behind pushToWarehouse's
+      // confirm (prepaid orders still need fulfillment) — see single shell.
+      const _pushable = (rec.status || 'draft') !== 'void';
       whBtn.style.display = (_pushable && isWh) ? '' : 'none';
       // Stays clickable after a push so an edited invoice can be re-sent
       // (subject + banner mark the re-send as an UPDATED copy).
@@ -17281,10 +17287,16 @@ async function pushToWarehouse(invoiceId, collection) {
     }
   }
   if (!inv) { toast('Invoice not found'); return; }
-  // Hard stop regardless of entry point: a paid/void invoice must never
-  // reach the warehouse queue (the shells also hide their push buttons).
-  if (['paid','void'].includes(inv.status || 'draft')) {
-    toast(`This invoice is ${inv.status} — not sending it to the warehouse`, 6000);
+  // Hard stop regardless of entry point: a VOID invoice never reaches the
+  // warehouse queue. PAID is confirm-gated, not blocked — the evergreen pay
+  // link means a customer can pay before pickup, and that order still needs
+  // fulfillment (prepaid distributor POs included).
+  if ((inv.status || 'draft') === 'void') {
+    toast('This invoice is void — not sending it to the warehouse', 6000);
+    return;
+  }
+  if ((inv.status || 'draft') === 'paid' &&
+      !confirm('This invoice is already PAID. Send it to the warehouse for fulfillment anyway?')) {
     return;
   }
   const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name
