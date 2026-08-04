@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v193';
+const APP_VERSION = 'v194';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -5944,11 +5944,13 @@ async function saveAccount(id, isNew) {
     dropOffRules: locs[0]?.dropOffRules||'',
     isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
     // Tri-state, not a trap: TRUE when ticked; FALSE only when the user
-    // actively unticks a previously-true box (a real decision); otherwise the
-    // stored value (or undefined) survives — so a routine save of an
-    // untouched account never silently opts it out of stockist seeding.
+    // actively unticks a previously-true box (a real decision); otherwise
+    // NULL = undecided — a routine save of an untouched account never
+    // silently opts it out of stockist seeding. (null, never undefined:
+    // Firestore set() throws on undefined field values, which would abort
+    // the save AND poison the whole accounts batch write.)
     stockistListed: qs('#eac-stockist')?.checked ? true
-      : (existing?.stockistListed === true ? false : existing?.stockistListed),
+      : (existing?.stockistListed === true ? false : (existing?.stockistListed ?? null)),
     // Brand tags persist only once a listing decision exists — an undecided
     // account keeps the evidence-based suggestion live for its first open.
     stockistBrands: (qs('#eac-stockist')?.checked || Array.isArray(existing?.stockistBrands))
@@ -5956,7 +5958,7 @@ async function saveAccount(id, isNew) {
           ...(qs('#eac-stockist-purpl')?.checked ? ['purpl'] : []),
           ...(qs('#eac-stockist-lf')?.checked ? ['lf'] : []),
         ]
-      : existing?.stockistBrands,
+      : (existing?.stockistBrands ?? null),
     closedBy:     qs('#eac-closedby')?.value || '',
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
@@ -11633,12 +11635,12 @@ function retryMissingPins() {
 // (true OR explicitly unticked then saved) keep their setting.
 function seedStockistsFromAccounts() {
   const candidates = DB.a('ac').filter(a =>
-    a.status !== 'inactive' && a.stockistListed === undefined && (a.address || (a.locs || []).length));
+    a.status !== 'inactive' && a.stockistListed == null && (a.address || (a.locs || []).length));
   if (!candidates.length) { toast('Nothing to seed — all accounts already have a listing setting'); return; }
   if (!confirm2(`List ${candidates.length} account(s) on Where to Find Us with brand tags from their invoice history? You can untick any account afterwards.`)) return;
   DB.atomicUpdate(c => {
     c.ac = (c.ac || []).map(a => {
-      if (a.status === 'inactive' || a.stockistListed !== undefined || !(a.address || (a.locs || []).length)) return a;
+      if (a.status === 'inactive' || a.stockistListed != null || !(a.address || (a.locs || []).length)) return a;
       const hasComb = DB.a('combined_invoices').some(x => x.accountId === a.id);
       const brands = [];
       if (hasComb || _allPurplInvoices().some(x => x.accountId === a.id)) brands.push('purpl');
@@ -11651,6 +11653,10 @@ function seedStockistsFromAccounts() {
 
 function renderSettings() {
   renderStockistLocations();
+  // Attach the address-autocomplete to the stockist add-location field —
+  // reattach otherwise only ran from the prospect modal, so #stk-address
+  // never got its dropdown unless that modal happened to open first.
+  if (window.PlacesAC) PlacesAC.load().then(ok => { if (ok) PlacesAC.reattach(); });
   // Non-admins can view but not save settings
   const settingsPage = document.getElementById('page-settings');
   if (settingsPage) {
