@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v191';
+const APP_VERSION = 'v192';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -4654,19 +4654,46 @@ async function _renderEmailsRightCol() {
   }
 }
 
-function emailsPageCopyHTML() {
+// Copy/Gmail rebuild the template like Send does — WITH the real password and
+// invoice fields. The old bare rebuild leaked the hardcoded fallback password
+// into anything pasted into Gmail (the exact bug 97362cd fixed on Send).
+async function _emailsBuildExtra(tplId, account) {
+  const extra = {};
+  if (tplId === 'invoice-sent') {
+    const invId = _latestAccountInvoiceId(account.id);
+    const inv = invId ? findInvoice(invId) : null;
+    if (inv) { extra.invoiceNumber = inv.number || inv.invoiceNumber || ''; extra.invoiceTotal = fmtC(inv.total || inv.grandTotal || 0); }
+  }
+  if (_TEMPLATES_NEED_LINK.includes(tplId)) {
+    try {
+      const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
+      extra.portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
+    } catch (e) {
+      console.error('Portal password fetch failed:', e);
+      toast('Couldn\'t fetch the portal password — nothing copied. Check your connection and retry.', 7000);
+      return null;
+    }
+  }
+  return extra;
+}
+
+async function emailsPageCopyHTML() {
   if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
   const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
   if (!account) return;
-  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
+  const extra = await _emailsBuildExtra(_emailsSelectedTemplate, account);
+  if (!extra) return;
+  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
   if (tpl) navigator.clipboard.writeText(tpl.body).then(() => toast('HTML copied'));
 }
 
-function emailsPageOpenGmail() {
+async function emailsPageOpenGmail() {
   if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
   const account = DB.a('ac').find(x => x.id === _emailsSelectedAccountId);
   if (!account) return;
-  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account);
+  const extra = await _emailsBuildExtra(_emailsSelectedTemplate, account);
+  if (!extra) return;
+  const tpl = getCadenceEmailTemplate(_emailsSelectedTemplate, account, extra);
   const addrs = _getEmailsRecipients(account);
   if (tpl) window.open(`mailto:${encodeURIComponent(addrs.join(','))}?subject=${encodeURIComponent(tpl.subject)}`, '_blank');
 }
@@ -4708,7 +4735,12 @@ async function emailsPageSendEmail() {
       try {
         const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
         extra.portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
-      } catch (e) { console.warn('Portal password fetch failed:', e); }
+      } catch (e) {
+        // Never send the hardcoded fallback password to a customer — refuse.
+        console.error('Portal password fetch failed:', e);
+        toast('Couldn\'t fetch the portal password — nothing was sent. Check your connection and try again.', 8000);
+        return;
+      }
       if (!account.orderPortalToken) {
         try {
           await _ensurePortalToken(account.id);
@@ -5378,7 +5410,15 @@ async function meTemplateSend() {
     try {
       const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
       portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
-    } catch(e) {}
+    } catch(e) {
+      // Never blast the hardcoded fallback password — abort the whole send.
+      console.error('Portal password fetch failed:', e);
+      _meTemplateInFlight = false;
+      if (sendBtn) sendBtn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+      toast('⚠️ Couldn\'t fetch the portal password — nothing was sent. Check your connection and try again.', 9000);
+      return;
+    }
   }
 
   const allContacts = qs('#me-template-all-contacts')?.checked || false;
