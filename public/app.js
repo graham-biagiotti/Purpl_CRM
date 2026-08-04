@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v194';
+const APP_VERSION = 'v195';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -6679,7 +6679,9 @@ function _parseCSV(text) {
     cols.push(cur.trim());
     return cols;
   }
-  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z ]/g, '').trim());
+  // Keep digits: stripping them collapsed "Email 2"/"Address 1" style headers
+  // into their base column name, silently overwriting the real column's value.
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim());
   return lines.slice(1).map(line => {
     const vals = parseRow(line);
     const obj = {};
@@ -6724,7 +6726,9 @@ function _csvMapProspect(row) {
   // Notes can live in more than one column — keep them all
   const noteText = [get('notes', 'note', 'activity', 'latest activity'), get('misc', 'extra', 'other', 'round', 'source notes')]
     .filter(Boolean).join(' · ');
-  const nextDate = _csvDateISO(get('follow up', 'followup', 'follow up date', 'next follow up', 'next date', 'date'));
+  // No bare 'date' alias: a generic Date column (date added, last touched)
+  // must not become a follow-up date on every imported prospect.
+  const nextDate = _csvDateISO(get('follow up', 'followup', 'follow up date', 'next follow up', 'next date'));
   return {
     id: uid(), name,
     contact: get('contact name', 'contact', 'owner', 'contact person', 'buyer'),
@@ -6771,7 +6775,18 @@ function _runImportProspects() {
     ...DB.a('pr').map(x => (x.email || '').toLowerCase().trim()),
     ...DB.a('ac').map(x => (x.email || '').toLowerCase().trim()),
   ].filter(Boolean));
-  const prospects = parsed.filter(p =>
+  // In-file dedupe first: tracking sheets repeat a business across tabs and
+  // both copies passed the existing-data check. Keep the first occurrence.
+  const _seenNames = new Set(), _seenEmails = new Set();
+  const unique = parsed.filter(p => {
+    const nk = (p.name || '').toLowerCase().trim();
+    const ek = (p.email || '').toLowerCase().trim();
+    if ((nk && _seenNames.has(nk)) || (ek && _seenEmails.has(ek))) return false;
+    if (nk) _seenNames.add(nk);
+    if (ek) _seenEmails.add(ek);
+    return true;
+  });
+  const prospects = unique.filter(p =>
     !existingNames.has((p.name || '').toLowerCase().trim()) &&
     !((p.email || '').trim() && existingEmails.has(p.email.toLowerCase().trim())));
   const dupes = parsed.length - prospects.length;
