@@ -5943,11 +5943,20 @@ async function saveAccount(id, isNew) {
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
     isPbf:        qs('#eac-ispbf')?.checked || existing?.isPbf || false,
-    stockistListed: qs('#eac-stockist')?.checked || false,
-    stockistBrands: [
-      ...(qs('#eac-stockist-purpl')?.checked ? ['purpl'] : []),
-      ...(qs('#eac-stockist-lf')?.checked ? ['lf'] : []),
-    ],
+    // Tri-state, not a trap: TRUE when ticked; FALSE only when the user
+    // actively unticks a previously-true box (a real decision); otherwise the
+    // stored value (or undefined) survives — so a routine save of an
+    // untouched account never silently opts it out of stockist seeding.
+    stockistListed: qs('#eac-stockist')?.checked ? true
+      : (existing?.stockistListed === true ? false : existing?.stockistListed),
+    // Brand tags persist only once a listing decision exists — an undecided
+    // account keeps the evidence-based suggestion live for its first open.
+    stockistBrands: (qs('#eac-stockist')?.checked || Array.isArray(existing?.stockistBrands))
+      ? [
+          ...(qs('#eac-stockist-purpl')?.checked ? ['purpl'] : []),
+          ...(qs('#eac-stockist-lf')?.checked ? ['lf'] : []),
+        ]
+      : existing?.stockistBrands,
     closedBy:     qs('#eac-closedby')?.value || '',
     fulfilledBy:  qs('#eac-fulfilled-by')?.value || 'direct',
     skus, par,
@@ -11541,12 +11550,17 @@ async function addStockistLocation() {
   ];
   if (!brands.length) { toast('Pick at least one brand'); return; }
   const rec = { id: uid(), name, address, brands, active: true, lat: null, lng: null, createdAt: today() };
-  // Geocode immediately when Maps is loaded; otherwise the shared map-page
-  // geocoder picks it up on the next Territory Map visit.
-  if (typeof google !== 'undefined' && google.maps?.Geocoder) {
+  // Best source first: coordinates the autocomplete dropdown stamped on the
+  // field (stk-address now has autocomplete). Then a live Places lookup.
+  // Anything left resolves on the next Territory Map visit.
+  const addrEl = qs('#stk-address');
+  if (addrEl?.dataset?.lat && parseFloat(addrEl.dataset.lat)) {
+    rec.lat = parseFloat(addrEl.dataset.lat);
+    rec.lng = parseFloat(addrEl.dataset.lng);
+    delete addrEl.dataset.lat; delete addrEl.dataset.lng;
+  } else if (typeof google !== 'undefined' && google.maps) {
     try {
-      const res = await new google.maps.Geocoder().geocode({ address });
-      const loc = res.results?.[0]?.geometry?.location;
+      const loc = await _resolveAddress(address);
       if (loc) { rec.lat = loc.lat(); rec.lng = loc.lng(); }
       else rec.geocodeFailed = new Date().toISOString();
     } catch (e) { /* leave for the batch geocoder */ }
@@ -15376,8 +15390,37 @@ function _prMapMissing() {
   return DB.a('pr').filter(p=>!['won','lost'].includes(p.status) && !(p.lat&&p.lng) && (p.address||'').trim() && !p.geocodeFailed);
 }
 let _geocodeInFlight = false;
+// Address → coordinates via the PLACES API first (the service that is
+// actually enabled on this key — the Geocoding API returns REQUEST_DENIED,
+// which is why the batch geocoder silently did nothing for weeks), with the
+// Geocoder kept only as a fallback if Places is unavailable. Resolves to a
+// LatLng, null (unresolvable address → park it), or rejects (quota/key
+// problem → stop the batch, retry next visit).
+function _resolveAddress(address) {
+  return new Promise((resolve, reject) => {
+    const viaGeocoder = () => {
+      if (!google.maps.Geocoder) return resolve(null);
+      new google.maps.Geocoder().geocode({ address }, (res, status) => {
+        if (status === 'OK' && res && res[0]) resolve(res[0].geometry.location);
+        else if (status === 'ZERO_RESULTS') resolve(null);
+        else reject(new Error(status));
+      });
+    };
+    if (google.maps.places && google.maps.places.PlacesService) {
+      try {
+        const svc = new google.maps.places.PlacesService(document.createElement('div'));
+        svc.findPlaceFromQuery({ query: address, fields: ['geometry'] }, (res, status) => {
+          if (status === 'OK' && res && res[0]?.geometry?.location) resolve(res[0].geometry.location);
+          else if (status === 'ZERO_RESULTS' || status === 'NOT_FOUND' || status === 'INVALID_REQUEST') resolve(null);
+          else viaGeocoder(); // OVER_QUERY_LIMIT etc — try the other service before giving up
+        });
+      } catch (e) { viaGeocoder(); }
+    } else viaGeocoder();
+  });
+}
+
 async function _geocodeMissingAccounts() {
-  if (_geocodeInFlight || typeof google === 'undefined' || !google.maps?.Geocoder) return;
+  if (_geocodeInFlight || typeof google === 'undefined' || !google.maps) return;
   // Accounts first, then prospects (CSV-imported prospects arrive with an
   // address but no coordinates) — same batch budget, caches, and guards.
   // Per-location rows inside accounts: a loc entry without its own pin never
@@ -15400,16 +15443,15 @@ async function _geocodeMissingAccounts() {
   ];
   if (!missing.length) return;
   _geocodeInFlight = true;
+  toast(`Locating ${Math.min(missing.length, 10)} of ${missing.length} address${missing.length===1?'':'es'}…`, 3000);
   let done = 0;
   try {
-    const geocoder = new google.maps.Geocoder();
     const writeLoc = (id, locIndex, patch) => DB.update('ac', id, x => ({
       ...x, locs: (x.locs || []).map((ll, idx) => idx === locIndex ? { ...ll, ...patch } : ll),
     }));
     for (const { col, rec } of missing.slice(0, 10)) {
       try {
-        const res = await geocoder.geocode({ address: rec.address });
-        const loc = res.results?.[0]?.geometry?.location;
+        const loc = await _resolveAddress(rec.address);
         if (loc) {
           if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { lat: loc.lat(), lng: loc.lng() });
           else DB.update(col, rec.id, x=>({...x, lat: loc.lat(), lng: loc.lng(), geocodedAt: new Date().toISOString()}));
@@ -15418,10 +15460,10 @@ async function _geocodeMissingAccounts() {
         else if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { geocodeFailed: new Date().toISOString() });
         else DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()}));
       } catch (e) {
-        const msg = String(e?.code || e?.message || e);
-        if (msg.includes('OVER_QUERY_LIMIT') || msg.includes('REQUEST_DENIED')) break; // quota/key problem — stop, retry next visit
-        if (col === 'ac-loc') writeLoc(rec.id, rec.locIndex, { geocodeFailed: new Date().toISOString() });
-        else DB.update(col, rec.id, x=>({...x, geocodeFailed: new Date().toISOString()})); // bad address — don't retry forever
+        // quota/key problem on BOTH services — stop, retry next visit; make
+        // the stall visible instead of silent
+        toast('Address lookup unavailable (' + (e?.message || 'API error') + ') — will retry on the next map visit', 6000);
+        break;
       }
       await new Promise(r=>setTimeout(r, 300));
     }

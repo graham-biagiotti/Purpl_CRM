@@ -147,6 +147,7 @@
     'del-stop-addr',   // Orders & Delivery — Route Builder add stop
     'loc-address',     // Inventory Locations — add location form
     'ws-address',      // Wholesale application form (public-facing)
+    'stk-address',     // Settings — Where to Find Us extra locations
   ];
 
   // ── Attach to all known address fields ───────────────
