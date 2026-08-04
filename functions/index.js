@@ -924,8 +924,12 @@ async function _logCadenceEntry(accountId, entryData) {
     const cadence = [...(account.cadence || []), entry];
     // Cap at 500 entries to stay well under the 1MB Firestore doc limit
     const trimmed = cadence.length > 500 ? cadence.slice(-500) : cadence;
+    // NO lastContacted stamp here: everything the server logs is
+    // transactional (order confirmations, application receipts) — a customer
+    // placing an order is not the owner contacting the customer. This was the
+    // server half of the "I didn't contact this account" bug; the client
+    // stamps lastContacted for real outreach only.
     await ref.update({
-      lastContacted: new Date().toISOString().slice(0, 10),
       cadence: trimmed,
       _updatedAt: new Date().toISOString(),
     });

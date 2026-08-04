@@ -3934,9 +3934,11 @@ function markCadenceEmailSent(sentMessageId) {
     method: 'manual',
   };
   if (sentMessageId) entry.sentMessageId = sentMessageId;
-  // Stamp lastContacted too — cadence-tab sends were invisible to the
-  // mass-send "Sent today" stamp and last-contact filters.
-  DB.update('ac', accountId, a => ({...a, lastContacted: today(), cadence: _pushCadence(a.cadence, entry)}));
+  // Stamp lastContacted for REAL outreach only — transactional stages
+  // (invoice-sent etc. are sendable from this tab) follow the same rule as
+  // every other send site.
+  const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
+  DB.update('ac', accountId, a => ({...a, ...stamp, cadence: _pushCadence(a.cadence, entry)}));
   closeModal('modal-email-preview');
   openAccountToEmailsTab(accountId);
   renderCadenceOverdue();
@@ -4847,13 +4849,23 @@ async function _emailsApprovedGenerateToken() {
   }
 }
 
+// Does a cadence-entry stage satisfy a wanted template id? Writes log the
+// CANONICAL stage ids ('approved_welcome', 'first_order_followup'), while
+// checkers historically asked for template ids ('approved', 'first-order') —
+// that mismatch made "Welcome email not sent" flag forever and offered to
+// re-send portal credentials to existing customers.
+function _stageMatches(entryStage, wanted) {
+  return entryStage === wanted
+    || entryStage === wanted.replace(/-/g, '_')
+    || entryStage === _TEMPLATE_STAGE_IDS[wanted];
+}
+
 function getOverdueCadence(accounts) {
   const overdue = [];
   const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
   accounts.forEach(a => {
     const cadence = a.cadence || [];
-    const hasSent = stage => cadence.some(c =>
-      c.stage === stage || c.stage === stage.replace(/-/g,'_'));
+    const hasSent = stage => cadence.some(c => _stageMatches(c.stage, stage));
     if ((a.status === 'active' || !a.status) &&
         !hasSent('approved') &&
         (a.since || a.createdAt || '') < oneDayAgo) {
@@ -4894,8 +4906,7 @@ function renderEmailsTabOverview(accounts) {
   const rows = accounts.map(a => {
     const cadence = a.cadence || [];
     const stageCells = STAGES.map(s => {
-      const entry = cadence.find(c =>
-        c.stage === s.id || c.stage === s.id.replace(/-/g,'_'));
+      const entry = cadence.find(c => _stageMatches(c.stage, s.id));
       if (entry) {
         const d = entry.sentAt
           ? new Date(entry.sentAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})
