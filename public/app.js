@@ -598,7 +598,11 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
     });
     const d = result.data || {};
     if (d.ok) {
-      DB.update(collection || _invoiceCol(invoiceId), invoiceId, x => ({
+      // Stamp the collection the invoice ACTUALLY lives in — callers hardcode
+      // 'retail_invoices' for anything purpl-typed, but legacy invoices live
+      // in 'iv'; stamping the wrong collection silently no-ops, the Already-
+      // pushed guard never trips, and every click creates another SS order.
+      DB.update(_invoiceCol(invoiceId) || collection, invoiceId, x => ({
         ...x,
         deliveryMethod: 'ship',
         shipStationOrderId: d.orderId,

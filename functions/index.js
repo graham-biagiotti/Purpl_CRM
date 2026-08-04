@@ -1772,7 +1772,10 @@ exports.shipStationWebhook = onRequest(
         // `number` OR `invoiceNumber` — delivery-run invoices store only
         // invoiceNumber, so their shipments never matched (tracking + the
         // shipping charge were silently lost).
-        const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices'];
+        // 'iv' is the legacy purpl invoice collection — without it, shipments
+        // for legacy invoices fell to shipstation_unmatched and the tracking
+        // number + shipping charge were silently lost.
+        const cols = ['retail_invoices', 'lf_invoices', 'combined_invoices', 'iv'];
         let _matched = false;
         for (const col of cols) {
           let snap = await db.collection('workspace/main/' + col)
