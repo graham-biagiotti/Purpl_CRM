@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v189';
+const APP_VERSION = 'v190';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13137,8 +13137,27 @@ function editCombinedInvoice(combinedId) {
     openCombinedInvoicePreview(combinedId);
     return;
   }
-  const purplChild = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
-  const lfChild    = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId);
+  // Children resolve across ALL collections — legacy purpl children live in
+  // 'iv' (manualCreateCombined links them from _allPurplInvoices).
+  const purplChild = rec.purplInvoiceId ? findInvoice(rec.purplInvoiceId) : null;
+  const lfChild    = rec.lfInvoiceId ? DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId) : null;
+
+  // Integrity gates — refuse rather than mangle. Each of these situations
+  // previously saved silently-wrong data (zeroed subtotals, rewritten sent
+  // children with already-deducted inventory, zeroed lineItems-less children).
+  const _blockers = [];
+  if (rec.purplInvoiceId && !purplChild) _blockers.push('its purpl child invoice cannot be found');
+  if (rec.lfInvoiceId && !lfChild) _blockers.push('its LF child invoice cannot be found');
+  [['purpl', purplChild], ['LF', lfChild]].forEach(([label, c]) => {
+    if (!c) return;
+    if ((c.status || 'draft') !== 'draft') _blockers.push(`its ${label} child is ${c.status} (inventory/billing already committed)`);
+    if (!(c.lineItems || []).length && parseFloat(c.total || c.amount || 0) > 0) _blockers.push(`its ${label} child has no editable line items`);
+  });
+  if (_blockers.length) {
+    _stickyError(`Can't edit ${rec.number || 'this invoice'} safely: ${_blockers.join('; ')}. Use Preview for dates/notes/shipping, or void & recreate to change items.`);
+    openCombinedInvoicePreview(combinedId);
+    return;
+  }
 
   openNewCombinedModal();
   _editingCombinedId = combinedId;
@@ -13154,8 +13173,12 @@ function editCombinedInvoice(combinedId) {
   if (qs('#nciv-fulfillment')) qs('#nciv-fulfillment').value = rec.fulfillmentSource || 'warehouse';
   if (qs('#nciv-delivery-date')) qs('#nciv-delivery-date').value = rec.deliveryDate || '';
   if (qs('#nciv-tracking')) qs('#nciv-tracking').value = rec.trackingNumber || '';
+  // Shipping may live on the parent OR a child (the ShipStation webhook
+  // matches by number and can hit a child) — populate the TRUE total, same as
+  // the Preview panel. Saving re-homes it as one canonical parent line.
+  const _shipOfInv = r => (r?.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0);
   if (qs('#nciv-shipping')) qs('#nciv-shipping').value =
-    (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+    (_shipOfInv(rec) + _shipOfInv(purplChild) + _shipOfInv(lfChild)) || '';
 
   // Re-render SKU rows for this account's pricing, then overlay the stored
   // lines. Portal-created LF lines can carry the sku NAME as skuId (portal
@@ -13415,25 +13438,41 @@ async function saveNewCombinedInvoice() {
     if (!rec) { _saveCombInFlight = false; toast('Invoice not found'); return; }
     const editShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
     const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber };
+    // Legacy purpl children live in 'iv' — write to where the child IS.
+    const pcCol = rec.purplInvoiceId ? _invoiceCol(rec.purplInvoiceId) : null;
+    let abortReason = '';
     DB.atomicUpdate(cache => {
-      const pi = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
-      if (pi >= 0) cache.retail_invoices[pi] = { ...cache.retail_invoices[pi], ...shared, lineItems: purplLines, total: purplSub, amount: purplSub };
-      const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
-      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: lfLines, total: lfSub };
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combId);
-      if (ci >= 0) {
-        const p = cache.combined_invoices[ci];
-        const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
-        cache.combined_invoices[ci] = {
-          ...p, ...shared,
-          purplSubtotal: purplSub, lfSubtotal: lfSub,
-          grandTotal: Math.round((purplSub + lfSub + editShip) * 100) / 100,
-          lineItems: editShip > 0 ? [...rest, { skuId:'__shipping__', skuName:'Shipping', description:'Shipping', qty:1, cases:0, unitPrice:editShip, lineTotal:editShip, total:editShip }] : rest,
-        };
-      }
+      const pi = rec.purplInvoiceId ? (cache[pcCol]||[]).findIndex(x => x.id === rec.purplInvoiceId) : -1;
+      const li = rec.lfInvoiceId ? (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId) : -1;
+      // Re-check everything the open-gate checked — the state may have moved
+      // while the modal sat open (send/pay from another tab, webhook flip).
+      if (ci < 0) { abortReason = 'the combined invoice no longer exists'; return; }
+      if (rec.purplInvoiceId && pi < 0) { abortReason = 'the purpl child invoice no longer exists'; return; }
+      if (rec.lfInvoiceId && li < 0) { abortReason = 'the LF child invoice no longer exists'; return; }
+      const stNow = [cache.combined_invoices[ci].status,
+        pi >= 0 ? cache[pcCol][pi].status : 'draft',
+        li >= 0 ? cache.lf_invoices[li].status : 'draft'].map(s => s || 'draft');
+      if (stNow.some(s => s !== 'draft')) { abortReason = 'the invoice is no longer a draft (status changed while editing)'; return; }
+      if (pi >= 0) cache[pcCol][pi] = { ...cache[pcCol][pi], ...shared, lineItems: purplLines, total: purplSub, amount: purplSub };
+      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: lfLines, total: lfSub };
+      const p = cache.combined_invoices[ci];
+      const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+      cache.combined_invoices[ci] = {
+        ...p, ...shared,
+        purplSubtotal: purplSub, lfSubtotal: lfSub,
+        grandTotal: Math.round((purplSub + lfSub + editShip) * 100) / 100,
+        lineItems: editShip > 0 ? [...rest, { skuId:'__shipping__', skuName:'Shipping', description:'Shipping', qty:1, cases:0, unitPrice:editShip, lineTotal:editShip, total:editShip }] : rest,
+      };
     });
     _editingCombinedId = null;
     closeModal('modal-new-combined');
+    if (abortReason) {
+      _stickyError(`Edit NOT saved: ${abortReason}. Nothing was changed — reopen the invoice to see its current state.`);
+      renderInvoicesPage();
+      setTimeout(() => openCombinedInvoicePreview(combId), 300);
+      return;
+    }
     renderInvoicesPage();
     toast('Combined invoice updated — ' + (rec.number || rec.invoiceNumber || ''));
     setTimeout(() => openCombinedInvoicePreview(combId), 300);
