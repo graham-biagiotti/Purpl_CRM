@@ -154,3 +154,49 @@ remain anywhere customer-facing, portal included).
 **Owner dashboard tasks (open):** domain auto-renew + DNS record care for
 both domains (deepest silent single point of failure) · restrict the Google
 Maps key to purpl-crm.web.app + pbfwholesale.com (prereq for the public map).
+
+---
+
+## 66-commit remediation — phased, verifier-gated (8/3–8/4)
+
+Every phase: build → node-backtest per commit → independent adversarial
+verifier gate → deploy only on SHIP. Gate refusals are listed because they
+are the system working.
+
+- **Phase 1 — money (v191, 7 commits):** legacy `iv` invoices are first-class
+  in the Stripe webhook + pay links (CRITICAL: payments now auto-mark paid);
+  ship-lane stamps write to the true collection; combined-family shipping is
+  a provenance map (`shippingByOrder`) — webhook redeliveries idempotent,
+  distinct shipments sum, estimate replaced by actuals; editor integrity
+  gates. Gate refuted two designs (P1.3, P1.5) before P1.6/P1.7 shipped.
+- **Phase 2 — email (v192, 5+1 commits):** stage-name matching healed
+  (`approved` vs `approved_welcome`); lastContacted no longer stamped by
+  transactional sends (server half was the root of the original complaint);
+  billing email honored at every gate and sender via `_invRecipient`;
+  password fetch failures abort instead of guessing. Gate caught the
+  reminder-send gate still using account email (P2.5).
+- **Phase 3 — find-us (v194, 3 commits):** geocoding is Places-first (the
+  Geocoding API was never enabled — batch geocoder dead since built);
+  stockist tri-state uses null, never undefined (CRITICAL: undefined
+  poisoned the whole account batch); accurate skip accounting; honest
+  multi-location/brandless signals. Gate caught the undefined write.
+- **Phase 4 — contained mediums (v195, 4 commits):** ONE terms vocabulary
+  (key/label converters at every populate/save; empty select can never
+  persist; docs always print labels — root of the "draft shows wrong terms"
+  confusion); isPbf checkbox is two-way again; account renames reach legacy
+  `iv` invoices (ledger rows untouchable); warehouse push: void hard-stopped,
+  paid confirm-gated (evergreen pay link means customers can pay before
+  pickup — a prepaid order must still fulfill); CSV import: digit-keeping
+  headers with normalized-form aliases, no bare `date` alias, in-file dedupe.
+  Gate refuted the first CSV normalizer (alias mismatch would blank emails
+  and disable the existing-customer dedupe) — fixed in P4.4, re-gated SHIP.
+
+**Deferred to the reports rework (after launch):** KPI cards exclude combined
+parent shipping; LF stale-amount dual-write; raw-vs-healed lastContacted
+surfaces. **Catalogued LOWs (not scheduled):** delivery-run pool fallback,
+sendEmail concurrency, prospect opt-out, replyTo inconsistency, stored-XSS
+in two textarea contexts, "undefined" name leak, stage-label raw ids,
+pre-damaged shipping-only-line children (data sweep if it surfaces).
+**Cosmetic residuals from the P4 gate:** double confirm on re-push of a paid
+invoice; paid warehouse copy still prints the terms line beside the PAID
+badge; invoice-list row hides warehouse push for paid (Preview offers it).
