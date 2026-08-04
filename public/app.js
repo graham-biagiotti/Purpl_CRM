@@ -2605,8 +2605,14 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
     if (qs('#iv-shipping'))      qs('#iv-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
     ivDeliveryMethodChange();
-    const savedTerms = inv.paymentTerms || 'net30';
-    if (qs('#iv-terms')) qs('#iv-terms').value = savedTerms;
+    // paymentTerms may carry the preview shell's LABEL vocabulary ('Net 45')
+    // — translate to this select's keys; an unmatched value must land on a
+    // real option, never '', or the next save silently resets the terms.
+    const savedTerms = _termsToKey(inv.paymentTerms) || 'net30';
+    if (qs('#iv-terms')) {
+      qs('#iv-terms').value = savedTerms;
+      if (qs('#iv-terms').value !== savedTerms) qs('#iv-terms').value = 'net30';
+    }
     if (qs('#iv-terms-custom-row')) qs('#iv-terms-custom-row').style.display = savedTerms === 'custom' ? '' : 'none';
     if (qs('#iv-terms-custom')) qs('#iv-terms-custom').value = inv.paymentTermsCustom || '';
     if (qs('#iv-delete-btn')) {
@@ -2744,6 +2750,28 @@ function _ivRenderLineRows(existingItems) {
 }
 
 const _TERMS_DAYS = { net7: 7, net15: 15, net30: 30, net45: 45, net60: 60 };
+
+// The two terms selects speak different vocabularies: #iv-terms stores KEYS
+// (net30, due_on_receipt, custom) while the shared preview shell's
+// #civ-edit-terms stores LABELS ('Net 30', 'Due on receipt', 'Custom').
+// Cross-populating without translating sets the select to '' and the next
+// Save persists '' — which is how a Net 45 invoice silently reset to Net 30.
+// Unknown/legacy values pass through unchanged so they're never destroyed.
+const _TERMS_KEY_LABELS = {
+  due_on_receipt: 'Due on receipt', net7: 'Net 7', net15: 'Net 15',
+  net30: 'Net 30', net45: 'Net 45', net60: 'Net 60', custom: 'Custom',
+};
+function _termsToLabel(v) {
+  if (!v) return '';
+  return _TERMS_KEY_LABELS[v] || String(v);
+}
+function _termsToKey(v) {
+  if (!v) return '';
+  if (_TERMS_KEY_LABELS[v] != null) return v;
+  const s = String(v).trim().toLowerCase();
+  const hit = Object.entries(_TERMS_KEY_LABELS).find(([, l]) => l.toLowerCase() === s);
+  return hit ? hit[0] : String(v);
+}
 
 function _invTermsLabel(inv) {
   const labels = {
@@ -13940,7 +13968,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     accountAddress: account.address || '',
     issueDate: rec.date,
     dueDate: rec.dueDate || rec.due,
-    terms: rec.paymentTerms || 'Net 30',
+    terms: _invTermsLabel(rec),
     deliveryDate: rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '',
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
     purplLines: _normPurplLines(purplInv),
@@ -13994,7 +14022,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.issued || inv.date,
     dueDate: inv.due || inv.dueDate,
-    terms: 'Net ' + (s.terms || 30),
+    terms: inv.paymentTerms ? _invTermsLabel(inv) : 'Net ' + (s.terms || 30),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: [],
@@ -14069,7 +14097,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     issueDate: inv.date || inv.issued,
     dueDate: inv.dueDate || inv.due,
-    terms: inv.paymentTerms || 'Net ' + (s.terms || 30),
+    terms: inv.paymentTerms ? _invTermsLabel(inv) : 'Net ' + (s.terms || 30),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
     purplLines: purplChild ? _normPurplLines(purplChild) : [],
@@ -14144,7 +14172,13 @@ async function openInvoicePreview(type, id) {
 
   if (qs('#civ-edit-date')) qs('#civ-edit-date').value = rec.dateIssued || rec.date || rec.issued || today();
   if (qs('#civ-edit-due')) qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
-  if (qs('#civ-edit-terms')) qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
+  if (qs('#civ-edit-terms')) {
+    // Stored terms may be #iv-terms KEY vocabulary ('net45') — translate to
+    // this select's labels; an unmatched value must land on 'Net 30', never ''.
+    const _tl = _termsToLabel(rec.paymentTerms) || 'Net 30';
+    qs('#civ-edit-terms').value = _tl;
+    if (qs('#civ-edit-terms').value !== _tl) qs('#civ-edit-terms').value = 'Net 30';
+  }
   if (qs('#civ-edit-notes')) qs('#civ-edit-notes').value = rec.notes || '';
   // Dist workflow: terms run from DELIVERY. Setting the Issue Date to the
   // delivery day auto-fills Due = issue + the distributor's terms (default
@@ -14189,12 +14223,16 @@ async function openInvoicePreview(type, id) {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = 'none';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = 'none';
     if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = 'none';
+    // Dist terms are profile-driven (paymentTermsDays) and the dist save patch
+    // never writes paymentTerms — the select was a fake edit. Hide it.
+    if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
     if (whBtn) whBtn.style.display = '';
   } else {
     if (delivSel?.parentElement) delivSel.parentElement.style.display = '';
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
     if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = '';
+    if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = '';
   }
   if (delivSel) delivSel.onchange = _updateFulfillBtns;
   if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
@@ -14220,7 +14258,10 @@ async function openInvoicePreview(type, id) {
       ? { dateIssued: nd, dueDate: ndu, notes: qs('#civ-edit-notes').value } // dist has no delivery/fulfillment; dates live in dateIssued/dueDate
       : {
           date: nd, dueDate: ndu, issued: nd, due: ndu,
-          paymentTerms: qs('#civ-edit-terms').value, notes: qs('#civ-edit-notes').value,
+          // Store the KEY vocabulary (what #iv-terms and _invTermsLabel speak);
+          // an empty select must keep the existing terms, never persist ''.
+          paymentTerms: _termsToKey(qs('#civ-edit-terms').value) || rec.paymentTerms || 'net30',
+          notes: qs('#civ-edit-notes').value,
           deliveryMethod: qs('#civ-edit-delivery')?.value || 'deliver',
           fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
         };
@@ -14341,9 +14382,10 @@ async function openCombinedInvoicePreview(combinedId) {
   // distributor's terms) — it survived into combined previews and rewrote Due.
   const _ie = qs('#civ-edit-date'); if (_ie) _ie.onchange = null;
   const _vb = qs('#civ-btn-void'); if (_vb) _vb.style.display = '';
-  // Dist preview hides the delivery/fulfillment rows — restore them here too.
+  // Dist preview hides the delivery/fulfillment/terms rows — restore them here too.
   const _ds = qs('#civ-edit-delivery'); if (_ds?.parentElement) _ds.parentElement.style.display = '';
   const _fs = qs('#civ-edit-fulfillment'); if (_fs?.parentElement) _fs.parentElement.style.display = '';
+  const _tr = qs('#civ-edit-terms'); if (_tr?.parentElement) _tr.parentElement.style.display = '';
   // Older combined invoices were created without a number — backfill one,
   // since Stripe link generation requires it.
   if (!rec.number && !rec.invoiceNumber) {
@@ -14386,7 +14428,11 @@ async function openCombinedInvoicePreview(combinedId) {
   // Populate editable fields
   qs('#civ-edit-date').value = rec.date || today();
   qs('#civ-edit-due').value = rec.dueDate || rec.due || '';
-  qs('#civ-edit-terms').value = rec.paymentTerms || 'Net 30';
+  // Stored terms may be KEY vocabulary ('net45') — translate to this select's
+  // labels; an unmatched value must land on 'Net 30', never ''.
+  const _tlv = _termsToLabel(rec.paymentTerms) || 'Net 30';
+  qs('#civ-edit-terms').value = _tlv;
+  if (qs('#civ-edit-terms').value !== _tlv) qs('#civ-edit-terms').value = 'Net 30';
   qs('#civ-edit-notes').value = rec.notes || '';
   const delivSel = qs('#civ-edit-delivery');
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
@@ -14450,7 +14496,9 @@ async function openCombinedInvoicePreview(combinedId) {
   if (saveBtn) saveBtn.onclick = () => {
     const newDate = qs('#civ-edit-date').value || rec.date || today();
     const newDue = qs('#civ-edit-due').value;
-    const newTerms = qs('#civ-edit-terms').value;
+    // Store the KEY vocabulary (what #iv-terms and _invTermsLabel speak) on
+    // the parent AND both children; '' must never overwrite the saved terms.
+    const newTerms = _termsToKey(qs('#civ-edit-terms').value) || rec.paymentTerms || 'net30';
     const newNotes = qs('#civ-edit-notes').value;
     const newDelivery = qs('#civ-edit-delivery')?.value || 'deliver';
     const newFulfillment = qs('#civ-edit-fulfillment')?.value || 'warehouse';
