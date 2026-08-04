@@ -526,16 +526,20 @@ exports.getStockists = onCall(async () => {
   const db = admin.firestore();
   const out = [];
   let skipped = 0;
+  // Returns true when the entry made it onto the public list — the CALLER
+  // owns skip accounting (the old push-side global counter made the
+  // fallback arithmetic wrong and could consume other accounts' skips).
   const push = (name, address, lat, lng, brands) => {
-    if (!name) return;
+    if (!name) return false;
     const la = parseFloat(lat), ln = parseFloat(lng);
-    if (!la || !ln) { skipped++; return; }
+    if (!la || !ln) return false;
     out.push({
       name: String(name),
       address: String(address || ''),
       lat: la, lng: ln,
       brands: Array.isArray(brands) ? brands.filter(b => b === 'purpl' || b === 'lf') : [],
     });
+    return true;
   };
   const acSnap = await db.collection('workspace/main/ac').get();
   acSnap.forEach(d => {
@@ -544,21 +548,25 @@ exports.getStockists = onCall(async () => {
     const locs = (Array.isArray(a.locs) && a.locs.length)
       ? a.locs
       : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
-    const before = out.length;
-    locs.forEach(l => push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands));
+    let pushed = 0, missedHere = 0;
+    locs.forEach(l => {
+      if (push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands)) pushed++;
+      else missedHere++;
+    });
     // The Territory Map batch geocoder writes coordinates at the TOP LEVEL of
     // the account; a locs[] entry without its own coords must not hide the
-    // store. If no location produced a pin, fall back to the account pin.
-    if (out.length === before && a.lat && a.lng) {
-      skipped = Math.max(0, skipped - locs.length);
-      push(a.name, a.address || (locs[0] && locs[0].address) || '', a.lat, a.lng, a.stockistBrands);
+    // store. If NO location produced a pin, fall back to the account pin —
+    // and only then does the fallback absorb this account's misses.
+    if (!pushed && a.lat && a.lng) {
+      if (push(a.name, a.address || (locs[0] && locs[0].address) || '', a.lat, a.lng, a.stockistBrands)) missedHere = 0;
     }
+    skipped += missedHere;
   });
   const stSnap = await db.collection('workspace/main/stockist_locations').get();
   stSnap.forEach(d => {
     const s = d.data();
     if (s.active === false) return;
-    push(s.name, s.address, s.lat, s.lng, s.brands);
+    if (!push(s.name, s.address, s.lat, s.lng, s.brands)) skipped++;
   });
   return { stockists: out, skipped };
 });

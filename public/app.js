@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v192';
+const APP_VERSION = 'v193';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -11492,16 +11492,26 @@ function _stockistPinIssues() {
   DB.a('ac').filter(a => a.stockistListed && a.status !== 'inactive').forEach(a => {
     const locs = (a.locs && a.locs.length) ? a.locs : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
     const anyPinned = locs.some(l => has(l.lat) && has(l.lng));
+    const fallbackCovers = !anyPinned && has(a.lat) && has(a.lng);
     locs.forEach((l, i) => {
       if (has(l.lat) && has(l.lng)) return;
-      if (!anyPinned && has(a.lat) && has(a.lng)) return; // account-pin fallback covers it — shows fine
+      // The account-pin fallback fully represents a SINGLE-location store;
+      // for a multi-location store it collapses N doors into 1 unlabeled
+      // public pin — that must be reported, not hidden.
+      if (fallbackCovers && locs.length === 1) return;
       issues.push({
         name: a.name + (locs.length > 1 ? ` (location ${i + 1}${l.label ? ': ' + l.label : ''})` : ''),
         reason: !(l.address || a.address || '').trim() ? 'no address on file'
+          : fallbackCovers ? 'only the account\'s main pin shows publicly — this location needs its own pin (re-pick its address)'
           : (l.geocodeFailed || a.geocodeFailed) ? 'address failed lookup — re-pick it from the autocomplete on the account'
           : 'awaiting geocode — open Territory Map',
       });
     });
+    // Listed but brandless = invisible under brand filters and unlabeled on
+    // the map — name it instead of letting it quietly half-exist.
+    if (!(a.stockistBrands || []).length) {
+      issues.push({ name: a.name, reason: 'listed with NO brand tags — invisible when visitors filter by brand (tick purpl/LF on the account)' });
+    }
   });
   DB.a('stockist_locations').filter(s => s.active !== false && !(has(s.lat) && has(s.lng))).forEach(s => {
     issues.push({
