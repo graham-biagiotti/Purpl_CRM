@@ -1916,6 +1916,11 @@ exports.shipStationWebhook = onRequest(
                   }
                   // This event's charge replaces its own key.
                   if (shipCost > 0 && orderNumber) map[String(orderNumber)] = r2(shipCost);
+                  // The event key supersedes any migrated key an EARLIER event
+                  // created for this same child (same charge, two keys —
+                  // otherwise a plain redelivery against a legacy family
+                  // double-counts permanently).
+                  if (matchedChildId) delete map['moved-' + matchedChildId];
                   // First real charge supersedes the manual estimate.
                   if (map['manual'] != null && Object.keys(map).some(k => k !== 'manual')) delete map['manual'];
 
