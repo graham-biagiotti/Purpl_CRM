@@ -1852,6 +1852,38 @@ exports.shipStationWebhook = onRequest(
 
             await doc.ref.update(update);
 
+            // If the matched invoice is a CHILD of a combined invoice (the
+            // shipment was pushed under the child's number), the parent's
+            // grandTotal — which the doc's Amount Due and the /pay charge both
+            // read — must absorb the shipping too. Without this, the customer
+            // sees an itemized Shipping line the Amount Due excludes and
+            // underpays by exactly that amount until someone manually
+            // re-saves the combined preview.
+            if (inv.combinedInvoiceId && col !== 'combined_invoices') {
+              try {
+                const parentRef = db.doc('workspace/main/combined_invoices/' + inv.combinedInvoiceId);
+                const parentSnap = await parentRef.get();
+                if (parentSnap.exists) {
+                  const p = parentSnap.data();
+                  const shipOf = items => (items || []).filter(li => li.skuId === '__shipping__')
+                    .reduce((s, li) => s + (parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0), 0);
+                  // The just-written child's items are in `updatedItems`; the
+                  // sibling child and the parent are read fresh.
+                  let siblingShip = 0;
+                  const siblingId = doc.id === p.purplInvoiceId ? p.lfInvoiceId : p.purplInvoiceId;
+                  if (siblingId) {
+                    for (const sc of ['retail_invoices', 'lf_invoices', 'iv']) {
+                      const ss = await db.doc('workspace/main/' + sc + '/' + siblingId).get();
+                      if (ss.exists) { siblingShip = shipOf(ss.data().lineItems); break; }
+                    }
+                  }
+                  const totalShip = shipOf(p.lineItems) + shipOf(updatedItems) + siblingShip;
+                  const newGrand = Math.round(((parseFloat(p.purplSubtotal) || 0) + (parseFloat(p.lfSubtotal) || 0) + totalShip) * 100) / 100;
+                  await parentRef.update({ grandTotal: newGrand });
+                }
+              } catch (syncErr) { console.warn('combined parent grandTotal sync failed:', syncErr.message); }
+            }
+
             // Audit log
             await db.collection('workspace/main/audit_log').add({
               timestamp: now,
