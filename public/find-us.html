@@ -10,13 +10,13 @@
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
 <script src="firebase-config.js"></script>
 <style>
-  :root { --purpl:#8B5FBF; --purpl-dark:#4B2082; --lf:#4a7c59; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
+  :root { --purpl:#4D2A6F; --purpl-dark:#3E2159; --lf:#4F5D80; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; }
   body { font-family:Inter,Arial,sans-serif; background:#faf9f7; color:var(--text); }
 
   /* Slim brand strip */
-  .strip { background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%); height:58px; display:flex; align-items:center; justify-content:center; gap:14px; padding:0 16px; }
+  .strip { background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%); height:58px; display:flex; align-items:center; justify-content:center; gap:14px; padding:0 16px; }
   .strip img { display:block; }
   .strip .divider { width:1px; height:28px; background:rgba(255,255,255,.5); }
   .strip .strip-title { color:#fff; font-family:Georgia,serif; font-size:19px; letter-spacing:.4px; margin-left:10px; }
@@ -39,8 +39,8 @@
   .fu-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
   .fu-card { border:2px solid var(--border); border-radius:10px; padding:10px 8px 9px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; position:relative; user-select:none; opacity:.5; }
   .fu-card.active { opacity:1; }
-  .fu-card.active.fu-purpl { border-color:var(--purpl); background:#faf5ff; }
-  .fu-card.active.fu-lf { border-color:var(--lf); background:#f0fdf4; }
+  .fu-card.active.fu-purpl { border-color:var(--purpl); background:#F1EDF6; }
+  .fu-card.active.fu-lf { border-color:var(--lf); background:#EEF1F6; }
   .fu-card img { margin:0 auto 6px; display:block; height:auto; }
   .fu-card .fu-name { font-family:Georgia,serif; font-size:12.5px; color:var(--text); }
   .fu-check { display:none; position:absolute; top:5px; right:5px; width:17px; height:17px; border-radius:50%; color:#fff; font-size:10px; line-height:17px; text-align:center; }
@@ -61,7 +61,7 @@
   .results-hdr { font-size:13px; margin:4px 0 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .results-hdr .clr { font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline; }
   .morebtn { display:block; margin:8px auto; padding:8px 18px; font-size:12.5px; border:1.5px solid var(--purpl); background:#fff; color:var(--purpl-dark); border-radius:8px; cursor:pointer; font-weight:600; }
-  .shipnote { font-size:12.5px; color:#374151; background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; padding:10px 12px; margin:8px 0; text-align:center; }
+  .shipnote { font-size:12.5px; color:#374151; background:#F1EDF6; border:1px solid #D8CFE4; border-radius:8px; padding:10px 12px; margin:8px 0; text-align:center; }
   .shipnote a { color:var(--purpl-dark); font-weight:600; text-decoration:none; }
   .state-hdr { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--purpl-dark); margin:14px 0 7px; border-bottom:2px solid var(--purpl); padding-bottom:4px; }
   .browse-toggle { text-align:center; margin:12px 0 4px; }
@@ -134,9 +134,9 @@
   </div>
 
   <div id="maplegend" class="legend-pill">
-    <span><span class="bdot" style="background:#8B5FBF"></span> purpl</span>
-    <span><span class="bdot" style="background:#4a7c59"></span> Lavender Fields</span>
-    <span><span class="bdot" style="background:linear-gradient(90deg,#8B5FBF 50%,#4a7c59 50%)"></span> both</span>
+    <span><span class="bdot" style="background:#4D2A6F"></span> purpl</span>
+    <span><span class="bdot" style="background:#4F5D80"></span> Lavender Fields</span>
+    <span><span class="bdot" style="background:linear-gradient(90deg,#4D2A6F 50%,#4F5D80 50%)"></span> both</span>
   </div>
 </div>
 
@@ -213,8 +213,8 @@ function townOf(s) {
 function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 function brandTiles(s) {
-  return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#8B5FBF" title="purpl"></span>' : '') +
-         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4a7c59" title="Lavender Fields"></span>' : '');
+  return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#4D2A6F" title="purpl"></span>' : '') +
+         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4F5D80" title="Lavender Fields"></span>' : '');
 }
 
 function rowHtml(s, dist) {
@@ -302,8 +302,8 @@ function renderPins(list) {
   MARKERS = [];
   if (!list.length) return;
   var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
-    '<circle cx="11" cy="11" r="9" fill="#4a7c59"/>' +
-    '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#8B5FBF"/>' +
+    '<circle cx="11" cy="11" r="9" fill="#4F5D80"/>' +
+    '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#4D2A6F"/>' +
     '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
   var DUAL_ICON = {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(dualSvg),
@@ -315,7 +315,7 @@ function renderPins(list) {
     var isP = (s.brands || []).indexOf('purpl') >= 0;
     var isL = (s.brands || []).indexOf('lf') >= 0;
     var icon = (isP && isL) ? DUAL_ICON
-      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4a7c59' : '#8B5FBF', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
+      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4F5D80' : '#4D2A6F', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
     var m = new google.maps.Marker({ map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name, icon: icon });
     m.addListener('click', function () {
       if (!INFO) INFO = new google.maps.InfoWindow();
@@ -323,7 +323,7 @@ function renderPins(list) {
         '<div style="font-weight:700;font-size:14px;margin-bottom:3px">' + esc(s.name) + '</div>' +
         '<div style="font-size:12px;color:#666">' + esc(s.address || '') + '</div>' +
         '<div style="margin-top:6px">' + brandTiles(s) + '</div>' +
-        '<a style="font-size:12px;color:#8B5FBF" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
+        '<a style="font-size:12px;color:#4D2A6F" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' +
           encodeURIComponent(s.name + ' ' + (s.address || '')) + '">Directions →</a></div>');
       INFO.open(MAP, m);
     });
@@ -339,7 +339,7 @@ function applySearchToMap() {
   if (!SEARCH) return;
   YOU_MARKER = new google.maps.Marker({
     map: MAP, position: { lat: SEARCH.lat, lng: SEARCH.lng }, title: 'You',
-    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#dc2626', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
     zIndex: 999,
   });
   MAP.setCenter({ lat: SEARCH.lat, lng: SEARCH.lng });

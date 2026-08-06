@@ -12,11 +12,11 @@
 <script src="/places.js"></script>
 <style>
 :root{
-  --purpl:#8B5FBF; --purpl-dark:#2D1B4E;
-  --purpl-mid:#6B3FA0; --purpl-soft:#F0EBF8;
-  --purpl-border:#D4B8F0; --lf-green:#4a7c59;
-  --lf-dark:#2d4a38; --lf-soft:#f0f7f1;
-  --lf-border:#b8d4c0; --cream:#faf9f6;
+  --purpl:#4D2A6F; --purpl-dark:#321C4A;
+  --purpl-mid:#6E4A96; --purpl-soft:#EFEAF4;
+  --purpl-border:#CFC4DE; --lf-green:#4F5D80;
+  --lf-dark:#333C53; --lf-soft:#EDEFF2;
+  --lf-border:#C6CBD8; --cream:#faf9f6;
   --text:#1a1a2e; --muted:#6b7280;
   --border:#e5e7eb; --white:#ffffff;
 }
@@ -49,7 +49,7 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 .ws-hero-brands{display:flex;gap:56px;align-items:center;justify-content:center;margin-bottom:64px}
 .ws-hero-brands img{max-width:140px}
 .ws-hero-divider{width:1px;height:64px;background:rgba(255,255,255,0.4);flex-shrink:0}
-.ws-hero-lf-text{font-family:'Playfair Display',serif;font-size:22px;color:#9dc4a8;font-weight:400;text-align:left}
+.ws-hero-lf-text{font-family:'Playfair Display',serif;font-size:22px;color:#B3C8C1;font-weight:400;text-align:left}
 .ws-hero-lf-text small{display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.65);letter-spacing:0.05em;margin-top:4px;font-style:normal}
 .ws-hero h1{font-size:clamp(38px,5.5vw,60px);color:#ffffff;line-height:1.15;margin-bottom:28px;text-align:center}
 .ws-hero-sub{font-size:19px;font-weight:300;color:rgba(255,255,255,0.85);max-width:560px;margin:0 auto 56px;line-height:1.6;font-family:Inter,sans-serif;text-align:center}
@@ -97,7 +97,7 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 @media(max-width:480px){.sku-grid-purpl{grid-template-columns:repeat(2,1fr)}}
 .sku-card-purpl{background:var(--purpl-soft);border-radius:8px;padding:18px 12px;text-align:center}
 .sku-card-purpl .sku-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
-.sku-card-purpl .sku-meta{font-size:11px;color:#7c3aed;opacity:0.7}
+.sku-card-purpl .sku-meta{font-size:11px;color:#6E4A96;opacity:0.7}
 
 /* ── SKU GRID (LF — 3 col) ──────────── */
 .sku-grid-lf{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
@@ -136,7 +136,7 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 .brand-select-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px}
 @media(max-width:500px){.brand-select-row{grid-template-columns:1fr}}
 .ws-brand-card{border:2px solid #e5e7eb;border-radius:10px;padding:20px;text-align:center;cursor:pointer;background:#fff;transition:all .2s;user-select:none}
-.ws-brand-card:hover{border-color:#c4b5fd}
+.ws-brand-card:hover{border-color:#C9BEDC}
 .ws-brand-card.selected-purpl{border-color:var(--purpl);background:var(--purpl-soft)}
 .ws-brand-card.selected-lf{border-color:var(--purpl);background:var(--purpl-soft)}
 .ws-card-purpl-logo{height:36px;display:block;margin:0 auto 8px;opacity:0.85}
@@ -147,8 +147,8 @@ nav,header{position:fixed;top:0;left:0;right:0;height:60px;z-index:100;backgroun
 
 /* Submit */
 .apply-submit{width:100%;background:var(--purpl);color:#fff;border:none;border-radius:6px;padding:14px;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .15s}
-.apply-submit:hover:not(:disabled){background:#7a51ae}
-.apply-submit:disabled{background:#c4b5fd;cursor:not-allowed}
+.apply-submit:hover:not(:disabled){background:#3E2159}
+.apply-submit:disabled{background:#C9BEDC;cursor:not-allowed}
 .apply-hint{font-size:12px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.6}
 .apply-err{background:#fee2e2;color:#991b1b;border-radius:6px;padding:10px 14px;font-size:13px;margin-top:12px;display:none}
 .apply-success{text-align:center;padding:40px 20px}
@@ -181,7 +181,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-purpl .ws-eyebrow{color:var(--purpl)}
 .ws-sku-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:40px;max-width:900px;margin-left:auto;margin-right:auto}
 .ws-sku-card{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:10px;padding:24px 20px;text-align:center;transition:transform 0.2s,box-shadow 0.2s}
-.ws-sku-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(139,95,191,0.12)}
+.ws-sku-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(77,42,111,0.12)}
 .ws-sku-name{font-family:'Playfair Display',serif;font-size:16px;color:var(--purpl-dark)}
 .ws-sku-type{font-size:12px;color:var(--muted);margin-top:6px;letter-spacing:0.03em;font-family:Inter,sans-serif}
 .ws-bullets{display:flex;gap:24px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:40px;margin-top:0}
@@ -232,7 +232,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-brand-card-name{font-family:'Playfair Display',serif;font-size:16px;margin-top:10px;color:var(--text)}
 .ws-form-label{font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;font-family:Inter,sans-serif}
 .ws-form-container input,.ws-form-container select,.ws-form-container textarea{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:6px;font-family:Inter,sans-serif;font-size:15px;color:var(--text);background:white;outline:none;transition:border-color 0.15s}
-.ws-form-container input:focus,.ws-form-container select:focus,.ws-form-container textarea:focus{border-color:var(--purpl);box-shadow:0 0 0 3px rgba(139,95,191,0.1)}
+.ws-form-container input:focus,.ws-form-container select:focus,.ws-form-container textarea:focus{border-color:var(--purpl);box-shadow:0 0 0 3px rgba(77,42,111,0.1)}
 .ws-form-container textarea{min-height:100px;resize:vertical}
 .ws-form-fields{display:flex;flex-direction:column;gap:20px}
 .ws-form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -293,18 +293,18 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-farm-band-inner{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
 .ws-farm-img{width:100%;border-radius:12px;object-fit:cover;max-height:480px}
 .ws-farm-text h2{color:white;font-size:42px;margin:16px 0 20px}
-.ws-farm-text .ws-eyebrow{color:#9dc4a8}
+.ws-farm-text .ws-eyebrow{color:#B3C8C1}
 .ws-farm-text p{color:rgba(255,255,255,0.7);font-size:16px;line-height:1.75;font-family:Inter,sans-serif;font-weight:300}
 @media(max-width:768px){.ws-farm-band-inner{grid-template-columns:1fr;gap:32px}}
 /* ── HOW IT WORKS + TERMS (merged) ─────── */
 .ws-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:48px}
 .ws-step{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:12px;padding:26px 22px;text-align:center}
-.ws-step-num{width:34px;height:34px;border-radius:50%;background:#9B73C4;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:15px;line-height:34px;margin:0 auto 14px}
+.ws-step-num{width:34px;height:34px;border-radius:50%;background:#7A5C9E;color:#fff;font-family:Inter,sans-serif;font-weight:700;font-size:15px;line-height:34px;margin:0 auto 14px}
 .ws-step h4{font-family:'Playfair Display',serif;font-size:18px;color:#fff;margin-bottom:8px}
 .ws-step p{font-family:Inter,sans-serif;font-size:13.5px;color:rgba(255,255,255,0.78);line-height:1.7;margin:0}
 .ws-terms2{display:grid;grid-template-columns:1fr 1fr;gap:10px 28px;max-width:760px;margin:0 auto}
 .ws-terms2 .ws-term-item{display:flex;gap:10px;font-family:Inter,sans-serif;font-size:13.5px;color:rgba(255,255,255,0.82);line-height:1.65}
-.ws-terms2 .ws-term-dot{color:#c4b5fd;font-weight:700}
+.ws-terms2 .ws-term-dot{color:#C9BEDC;font-weight:700}
 @media(max-width:760px){.ws-steps{grid-template-columns:1fr}.ws-terms2{grid-template-columns:1fr}}
 </style>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
@@ -558,7 +558,7 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
       <div class="ws-term-item"><span class="ws-term-dot">·</span><span>18-month shelf life on purpl — shelf stable, no refrigeration</span></div>
     </div>
 
-    <p style="font-family:Inter,sans-serif;color:rgba(255,255,255,0.75);font-size:14px;margin:40px 0 0;text-align:center">Our full product catalog with pricing is shared with approved retail partners. <a href="#apply-section" style="color:#c4b5fd;text-decoration:none;font-weight:600">Apply below &rarr;</a></p>
+    <p style="font-family:Inter,sans-serif;color:rgba(255,255,255,0.75);font-size:14px;margin:40px 0 0;text-align:center">Our full product catalog with pricing is shared with approved retail partners. <a href="#apply-section" style="color:#C9BEDC;text-decoration:none;font-weight:600">Apply below &rarr;</a></p>
   </div>
 </div>
 
@@ -577,13 +577,13 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
           <div class="ws-brand-card" id="ws-brand-purpl" onclick="wsToggleBrand('purpl')">
             <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" class="ws-card-purpl-logo">
             <div class="ws-card-purpl-name ws-brand-card-name">purpl lemonade</div>
-            <div id="ws-add-hint-purpl" style="display:none;font-size:12px;color:#8B5FBF;margin-top:6px;font-style:italic">+ Add this line too</div>
+            <div id="ws-add-hint-purpl" style="display:none;font-size:12px;color:#4D2A6F;margin-top:6px;font-style:italic">+ Add this line too</div>
           </div>
           <div class="ws-brand-card" id="ws-brand-lf" onclick="wsToggleBrand('lf')">
             <img src="/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="max-width:64px;height:auto;margin:0 auto 10px" onerror="this.style.display='none'">
             <div class="ws-card-lf-name ws-brand-card-name">lavender fields</div>
             <div class="ws-card-lf-sub">at Pumpkin Blossom Farm</div>
-            <div id="ws-add-hint-lf" style="display:none;font-size:12px;color:#4a7c59;margin-top:6px;font-style:italic">+ Add this line too</div>
+            <div id="ws-add-hint-lf" style="display:none;font-size:12px;color:#4F5D80;margin-top:6px;font-style:italic">+ Add this line too</div>
           </div>
         </div>
         <div id="ws-both-badge" style="display:none;text-align:center;color:#15803d;font-size:13px;font-weight:600;margin-top:8px">Both lines selected ✓</div>
