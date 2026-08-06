@@ -395,7 +395,7 @@ function _signatureHTML() {
       Pumpkin Blossom Farm | purpl &amp; Lavender Fields
       <div style="margin-top:8px;font-size:13px;color:#6b7280">
         <a href="mailto:graham@pumpkinblossomfarm.com"
-          style="color:#8B5FBF;text-decoration:none">
+          style="color:#4D2A6F;text-decoration:none">
           graham@pumpkinblossomfarm.com
         </a>
       </div>
@@ -406,7 +406,7 @@ function _signatureHTML() {
 
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
-  style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);border-radius:8px 8px 0 0">
+  style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);border-radius:8px 8px 0 0">
   <tr>
     <td style="padding:32px 40px;text-align:center">
       <table width="100%" cellpadding="0" cellspacing="0">
@@ -433,7 +433,7 @@ const PBF_HEADER_HTML = `
       </div>
     </td>
   </tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
 </table>`;
 
 // ── Firebase Functions client helpers ─────────────────────
@@ -839,7 +839,7 @@ const PROSPECT_TEMPLATES = [
 
 function getProspectEmailTemplate(tplId, p) {
   const header = PBF_HEADER_HTML;
-  const accentColor = '#8B5FBF';
+  const accentColor = '#4D2A6F';
   const contactName = escHtml(p.contact || 'there');
   const storeName = escHtml(p.name || 'your store');
   const storeNameRaw = p.name || 'your store';
@@ -852,7 +852,7 @@ function getProspectEmailTemplate(tplId, p) {
         </div>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
-            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <div style="font-size:16px;font-weight:600;color:#4D2A6F;margin-bottom:10px">Classic Lavender Lemonade</div>
             <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
               <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
               <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
@@ -901,7 +901,7 @@ function getProspectEmailTemplate(tplId, p) {
 
 function getCadenceEmailTemplate(stage, account, extra={}) {
   const header = PBF_HEADER_HTML;
-  const accentColor = '#8B5FBF';
+  const accentColor = '#4D2A6F';
   const contacts = account.contacts||[];
   const primary = contacts.find(c=>c.isPrimary)||contacts[0]||{};
   const contactName = escHtml(primary.name||account.contact||'there');
@@ -944,7 +944,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="line-height:1.7">We're launching <strong>purpl</strong>, a classic lemonade crafted with real lavender, born out of our love for lavender here at Pumpkin Blossom Farm. If you've carried our Lavender Fields products, you already know our commitment to quality. purpl is that same care in a can. Simple ingredients, gentle lavender, refreshing lemonade. The kind of product that sells itself once someone tries it.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
-            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <div style="font-size:16px;font-weight:600;color:#4D2A6F;margin-bottom:10px">Classic Lavender Lemonade</div>
             <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
               <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
               <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
@@ -954,17 +954,17 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7">We're taking pre-orders now so you can be first in line when we launch. No commitment, just let us know you're interested and I'll personally follow up to confirm availability and work out delivery.</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:12px 20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff;text-align:center;font-size:15px;color:#4B2082;font-weight:600">📦 First delivery the week of ${_launchWk}</td></tr></table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px"><tr><td style="padding:12px 20px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff;text-align:center;font-size:15px;color:#4D2A6F;font-weight:600">📦 First delivery the week of ${_launchWk}</td></tr></table>
         <p style="line-height:1.7">If you already carry our <strong>Lavender Fields</strong> line (scrunchies, sachets, candles), your wholesale portal now includes purpl as well, one link for both brands. If you're new to us, welcome! I've set up an account for you.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
               <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
-              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Pre-Order</a></div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#4D2A6F;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Pre-Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
-              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#4D2A6F">pbfwholesale.com/order</a> and enter the wholesale password:</div>
               <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword || 'purpleherb')}</div>
             </div>
           </td></tr>
@@ -999,7 +999,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </div>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
-            <div style="font-size:16px;font-weight:600;color:#4B2082;margin-bottom:10px">Classic Lavender Lemonade</div>
+            <div style="font-size:16px;font-weight:600;color:#4D2A6F;margin-bottom:10px">Classic Lavender Lemonade</div>
             <table cellpadding="0" cellspacing="0" style="font-size:14px;color:#374151;line-height:2">
               <tr><td style="padding-right:24px">Wholesale price</td><td style="font-weight:600">$2.30/can</td></tr>
               <tr><td style="padding-right:24px">Case (12-pack)</td><td style="font-weight:600">$27.60</td></tr>
@@ -1015,10 +1015,10 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
               <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
-              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your Order</a></div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#4D2A6F;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
-              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#4D2A6F">pbfwholesale.com/order</a> and enter the wholesale password:</div>
               <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword || 'purpleherb')}</div>
             </div>
           </td></tr>
@@ -1050,10 +1050,10 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px">Two ways to order:</div>
             <div style="margin-bottom:16px">
               <div style="font-size:13px;color:#374151;margin-bottom:8px"><strong>Option 1:</strong> ${_hasPortalToken ? 'Click your personalized link below. Goes straight to your order form, no password needed.' : 'Click the button below to open the order form, then enter the wholesale password from Option 2.'}</div>
-              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#8B5FBF;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order</a></div>
+              <div style="text-align:center"><a href="${portalLink}" style="display:inline-block;background:#4D2A6F;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order</a></div>
             </div>
             <div style="border-top:1px solid #e5e7eb;padding-top:12px">
-              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#8B5FBF">pbfwholesale.com/order</a> and enter the wholesale password:</div>
+              <div style="font-size:13px;color:#374151"><strong>Option 2:</strong> Visit <a href="https://pbfwholesale.com/order" style="color:#4D2A6F">pbfwholesale.com/order</a> and enter the wholesale password:</div>
               <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-top:6px;letter-spacing:0.5px">${escHtml(extra.portalPassword || 'purpleherb')}</div>
             </div>
           </td></tr>
@@ -1208,7 +1208,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>We're excited to share something new with <strong>${businessName}</strong>.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
           <tr><td style="background:#fdf9ff;border:1px solid #e9d5ff;border-radius:8px;padding:24px;text-align:center">
-            <div style="font-size:20px;font-weight:600;color:#4B2082;margin-bottom:8px">🆕 New Product Launch</div>
+            <div style="font-size:20px;font-weight:600;color:#4D2A6F;margin-bottom:8px">🆕 New Product Launch</div>
             <div style="font-size:14px;color:#374151">Details coming soon. Stay tuned for pricing and availability.</div>
           </td></tr>
         </table>
@@ -5316,7 +5316,7 @@ async function meBroadcastSend() {
     if (a.emailOptOut) { skipped++; continue; }
 
     // Build per-account HTML so each email has a unique unsubscribe link
-    const html = buildEmailHTML(PBF_HEADER_HTML, '#8B5FBF', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`, a.id);
+    const html = buildEmailHTML(PBF_HEADER_HTML, '#4D2A6F', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`, a.id);
 
     if (!email) { failed++; }
     else {
