@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
 <script src="firebase-config.js"></script>
 <style>
-  :root { --purpl:#4D2A6F; --purpl-dark:#3E2159; --lf:#4F5D80; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
+  :root { --purpl:#4D2A6F; --purpl-dark:#3E2159; --lf:#5C74AD; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; }
   body { font-family:Inter,Arial,sans-serif; background:#faf9f7; color:var(--text); }
@@ -135,8 +135,8 @@
 
   <div id="maplegend" class="legend-pill">
     <span><span class="bdot" style="background:#4D2A6F"></span> purpl</span>
-    <span><span class="bdot" style="background:#4F5D80"></span> Lavender Fields</span>
-    <span><span class="bdot" style="background:linear-gradient(90deg,#4D2A6F 50%,#4F5D80 50%)"></span> both</span>
+    <span><span class="bdot" style="background:#5C74AD"></span> Lavender Fields</span>
+    <span><span class="bdot" style="background:linear-gradient(90deg,#4D2A6F 50%,#5C74AD 50%)"></span> both</span>
   </div>
 </div>
 
@@ -214,7 +214,7 @@ function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&
 
 function brandTiles(s) {
   return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#4D2A6F" title="purpl"></span>' : '') +
-         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#4F5D80" title="Lavender Fields"></span>' : '');
+         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#5C74AD" title="Lavender Fields"></span>' : '');
 }
 
 function rowHtml(s, dist) {
@@ -302,7 +302,7 @@ function renderPins(list) {
   MARKERS = [];
   if (!list.length) return;
   var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
-    '<circle cx="11" cy="11" r="9" fill="#4F5D80"/>' +
+    '<circle cx="11" cy="11" r="9" fill="#5C74AD"/>' +
     '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#4D2A6F"/>' +
     '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
   var DUAL_ICON = {
@@ -315,7 +315,7 @@ function renderPins(list) {
     var isP = (s.brands || []).indexOf('purpl') >= 0;
     var isL = (s.brands || []).indexOf('lf') >= 0;
     var icon = (isP && isL) ? DUAL_ICON
-      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#4F5D80' : '#4D2A6F', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
+      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#5C74AD' : '#4D2A6F', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
     var m = new google.maps.Marker({ map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name, icon: icon });
     m.addListener('click', function () {
       if (!INFO) INFO = new google.maps.InfoWindow();
