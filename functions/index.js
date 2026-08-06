@@ -224,7 +224,7 @@ exports.sendOrderConfirmation = onCall(
       orderSummaryHtml += `<p style="margin:10px 0 0;color:#374151"><strong>PO Number:</strong> ${escHtml(String(data.poNumber))}</p>`;
     }
 
-    const accentColor = data.isPbf ? '#4a7c59' : '#8B5FBF';
+    const accentColor = data.isPbf ? '#4F5D80' : '#4D2A6F';
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -233,7 +233,7 @@ exports.sendOrderConfirmation = onCall(
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr><td align="center">
         <table cellpadding="0" cellspacing="0" width="auto">
@@ -253,7 +253,7 @@ exports.sendOrderConfirmation = onCall(
     </table>
     <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
     <p style="line-height:1.7">Thanks for your ${data.mode === 'preorder' ? 'pre-order' : 'order'} for <strong>${escHtml(data.accountName)}</strong>. I've got it and I'm on it personally.</p>
@@ -386,7 +386,7 @@ exports.sendApplicationConfirmation = onCall(
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
       <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
@@ -394,12 +394,12 @@ exports.sendApplicationConfirmation = onCall(
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p style="font-size:17px;font-weight:500;margin:0 0 20px">Hi ${safeName},</p>
     <p>Thank you for your interest in carrying our products at <strong>${safeBiz}</strong>. We've received your application and will be in touch within 1 business day.</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
-      <tr><td style="background:#f9fafb;border-left:3px solid #8B5FBF;padding:16px 20px;border-radius:0 6px 6px 0">
+      <tr><td style="background:#f9fafb;border-left:3px solid #4D2A6F;padding:16px 20px;border-radius:0 6px 6px 0">
         <div style="font-size:13px;color:#6b7280;margin-bottom:4px;font-weight:500">WHAT HAPPENS NEXT</div>
         <div style="font-size:14px;color:#1a1a2e">We review every application personally. You'll hear from us within 1 business day with next steps.</div>
       </td></tr>
@@ -715,7 +715,7 @@ exports.unsubscribe = onRequest({ invoker: 'public' }, async (req, res) => {
     `<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>` +
     `<body style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;margin:0;padding:48px 16px;text-align:center">` +
     `<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px 32px;box-shadow:0 2px 8px rgba(0,0,0,.08)">` +
-    `<div style="font-size:13px;letter-spacing:.15em;text-transform:uppercase;color:#8B5FBF;margin-bottom:16px">Pumpkin Blossom Farm</div>` +
+    `<div style="font-size:13px;letter-spacing:.15em;text-transform:uppercase;color:#4D2A6F;margin-bottom:16px">Pumpkin Blossom Farm</div>` +
     `<h1 style="font-size:20px;color:#1a1a2e;margin:0 0 12px">${title}</h1>` +
     `<p style="color:#4b5563;font-size:15px;line-height:1.6;margin:0">${msg}</p></div></body></html>`;
   res.set('Content-Type', 'text/html; charset=utf-8');
@@ -1012,7 +1012,7 @@ exports.inviteEmployee = onCall(
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="500" cellpadding="0" cellspacing="0" style="max-width:500px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:28px 32px;text-align:center">
+  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:28px 32px;text-align:center">
     <div style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px">purpl CRM</div>
     <div style="color:rgba(255,255,255,0.9);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px">Pumpkin Blossom Farm</div>
   </td></tr>
@@ -1021,9 +1021,9 @@ exports.inviteEmployee = onCall(
     <p>You've been invited to join the <strong>purpl CRM</strong> team as ${assignRole === 'admin' ? 'an admin' : 'an employee'}.</p>
     <p>Click the button below to set your password and sign in:</p>
     <div style="text-align:center;margin:24px 0">
-      <a href="${link}" style="display:inline-block;background:#6B4F9A;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
+      <a href="${link}" style="display:inline-block;background:#4D2A6F;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
     </div>
-    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#6B4F9A">purpl-crm.web.app</a> to sign in.</p>
+    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#4D2A6F">purpl-crm.web.app</a> to sign in.</p>
   </td></tr>
   <tr><td style="background:#f9fafb;padding:14px 32px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · Warner, NH
@@ -1166,9 +1166,9 @@ exports.payInvoice = onRequest(
       `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>
 <body style="font-family:Arial,sans-serif;background:#f4f4f5;margin:0;padding:40px 16px;text-align:center">
 <div style="max-width:460px;margin:0 auto;background:#fff;border-radius:10px;padding:36px 28px;box-shadow:0 2px 8px rgba(0,0,0,.08)">
-<div style="font-size:22px;font-weight:700;color:#4B2082;margin-bottom:10px">${esc(title)}</div>
+<div style="font-size:22px;font-weight:700;color:#4D2A6F;margin-bottom:10px">${esc(title)}</div>
 <div style="font-size:15px;color:#374151;line-height:1.6">${body}</div>
-<div style="margin-top:18px;font-size:13px;color:#6b7280">Pumpkin Blossom Farm · <a href="mailto:lavender@pbfwholesale.com" style="color:#8B5FBF">lavender@pbfwholesale.com</a></div>
+<div style="margin-top:18px;font-size:13px;color:#6b7280">Pumpkin Blossom Farm · <a href="mailto:lavender@pbfwholesale.com" style="color:#4D2A6F">lavender@pbfwholesale.com</a></div>
 </div></body></html>`);
     try {
       const invId = String(req.query.inv || '').trim();
@@ -1710,7 +1710,7 @@ exports.shipStationWebhook = onRequest(
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:32px 40px;text-align:center">
+  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
       <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
@@ -1718,7 +1718,7 @@ exports.shipStationWebhook = onRequest(
     </tr></table>
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
-  <tr><td style="background:#8B5FBF;height:4px"></td></tr>
+  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
   <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(contactName)},</p>
     <p>Your <strong>purpl sample box</strong> is on its way! Here are the details:</p>
