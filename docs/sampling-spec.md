@@ -5,10 +5,13 @@ person, not Graham) owns her own schedule and is the confirmer. Graham is
 informed, never in the critical path.
 
 **Owner constraints (verbatim intent):** purpl-only sampling — no LF anywhere
-in this flow. The sampler is not tech-savvy: her ENTIRE experience is two
-emails and one tap. Big buttons, plain language, no statuses, no login,
-nothing she can break; recovery from her mistakes is always on Graham's side
-(cancel + resend from the CRM card).
+in this flow (CONTENT only: all emails use the STANDARD PBF header/builders
+identical to every other email — owner: "why mess up the standard, that's
+asking for problems"; no new email chrome). The sampler is not tech-savvy:
+her ENTIRE experience is two emails and one tap. Big buttons, plain language,
+no statuses, no login, nothing she can break; recovery from her mistakes is
+always on Graham's side (cancel + resend from the CRM card). Sampling gets a
+DEDICATED CRM nav page (hundreds of accounts — tile banners get lost).
 
 ## Roles
 - **Store**: existing account; requests a demo day via personalized link.
@@ -34,8 +37,8 @@ Stored on the settings object; no new collection.
 - "Invite to sampling" button on the account detail modal for one-offs.
 
 ## 2. Public page — sampling.html
-- New page on wholesale hosting (COPY_AS_IS sync). purpl-branded (wordmark
-  + brand purple #4D2A6F) — NOT the dual-brand header; this is purpl-only.
+- New page on wholesale hosting (COPY_AS_IS sync). Standard wholesale-site
+  chrome (same as the order page); the CONTENT is purpl-specific.
 - Reads `?t=` → lookupPortalToken → greets store by name, prefills identity.
 - NO valid token → friendly refusal screen (personal-link explanation +
   contact mailto). Accounts only; no anonymous requests.
@@ -94,15 +97,19 @@ Stored on the settings object; no new collection.
 - Sampler silent 3 days → daily sweep re-nudges her; CRM card flags
   "waiting on sampler 3+ days".
 
-## 6. CRM surfaces
-- Dashboard card + nav badge (portal-orders listener pattern) on
-  pending/proposed requests.
-- Sampling section: request cards with state chips
-  (Waiting on sampler / Proposed <date> / Confirmed <date> / Completed /
-  Cancelled / Needs reschedule) and actions: Cancel (emails both sides),
-  Resend to sampler, Mark completed, View details.
+## 6. CRM surfaces — DEDICATED "Sampling" nav page
+Own nav item + new-request badge (portal-orders listener pattern). Built for
+hundreds of accounts; checking on sampling is one click, never buried.
+- Pipeline list: request cards with state chips (Waiting on sampler /
+  Proposed <date> / Confirmed <date> / Awaiting outcome / Completed /
+  Cancelled / Needs reschedule), "waiting 3+ days" flag, search + filter
+  by store/status.
 - Month grid of confirmed demos (pure CSS grid, no library).
-- Account detail modal: sampling history + "Invite to sampling" button.
+- Per-card actions: Cancel (emails both sides), Resend to sampler,
+  Print demo sheet, Mark completed, View details.
+- Dashboard card for new requests; account tiles get only a small chip
+  linking into this page; account detail modal shows sampling history +
+  "Invite to sampling" button.
 - Cadence entries in the account timeline.
 
 ## 6b. Printable demo sheet (sampler)
@@ -117,11 +124,12 @@ Stored on the settings object; no new collection.
   loses hers).
 
 ## 7. Reminders
-- Daily sweep extension: T-2 days before confirmedDate → email store contact
-  ("see you <day> — sampler cell: …") and sampler. Her reminder REPEATS
-  EVERYTHING (address, day-of contact name + cell, arrival window, what to
-  bring) so she never digs for the original email — the reminder alone is
-  enough to run the day. Once-only, stamped on the record.
+- Daily sweep extension: T-2 days before confirmedDate → email the SAMPLER
+  ONLY (owner cut the store reminder — store's single email is the
+  confirmation). Her reminder REPEATS EVERYTHING (address, day-of contact
+  name + cell, arrival window, what to bring) so she never digs for the
+  original email — the reminder alone is enough to run the day. Once-only,
+  stamped on the record.
 
 ## 8. Post-demo
 - Day after confirmedDate: card → 'awaiting outcome', dashboard nudge.
@@ -145,17 +153,19 @@ Stored on the settings object; no new collection.
 - `sampling_requests` is a TOP-LEVEL collection (portal_orders pattern),
   NOT in COLLECTION_KEYS' workspace set — CRM reads via listener.
 
-## Emails inventory (all new palette, existing builders)
-Happy path = 5 emails total (store 2, sampler 3, Graham 0):
+## Emails inventory (STANDARD PBF header/builders — identical chrome to all
+## other system emails; no sampling-specific branding)
+Happy path = 4 emails total (store 1, sampler 3, Graham 0):
 1. sampling-invite (template, MANUAL send only)
 2. request packet + action buttons (sampler)
-3. confirmation + .ics (store)
+3. confirmation + .ics (store — the store's ONLY email)
 4. confirmation + .ics + logistics + print-sheet button (sampler)
-5. T-2 reminders (store + sampler)
+5. T-2 run-sheet reminder (sampler only)
 Exception-only: propose-alt with accept/decline buttons (store);
 3-day sampler nudge. Cancel emails only on Graham's explicit Cancel.
 CUT by owner decision (email-volume concern): store "request received"
-(on-page confirmation instead) and Graham FYI (CRM badge/card instead).
+(on-page confirmation instead), Graham FYI (CRM badge/card instead),
+store T-2 reminder (confirmation + .ics suffices).
 
 ## Build order (each phase: backtests + adversarial verifier gate → deploy)
 - **Phase A (working loop)**: settings block; sampling.html; submitSamplingRequest;
