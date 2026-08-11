@@ -2224,7 +2224,7 @@ async function _samplingConfirmAndNotify(reqId, ref, rec, chosen, decidedBy) {
           <p style="font-size:17px;font-weight:500;margin:0 0 16px">Hi ${escHtml(rec.contact?.name || 'there')},</p>
           <p>Your purpl in-store demo at <strong>${escHtml(rec.accountName)}</strong> is confirmed for <strong>${escHtml(dateLabel)}</strong> (${escHtml(w)}).</p>
           <div style="background:#f9fafb;border-left:3px solid #4D2A6F;padding:14px 16px;border-radius:0 6px 6px 0;font-size:14px;line-height:1.8">
-            Our sampler ${escHtml(cfg.samplerName || '')} will arrive at the start of the window with everything needed — product, cups, ice, table.${cfg.samplerCell ? ' Day-of questions: ' + escHtml(cfg.samplerCell) + '.' : ''}
+            Our sampler ${escHtml(cfg.samplerName || '')} will arrive at the start of the window with everything needed — cold purpl, sample cups, table.${cfg.samplerCell ? ' Day-of questions: ' + escHtml(cfg.samplerCell) + '.' : ''}
           </div>
           <p style="font-size:13px;color:#6b7280">A calendar invite is attached. Need to change the date? Just reply to this email.</p>`),
         attachments: [icsAttachment],
@@ -2478,7 +2478,7 @@ ${row('Power', L.power)}
 ${row('Parking / load-in', L.parking)}
 ${row('Their busy hours', L.busyHours)}
 ${row('Notes', L.notes)}
-${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag, towel')}
+${row('Bring', 'purpl (cold), sample cups, table + cloth, signage, trash bag, towel')}
 </table></body></html>`);
     }
 
@@ -2716,7 +2716,7 @@ exports.samplingDailySweep = onSchedule(
                 ${L.parking ? '🚗 Parking/load-in: ' + escHtml(L.parking) + '<br>' : ''}
                 ${L.busyHours ? '⏰ Their busy hours: ' + escHtml(L.busyHours) + '<br>' : ''}
                 ${L.notes ? '📝 ' + escHtml(L.notes) + '<br>' : ''}
-                🎒 Bring: purpl (cold), cups, ice + bin, table + cloth, signage, trash bag, towel
+                🎒 Bring: purpl (cold), sample cups, table + cloth, signage, trash bag, towel
               </div>
               <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${doc.id}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>`),
           });

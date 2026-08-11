@@ -1083,7 +1083,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #4D2A6F">
             <div style="font-size:13px;color:#374151;line-height:1.8">
-              <strong>We bring everything:</strong> our sampler, cold purpl, cups, ice, table, and signage.<br>
+              <strong>We bring everything:</strong> our sampler, cold purpl, sample cups, table, and signage.<br>
               <strong>You bring:</strong> your foot traffic and a spot for the table.<br>
               <strong>Cost to you:</strong> nothing — and demo days reliably move cases.
             </div>
