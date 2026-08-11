@@ -62,9 +62,9 @@ Stored on the settings object; no new collection.
     date1, date2, timeWindow, logistics{table,power,parking,busyHours,notes},
     status:'pending_sampler', samplerActionToken(random 32),
     storeActionToken(null until propose), createdAt, source }
-- Sends TWO emails:
-  1. Store contact: "Request received — confirmation within ~2 days."
-  2. Sampler: full packet + 3 action buttons.
+- Sends ONE email: the sampler's full packet + 3 action buttons. The store
+  gets NO email at this step — the on-page success screen says "Request sent,
+  you'll have a date within 2 days" (owner trimmed email volume).
 - Cadence entry `sampling_requested` on the account. CRM badge increments via
   listener.
 
@@ -79,8 +79,8 @@ Stored on the settings object; no new collection.
 - **Confirm path**: status→'confirmed', confirmedDate set. Sends:
   - store contact: confirmation + .ics attachment (sendEmail already supports
     attachments)
-  - sampler: confirmation + .ics with full logistics packet
-  - Graham: one-line FYI email
+  - sampler: confirmation + .ics with full logistics packet + print button
+  - Graham: NO email — the CRM badge/card is his notification (owner trimmed)
   Landing page after a YES is ONE sentence: "Booked. <Store>, <Date>.
   It's on your calendar." — plus a "🖨 Print demo sheet" button (below).
   Double-booking interstitial BEFORE confirm if she already has a confirmed
@@ -146,20 +146,22 @@ Stored on the settings object; no new collection.
   NOT in COLLECTION_KEYS' workspace set — CRM reads via listener.
 
 ## Emails inventory (all new palette, existing builders)
-1. sampling-invite (template, manual/mass)
-2. request-received (store)
-3. request packet + action buttons (sampler)
-4. confirmation + .ics (store)
-5. confirmation + .ics + logistics + print-sheet button (sampler)
-6. FYI (Graham)
-7. propose-alt with accept/decline buttons (store)
-Plus: T-2 reminders (store + sampler), 3-day sampler nudge.
+Happy path = 5 emails total (store 2, sampler 3, Graham 0):
+1. sampling-invite (template, MANUAL send only)
+2. request packet + action buttons (sampler)
+3. confirmation + .ics (store)
+4. confirmation + .ics + logistics + print-sheet button (sampler)
+5. T-2 reminders (store + sampler)
+Exception-only: propose-alt with accept/decline buttons (store);
+3-day sampler nudge. Cancel emails only on Graham's explicit Cancel.
+CUT by owner decision (email-volume concern): store "request received"
+(on-page confirmation instead) and Graham FYI (CRM badge/card instead).
 
 ## Build order (each phase: backtests + adversarial verifier gate → deploy)
 - **Phase A (working loop)**: settings block; sampling.html; submitSamplingRequest;
-  emails 2+3; samplingAction confirm path (+ interstitial guard); emails 4+5+6
-  with .ics; printable demo sheet (sampler link + CRM card); CRM list +
-  badge + cancel; cadence logging.
+  sampler packet email; samplingAction confirm path (+ interstitial guard);
+  both confirmations with .ics; printable demo sheet (sampler link + CRM
+  card); CRM list + badge + cancel; cadence logging.
 - **Phase B (polish)**: propose-alt round trip (email 7 + store action);
   T-2 reminders + sampler nudge; month grid; completed/outcome flow.
 - **Phase C (later/optional)**: store reschedule link; auto thank-you/reorder
