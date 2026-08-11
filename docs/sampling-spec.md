@@ -42,9 +42,15 @@ Stored on the settings object; no new collection.
 - Reads `?t=` → lookupPortalToken → greets store by name, prefills identity.
 - NO valid token → friendly refusal screen (personal-link explanation +
   contact mailto). Accounts only; no anonymous requests.
-- If the account already has an open (pending/proposed/confirmed) request →
-  show its status instead of the form. One open request per account, enforced
-  client-side AND server-side.
+- The store link is PERMANENT and REUSABLE (evergreen portal token — repeat
+  events are the point; only Sarah's per-request action keys are single-use).
+- One OPEN request per account, enforced client-side AND server-side.
+  "Open" = pending_sampler / proposed_alt / needs_reschedule / confirmed with
+  a FUTURE date. While open, the link shows status instead of the form.
+- Once the confirmed date has PASSED (or the request was cancelled), the same
+  link offers "Book your next demo day" — contact person + logistics
+  prefilled from the previous request. Does NOT wait on Graham marking the
+  outcome. Each event is its own record with its own outcome.
 
 ## 3. Form fields
 - Store name + address (prefilled; address editable for off-site demos)
