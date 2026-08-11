@@ -5244,16 +5244,71 @@ function _getMeFilteredAccounts(brandSel, lastContactSel, statusSel) {
   return list;
 }
 
+// One pass over every invoice collection -> per-account context for the
+// recipient list (latest invoice + unpaid flag). Rebuilt per render; cheap
+// (single iteration per collection), never per-account scans.
+function _meBuildInvoiceIndex() {
+  const idx = new Map();
+  const consider = (accountId, inv, num, amount) => {
+    if (!accountId) return;
+    const date = inv.date || inv.issued || inv.dateIssued || '';
+    const cur = idx.get(accountId) || { latest: null, unpaid: false };
+    if (!cur.latest || date > cur.latest.date) {
+      cur.latest = { num: num || '', date, status: inv.status || 'draft', amount };
+    }
+    if (['sent', 'overdue'].includes(inv.status)) cur.unpaid = true;
+    idx.set(accountId, cur);
+  };
+  DB.a('retail_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.amount != null ? i.amount : i.total) || 0));
+  DB.a('lf_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.total) || 0));
+  DB.a('combined_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.grandTotal) || 0));
+  // Legacy purpl invoices live in iv alongside inventory ledger rows — only
+  // rows carrying an invoice number are invoices (standing doctrine).
+  DB.a('iv').forEach(i => { if (i.number || i.invoiceNumber) consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.amount != null ? i.amount : i.total) || 0); });
+  return idx;
+}
+
+function _meContextLine(a, ctx) {
+  const bits = [];
+  if (ctx?.latest) {
+    const stC = { paid: '#16a34a', sent: '#2563eb', overdue: '#dc2626', draft: '#6b7280', void: '#6b7280' }[ctx.latest.status] || '#6b7280';
+    bits.push(`Inv ${escHtml(ctx.latest.num)} · ${fmtD(ctx.latest.date)} · <span style="color:${stC};font-weight:600">${escHtml(ctx.latest.status)}</span> · ${fmtC(ctx.latest.amount)}`);
+  } else {
+    bits.push('No invoices');
+  }
+  if (ctx?.unpaid) bits.push('<span style="color:#dc2626;font-weight:600">UNPAID</span>');
+  if (a.lastOrder) bits.push('Last order ' + fmtD(a.lastOrder));
+  const lastNote = [...(a.notes || [])].sort((x, y) => (x.date || '') < (y.date || '') ? 1 : -1)[0];
+  if (lastNote?.text) {
+    const t = lastNote.text.replace(/\s+/g, ' ').trim();
+    bits.push('📝 ' + escHtml(t.length > 48 ? t.slice(0, 48) + '…' : t));
+  }
+  return bits.join(' &nbsp;·&nbsp; ');
+}
+
+function _meMainFilteredList(invIdx) {
+  let list = _getMeFilteredAccounts('#me-brand-btns', '#me-last-contact-filter', '#me-status-filter');
+  const invF = qs('#me-invoice-filter')?.value || '';
+  if (invF === 'unpaid') list = list.filter(a => invIdx.get(a.id)?.unpaid);
+  else if (invF === 'none-open') list = list.filter(a => !invIdx.get(a.id)?.unpaid);
+  const loF = qs('#me-last-order-filter')?.value || '';
+  if (loF === 'never') list = list.filter(a => !a.lastOrder);
+  else if (loF) { const d = parseInt(loF); list = list.filter(a => a.lastOrder && daysAgo(a.lastOrder) >= d); }
+  return list;
+}
+
 function renderMeAccountList() {
-  const list = _getMeFilteredAccounts('#me-brand-btns', '#me-last-contact-filter', '#me-status-filter');
+  const invIdx = _meBuildInvoiceIndex();
+  const list = _meMainFilteredList(invIdx);
   const el = qs('#me-account-list');
   if (!el) return;
   el.innerHTML = list.map(a=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border)">
       <input type="checkbox" id="me-chk-${a.id}" ${_meSelectedIds.has(a.id)?'checked':''} onchange="meToggleAccount('${a.id}',this.checked)" style="width:14px;height:14px;flex-shrink:0">
-      <label for="me-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px">
-        <div>${escHtml(a.name)}</div>
-        <div style="font-size:11px">${a.lastContacted === today() ? '<span style="color:#16a34a;font-weight:600">✓ Sent today</span>' : '<span style="color:var(--muted)">'+(a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted')+'</span>'}</div>
+      <label for="me-chk-${a.id}" style="flex:1;cursor:pointer;font-size:13px;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:8px"><span>${escHtml(a.name)}</span>
+        <span style="font-size:11px;flex-shrink:0">${a.lastContacted === today() ? '<span style="color:#16a34a;font-weight:600">✓ Sent today</span>' : '<span style="color:var(--muted)">'+(a.lastContacted ? fmtD(a.lastContacted) : 'Never contacted')+'</span>'}</span></div>
+        <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_meContextLine(a, invIdx.get(a.id))}</div>
       </label>
     </div>`).join('') || '<div style="color:var(--muted);font-size:13px;padding:8px">No accounts match filters.</div>';
   _updateMeCount();
@@ -5284,13 +5339,12 @@ function meToggleAccount(id, checked) {
 }
 
 function meSelectAll() {
-  _getMeFilteredAccounts('#me-brand-btns','#me-last-contact-filter','#me-status-filter')
-    .forEach(a=>_meSelectedIds.add(a.id));
+  // Same list the user SEES — incl. the invoice/last-order filters.
+  _meMainFilteredList(_meBuildInvoiceIndex()).forEach(a=>_meSelectedIds.add(a.id));
   renderMeAccountList();
 }
 function meDeselectAll() {
-  _getMeFilteredAccounts('#me-brand-btns','#me-last-contact-filter','#me-status-filter')
-    .forEach(a=>_meSelectedIds.delete(a.id));
+  _meMainFilteredList(_meBuildInvoiceIndex()).forEach(a=>_meSelectedIds.delete(a.id));
   renderMeAccountList();
 }
 function meBatchSelectAll() {
