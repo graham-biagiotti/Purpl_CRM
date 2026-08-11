@@ -4,6 +4,12 @@ Status: PLANNED (no code yet). Owner-approved flow: the sampler (one dedicated
 person, not Graham) owns her own schedule and is the confirmer. Graham is
 informed, never in the critical path.
 
+**Owner constraints (verbatim intent):** purpl-only sampling — no LF anywhere
+in this flow. The sampler is not tech-savvy: her ENTIRE experience is two
+emails and one tap. Big buttons, plain language, no statuses, no login,
+nothing she can break; recovery from her mistakes is always on Graham's side
+(cancel + resend from the CRM card).
+
 ## Roles
 - **Store**: existing account; requests a demo day via personalized link.
 - **Sampler**: one person, set once in Settings (name / cell / email). Confirms
@@ -19,8 +25,8 @@ Stored on the settings object; no new collection.
 
 ## 1. Invite
 - New email template `sampling-invite` on the Emails page (single + mass send).
-- Copy: what PBF provides (person, product, cups, ice, table), what the store
-  provides (foot traffic, a spot for the table).
+- Copy: purpl-specific — what we provide (our sampler, purpl, cups, ice,
+  table), what the store provides (foot traffic, a spot for the table).
 - Personalized link: `https://pbfwholesale.com/sampling?t=<orderPortalToken>`
   (existing token — no password).
 - Logged to cadence stage `sampling_invite`; honors emailOptOut and
@@ -28,7 +34,8 @@ Stored on the settings object; no new collection.
 - "Invite to sampling" button on the account detail modal for one-offs.
 
 ## 2. Public page — sampling.html
-- New page on wholesale hosting (COPY_AS_IS sync, new brand palette).
+- New page on wholesale hosting (COPY_AS_IS sync). purpl-branded (wordmark
+  + brand purple #4D2A6F) — NOT the dual-brand header; this is purpl-only.
 - Reads `?t=` → lookupPortalToken → greets store by name, prefills identity.
 - NO valid token → friendly refusal screen (personal-link explanation +
   contact mailto). Accounts only; no anonymous requests.
@@ -43,7 +50,6 @@ Stored on the settings object; no new collection.
   time window* (morning / midday / afternoon)
 - Logistics: table location, power outlet (y/n), parking/load-in notes,
   busiest hours, free-text notes
-- Products to feature: purpl always; LF items when account.isPbf
 - Submit: double-click guard + timeout recovery (ws application form pattern)
 
 ## 4. Submission machinery
@@ -54,7 +60,7 @@ Stored on the settings object; no new collection.
 - Writes to NEW top-level collection `sampling_requests`:
   { id, accountId, accountName, storeAddress, contact{name,cell,email},
     date1, date2, timeWindow, logistics{table,power,parking,busyHours,notes},
-    products[], status:'pending_sampler', samplerActionToken(random 32),
+    status:'pending_sampler', samplerActionToken(random 32),
     storeActionToken(null until propose), createdAt, source }
 - Sends TWO emails:
   1. Store contact: "Request received — confirmation within ~2 days."
@@ -63,6 +69,9 @@ Stored on the settings object; no new collection.
   listener.
 
 ## 5. Sampler decision — one-time action links
+- Sampler email is written like a text message. Subject: "New demo request:
+  <Store>". Giant stacked mobile buttons:
+  **YES — <Date 1>** / **YES — <Date 2>** / **NO — pick a different day**.
 - Buttons hit NEW onRequest CF `samplingAction`
   (`?r=<requestId>&k=<samplerActionToken>&a=confirm1|confirm2|propose`).
 - Pay-link trust model: per-request random key, single-use (action recorded,
@@ -72,10 +81,13 @@ Stored on the settings object; no new collection.
     attachments)
   - sampler: confirmation + .ics with full logistics packet
   - Graham: one-line FYI email
+  Landing page after a YES is ONE sentence: "Booked. <Store>, <Date>.
+  It's on your calendar." Nothing further for her to do.
   Double-booking interstitial BEFORE confirm if she already has a confirmed
-  demo that date ("You have <store> that day — confirm anyway?").
-- **Propose path**: tiny page, date picker (shows her existing bookings,
-  enforces lead time) → status→'proposed_alt', altDate set, storeActionToken
+  demo that date — plain question, two buttons: "You already have <store>
+  that day. Book this one anyway?" YES / GO BACK.
+- **Propose path**: ONE date picker + ONE Send button (shows her existing
+  bookings, enforces lead time) → status→'proposed_alt', altDate set, storeActionToken
   minted → store contact gets "how about <alt>?" with ✓ Works / ✗ Doesn't
   buttons (own one-time key). Works → confirm path. Doesn't →
   status 'needs_reschedule', Graham + sampler notified (human takes over).
@@ -95,8 +107,10 @@ Stored on the settings object; no new collection.
 
 ## 7. Reminders
 - Daily sweep extension: T-2 days before confirmedDate → email store contact
-  ("see you <day> — sampler cell: …") and sampler (logistics recap).
-  Once-only, stamped on the record.
+  ("see you <day> — sampler cell: …") and sampler. Her reminder REPEATS
+  EVERYTHING (address, day-of contact name + cell, arrival window, what to
+  bring) so she never digs for the original email — the reminder alone is
+  enough to run the day. Once-only, stamped on the record.
 
 ## 8. Post-demo
 - Day after confirmedDate: card → 'awaiting outcome', dashboard nudge.
@@ -142,7 +156,11 @@ Plus: T-2 reminders (store + sampler), 3-day sampler nudge.
 ## Edge cases (design answers)
 - Invalid/missing token → refusal screen, no anonymous path.
 - Duplicate open request → server returns existing; page shows status.
-- Action link forwarded/reused → single-use key; revisits show state.
+- Action link forwarded/reused → single-use key; revisits show plain current
+  state ("This one's already booked for <date>").
+- Sampler taps the wrong date → Graham cancels from the card; system re-sends
+  her a fresh button email. Nothing is unrecoverable, and none of the
+  recovery is on her.
 - Both requested dates in the past when she finally clicks → page rejects,
   routes to propose flow.
 - Store no-show / closed on the day → Graham marks Cancelled with note.
