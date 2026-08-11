@@ -2640,10 +2640,18 @@ exports.samplingAdmin = onCall(
       // confirmed, or a proposal sitting in its inbox.
       const wasConfirmed = ['confirmed', 'proposed_alt'].includes(rec.status);
       await ref.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'staff' });
-      if (wasConfirmed && rec.contact?.email) {
+      // Same recipient fallback as confirmations: form email, else account email.
+      let cancelStoreTo = rec.contact?.email || '';
+      if (wasConfirmed && !cancelStoreTo && rec.accountId) {
+        try {
+          const acDoc = await admin.firestore().collection('workspace/main/ac').doc(rec.accountId).get();
+          cancelStoreTo = acDoc.exists ? (acDoc.data().email || '') : '';
+        } catch (e) { /* no fallback available */ }
+      }
+      if (wasConfirmed && cancelStoreTo) {
         try {
           await resend.emails.send({
-            from: 'lavender@pbfwholesale.com', to: rec.contact.email,
+            from: 'lavender@pbfwholesale.com', to: cancelStoreTo,
             replyTo: 'graham@pumpkinblossomfarm.com',
             subject: 'purpl demo day cancelled — ' + (rec.accountName || ''),
             html: _samplingEmailShell(`<p>Hi ${escHtml(rec.contact?.name || 'there')},</p><p>We need to cancel the purpl demo${rec.confirmedDate || rec.altDate ? ' planned for <strong>' + escHtml(_samplingFmtDate(rec.confirmedDate || rec.altDate)) + '</strong>' : ''} at ${escHtml(rec.accountName)}. Sorry about that — reply to this email and we'll set up a new date.</p>`),

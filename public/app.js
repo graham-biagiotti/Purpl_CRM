@@ -18804,7 +18804,7 @@ async function samplingResend(id) {
 async function samplingCancel(id) {
   const r = _samplingReqs.find(x => x.id === id);
   if (!r) return;
-  if (!confirm2(`Cancel this demo request for ${r.accountName || 'this store'}?` + (r.status === 'confirmed' ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store was never confirmed so it gets no email.'))) return;
+  if (!confirm2(`Cancel this demo request for ${r.accountName || 'this store'}?` + (['confirmed', 'proposed_alt'].includes(r.status) ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store never knew a date existed so it gets no email.'))) return;
   try {
     await firebase.functions().httpsCallable('samplingAdmin')({ action: 'cancel', requestId: id });
     toast('Cancelled');
