@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
 <script src="firebase-config.js"></script>
 <style>
-  :root { --purpl:#4D2A6F; --purpl-dark:#3E2159; --lf:#5C74AD; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
+  :root { --purpl:#4D2A6F; --purpl-dark:#3E2159; --lf:#7C90C8; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; }
   body { font-family:Inter,Arial,sans-serif; background:#faf9f7; color:var(--text); }
@@ -34,7 +34,6 @@
   .searchbar input { flex:1; min-width:0; padding:10px 13px; font-size:14.5px; border:1.5px solid var(--border); border-radius:8px; outline:none; font-family:inherit; }
   .searchbar input:focus { border-color:var(--purpl); }
   .searchbar button { padding:10px 14px; font-size:13.5px; border:none; border-radius:8px; background:var(--purpl); color:#fff; cursor:pointer; font-weight:600; font-family:inherit; }
-  .searchbar .geo { background:#fff; border:1.5px solid var(--border); color:var(--text); padding:10px 11px; }
 
   .fu-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
   .fu-card { border:2px solid var(--border); border-radius:10px; padding:10px 8px 9px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; position:relative; user-select:none; opacity:.5; }
@@ -111,7 +110,6 @@
         <input id="loc-input" placeholder="Enter your town or ZIP…" autocomplete="postal-code"
           onkeydown="if(event.key==='Enter')searchLocation()">
         <button onclick="searchLocation()">Search</button>
-        <button class="geo" onclick="useMyLocation()" title="Use my location">📍</button>
       </div>
       <div class="fu-cards">
         <div class="fu-card fu-purpl active" id="fu-card-purpl" onclick="toggleBrandCard('purpl')">
@@ -135,8 +133,8 @@
 
   <div id="maplegend" class="legend-pill">
     <span><span class="bdot" style="background:#4D2A6F"></span> purpl</span>
-    <span><span class="bdot" style="background:#5C74AD"></span> Lavender Fields</span>
-    <span><span class="bdot" style="background:linear-gradient(90deg,#4D2A6F 50%,#5C74AD 50%)"></span> both</span>
+    <span><span class="bdot" style="background:#7C90C8"></span> Lavender Fields</span>
+    <span><span class="bdot" style="background:linear-gradient(90deg,#4D2A6F 50%,#7C90C8 50%)"></span> both</span>
   </div>
 </div>
 
@@ -214,7 +212,7 @@ function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&
 
 function brandTiles(s) {
   return ((s.brands || []).indexOf('purpl') >= 0 ? '<span class="bdot" style="background:#4D2A6F" title="purpl"></span>' : '') +
-         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#5C74AD" title="Lavender Fields"></span>' : '');
+         ((s.brands || []).indexOf('lf') >= 0 ? '<span class="bdot" style="background:#7C90C8" title="Lavender Fields"></span>' : '');
 }
 
 function rowHtml(s, dist) {
@@ -302,7 +300,7 @@ function renderPins(list) {
   MARKERS = [];
   if (!list.length) return;
   var dualSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">' +
-    '<circle cx="11" cy="11" r="9" fill="#5C74AD"/>' +
+    '<circle cx="11" cy="11" r="9" fill="#7C90C8"/>' +
     '<path d="M11 2 a9 9 0 0 0 0 18 Z" fill="#4D2A6F"/>' +
     '<circle cx="11" cy="11" r="9" fill="none" stroke="#fff" stroke-width="2.5"/></svg>';
   var DUAL_ICON = {
@@ -315,7 +313,7 @@ function renderPins(list) {
     var isP = (s.brands || []).indexOf('purpl') >= 0;
     var isL = (s.brands || []).indexOf('lf') >= 0;
     var icon = (isP && isL) ? DUAL_ICON
-      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#5C74AD' : '#4D2A6F', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
+      : { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: isL ? '#7C90C8' : '#4D2A6F', fillOpacity: .95, strokeColor: '#fff', strokeWeight: 2 };
     var m = new google.maps.Marker({ map: MAP, position: { lat: s.lat, lng: s.lng }, title: s.name, icon: icon });
     m.addListener('click', function () {
       if (!INFO) INFO = new google.maps.InfoWindow();
@@ -406,17 +404,6 @@ function _geocoderFallback(q) {
     });
   };
   tryNext(0);
-}
-
-function useMyLocation() {
-  if (!navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(function (pos) {
-    SEARCH = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'your location' };
-    SHOWN = 10;
-    render();
-  }, function () {
-    document.getElementById('count').textContent = 'Location unavailable — type your town or ZIP instead.';
-  });
 }
 
 function clearSearch() {
