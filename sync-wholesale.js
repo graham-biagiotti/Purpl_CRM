@@ -18,6 +18,7 @@ const DST = path.join(__dirname, 'public-wholesale');
 const COPY_AS_IS = [
   'order.html',
   'find-us.html',
+  'sampling.html',
   'privacy.html',
   'terms.html',
   '404.html',

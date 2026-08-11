@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>purpl — Schedule an In-Store Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-functions-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --purpl:#4D2A6F; --purpl-mid:#6E4A96; --purpl-soft:#EFEAF4; --purpl-border:#CFC4DE;
+  --cream:#faf9f6; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb; --red:#dc2626;
+}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);min-height:100vh}
+.sp-header{background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:36px 24px 40px;text-align:center}
+.sp-header img{display:block;margin:0 auto 16px}
+.sp-header h1{font-family:'Playfair Display',serif;font-size:26px;color:#fff;font-weight:400;margin-bottom:6px}
+.sp-header-sub{font-size:14px;color:rgba(255,255,255,0.85);font-weight:300}
+.container{max-width:600px;margin:0 auto;padding:28px 16px 60px}
+.card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:24px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.05)}
+.card h2{font-size:18px;margin-bottom:6px;color:var(--purpl)}
+.card p.lead{font-size:14px;color:var(--muted);margin-bottom:18px;line-height:1.6}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.fg label .req{color:var(--red)}
+.fg input,.fg select,.fg textarea{width:100%;padding:11px 12px;font-size:15px;border:1px solid var(--border);border-radius:8px;font-family:inherit;background:#fff}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--purpl);box-shadow:0 0 0 3px rgba(77,42,111,0.1)}
+.fg textarea{min-height:70px;resize:vertical}
+.fg .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.row2{grid-template-columns:1fr}}
+.section-label{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--purpl);margin:22px 0 10px;padding-top:16px;border-top:1px solid var(--border)}
+.submit-btn{width:100%;padding:15px;background:var(--purpl);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px}
+.submit-btn:hover:not(:disabled){background:#3E2159}
+.submit-btn:disabled{background:var(--purpl-border);cursor:not-allowed}
+.err{display:none;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;padding:10px 12px;font-size:13px;margin-top:12px}
+.info-box{background:var(--purpl-soft);border:1px solid var(--purpl-border);border-radius:8px;padding:14px 16px;font-size:13.5px;line-height:1.7;margin-bottom:18px}
+.status-big{font-size:17px;font-weight:600;color:var(--purpl);margin:10px 0}
+.center{text-align:center}
+.spinner{border:3px solid var(--border);border-top:3px solid var(--purpl);border-radius:50%;width:28px;height:28px;animation:spin 1s linear infinite;margin:30px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="sp-header">
+  <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="150" height="57">
+  <h1>Schedule an In-Store Demo</h1>
+  <div class="sp-header-sub">Pumpkin Blossom Farm · Wholesale</div>
+</div>
+<div class="container">
+  <div id="sp-loading" class="card center"><div class="spinner"></div><p style="color:var(--muted);font-size:14px">Loading…</p></div>
+
+  <div id="sp-invalid" class="card" style="display:none">
+    <h2>This link is personal</h2>
+    <p class="lead">Demo scheduling works through the personal link in your email — it knows which store you are, so there's nothing to type. Can't find it? Email
+    <a href="mailto:lavender@pbfwholesale.com" style="color:var(--purpl)">lavender@pbfwholesale.com</a> and we'll send a fresh one.</p>
+  </div>
+
+  <div id="sp-status" class="card" style="display:none">
+    <h2 id="sp-status-title">Your demo day</h2>
+    <p class="status-big" id="sp-status-line"></p>
+    <p class="lead" id="sp-status-sub"></p>
+  </div>
+
+  <div id="sp-form-card" class="card" style="display:none">
+    <h2 id="sp-greet">Book a purpl demo day</h2>
+    <p class="lead">We bring everything — our sampler, cold purpl, cups, ice, and a table. You bring the foot traffic. Pick a couple of days that work and we'll confirm one.</p>
+
+    <div class="section-label">Who should our sampler ask for?</div>
+    <div class="fg"><label>Contact name <span class="req">*</span></label><input id="sp-contact-name" maxlength="120" placeholder="Person on the floor that day"></div>
+    <div class="row2">
+      <div class="fg"><label>Cell <span class="req">*</span></label><input id="sp-contact-cell" maxlength="40" placeholder="603-555-0100" inputmode="tel"></div>
+      <div class="fg"><label>Email</label><input id="sp-contact-email" maxlength="200" placeholder="For the confirmation" inputmode="email"></div>
+    </div>
+
+    <div class="section-label">When</div>
+    <div class="row2">
+      <div class="fg"><label>First choice <span class="req">*</span></label><input id="sp-date1" type="date"><div class="hint" id="sp-date-hint"></div></div>
+      <div class="fg"><label>Backup day</label><input id="sp-date2" type="date"></div>
+    </div>
+    <div class="fg"><label>Time window <span class="req">*</span></label>
+      <select id="sp-window">
+        <option value="morning">Morning (10am–1pm)</option>
+        <option value="midday">Midday (11am–2pm)</option>
+        <option value="afternoon">Afternoon (2–5pm)</option>
+      </select>
+    </div>
+
+    <div class="section-label">The day itself</div>
+    <div class="fg"><label>Store address for the demo</label><input id="sp-address" maxlength="300"><div class="hint">Change this only if the demo is at a different location.</div></div>
+    <div class="fg"><label>Where should the table go?</label><input id="sp-table" maxlength="300" placeholder="e.g. front of store, by the registers"></div>
+    <div class="fg"><label>Power outlet nearby?</label>
+      <select id="sp-power"><option value="">Not sure</option><option value="yes">Yes</option><option value="no">No</option></select>
+    </div>
+    <div class="fg"><label>Parking / load-in notes</label><input id="sp-parking" maxlength="500" placeholder="Where to park, which door to use"></div>
+    <div class="fg"><label>Your busiest hours</label><input id="sp-busy" maxlength="200" placeholder="e.g. Saturdays 11–2"></div>
+    <div class="fg"><label>Anything else?</label><textarea id="sp-notes" maxlength="2000"></textarea></div>
+
+    <button class="submit-btn" id="sp-submit" onclick="spSubmit()">Request Demo Day</button>
+    <div class="err" id="sp-err"></div>
+  </div>
+
+  <div id="sp-done" class="card" style="display:none">
+    <h2>Request sent ✓</h2>
+    <p class="lead">We're checking our sampler's schedule — you'll get a confirmation email with a calendar invite within <strong>2 days</strong>. Nothing else to do.</p>
+  </div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script>
+firebase.initializeApp(window.FIREBASE_CONFIG);
+var SP_TOKEN = new URLSearchParams(location.search).get('t') || '';
+var SP_RULES = { leadDays: 7, blockedWeekdays: [] };
+var _spInFlight = false;
+
+function spShow(id) {
+  ['sp-loading','sp-invalid','sp-status','sp-form-card','sp-done'].forEach(function(x){
+    document.getElementById(x).style.display = x === id ? '' : 'none';
+  });
+}
+
+function spMinDate() {
+  var d = new Date(Date.now() + SP_RULES.leadDays * 864e5);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function spWeekdayOk(iso) {
+  if (!iso) return true;
+  var wd = new Date(iso + 'T12:00:00').getDay();
+  return SP_RULES.blockedWeekdays.indexOf(wd) === -1;
+}
+
+function spInit() {
+  if (!SP_TOKEN) { spShow('sp-invalid'); return; }
+  firebase.functions().httpsCallable('submitSamplingRequest')({ token: SP_TOKEN, check: true })
+    .then(function(res) {
+      var d = res.data || {};
+      SP_RULES.leadDays = d.leadDays || 7;
+      SP_RULES.blockedWeekdays = d.blockedWeekdays || [];
+      if (d.open) {
+        var o = d.open;
+        var line, sub;
+        if (o.status === 'confirmed') {
+          line = 'Confirmed: ' + (o.confirmedDateLabel || o.confirmedDate);
+          sub = 'Our sampler will be there. Once the day has passed you can book your next one right here.';
+        } else {
+          line = 'Request in — waiting on our sampler’s schedule.';
+          sub = 'You’ll get a confirmation email with a calendar invite. This page unlocks for a new booking once it’s settled.';
+        }
+        document.getElementById('sp-status-title').textContent = d.accountName || 'Your demo day';
+        document.getElementById('sp-status-line').textContent = line;
+        document.getElementById('sp-status-sub').textContent = sub;
+        spShow('sp-status');
+        return;
+      }
+      // Form path
+      if (d.accountName) document.getElementById('sp-greet').textContent = 'Book a purpl demo day — ' + d.accountName;
+      document.getElementById('sp-address').value = d.storeAddress || '';
+      var pf = d.prefill || {};
+      if (pf.contact) {
+        document.getElementById('sp-contact-name').value = pf.contact.name || '';
+        document.getElementById('sp-contact-cell').value = pf.contact.cell || '';
+        document.getElementById('sp-contact-email').value = pf.contact.email || '';
+      }
+      if (pf.logistics) {
+        document.getElementById('sp-table').value = pf.logistics.table || '';
+        document.getElementById('sp-power').value = pf.logistics.power || '';
+        document.getElementById('sp-parking').value = pf.logistics.parking || '';
+        document.getElementById('sp-busy').value = pf.logistics.busyHours || '';
+      }
+      var min = spMinDate();
+      document.getElementById('sp-date1').min = min;
+      document.getElementById('sp-date2').min = min;
+      document.getElementById('sp-date-hint').textContent = 'At least ' + SP_RULES.leadDays + ' days out.';
+      spShow('sp-form-card');
+    })
+    .catch(function(e) {
+      console.error('Sampling check failed:', e);
+      spShow('sp-invalid');
+    });
+}
+
+function spErr(msg) {
+  var el = document.getElementById('sp-err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function spSubmit() {
+  if (_spInFlight) return;
+  document.getElementById('sp-err').style.display = 'none';
+  var name = document.getElementById('sp-contact-name').value.trim();
+  var cell = document.getElementById('sp-contact-cell').value.trim();
+  var date1 = document.getElementById('sp-date1').value;
+  var date2 = document.getElementById('sp-date2').value;
+  if (!name || !cell) { spErr('Please add the contact name and cell number.'); return; }
+  if (!date1) { spErr('Please pick a first-choice date.'); return; }
+  if (date1 < spMinDate()) { spErr('First-choice date needs at least ' + SP_RULES.leadDays + ' days notice.'); return; }
+  if (!spWeekdayOk(date1)) { spErr('That weekday isn’t available — please pick another day.'); return; }
+  if (date2 && !spWeekdayOk(date2)) { spErr('The backup weekday isn’t available — please pick another day.'); return; }
+  if (date2 && date2 === date1) { spErr('The backup day should be different from your first choice.'); return; }
+
+  _spInFlight = true;
+  var btn = document.getElementById('sp-submit');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  var reset = setTimeout(function(){ _spInFlight = false; btn.disabled = false; btn.textContent = 'Request Demo Day'; }, 20000);
+
+  firebase.functions().httpsCallable('submitSamplingRequest')({
+    token: SP_TOKEN,
+    contactName: name, contactCell: cell,
+    contactEmail: document.getElementById('sp-contact-email').value.trim(),
+    date1: date1, date2: date2 || '',
+    timeWindow: document.getElementById('sp-window').value,
+    storeAddress: document.getElementById('sp-address').value.trim(),
+    table: document.getElementById('sp-table').value.trim(),
+    power: document.getElementById('sp-power').value,
+    parking: document.getElementById('sp-parking').value.trim(),
+    busyHours: document.getElementById('sp-busy').value.trim(),
+    notes: document.getElementById('sp-notes').value.trim(),
+  }).then(function() {
+    clearTimeout(reset);
+    spShow('sp-done');
+  }).catch(function(e) {
+    clearTimeout(reset);
+    _spInFlight = false;
+    btn.disabled = false; btn.textContent = 'Request Demo Day';
+    spErr(e && e.message ? e.message : 'Something went wrong — please try again or email lavender@pbfwholesale.com.');
+  });
+}
+
+spInit();
+</script>
+</body>
+</html>

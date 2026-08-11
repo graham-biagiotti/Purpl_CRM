@@ -2205,9 +2205,12 @@ exports.submitSamplingRequest = onCall(
     const last = all[0] || null;
 
     if (data.check) {
+      const cfg = await _samplingConfig();
       return {
         accountName: acct.name,
         storeAddress: acct.address,
+        leadDays: cfg.leadDays,
+        blockedWeekdays: cfg.blockedWeekdays,
         open: open ? {
           status: open.status, date1: open.date1, date2: open.date2,
           confirmedDate: open.confirmedDate || null,
