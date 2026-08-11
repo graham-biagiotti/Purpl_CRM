@@ -1,0 +1,150 @@
+# In-Store Sampling (Demo Days) — Build Spec
+
+Status: PLANNED (no code yet). Owner-approved flow: the sampler (one dedicated
+person, not Graham) owns her own schedule and is the confirmer. Graham is
+informed, never in the critical path.
+
+## Roles
+- **Store**: existing account; requests a demo day via personalized link.
+- **Sampler**: one person, set once in Settings (name / cell / email). Confirms
+  or proposes dates via one-time action links. No CRM login.
+- **Graham**: router/overseer. Gets FYIs; can cancel or step in on any card.
+
+## 0. Setup (Settings)
+New "In-Store Sampling" block in Settings:
+- sampler name, cell, email (warehouse-partner-email pattern)
+- minimum lead time in days (default 7)
+- optional blocked weekdays
+Stored on the settings object; no new collection.
+
+## 1. Invite
+- New email template `sampling-invite` on the Emails page (single + mass send).
+- Copy: what PBF provides (person, product, cups, ice, table), what the store
+  provides (foot traffic, a spot for the table).
+- Personalized link: `https://pbfwholesale.com/sampling?t=<orderPortalToken>`
+  (existing token — no password).
+- Logged to cadence stage `sampling_invite`; honors emailOptOut and
+  _invRecipient-style gates.
+- "Invite to sampling" button on the account detail modal for one-offs.
+
+## 2. Public page — sampling.html
+- New page on wholesale hosting (COPY_AS_IS sync, new brand palette).
+- Reads `?t=` → lookupPortalToken → greets store by name, prefills identity.
+- NO valid token → friendly refusal screen (personal-link explanation +
+  contact mailto). Accounts only; no anonymous requests.
+- If the account already has an open (pending/proposed/confirmed) request →
+  show its status instead of the form. One open request per account, enforced
+  client-side AND server-side.
+
+## 3. Form fields
+- Store name + address (prefilled; address editable for off-site demos)
+- Day-of contact: name*, cell*, email
+- Date #1*, backup date (picker enforces lead time + blocked weekdays),
+  time window* (morning / midday / afternoon)
+- Logistics: table location, power outlet (y/n), parking/load-in notes,
+  busiest hours, free-text notes
+- Products to feature: purpl always; LF items when account.isPbf
+- Submit: double-click guard + timeout recovery (ws application form pattern)
+
+## 4. Submission machinery
+- Client calls NEW callable CF `submitSamplingRequest` (never a direct
+  Firestore write).
+- CF validates: token → accountId; dates parseable, >= lead time, not blocked;
+  no existing open request (returns the existing one instead of duplicating).
+- Writes to NEW top-level collection `sampling_requests`:
+  { id, accountId, accountName, storeAddress, contact{name,cell,email},
+    date1, date2, timeWindow, logistics{table,power,parking,busyHours,notes},
+    products[], status:'pending_sampler', samplerActionToken(random 32),
+    storeActionToken(null until propose), createdAt, source }
+- Sends TWO emails:
+  1. Store contact: "Request received — confirmation within ~2 days."
+  2. Sampler: full packet + 3 action buttons.
+- Cadence entry `sampling_requested` on the account. CRM badge increments via
+  listener.
+
+## 5. Sampler decision — one-time action links
+- Buttons hit NEW onRequest CF `samplingAction`
+  (`?r=<requestId>&k=<samplerActionToken>&a=confirm1|confirm2|propose`).
+- Pay-link trust model: per-request random key, single-use (action recorded,
+  key cleared; revisits show current state idempotently).
+- **Confirm path**: status→'confirmed', confirmedDate set. Sends:
+  - store contact: confirmation + .ics attachment (sendEmail already supports
+    attachments)
+  - sampler: confirmation + .ics with full logistics packet
+  - Graham: one-line FYI email
+  Double-booking interstitial BEFORE confirm if she already has a confirmed
+  demo that date ("You have <store> that day — confirm anyway?").
+- **Propose path**: tiny page, date picker (shows her existing bookings,
+  enforces lead time) → status→'proposed_alt', altDate set, storeActionToken
+  minted → store contact gets "how about <alt>?" with ✓ Works / ✗ Doesn't
+  buttons (own one-time key). Works → confirm path. Doesn't →
+  status 'needs_reschedule', Graham + sampler notified (human takes over).
+- Sampler silent 3 days → daily sweep re-nudges her; CRM card flags
+  "waiting on sampler 3+ days".
+
+## 6. CRM surfaces
+- Dashboard card + nav badge (portal-orders listener pattern) on
+  pending/proposed requests.
+- Sampling section: request cards with state chips
+  (Waiting on sampler / Proposed <date> / Confirmed <date> / Completed /
+  Cancelled / Needs reschedule) and actions: Cancel (emails both sides),
+  Resend to sampler, Mark completed, View details.
+- Month grid of confirmed demos (pure CSS grid, no library).
+- Account detail modal: sampling history + "Invite to sampling" button.
+- Cadence entries in the account timeline.
+
+## 7. Reminders
+- Daily sweep extension: T-2 days before confirmedDate → email store contact
+  ("see you <day> — sampler cell: …") and sampler (logistics recap).
+  Once-only, stamped on the record.
+
+## 8. Post-demo
+- Day after confirmedDate: card → 'awaiting outcome', dashboard nudge.
+- Mark Completed with outcome: cases sold, restock taken?, worth repeating?,
+  free notes → cadence entry. Feeds manual reorder follow-up (v1);
+  auto thank-you/reorder email (v2).
+
+## 9. Changes / cancellations
+- Graham cancels from card → both sides emailed.
+- Store reschedule: v1 reply-to-email (human); v2 reschedule link reusing the
+  propose flow.
+- Sampler cancels: texts Graham → CRM cancel (v1 human).
+
+## 10. Security & data
+- No public Firestore writes; all through CFs (callable submit + onRequest
+  actions with per-request keys).
+- sampling_requests: staff-only rules; CFs use admin SDK.
+- Dates are ET date + window strings; no timezone math.
+- Cadence stages added: sampling_invite, sampling_requested,
+  sampling_scheduled (confirm), sampling_completed.
+- `sampling_requests` is a TOP-LEVEL collection (portal_orders pattern),
+  NOT in COLLECTION_KEYS' workspace set — CRM reads via listener.
+
+## Emails inventory (all new palette, existing builders)
+1. sampling-invite (template, manual/mass)
+2. request-received (store)
+3. request packet + action buttons (sampler)
+4. confirmation + .ics (store)
+5. confirmation + .ics + logistics (sampler)
+6. FYI (Graham)
+7. propose-alt with accept/decline buttons (store)
+Plus: T-2 reminders (store + sampler), 3-day sampler nudge.
+
+## Build order (each phase: backtests + adversarial verifier gate → deploy)
+- **Phase A (working loop)**: settings block; sampling.html; submitSamplingRequest;
+  emails 2+3; samplingAction confirm path (+ interstitial guard); emails 4+5+6
+  with .ics; CRM list + badge + cancel; cadence logging.
+- **Phase B (polish)**: propose-alt round trip (email 7 + store action);
+  T-2 reminders + sampler nudge; month grid; completed/outcome flow.
+- **Phase C (later/optional)**: store reschedule link; auto thank-you/reorder
+  email; sampling link inside the order portal.
+
+## Edge cases (design answers)
+- Invalid/missing token → refusal screen, no anonymous path.
+- Duplicate open request → server returns existing; page shows status.
+- Action link forwarded/reused → single-use key; revisits show state.
+- Both requested dates in the past when she finally clicks → page rejects,
+  routes to propose flow.
+- Store no-show / closed on the day → Graham marks Cancelled with note.
+- Account with no email → invite gate skips (send-gate pattern).
+- Sampler double-booked → interstitial warning, her call.
