@@ -1,6 +1,6 @@
 # In-Store Sampling (Demo Days) — Build Spec
 
-Status: PLANNED (no code yet). Owner-approved flow: the sampler (one dedicated
+Status: PHASE A BUILT + verifier-gated (v197, commits dab6f9a/09aeaf3/536afcf/c8791dd — mutations are POST-only behind armed pages; scanner-safe). Phase B (propose-alt round trip, T-2 reminders, month grid) not yet built. Owner-approved flow: the sampler (one dedicated
 person, not Graham) owns her own schedule and is the confirmer. Graham is
 informed, never in the critical path.
 
