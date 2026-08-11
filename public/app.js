@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v201';
+const APP_VERSION = 'v202';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -16145,6 +16145,29 @@ function _renderPoAll() {
     grouped.push(group);
   });
 
+  // Context for the confirm decision: the account's portal-order history and
+  // latest invoice, computed once per render (reuses the mass-email index).
+  const _poInvIdx = _meBuildInvoiceIndex();
+  const _poHistory = (o) => {
+    if (!o.isMatched || !o.accountId) return '';
+    const prior = orders.filter(p => p.accountId === o.accountId && p.id !== o.id &&
+      p.status === 'confirmed' && (p.submittedAt || 0) < (o.submittedAt || Infinity));
+    const priorGroups = _portalSubmissionGroups(prior);
+    const lastPrior = priorGroups.length
+      ? prior.reduce((m, p) => (p.submittedAt || 0) > (m.submittedAt || 0) ? p : m, prior[0])
+      : null;
+    const inv = _poInvIdx.get(o.accountId);
+    const bits = [];
+    bits.push(priorGroups.length
+      ? `${priorGroups.length} prior order${priorGroups.length === 1 ? '' : 's'} · last ${_fmtPoDate(lastPrior?.submittedAt)}`
+      : '<span style="color:#7B4FA0;font-weight:600">First portal order</span>');
+    if (inv?.latest) {
+      const stC = { paid: '#16a34a', sent: '#2563eb', overdue: '#dc2626' }[inv.latest.status] || 'var(--muted)';
+      bits.push(`last inv <span style="color:${stC};font-weight:600">${escHtml(inv.latest.status)}</span> ${fmtC(inv.latest.amount)}`);
+    }
+    if (inv?.unpaid) bits.push('<span style="color:#dc2626;font-weight:600">UNPAID BALANCE</span>');
+    return `<div style="font-size:10.5px;color:var(--muted);margin-top:2px">${bits.join(' · ')}</div>`;
+  };
   el.innerHTML = `<div class="card"><div class="tbl-wrap"><table>
     <thead><tr>
       <th>Submitted</th><th>Account</th><th>Brand</th><th>Match</th>
@@ -16166,7 +16189,7 @@ function _renderPoAll() {
         : escHtml(o.accountName||'');
       return `<tr>
         <td style="white-space:nowrap;font-size:12px">${_fmtPoDate(o.submittedAt)}</td>
-        <td>${acLink}</td>
+        <td>${acLink}${_poHistory(o)}</td>
         <td>${brandBadges}${o.requestSample ? ' <span class="badge" style="font-size:10px;background:#faf5ff;color:#7B4FA0;border:1px solid #e9d5ff">🧪 Sample</span>' : ''}</td>
         <td>${o.isMatched ? '<span class="badge green">✓ Matched</span>' : '<span class="badge red">? Unmatched</span>'}</td>
         <td>${cases||'—'}</td>
