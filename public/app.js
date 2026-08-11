@@ -5259,8 +5259,10 @@ function _meBuildInvoiceIndex() {
     if (['sent', 'overdue'].includes(inv.status)) cur.unpaid = true;
     idx.set(accountId, cur);
   };
-  DB.a('retail_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.amount != null ? i.amount : i.total) || 0));
-  DB.a('lf_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.total) || 0));
+  // Combined children are halves of a parent — the parent's grandTotal is
+  // the real "latest invoice" (same exclusion as every other aggregator).
+  DB.a('retail_invoices').forEach(i => { if (!i.combinedInvoiceId) consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.amount != null ? i.amount : i.total) || 0); });
+  DB.a('lf_invoices').forEach(i => { if (!i.combinedInvoiceId) consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.total) || 0); });
   DB.a('combined_invoices').forEach(i => consider(i.accountId, i, i.number || i.invoiceNumber, parseFloat(i.grandTotal) || 0));
   // Legacy purpl invoices live in iv alongside inventory ledger rows — only
   // rows carrying an invoice number are invoices (standing doctrine).
