@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v198';
+const APP_VERSION = 'v199';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -18622,6 +18622,27 @@ function _samplingSheetUrl(r) {
   return `https://pbfwholesale.com/sampling-action?r=${encodeURIComponent(r.id)}&k=${encodeURIComponent(r.samplerActionToken || '')}&a=sheet`;
 }
 
+function _samplingTimeline(r) {
+  const fmtDT = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const who = (_samplingCfg?.samplerName || 'sampler');
+  const ev = [];
+  if (r.createdAt) ev.push([r.createdAt, `Requested by store (${fmtD(r.date1)}${r.date2 ? ' / ' + fmtD(r.date2) : ''})`]);
+  if (r.packetSentAt) ev.push([r.packetSentAt, `Sent to ${who}`]);
+  if (r.samplerNudgedAt) ev.push([r.samplerNudgedAt, `Nudge sent to ${who}`]);
+  if (r.samplerDeclinedAt) ev.push([r.samplerDeclinedAt, `${who}: neither day works`]);
+  if (r.proposedAt) ev.push([r.proposedAt, `${who} suggested ${fmtD(r.altDate)} — store asked`]);
+  if (r.storeDeclinedAt) ev.push([r.storeDeclinedAt, 'Store declined the suggested day']);
+  if (r.confirmedAt) ev.push([r.confirmedAt, `Confirmed for ${fmtD(r.confirmedDate)} (${r.decidedBy === 'store' ? 'store accepted' : who + ' tapped YES'})`]);
+  if (r.samplerReminderSentAt) ev.push([r.samplerReminderSentAt, `2-day run-sheet reminder sent to ${who}`]);
+  if (r.completedAt) ev.push([r.completedAt, 'Marked completed']);
+  if (r.cancelledAt) ev.push([r.cancelledAt, 'Cancelled']);
+  if (!ev.length) return '';
+  ev.sort((a, b) => a[0] < b[0] ? -1 : 1);
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted);line-height:1.8">
+    ${ev.map(([ts, lbl]) => `<div><span style="display:inline-block;min-width:86px;color:var(--text);font-weight:600">${fmtDT(ts)}</span> ${escHtml(lbl)}</div>`).join('')}
+  </div>`;
+}
+
 function _samplingCard(r) {
   const L = r.logistics || {};
   const t = _samplingToday();
@@ -18662,6 +18683,7 @@ function _samplingCard(r) {
       ${r.proposeEmailFailed ? `<br><span style="color:var(--red)">⚠️ Store never got the proposed date — call them (${escHtml(fmtD(r.altDate))})</span>` : ''}
       ${(r.confirmEmailFailures || []).length ? `<br><span style="color:var(--red)">⚠️ Confirmation email failed (${escHtml((r.confirmEmailFailures || []).join(', '))})</span>` : ''}
     </div>
+    ${_samplingTimeline(r)}
     ${btns.length ? `<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${btns.join('')}</div>` : ''}
   </div>`;
 }
