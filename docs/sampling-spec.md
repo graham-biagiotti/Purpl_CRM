@@ -82,7 +82,7 @@ Stored on the settings object; no new collection.
   - sampler: confirmation + .ics with full logistics packet
   - Graham: one-line FYI email
   Landing page after a YES is ONE sentence: "Booked. <Store>, <Date>.
-  It's on your calendar." Nothing further for her to do.
+  It's on your calendar." — plus a "🖨 Print demo sheet" button (below).
   Double-booking interstitial BEFORE confirm if she already has a confirmed
   demo that date — plain question, two buttons: "You already have <store>
   that day. Book this one anyway?" YES / GO BACK.
@@ -104,6 +104,17 @@ Stored on the settings object; no new collection.
 - Month grid of confirmed demos (pure CSS grid, no library).
 - Account detail modal: sampling history + "Invite to sampling" button.
 - Cadence entries in the account timeline.
+
+## 6b. Printable demo sheet (sampler)
+- One-page print-friendly sheet (warehouse print-copy pattern: server-rendered
+  HTML + window.print button, big type, black on white):
+  store + address, date + time window, day-of contact name + cell, table
+  location, power, parking/load-in, busy hours, all notes, what-to-bring list.
+- Reachable from her confirmation email, the T-2 reminder, AND the action-link
+  state page ("🖨 Print demo sheet" button) — same one-time-key trust model,
+  read-only render, nothing to log into.
+- Graham can print the identical sheet from the CRM card (reprint if she
+  loses hers).
 
 ## 7. Reminders
 - Daily sweep extension: T-2 days before confirmedDate → email store contact
@@ -139,7 +150,7 @@ Stored on the settings object; no new collection.
 2. request-received (store)
 3. request packet + action buttons (sampler)
 4. confirmation + .ics (store)
-5. confirmation + .ics + logistics (sampler)
+5. confirmation + .ics + logistics + print-sheet button (sampler)
 6. FYI (Graham)
 7. propose-alt with accept/decline buttons (store)
 Plus: T-2 reminders (store + sampler), 3-day sampler nudge.
@@ -147,7 +158,8 @@ Plus: T-2 reminders (store + sampler), 3-day sampler nudge.
 ## Build order (each phase: backtests + adversarial verifier gate → deploy)
 - **Phase A (working loop)**: settings block; sampling.html; submitSamplingRequest;
   emails 2+3; samplingAction confirm path (+ interstitial guard); emails 4+5+6
-  with .ics; CRM list + badge + cancel; cadence logging.
+  with .ics; printable demo sheet (sampler link + CRM card); CRM list +
+  badge + cancel; cadence logging.
 - **Phase B (polish)**: propose-alt round trip (email 7 + store action);
   T-2 reminders + sampler nudge; month grid; completed/outcome flow.
 - **Phase C (later/optional)**: store reschedule link; auto thank-you/reorder
