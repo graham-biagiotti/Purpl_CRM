@@ -2007,3 +2007,494 @@ exports.shipStationWebhook = onRequest(
     }
   }
 );
+
+// ═══════════════════════════════════════════════════════════
+// In-Store Sampling (Demo Days) — docs/sampling-spec.md
+// New surface only: one top-level collection (sampling_requests),
+// nothing existing is read differently or written. purpl-only content,
+// STANDARD email chrome.
+// ═══════════════════════════════════════════════════════════
+
+const SAMPLING_WINDOWS = {
+  morning:   { label: 'Morning (10am–1pm)',  start: '100000', end: '130000' },
+  midday:    { label: 'Midday (11am–2pm)',   start: '110000', end: '140000' },
+  afternoon: { label: 'Afternoon (2–5pm)',   start: '140000', end: '170000' },
+};
+const SAMPLING_OPEN = ['pending_sampler', 'proposed_alt', 'needs_reschedule', 'confirmed'];
+
+function _samplingTodayET() {
+  // YYYY-MM-DD in Eastern time — same date-only discipline as the CRM.
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+function _samplingFmtDate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return iso || '';
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+// A request is "open" (blocks a new one) while it's undecided or confirmed
+// for a FUTURE date. A past confirmed date frees the link for a rebooking
+// without waiting on the owner to log the outcome.
+function _samplingIsOpen(r) {
+  if (!SAMPLING_OPEN.includes(r.status)) return false;
+  if (r.status === 'confirmed') return (r.confirmedDate || '') >= _samplingTodayET();
+  return true;
+}
+
+// Standard PBF email shell — identical chrome to every other system email.
+function _samplingEmailShell(bodyHtml) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0"
+  style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
+    <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
+      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
+      <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
+      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block"></td>
+    </tr></table>
+    <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
+  </td></tr>
+  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
+  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+${bodyHtml}
+  </td></tr>
+  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>lavender@pbfwholesale.com
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+// Minimal standalone page for the sampler's action links — giant buttons,
+// plain language, nothing to log into.
+function _samplingActionPage(title, bodyHtml) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escHtml(title)}</title>
+<style>body{margin:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif;color:#1a1a2e}
+.card{max-width:520px;margin:40px auto;background:#fff;border-radius:12px;padding:32px 24px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+h1{font-size:20px;margin:0 0 16px;color:#4D2A6F}
+p{font-size:16px;line-height:1.6}
+.btn{display:block;text-align:center;padding:18px 16px;margin:14px 0;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none}
+.yes{background:#4D2A6F;color:#fff}.no{background:#fff;color:#1a1a2e;border:2px solid #d1d5db}
+.meta{background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.7;margin:16px 0}</style>
+</head><body><div class="card">${bodyHtml}</div></body></html>`;
+}
+
+function _samplingIcs(reqId, r) {
+  const w = SAMPLING_WINDOWS[r.timeWindow] || SAMPLING_WINDOWS.morning;
+  const d = (r.confirmedDate || '').replace(/-/g, '');
+  const now = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const escIcs = s => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  const desc = [
+    'Contact: ' + (r.contact?.name || '') + ' ' + (r.contact?.cell || ''),
+    r.logistics?.table ? 'Table: ' + r.logistics.table : '',
+    r.logistics?.power ? 'Power: ' + r.logistics.power : '',
+    r.logistics?.parking ? 'Parking/load-in: ' + r.logistics.parking : '',
+    r.logistics?.busyHours ? 'Busy hours: ' + r.logistics.busyHours : '',
+    r.logistics?.notes ? 'Notes: ' + r.logistics.notes : '',
+  ].filter(Boolean).join('\n');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PBF//purpl sampling//EN', 'BEGIN:VEVENT',
+    'UID:sampling-' + reqId + '@pbfwholesale.com',
+    'DTSTAMP:' + now,
+    'DTSTART:' + d + 'T' + w.start,
+    'DTEND:' + d + 'T' + w.end,
+    'SUMMARY:' + escIcs('purpl demo day — ' + (r.accountName || '')),
+    'LOCATION:' + escIcs(r.storeAddress || ''),
+    'DESCRIPTION:' + escIcs(desc),
+    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+}
+
+async function _samplingConfig() {
+  const snap = await admin.firestore().collection('portal_settings').doc('sampling').get();
+  const d = snap.exists ? snap.data() : {};
+  return {
+    samplerName: d.samplerName || '',
+    samplerCell: d.samplerCell || '',
+    samplerEmail: d.samplerEmail || '',
+    leadDays: Number.isFinite(parseInt(d.leadDays)) ? parseInt(d.leadDays) : 7,
+    blockedWeekdays: Array.isArray(d.blockedWeekdays) ? d.blockedWeekdays.map(Number) : [],
+  };
+}
+
+function _samplingValidDate(iso, cfg) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return 'Please pick a date.';
+  // Round-trip guard: "2026-13-45" passes the regex, beats the lead-time
+  // string compare, and its NaN weekday dodges the blocklist.
+  const dt = new Date(iso + 'T12:00:00Z');
+  if (isNaN(dt.getTime()) || dt.toISOString().slice(0, 10) !== iso) return 'Please pick a real date.';
+  const today = _samplingTodayET();
+  const min = new Date(new Date(today + 'T12:00:00').getTime() + cfg.leadDays * 864e5)
+    .toISOString().slice(0, 10);
+  if (iso < min) return 'Dates need at least ' + cfg.leadDays + ' days notice.';
+  const wd = new Date(iso + 'T12:00:00').getDay();
+  if (cfg.blockedWeekdays.includes(wd)) return 'That weekday is not available — please pick another day.';
+  return null;
+}
+
+async function _samplingResolveAccount(token) {
+  if (!token || typeof token !== 'string' || token.length < 5) return null;
+  const db = admin.firestore();
+  const acSnap = await db.collection('accounts').where('orderPortalToken', '==', token).limit(1).get();
+  let acId = null, name = '', address = '', email = '';
+  if (!acSnap.empty) {
+    acId = acSnap.docs[0].id;
+  } else {
+    const wsSnap = await db.collection('workspace/main/ac').where('orderPortalToken', '==', token).limit(1).get();
+    if (!wsSnap.empty) acId = wsSnap.docs[0].id;
+  }
+  if (!acId) return null;
+  const wsDoc = await db.collection('workspace/main/ac').doc(acId).get();
+  if (wsDoc.exists) {
+    const d = wsDoc.data();
+    name = d.name || ''; address = d.address || ''; email = d.email || '';
+  }
+  return { acId, name, address, email };
+}
+
+async function _samplingRequestsFor(acId) {
+  const snap = await admin.firestore().collection('sampling_requests')
+    .where('accountId', '==', acId).get();
+  return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+}
+
+const SAMPLING_ACTION_BASE = 'https://pbfwholesale.com/sampling-action';
+
+function _samplingPacketEmail(reqId, r) {
+  const link = a => `${SAMPLING_ACTION_BASE}?r=${reqId}&k=${r.samplerActionToken}&a=${a}`;
+  const btn = (href, txt, solid) =>
+    `<div style="text-align:center;margin:12px 0"><a href="${href}" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;${solid ? 'background:#4D2A6F;color:#ffffff' : 'background:#ffffff;color:#1a1a2e;border:2px solid #d1d5db'}">${txt}</a></div>`;
+  const L = r.logistics || {};
+  const body = `
+    <p style="font-size:17px;font-weight:600;margin:0 0 16px">New demo request: ${escHtml(r.accountName)}</p>
+    <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.8">
+      📍 ${escHtml(r.storeAddress || '')}<br>
+      👤 Day-of contact: ${escHtml(r.contact?.name || '')} — ${escHtml(r.contact?.cell || '')}<br>
+      🕐 ${escHtml((SAMPLING_WINDOWS[r.timeWindow] || {}).label || r.timeWindow || '')}<br>
+      ${L.table ? '🪑 Table: ' + escHtml(L.table) + '<br>' : ''}
+      ${L.power ? '🔌 Power: ' + escHtml(L.power) + '<br>' : ''}
+      ${L.parking ? '🚗 Parking/load-in: ' + escHtml(L.parking) + '<br>' : ''}
+      ${L.busyHours ? '⏰ Their busy hours: ' + escHtml(L.busyHours) + '<br>' : ''}
+      ${L.notes ? '📝 ' + escHtml(L.notes) : ''}
+    </div>
+    <p style="font-size:16px;font-weight:600;margin:20px 0 4px">Can you do one of these days?</p>
+    ${btn(link('confirm1'), 'YES — ' + escHtml(_samplingFmtDate(r.date1)), true)}
+    ${r.date2 ? btn(link('confirm2'), 'YES — ' + escHtml(_samplingFmtDate(r.date2)), true) : ''}
+    ${btn(link('no'), "NO — neither day works", false)}
+    <p style="font-size:13px;color:#6b7280">Tap one button and you're done — the store gets confirmed automatically.</p>`;
+  return { subject: 'New demo request: ' + (r.accountName || 'a store'), html: _samplingEmailShell(body) };
+}
+
+// ── Store submit + status check (public callable, token-gated) ──
+exports.submitSamplingRequest = onCall(
+  { secrets: [resendApiKey] },
+  async (request) => {
+    const data = request.data || {};
+    const acct = await _samplingResolveAccount(data.token);
+    if (!acct) throw new HttpsError('permission-denied', 'This link is not valid.');
+
+    const all = await _samplingRequestsFor(acct.acId);
+    const open = all.find(_samplingIsOpen) || null;
+    // newest first for prefill
+    all.sort((a, b) => (b.createdAt || '') < (a.createdAt || '') ? -1 : 1);
+    const last = all[0] || null;
+
+    if (data.check) {
+      return {
+        accountName: acct.name,
+        storeAddress: acct.address,
+        open: open ? {
+          status: open.status, date1: open.date1, date2: open.date2,
+          confirmedDate: open.confirmedDate || null,
+          confirmedDateLabel: open.confirmedDate ? _samplingFmtDate(open.confirmedDate) : null,
+        } : null,
+        prefill: last ? { contact: last.contact || null, logistics: last.logistics || null } : null,
+      };
+    }
+
+    if (open) throw new HttpsError('already-exists', 'You already have a demo request in progress.');
+
+    const cfg = await _samplingConfig();
+    if (!cfg.samplerEmail) {
+      throw new HttpsError('failed-precondition',
+        'Demo scheduling is not set up yet — please email lavender@pbfwholesale.com.');
+    }
+
+    const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+    const contact = {
+      name: str(data.contactName, 120), cell: str(data.contactCell, 40), email: str(data.contactEmail, 200),
+    };
+    if (!contact.name || !contact.cell) throw new HttpsError('invalid-argument', 'Contact name and cell are required.');
+    const date1 = str(data.date1, 10);
+    const date2 = str(data.date2, 10);
+    let err = _samplingValidDate(date1, cfg);
+    if (err) throw new HttpsError('invalid-argument', err);
+    if (date2) {
+      err = _samplingValidDate(date2, cfg);
+      if (err) throw new HttpsError('invalid-argument', 'Backup date: ' + err);
+      if (date2 === date1) throw new HttpsError('invalid-argument', 'Backup date must be a different day.');
+    }
+    const timeWindow = SAMPLING_WINDOWS[data.timeWindow] ? data.timeWindow : 'morning';
+
+    const rec = {
+      accountId: acct.acId,
+      accountName: acct.name,
+      storeAddress: str(data.storeAddress, 300) || acct.address,
+      contact,
+      date1, date2: date2 || null, timeWindow,
+      logistics: {
+        table: str(data.table, 300), power: str(data.power, 60),
+        parking: str(data.parking, 500), busyHours: str(data.busyHours, 200),
+        notes: str(data.notes, 2000),
+      },
+      status: 'pending_sampler',
+      samplerActionToken: require('crypto').randomBytes(24).toString('hex'),
+      createdAt: new Date().toISOString(),
+      source: 'portal-link',
+    };
+    const ref = await admin.firestore().collection('sampling_requests').add(rec);
+
+    // The ONLY email at this step: the sampler's packet (owner trimmed volume;
+    // the store sees an on-page confirmation instead).
+    try {
+      const { Resend } = require('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const mail = _samplingPacketEmail(ref.id, rec);
+      const result = await resend.emails.send({
+        from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+        replyTo: 'graham@pumpkinblossomfarm.com',
+        subject: mail.subject, html: mail.html,
+      });
+      await ref.update({ packetSentAt: new Date().toISOString(), packetMessageId: result.data?.id || result.id || null });
+    } catch (e) {
+      console.error('Sampler packet send failed:', e.message);
+      await ref.update({ packetSendFailed: true }).catch(() => {});
+    }
+
+    await _logCadenceEntry(acct.acId, { stage: 'sampling_requested', subject: 'Demo day requested: ' + date1 });
+    return { success: true };
+  }
+);
+
+// ── Sampler action links (public onRequest) ──
+exports.samplingAction = onRequest(
+  { invoker: 'public', secrets: [resendApiKey] },
+  async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const { r, k, a, f } = req.query || {};
+    const send = (title, body) => res.status(200).send(_samplingActionPage(title, body));
+    if (!r || !k) return res.status(400).send(_samplingActionPage('Not found', '<h1>Link not valid</h1><p>This link is missing information. Please open it straight from your email.</p>'));
+
+    const db = admin.firestore();
+    const ref = db.collection('sampling_requests').doc(String(r));
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().samplerActionToken !== k) {
+      return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn\'t match a demo request. If you think that\'s wrong, text Graham.</p>'));
+    }
+    const rec = snap.data();
+    const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+    const metaBox = `<div class="meta">📍 ${escHtml(rec.storeAddress || '')}<br>👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>🕐 ${escHtml(w)}</div>`;
+    const sheetBtn = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=sheet">🖨 Print demo sheet</a>`;
+
+    // Printable one-pager — works in any status so old links stay useful.
+    if (a === 'sheet') {
+      const L = rec.logistics || {};
+      const dateLine = rec.confirmedDate ? _samplingFmtDate(rec.confirmedDate)
+        : ('Requested: ' + _samplingFmtDate(rec.date1) + (rec.date2 ? ' / ' + _samplingFmtDate(rec.date2) : ''));
+      const row = (lbl, val) => val ? `<tr><td style="padding:8px 12px 8px 0;font-weight:700;white-space:nowrap;vertical-align:top">${lbl}</td><td style="padding:8px 0">${escHtml(val)}</td></tr>` : '';
+      return res.status(200).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Demo sheet — ${escHtml(rec.accountName)}</title>
+<style>body{font-family:Arial,sans-serif;color:#000;max-width:700px;margin:24px auto;padding:0 16px;font-size:16px}
+h1{font-size:24px;border-bottom:3px solid #000;padding-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:16px}
+.print-btn{position:fixed;top:12px;right:12px;padding:10px 18px;font-size:15px;font-weight:700;background:#4D2A6F;color:#fff;border:none;border-radius:8px;cursor:pointer}
+@media print{.print-btn{display:none}}</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨 Print</button>
+<h1>purpl demo day — ${escHtml(rec.accountName)}</h1>
+<table>
+${row('When', dateLine + (w ? ' — ' + w : ''))}
+${row('Where', rec.storeAddress)}
+${row('Contact', (rec.contact?.name || '') + ' — ' + (rec.contact?.cell || '') + (rec.contact?.email ? ' — ' + rec.contact.email : ''))}
+${row('Table', L.table)}
+${row('Power', L.power)}
+${row('Parking / load-in', L.parking)}
+${row('Their busy hours', L.busyHours)}
+${row('Notes', L.notes)}
+${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag, towel')}
+</table></body></html>`);
+    }
+
+    // Already decided → every action shows current state (idempotent; a
+    // double-tap or forwarded link can never re-fire emails).
+    if (rec.status !== 'pending_sampler') {
+      const stateMsg = {
+        confirmed: `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(_samplingFmtDate(rec.confirmedDate))}.<br>It's on your calendar.</p>${metaBox}${sheetBtn}`,
+        needs_reschedule: `<h1>Got it</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`,
+        cancelled: `<h1>Cancelled</h1><p>This demo (${escHtml(rec.accountName)}) was cancelled. Nothing to do.</p>`,
+        completed: `<h1>All done</h1><p>This demo is finished. Thank you!</p>`,
+      }[rec.status] || `<h1>All set</h1><p>Nothing to do on this one.</p>`;
+      return send(rec.accountName || 'Demo request', stateMsg);
+    }
+
+    if (a === 'no') {
+      await ref.update({ status: 'needs_reschedule', samplerDeclinedAt: new Date().toISOString() });
+      return send('Got it', `<h1>No problem</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`);
+    }
+
+    if (a === 'confirm1' || a === 'confirm2') {
+      const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
+      if (!chosen) return send('Hmm', '<h1>That option isn\'t available</h1><p>Please use the buttons in your email.</p>');
+      if (chosen < _samplingTodayET()) {
+        return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long — tap NO and Graham will sort a new date.</p><a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">NO — pick a different day</a>`);
+      }
+      // Double-booking guard: one sampler, one demo a day.
+      if (f !== '1') {
+        const daySnap = await db.collection('sampling_requests')
+          .where('status', '==', 'confirmed').where('confirmedDate', '==', chosen).limit(5).get();
+        const clash = daySnap.docs.find(d => d.id !== String(r));
+        if (clash) {
+          const cName = clash.data().accountName || 'another store';
+          return send('Already booked', `<h1>You already have ${escHtml(cName)} that day</h1><p>${escHtml(_samplingFmtDate(chosen))}. Book <strong>${escHtml(rec.accountName)}</strong> anyway?</p>
+<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=${a}&f=1">YES — book both that day</a>
+<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}">GO BACK</a>`);
+        }
+      }
+
+      const nowIso = new Date().toISOString();
+      await ref.update({ status: 'confirmed', confirmedDate: chosen, confirmedAt: nowIso, decidedBy: 'sampler' });
+      const confirmed = { ...rec, status: 'confirmed', confirmedDate: chosen };
+
+      const cfg = await _samplingConfig();
+      const ics = _samplingIcs(String(r), confirmed);
+      const icsAttachment = { filename: 'purpl-demo-day.ics', content: Buffer.from(ics).toString('base64') };
+      const dateLabel = _samplingFmtDate(chosen);
+      const failures = [];
+      const { Resend } = require('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY);
+
+      // Store confirmation — the store's ONLY email in the whole flow.
+      const storeTo = rec.contact?.email || '';
+      let storeFallbackTo = storeTo;
+      if (!storeFallbackTo) {
+        const acDoc = await db.collection('workspace/main/ac').doc(rec.accountId).get();
+        storeFallbackTo = acDoc.exists ? (acDoc.data().email || '') : '';
+      }
+      if (storeFallbackTo) {
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: storeFallbackTo,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: `purpl demo day confirmed — ${dateLabel}`,
+            html: _samplingEmailShell(`
+              <p style="font-size:17px;font-weight:500;margin:0 0 16px">Hi ${escHtml(rec.contact?.name || 'there')},</p>
+              <p>Your purpl in-store demo at <strong>${escHtml(rec.accountName)}</strong> is confirmed for <strong>${escHtml(dateLabel)}</strong> (${escHtml(w)}).</p>
+              <div style="background:#f9fafb;border-left:3px solid #4D2A6F;padding:14px 16px;border-radius:0 6px 6px 0;font-size:14px;line-height:1.8">
+                Our sampler ${escHtml(cfg.samplerName || '')} will arrive at the start of the window with everything needed — product, cups, ice, table.${cfg.samplerCell ? ' Day-of questions: ' + escHtml(cfg.samplerCell) + '.' : ''}
+              </div>
+              <p style="font-size:13px;color:#6b7280">A calendar invite is attached. Need to change the date? Just reply to this email.</p>`),
+            attachments: [icsAttachment],
+          });
+        } catch (e) { console.error('Store confirmation failed:', e.message); failures.push('store'); }
+      } else { failures.push('store-no-email'); }
+
+      // Sampler confirmation + run details + print link.
+      if (cfg.samplerEmail) {
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: `Booked: ${rec.accountName} — ${dateLabel}`,
+            html: _samplingEmailShell(`
+              <p style="font-size:17px;font-weight:600;margin:0 0 16px">Booked ✓ ${escHtml(rec.accountName)} — ${escHtml(dateLabel)}</p>
+              <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.8">
+                📍 ${escHtml(rec.storeAddress || '')}<br>
+                👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>
+                🕐 ${escHtml(w)}
+              </div>
+              <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${String(r)}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>
+              <p style="font-size:13px;color:#6b7280">Calendar invite attached. You'll get a reminder with the full run sheet 2 days before.</p>`),
+            attachments: [icsAttachment],
+          });
+        } catch (e) { console.error('Sampler confirmation failed:', e.message); failures.push('sampler'); }
+      }
+
+      if (failures.length) await ref.update({ confirmEmailFailures: failures }).catch(() => {});
+      await _logCadenceEntry(rec.accountId, { stage: 'sampling_scheduled', subject: 'Demo day confirmed: ' + chosen });
+
+      return send('Booked', `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(dateLabel)}.<br>It's on your calendar. The store's been told.</p>${metaBox}${sheetBtn}`);
+    }
+
+    // Default: state page for a pending request — show the buttons again.
+    return send(rec.accountName || 'Demo request', `<h1>${escHtml(rec.accountName)}</h1>${metaBox}
+<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm1">YES — ${escHtml(_samplingFmtDate(rec.date1))}</a>
+${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm2">YES — ${escHtml(_samplingFmtDate(rec.date2))}</a>` : ''}
+<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">NO — neither day works</a>`);
+  }
+);
+
+// ── CRM admin actions (staff-auth callable) ──
+exports.samplingAdmin = onCall(
+  { secrets: [resendApiKey] },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    const { action, requestId } = request.data || {};
+    if (!requestId || typeof requestId !== 'string') throw new HttpsError('invalid-argument', 'Missing requestId');
+    const ref = admin.firestore().collection('sampling_requests').doc(requestId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Request not found');
+    const rec = snap.data();
+    const cfg = await _samplingConfig();
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    if (action === 'resend_packet') {
+      if (!cfg.samplerEmail) throw new HttpsError('failed-precondition', 'Sampler email not set (Settings → In-Store Sampling)');
+      if (!['pending_sampler', 'needs_reschedule'].includes(rec.status)) {
+        throw new HttpsError('failed-precondition', 'This request is ' + rec.status + ' — nothing to resend');
+      }
+      const mail = _samplingPacketEmail(requestId, rec);
+      await resend.emails.send({
+        from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+        replyTo: 'graham@pumpkinblossomfarm.com',
+        subject: mail.subject, html: mail.html,
+      });
+      await ref.update({ packetSentAt: new Date().toISOString(), packetSendFailed: admin.firestore.FieldValue.delete() });
+      return { success: true };
+    }
+
+    if (action === 'cancel') {
+      if (['cancelled', 'completed'].includes(rec.status)) return { success: true, already: rec.status };
+      const wasConfirmed = rec.status === 'confirmed';
+      await ref.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'staff' });
+      // Store hears about a cancellation ONLY if it had been confirmed —
+      // otherwise it never knew a date existed.
+      if (wasConfirmed && rec.contact?.email) {
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: rec.contact.email,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: 'purpl demo day cancelled — ' + (rec.accountName || ''),
+            html: _samplingEmailShell(`<p>Hi ${escHtml(rec.contact?.name || 'there')},</p><p>We need to cancel the purpl demo scheduled for <strong>${escHtml(_samplingFmtDate(rec.confirmedDate))}</strong> at ${escHtml(rec.accountName)}. Sorry about that — reply to this email and we'll set up a new date.</p>`),
+          });
+        } catch (e) { console.error('Store cancel notice failed:', e.message); }
+      }
+      if (cfg.samplerEmail) {
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: 'Cancelled: ' + (rec.accountName || '') + (rec.confirmedDate ? ' — ' + _samplingFmtDate(rec.confirmedDate) : ''),
+            html: _samplingEmailShell(`<p>The demo at <strong>${escHtml(rec.accountName)}</strong>${rec.confirmedDate ? ' on ' + escHtml(_samplingFmtDate(rec.confirmedDate)) : ''} is cancelled. Take it off your calendar — nothing else to do.</p>`),
+          });
+        } catch (e) { console.error('Sampler cancel notice failed:', e.message); }
+      }
+      return { success: true };
+    }
+
+    throw new HttpsError('invalid-argument', 'Unknown action');
+  }
+);

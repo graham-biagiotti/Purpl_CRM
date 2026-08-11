@@ -46,6 +46,9 @@
       "rewrites": [
         { "source": "/order", "destination": "/order.html" },
         { "source": "/order.html", "destination": "/order.html" },
+        { "source": "/sampling", "destination": "/sampling.html" },
+        { "source": "/sampling.html", "destination": "/sampling.html" },
+        { "source": "/sampling-action", "function": "samplingAction" },
         { "source": "/find-us", "destination": "/find-us.html" },
         { "source": "/privacy.html", "destination": "/privacy.html" },
         { "source": "/terms.html", "destination": "/terms.html" },

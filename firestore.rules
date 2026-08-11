@@ -59,6 +59,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // In-store sampling requests: created ONLY by Cloud Functions (admin
+    // SDK), never from a public client. Staff read/update for the CRM
+    // Sampling page; delete stays admin-only.
+    match /sampling_requests/{requestId} {
+      allow read, update: if isStaff();
+      allow delete: if isAdmin();
+      allow create: if false;
+    }
+
     // Portal: public can sign up for notifications
     match /portal_notify/{docId} {
       allow create: if true
