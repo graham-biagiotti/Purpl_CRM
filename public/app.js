@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v196';
+const APP_VERSION = 'v197';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -294,7 +294,8 @@ function nav(page) {
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
-    'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails'
+    'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails',
+    sampling:'Sampling'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) {
@@ -331,6 +332,7 @@ const renders = {
   'pre-orders':     renderPreOrders,
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   emails:           renderEmailsPage,
+  sampling:         renderSampling,
 };
 
 // ── Audit Log ────────────────────────────────────────────
@@ -1070,6 +1072,26 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p style="line-height:1.7;font-size:14px">I'm your direct contact for everything. Just reply to this email, call, or text. Whatever's easiest.</p>
+`, account.id)
+    },
+    'sampling-invite': {
+      subject: `Let's do a purpl demo day at ${businessNameRaw}`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">Want to see purpl move? Nothing sells lavender lemonade like a cold sample in someone's hand. We'd love to run a <strong>free in-store demo day</strong> at ${businessName}.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
+          <tr><td style="padding:16px 20px;background:#f9fafb;border-radius:6px;border-left:3px solid #4D2A6F">
+            <div style="font-size:13px;color:#374151;line-height:1.8">
+              <strong>We bring everything:</strong> our sampler, cold purpl, cups, ice, table, and signage.<br>
+              <strong>You bring:</strong> your foot traffic and a spot for the table.<br>
+              <strong>Cost to you:</strong> nothing — and demo days reliably move cases.
+            </div>
+          </td></tr>
+        </table>
+        <p style="line-height:1.7">Picking a day takes about a minute — choose a couple of dates that work and we'll confirm one:</p>
+        <div style="text-align:center;margin:24px 0"><a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:inline-block;background:#4D2A6F;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pick Your Demo Day</a></div>
+        <p style="line-height:1.7;font-size:14px">Questions? Just reply — I'm your direct contact for everything.</p>
 `, account.id)
     },
     'rejected': {
@@ -3849,6 +3871,7 @@ const _STAGE_TEMPLATE_IDS = {
   delivery_followup:     'delivery-followup',
   new_product:           'new-product',
   thank_you:             'thank-you',
+  sampling_invite:       'sampling-invite',
   custom:                'custom',
 };
 const _TEMPLATE_STAGE_IDS = Object.fromEntries(
@@ -4467,6 +4490,7 @@ function _renderEmailsTemplatesCol() {
     {id:'reorder-reminder',     name:'Reorder Reminder',        desc:'Time to restock?'},
     {id:'delivery-followup',    name:'Post-Delivery Check-In',  desc:'How did delivery go?'},
     {id:'new-product',          name:'New Product Announcement', desc:'Announce new product'},
+    {id:'sampling-invite',      name:'Demo Day Invite',         desc:'Book an in-store purpl sampling'},
     {id:'thank-you',            name:'General Thank You',       desc:'Thank a retailer'},
     {id:'custom',               name:'Custom Email',            desc:'Write your own'},
   ];
@@ -5031,6 +5055,11 @@ function renderEmailsTabHistory(accounts) {
     'order_confirmation':   'Order Confirmation',
     'first-order':          'First Order Follow-up',
     'first_order_followup': 'First Order Follow-up',
+    'sampling-invite':      'Demo Day Invite',
+    'sampling_invite':      'Demo Day Invite',
+    'sampling_requested':   'Demo Day Requested',
+    'sampling_scheduled':   'Demo Day Confirmed',
+    'sampling_completed':   'Demo Day Completed',
   };
   const allEntries = [];
   accounts.forEach(a => {
@@ -5372,7 +5401,7 @@ function meTemplatePreview() {
 let _meTemplateInFlight = false;
 // Templates whose body shows a "personalized order link / no password needed"
 // button — every recipient needs a portal token for that link to actually work.
-const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'launch-announcement', 'approved'];
+const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'launch-announcement', 'approved', 'sampling-invite'];
 async function meTemplateSend() {
   if (_meTemplateInFlight) { toast('Send already in progress'); return; }
   const tplId = qs('#me-template-select')?.value || '';
@@ -15240,6 +15269,7 @@ window.onAppReady = function() {
 
   // ── Real-time listener for portal orders ────────────────
   _listenPortalOrders();
+  _listenSamplingRequests();
 
   // Navigate to dashboard
   nav('dashboard');
@@ -18512,4 +18542,232 @@ async function convertApplicationToProspect(docId, app) {
   toast(`${app.businessName || 'Applicant'} converted to prospect`);
   renderProspects();
   renderApplications();
+}
+
+// ══════════════════════════════════════════════════════════
+//  IN-STORE SAMPLING (Demo Days) — docs/sampling-spec.md
+//  Self-contained: reads the top-level sampling_requests collection via
+//  its own listener (NOT in COLLECTION_KEYS / workspace); config lives in
+//  portal_settings/sampling. Nothing here touches existing collections.
+// ══════════════════════════════════════════════════════════
+
+let _samplingReqs = [];
+let _samplingUnsub = null;
+let _samplingCfg = null;
+const _SAMPLING_WINDOW_LABELS = { morning: 'Morning (10am–1pm)', midday: 'Midday (11am–2pm)', afternoon: 'Afternoon (2–5pm)' };
+
+function _samplingToday() { return today(); }
+
+// Actionable = needs Graham's or Sarah's attention: undecided requests and
+// past-date confirmations awaiting an outcome.
+function _samplingActionable(r) {
+  if (r.status === 'pending_sampler' || r.status === 'needs_reschedule' || r.status === 'proposed_alt') return true;
+  if (r.status === 'confirmed' && (r.confirmedDate || '') < _samplingToday()) return true;
+  return false;
+}
+
+function _listenSamplingRequests() {
+  if (_samplingUnsub) _samplingUnsub();
+  try {
+    _samplingUnsub = firebase.firestore().collection('sampling_requests')
+      .orderBy('createdAt', 'desc').limit(300)
+      .onSnapshot(snap => {
+        _samplingReqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const n = _samplingReqs.filter(_samplingActionable).length;
+        const badge = qs('#nav-sampling-badge');
+        if (badge) {
+          if (n > 0) { badge.textContent = n; badge.style.display = 'inline'; }
+          else badge.style.display = 'none';
+        }
+        if (currentPage === 'sampling') renderSampling();
+      }, err => console.warn('Sampling listener error:', err));
+  } catch (e) { console.warn('Could not start sampling listener:', e); }
+}
+
+async function _loadSamplingCfg() {
+  try {
+    const snap = await firebase.firestore().collection('portal_settings').doc('sampling').get();
+    _samplingCfg = snap.exists ? snap.data() : {};
+  } catch (e) { _samplingCfg = _samplingCfg || {}; }
+  return _samplingCfg;
+}
+
+function _samplingStatusChip(r) {
+  const t = _samplingToday();
+  if (r.status === 'pending_sampler') {
+    const days = Math.floor((Date.now() - new Date(r.createdAt || Date.now()).getTime()) / 864e5);
+    return days >= 3
+      ? `<span class="badge red">Waiting on sampler ${days}d ⚠️</span>`
+      : `<span class="badge blue">Waiting on sampler</span>`;
+  }
+  if (r.status === 'needs_reschedule') return `<span class="badge red">Needs new date — contact store</span>`;
+  if (r.status === 'proposed_alt') return `<span class="badge orange">Proposed ${fmtD(r.altDate)}</span>`;
+  if (r.status === 'confirmed') {
+    return (r.confirmedDate || '') < t
+      ? `<span class="badge orange">Awaiting outcome</span>`
+      : `<span class="badge green">Confirmed ${fmtD(r.confirmedDate)}</span>`;
+  }
+  if (r.status === 'completed') return `<span class="badge gray">Completed</span>`;
+  if (r.status === 'cancelled') return `<span class="badge gray">Cancelled</span>`;
+  return `<span class="badge gray">${escHtml(r.status || '—')}</span>`;
+}
+
+function _samplingSheetUrl(r) {
+  return `https://pbfwholesale.com/sampling-action?r=${encodeURIComponent(r.id)}&k=${encodeURIComponent(r.samplerActionToken || '')}&a=sheet`;
+}
+
+function _samplingCard(r) {
+  const L = r.logistics || {};
+  const t = _samplingToday();
+  const awaitingOutcome = r.status === 'confirmed' && (r.confirmedDate || '') < t;
+  const dates = r.status === 'confirmed'
+    ? `<strong>${fmtD(r.confirmedDate)}</strong> · ${_SAMPLING_WINDOW_LABELS[r.timeWindow] || ''}`
+    : `${fmtD(r.date1)}${r.date2 ? ' / ' + fmtD(r.date2) : ''} · ${_SAMPLING_WINDOW_LABELS[r.timeWindow] || ''}`;
+  const btns = [];
+  if (['pending_sampler', 'needs_reschedule'].includes(r.status)) {
+    btns.push(`<button class="btn xs" onclick="samplingResend('${r.id}')">↻ Re-send to sampler</button>`);
+  }
+  if (r.status === 'confirmed' || r.status === 'completed') {
+    btns.push(`<button class="btn xs" onclick="window.open('${_samplingSheetUrl(r)}','_blank')">🖨 Demo sheet</button>`);
+  }
+  if (awaitingOutcome) {
+    btns.push(`<button class="btn xs green" onclick="samplingComplete('${r.id}')">✓ Mark completed</button>`);
+  }
+  if (!['cancelled', 'completed'].includes(r.status)) {
+    btns.push(`<button class="btn xs" style="color:var(--red);border-color:var(--red)" onclick="samplingCancel('${r.id}')">Cancel</button>`);
+  }
+  return `<div class="card" style="padding:14px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600;font-size:14px">${escHtml(r.accountName || '—')}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:2px">${dates}</div>
+      </div>
+      ${_samplingStatusChip(r)}
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7">
+      👤 ${escHtml(r.contact?.name || '')} — ${escHtml(r.contact?.cell || '')}${r.contact?.email ? ' · ' + escHtml(r.contact.email) : ''}<br>
+      📍 ${escHtml(r.storeAddress || '')}
+      ${L.table ? `<br>🪑 ${escHtml(L.table)}` : ''}${L.power ? ` · 🔌 ${escHtml(L.power)}` : ''}
+      ${L.parking ? `<br>🚗 ${escHtml(L.parking)}` : ''}
+      ${L.busyHours ? `<br>⏰ ${escHtml(L.busyHours)}` : ''}
+      ${L.notes ? `<br>📝 ${escHtml(L.notes)}` : ''}
+      ${r.outcome ? `<br><span style="color:var(--text)">✅ Outcome: ${escHtml(r.outcome)}</span>` : ''}
+      ${r.packetSendFailed ? `<br><span style="color:var(--red)">⚠️ Sampler email failed — use Re-send</span>` : ''}
+      ${(r.confirmEmailFailures || []).length ? `<br><span style="color:var(--red)">⚠️ Confirmation email failed (${escHtml((r.confirmEmailFailures || []).join(', '))})</span>` : ''}
+    </div>
+    ${btns.length ? `<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${btns.join('')}</div>` : ''}
+  </div>`;
+}
+
+async function renderSampling() {
+  const el = qs('#sampling-content');
+  if (!el) return;
+  const cfg = _samplingCfg || await _loadSamplingCfg();
+  const q = (qs('#sampling-search')?.value || '').toLowerCase();
+  const match = r => !q || (r.accountName || '').toLowerCase().includes(q);
+  const active = _samplingReqs.filter(r => !['completed', 'cancelled'].includes(r.status)).filter(match);
+  const done = _samplingReqs.filter(r => ['completed', 'cancelled'].includes(r.status)).filter(match).slice(0, 30);
+  const wd = Array.isArray(cfg.blockedWeekdays) ? cfg.blockedWeekdays.map(Number) : [];
+  const wdBox = (i, lbl) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin-right:10px"><input type="checkbox" class="sampling-wd" value="${i}" ${wd.includes(i) ? 'checked' : ''}>${lbl}</label>`;
+
+  el.innerHTML = `
+    <div class="card" style="padding:16px;margin-bottom:14px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px">Sampler setup</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+        <div class="form-group" style="margin:0"><label style="font-size:11px">Sampler name</label><input id="sampling-cfg-name" value="${escHtml(cfg.samplerName || '')}"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:11px">Cell</label><input id="sampling-cfg-cell" value="${escHtml(cfg.samplerCell || '')}"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:11px">Email (gets all requests)</label><input id="sampling-cfg-email" value="${escHtml(cfg.samplerEmail || '')}"></div>
+        <div class="form-group" style="margin:0"><label style="font-size:11px">Lead time (days)</label><input id="sampling-cfg-lead" type="number" min="1" max="60" value="${escHtml(String(cfg.leadDays != null ? cfg.leadDays : 7))}"></div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Blocked weekdays (stores can't pick these):</div>
+      <div style="margin-top:4px">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((l, i) => wdBox(i, l)).join('')}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn sm primary" onclick="saveSamplingSettings()">Save setup</button>
+        <span style="font-size:11px;color:var(--muted)">${cfg.samplerEmail ? '' : '⚠️ No sampler email — stores cannot request demos until this is set.'}</span>
+      </div>
+    </div>
+    <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="sampling-search" placeholder="Search stores…" value="${escHtml(q)}" oninput="renderSampling()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
+      <select id="sampling-copy-select" style="padding:8px;font-size:13px;max-width:220px">
+        <option value="">Copy a store's booking link…</option>
+        ${DB.a('ac').filter(a => a.status !== 'inactive').sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1).map(a => `<option value="${a.id}">${escHtml(a.name || '')}</option>`).join('')}
+      </select>
+      <button class="btn sm" onclick="samplingCopyLink()">Copy link</button>
+    </div>
+    ${active.length ? active.map(_samplingCard).join('') : '<div class="card" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">No open demo requests. Send the Demo Day Invite from the Emails page to get stores booking.</div>'}
+    ${done.length ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.05em">History</div>` + done.map(_samplingCard).join('') : ''}
+  `;
+}
+
+async function saveSamplingSettings() {
+  const cfg = {
+    samplerName: qs('#sampling-cfg-name')?.value?.trim() || '',
+    samplerCell: qs('#sampling-cfg-cell')?.value?.trim() || '',
+    samplerEmail: qs('#sampling-cfg-email')?.value?.trim() || '',
+    leadDays: (v => isNaN(v) || v < 1 ? 7 : Math.min(60, v))(parseInt(qs('#sampling-cfg-lead')?.value)),
+    blockedWeekdays: [...document.querySelectorAll('.sampling-wd:checked')].map(x => parseInt(x.value)),
+  };
+  try {
+    await firebase.firestore().collection('portal_settings').doc('sampling').set(cfg, { merge: true });
+    _samplingCfg = cfg;
+    toast('Sampling setup saved ✓');
+    renderSampling();
+  } catch (e) {
+    console.error('Sampling settings save failed:', e);
+    toast('Save failed — are you signed in as admin?', 6000);
+  }
+}
+
+async function samplingCopyLink() {
+  const acId = qs('#sampling-copy-select')?.value;
+  if (!acId) { toast('Pick a store first'); return; }
+  try {
+    const token = await _ensurePortalToken(acId);
+    const link = 'https://pbfwholesale.com/sampling?t=' + token;
+    try { await navigator.clipboard.writeText(link); toast('Booking link copied ✓'); }
+    catch (e) { prompt('Copy this link:', link); }
+  } catch (e) {
+    console.error(e);
+    toast('Could not generate the link');
+  }
+}
+
+async function samplingResend(id) {
+  try {
+    toast('Re-sending to sampler…');
+    await firebase.functions().httpsCallable('samplingAdmin')({ action: 'resend_packet', requestId: id });
+    toast('Sent to sampler ✓');
+  } catch (e) {
+    toast('Re-send failed' + (e?.message ? ': ' + e.message : ''), 6000);
+  }
+}
+
+async function samplingCancel(id) {
+  const r = _samplingReqs.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm2(`Cancel this demo request for ${r.accountName || 'this store'}?` + (r.status === 'confirmed' ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store was never confirmed so it gets no email.'))) return;
+  try {
+    await firebase.functions().httpsCallable('samplingAdmin')({ action: 'cancel', requestId: id });
+    toast('Cancelled');
+  } catch (e) {
+    toast('Cancel failed' + (e?.message ? ': ' + e.message : ''), 6000);
+  }
+}
+
+async function samplingComplete(id) {
+  const r = _samplingReqs.find(x => x.id === id);
+  if (!r) return;
+  const outcome = prompt('How did it go? (cases sold, restock taken, worth repeating…)', r.outcome || '');
+  if (outcome === null) return;
+  try {
+    await firebase.firestore().collection('sampling_requests').doc(id).update({
+      status: 'completed', outcome: outcome.trim(), completedAt: new Date().toISOString(),
+    });
+    const entry = { id: uid(), stage: 'sampling_completed', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'crm_confirm', subject: outcome.trim() || 'Demo day completed' };
+    if (r.accountId) DB.update('ac', r.accountId, a => ({ ...a, cadence: _pushCadence(a.cadence, entry) }));
+    toast('Demo marked completed ✓');
+  } catch (e) {
+    console.error(e);
+    toast('Could not mark completed', 5000);
+  }
 }
