@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v197';
+const APP_VERSION = 'v198';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -18659,6 +18659,7 @@ function _samplingCard(r) {
       ${L.notes ? `<br>📝 ${escHtml(L.notes)}` : ''}
       ${r.outcome ? `<br><span style="color:var(--text)">✅ Outcome: ${escHtml(r.outcome)}</span>` : ''}
       ${r.packetSendFailed ? `<br><span style="color:var(--red)">⚠️ Sampler email failed — use Re-send</span>` : ''}
+      ${r.proposeEmailFailed ? `<br><span style="color:var(--red)">⚠️ Store never got the proposed date — call them (${escHtml(fmtD(r.altDate))})</span>` : ''}
       ${(r.confirmEmailFailures || []).length ? `<br><span style="color:var(--red)">⚠️ Confirmation email failed (${escHtml((r.confirmEmailFailures || []).join(', '))})</span>` : ''}
     </div>
     ${btns.length ? `<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${btns.join('')}</div>` : ''}
@@ -18703,6 +18704,46 @@ async function renderSampling() {
   _renderSamplingList();
 }
 
+let _samplingMonthOffset = 0;
+function samplingMonthNav(d) { _samplingMonthOffset += d; _renderSamplingList(); }
+
+function _samplingMonthGrid() {
+  const base = new Date();
+  const first = new Date(base.getFullYear(), base.getMonth() + _samplingMonthOffset, 1);
+  const y = first.getFullYear(), m = first.getMonth();
+  const label = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const daysIn = new Date(y, m + 1, 0).getDate();
+  const startDow = first.getDay();
+  const iso = d => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const todayIso = today();
+  const byDay = {};
+  _samplingReqs.filter(r => r.status === 'confirmed' || r.status === 'completed').forEach(r => {
+    const d = r.confirmedDate || '';
+    if (d.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`)) (byDay[d] = byDay[d] || []).push(r);
+  });
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<div></div>';
+  for (let d = 1; d <= daysIn; d++) {
+    const di = iso(d);
+    const demos = byDay[di] || [];
+    cells += `<div style="min-height:52px;border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:10.5px;${di === todayIso ? 'background:#EFEAF4;border-color:#CFC4DE;' : ''}">
+      <div style="font-weight:600;color:var(--muted)">${d}</div>
+      ${demos.map(r => `<div style="background:${r.status === 'completed' ? '#e5e7eb' : '#4D2A6F'};color:${r.status === 'completed' ? '#374151' : '#fff'};border-radius:4px;padding:1px 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.accountName || '')}">${escHtml(r.accountName || '')}</div>`).join('')}
+    </div>`;
+  }
+  return `<div class="card" style="padding:14px 16px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <button class="btn xs" onclick="samplingMonthNav(-1)">‹</button>
+      <div style="font-weight:600;font-size:13px">${label}</div>
+      <button class="btn xs" onclick="samplingMonthNav(1)">›</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;color:var(--muted);text-align:center;margin-bottom:3px">
+      <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">${cells}</div>
+  </div>`;
+}
+
 function _renderSamplingList() {
   const el = qs('#sampling-list');
   if (!el) return;
@@ -18711,6 +18752,7 @@ function _renderSamplingList() {
   const active = _samplingReqs.filter(r => !['completed', 'cancelled'].includes(r.status)).filter(match);
   const done = _samplingReqs.filter(r => ['completed', 'cancelled'].includes(r.status)).filter(match).slice(0, 30);
   el.innerHTML = `
+    ${_samplingMonthGrid()}
     ${active.length ? active.map(_samplingCard).join('') : '<div class="card" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">No open demo requests. Send the Demo Day Invite from the Emails page to get stores booking.</div>'}
     ${done.length ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.05em">History</div>` + done.map(_samplingCard).join('') : ''}
   `;

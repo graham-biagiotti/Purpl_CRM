@@ -145,6 +145,9 @@ function spInit() {
         if (o.status === 'confirmed') {
           line = 'Confirmed: ' + (o.confirmedDateLabel || o.confirmedDate);
           sub = 'Our sampler will be there. Once the day has passed you can book your next one right here.';
+        } else if (o.status === 'proposed_alt' && o.altDateLabel) {
+          line = 'We suggested ' + o.altDateLabel + ' instead.';
+          sub = 'Check your email — one tap confirms it and the calendar invite follows automatically.';
         } else {
           line = 'Request in — waiting on our sampler’s schedule.';
           sub = 'You’ll get a confirmation email with a calendar invite. This page unlocks for a new booking once it’s settled.';

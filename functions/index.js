@@ -1,4 +1,5 @@
 const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
+const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {defineSecret} = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -2190,6 +2191,73 @@ function _samplingPacketEmail(reqId, r) {
   return { subject: 'New demo request: ' + (r.accountName || 'a store'), html: _samplingEmailShell(body) };
 }
 
+
+// Confirm a request and notify both sides. Shared by the sampler's YES and
+// the store's accept-of-proposed-date. Caller renders its own result page.
+async function _samplingConfirmAndNotify(reqId, ref, rec, chosen, decidedBy) {
+  const db = admin.firestore();
+  const nowIso = new Date().toISOString();
+  await ref.update({ status: 'confirmed', confirmedDate: chosen, confirmedAt: nowIso, decidedBy });
+  const confirmed = { ...rec, status: 'confirmed', confirmedDate: chosen };
+  const cfg = await _samplingConfig();
+  const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+  const ics = _samplingIcs(reqId, confirmed);
+  const icsAttachment = { filename: 'purpl-demo-day.ics', content: Buffer.from(ics).toString('base64') };
+  const dateLabel = _samplingFmtDate(chosen);
+  const failures = [];
+  const { Resend } = require('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+
+  // Store confirmation — the store's ONLY guaranteed email in the flow.
+  let storeFallbackTo = rec.contact?.email || '';
+  if (!storeFallbackTo) {
+    const acDoc = await db.collection('workspace/main/ac').doc(rec.accountId).get();
+    storeFallbackTo = acDoc.exists ? (acDoc.data().email || '') : '';
+  }
+  if (storeFallbackTo) {
+    try {
+      await resend.emails.send({
+        from: 'lavender@pbfwholesale.com', to: storeFallbackTo,
+        replyTo: 'graham@pumpkinblossomfarm.com',
+        subject: `purpl demo day confirmed — ${dateLabel}`,
+        html: _samplingEmailShell(`
+          <p style="font-size:17px;font-weight:500;margin:0 0 16px">Hi ${escHtml(rec.contact?.name || 'there')},</p>
+          <p>Your purpl in-store demo at <strong>${escHtml(rec.accountName)}</strong> is confirmed for <strong>${escHtml(dateLabel)}</strong> (${escHtml(w)}).</p>
+          <div style="background:#f9fafb;border-left:3px solid #4D2A6F;padding:14px 16px;border-radius:0 6px 6px 0;font-size:14px;line-height:1.8">
+            Our sampler ${escHtml(cfg.samplerName || '')} will arrive at the start of the window with everything needed — product, cups, ice, table.${cfg.samplerCell ? ' Day-of questions: ' + escHtml(cfg.samplerCell) + '.' : ''}
+          </div>
+          <p style="font-size:13px;color:#6b7280">A calendar invite is attached. Need to change the date? Just reply to this email.</p>`),
+        attachments: [icsAttachment],
+      });
+    } catch (e) { console.error('Store confirmation failed:', e.message); failures.push('store'); }
+  } else { failures.push('store-no-email'); }
+
+  // Sampler confirmation + run details + print link.
+  if (cfg.samplerEmail) {
+    try {
+      await resend.emails.send({
+        from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+        replyTo: 'graham@pumpkinblossomfarm.com',
+        subject: `Booked: ${rec.accountName} — ${dateLabel}`,
+        html: _samplingEmailShell(`
+          <p style="font-size:17px;font-weight:600;margin:0 0 16px">Booked ✓ ${escHtml(rec.accountName)} — ${escHtml(dateLabel)}</p>
+          <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.8">
+            📍 ${escHtml(rec.storeAddress || '')}<br>
+            👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>
+            🕐 ${escHtml(w)}
+          </div>
+          <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${reqId}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>
+          <p style="font-size:13px;color:#6b7280">Calendar invite attached. You'll get a reminder with the full run sheet 2 days before.</p>`),
+        attachments: [icsAttachment],
+      });
+    } catch (e) { console.error('Sampler confirmation failed:', e.message); failures.push('sampler'); }
+  }
+
+  if (failures.length) await ref.update({ confirmEmailFailures: failures }).catch(() => {});
+  await _logCadenceEntry(rec.accountId, { stage: 'sampling_scheduled', subject: 'Demo day confirmed: ' + chosen });
+  return { dateLabel, failures };
+}
+
 // ── Store submit + status check (public callable, token-gated) ──
 exports.submitSamplingRequest = onCall(
   { secrets: [resendApiKey] },
@@ -2215,6 +2283,7 @@ exports.submitSamplingRequest = onCall(
           status: open.status, date1: open.date1, date2: open.date2,
           confirmedDate: open.confirmedDate || null,
           confirmedDateLabel: open.confirmedDate ? _samplingFmtDate(open.confirmedDate) : null,
+          altDateLabel: open.altDate ? _samplingFmtDate(open.altDate) : null,
         } : null,
         prefill: last ? { contact: last.contact || null, logistics: last.logistics || null } : null,
       };
@@ -2284,10 +2353,13 @@ exports.submitSamplingRequest = onCall(
   }
 );
 
-// ── Sampler action links (public onRequest) ──
-// GET is ALWAYS read-only (state page, print sheet, or an "armed" page with
-// a POST form). Mutations happen ONLY on POST — a mail scanner or link
-// prefetcher walking the sampler's email can never book or decline a demo.
+// ── Sampler + store action links (public onRequest) ──
+// GET is ALWAYS read-only (state pages, print sheet, or "armed" pages with a
+// POST form). Mutations happen ONLY on POST — mail scanners and prefetchers
+// can never book, decline, propose, or accept anything.
+// Two audiences, two keys on the same request doc:
+//   sampler actions (confirm1/confirm2/no/propose/sheet/state) → samplerActionToken
+//   store actions after a proposal (saccept/sdecline)          → storeActionToken
 exports.samplingAction = onRequest(
   { invoker: 'public', secrets: [resendApiKey] },
   async (req, res) => {
@@ -2295,12 +2367,17 @@ exports.samplingAction = onRequest(
     const src = req.method === 'POST' ? (req.body || {}) : (req.query || {});
     const r = src.r, k = src.k, a = src.a;
     const send = (title, body) => res.status(200).send(_samplingActionPage(title, body));
-    const postForm = (action, label) =>
-      `<form method="POST" action="${SAMPLING_ACTION_BASE}" style="margin:14px 0">
-        <input type="hidden" name="r" value="${escHtml(String(r))}">
-        <input type="hidden" name="k" value="${escHtml(String(k))}">
-        <input type="hidden" name="a" value="${escHtml(action)}">
+    const hidden = (action, extraFields) =>
+      `<input type="hidden" name="r" value="${escHtml(String(r))}">
+       <input type="hidden" name="k" value="${escHtml(String(k))}">
+       <input type="hidden" name="a" value="${escHtml(action)}">${extraFields || ''}`;
+    const postForm = (action, label, extraFields) =>
+      `<form method="POST" action="${SAMPLING_ACTION_BASE}" style="margin:14px 0">${hidden(action, extraFields)}
         <button type="submit" class="btn yes" style="width:100%;border:none;cursor:pointer;font-family:inherit">${label}</button>
+      </form>`;
+    const postFormQuiet = (action, label) =>
+      `<form method="POST" action="${SAMPLING_ACTION_BASE}" style="margin:14px 0">${hidden(action)}
+        <button type="submit" class="btn no" style="width:100%;cursor:pointer;font-family:inherit">${label}</button>
       </form>`;
     const backLink = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}">GO BACK</a>`;
     if (!r || !k) return res.status(400).send(_samplingActionPage('Not found', '<h1>Link not valid</h1><p>This link is missing information. Please open it straight from your email.</p>'));
@@ -2313,13 +2390,70 @@ exports.samplingAction = onRequest(
       return res.status(400).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>Please open the link straight from your email.</p>'));
     }
     const ref = db.collection('sampling_requests').doc(String(r));
-    if (!snap.exists || snap.data().samplerActionToken !== k) {
-      return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn\'t match a demo request. If you think that\'s wrong, text Graham.</p>'));
+    const STORE_ACTIONS = ['saccept', 'sdecline'];
+    const isStoreAction = STORE_ACTIONS.includes(a);
+    if (!snap.exists) {
+      return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn&#39;t match a demo request.</p>'));
     }
     const rec = snap.data();
+    // Route by audience: a store key must never fire sampler actions and
+    // vice versa.
+    const expectedKey = isStoreAction ? rec.storeActionToken : rec.samplerActionToken;
+    if (!expectedKey || expectedKey !== k) {
+      return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn&#39;t match a demo request. If you think that&#39;s wrong, just reply to the email you got.</p>'));
+    }
     const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
     const metaBox = `<div class="meta">📍 ${escHtml(rec.storeAddress || '')}<br>👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>🕐 ${escHtml(w)}</div>`;
-    const sheetBtn = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=sheet">🖨 Print demo sheet</a>`;
+    const sheetBtn = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(rec.samplerActionToken || ''))}&a=sheet">🖨 Print demo sheet</a>`;
+
+    // ════════ STORE-SIDE (accept/decline a proposed date) ════════
+    if (isStoreAction) {
+      if (rec.status !== 'proposed_alt') {
+        const msg = {
+          confirmed: `<h1>You're booked ✓</h1><p><strong>${escHtml(_samplingFmtDate(rec.confirmedDate))}</strong> at ${escHtml(rec.accountName)}. A calendar invite was emailed to you.</p>`,
+          needs_reschedule: `<h1>We'll be in touch</h1><p>That date fell through — Graham will reach out to find a day that works.</p>`,
+          cancelled: `<h1>Cancelled</h1><p>This demo was cancelled. Reply to any of our emails to set up a new one.</p>`,
+          completed: `<h1>All done</h1><p>This demo already happened — thank you!</p>`,
+        }[rec.status] || `<h1>All set</h1><p>Nothing to do here.</p>`;
+        return send('Demo day', msg);
+      }
+      const altLabel = _samplingFmtDate(rec.altDate);
+      if (req.method === 'GET') {
+        if (a === 'sdecline') {
+          return send('That day?', `<h1>${escHtml(altLabel)} doesn't work?</h1><p>No problem — tap below and Graham will reach out to find a better day.</p>${postForm('sdecline', "CONFIRM — that day doesn't work")}${backLink}`);
+        }
+        return send('Confirm the day', `<h1>Does ${escHtml(altLabel)} work?</h1><p>Our sampler can do <strong>${escHtml(altLabel)}</strong> (${escHtml(w)}) at ${escHtml(rec.accountName)}.</p>${postForm('saccept', 'YES — CONFIRM ' + escHtml(altLabel))}<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=sdecline">That day doesn't work</a>`);
+      }
+      // POST
+      if (a === 'saccept') {
+        if ((rec.altDate || '') < _samplingTodayET()) {
+          await ref.update({ status: 'needs_reschedule', storeDeclinedAt: new Date().toISOString() });
+          return send('Date passed', `<h1>That date already passed</h1><p>Sorry — this sat too long. Graham will reach out to find a new day.</p>`);
+        }
+        await _samplingConfirmAndNotify(String(r), ref, rec, rec.altDate, 'store');
+        return send('Confirmed', `<h1>Confirmed ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(altLabel)}.<br>A calendar invite is on its way to your inbox.</p>`);
+      }
+      if (a === 'sdecline') {
+        await ref.update({ status: 'needs_reschedule', storeDeclinedAt: new Date().toISOString() });
+        try {
+          const cfg = await _samplingConfig();
+          if (cfg.samplerEmail) {
+            const { Resend } = require('resend');
+            const resend = new Resend(process.env.RESEND_API_KEY);
+            await resend.emails.send({
+              from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+              replyTo: 'graham@pumpkinblossomfarm.com',
+              subject: 'Fell through: ' + (rec.accountName || '') + ' — ' + altLabel,
+              html: _samplingEmailShell(`<p>${escHtml(rec.accountName)} can't do ${escHtml(altLabel)} either. Graham will sort out a new date — nothing for you to do.</p>`),
+            });
+          }
+        } catch (e) { console.error('Sampler decline notice failed:', e.message); }
+        return send('Thanks', `<h1>Thanks for letting us know</h1><p>Graham will reach out to find a day that works.</p>`);
+      }
+      return res.status(400).send(_samplingActionPage('Not found', '<h1>Unknown action</h1><p>Please use the buttons in your email.</p>'));
+    }
+
+    // ════════ SAMPLER-SIDE ════════
 
     // Printable one-pager — works in any status so old links stay useful.
     if (req.method === 'GET' && a === 'sheet') {
@@ -2353,6 +2487,7 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
     if (rec.status !== 'pending_sampler') {
       const stateMsg = {
         confirmed: `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(_samplingFmtDate(rec.confirmedDate))}.<br>It's on your calendar.</p>${metaBox}${sheetBtn}`,
+        proposed_alt: `<h1>Waiting on the store</h1><p>You suggested <strong>${escHtml(_samplingFmtDate(rec.altDate))}</strong> — ${escHtml(rec.accountName)} is confirming. Nothing else for you to do.</p>`,
         needs_reschedule: `<h1>Got it</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`,
         cancelled: `<h1>Cancelled</h1><p>This demo (${escHtml(rec.accountName)}) was cancelled. Nothing to do.</p>`,
         completed: `<h1>All done</h1><p>This demo is finished. Thank you!</p>`,
@@ -2364,11 +2499,10 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
     if (req.method === 'GET') {
       if (a === 'confirm1' || a === 'confirm2') {
         const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
-        if (!chosen) return send('Hmm', '<h1>That option isn\'t available</h1><p>Please use the buttons in your email.</p>');
+        if (!chosen) return send('Hmm', '<h1>That option isn&#39;t available</h1><p>Please use the buttons in your email.</p>');
         if (chosen < _samplingTodayET()) {
-          return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long.</p>${postForm('no', 'NO — Graham will sort a new date')}`);
+          return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long — suggest a day you can do instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
         }
-        // Double-booking warning: one sampler, one demo a day.
         let clashLine = '';
         const daySnap = await db.collection('sampling_requests')
           .where('status', '==', 'confirmed').where('confirmedDate', '==', chosen).limit(5).get();
@@ -2377,7 +2511,24 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
         return send('Confirm', `<h1>Book ${escHtml(rec.accountName)}?</h1><p><strong>${escHtml(_samplingFmtDate(chosen))}</strong> — ${escHtml(w)}</p>${clashLine}${metaBox}${postForm(a, clash ? 'YES — BOOK IT ANYWAY' : 'YES — BOOK IT')}${backLink}`);
       }
       if (a === 'no') {
-        return send('Neither works?', `<h1>Neither day works?</h1><p>Tap below and Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else needed from you.</p>${postForm('no', "CONFIRM — neither day works")}${backLink}`);
+        const cfg = await _samplingConfig();
+        const minIso = new Date(new Date(_samplingTodayET() + 'T12:00:00').getTime() + cfg.leadDays * 864e5).toISOString().slice(0, 10);
+        // Show her upcoming bookings so she picks a free day.
+        let bookedLine = '';
+        try {
+          const up = await db.collection('sampling_requests').where('status', '==', 'confirmed').get();
+          const days = up.docs.map(d => d.data()).filter(x => (x.confirmedDate || '') >= _samplingTodayET())
+            .sort((x, y) => x.confirmedDate < y.confirmedDate ? -1 : 1).slice(0, 6)
+            .map(x => _samplingFmtDate(x.confirmedDate) + ' (' + (x.accountName || '') + ')');
+          if (days.length) bookedLine = `<div class="meta">Already booked:<br>${days.map(escHtml).join('<br>')}</div>`;
+        } catch (e) { /* list is a nicety — never block the page */ }
+        return send('Pick a day', `<h1>Neither day works?</h1><p>Pick a day you CAN do and we'll ask ${escHtml(rec.accountName)}:</p>
+<form method="POST" action="${SAMPLING_ACTION_BASE}" style="margin:14px 0">${hidden('propose', `<div style="margin:10px 0"><input type="date" name="date" min="${minIso}" required style="width:100%;padding:14px;font-size:17px;border:2px solid #d1d5db;border-radius:10px"></div>`)}
+  <button type="submit" class="btn yes" style="width:100%;border:none;cursor:pointer;font-family:inherit">SUGGEST THAT DAY</button>
+</form>
+${bookedLine}
+${postFormQuiet('no', "I can't — let Graham sort it out")}
+${backLink}`);
       }
       // Default: state page for a pending request — show the choices again.
       return send(rec.accountName || 'Demo request', `<h1>${escHtml(rec.accountName)}</h1>${metaBox}
@@ -2392,75 +2543,56 @@ ${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURICom
       return send('Got it', `<h1>No problem</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`);
     }
 
-    if (a === 'confirm1' || a === 'confirm2') {
-      const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
-      if (!chosen) return send('Hmm', '<h1>That option isn\'t available</h1><p>Please use the buttons in your email.</p>');
-      if (chosen < _samplingTodayET()) {
-        return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long.</p>${postForm('no', 'NO — Graham will sort a new date')}`);
-      }
-
-      const nowIso = new Date().toISOString();
-      await ref.update({ status: 'confirmed', confirmedDate: chosen, confirmedAt: nowIso, decidedBy: 'sampler' });
-      const confirmed = { ...rec, status: 'confirmed', confirmedDate: chosen };
-
+    if (a === 'propose') {
       const cfg = await _samplingConfig();
-      const ics = _samplingIcs(String(r), confirmed);
-      const icsAttachment = { filename: 'purpl-demo-day.ics', content: Buffer.from(ics).toString('base64') };
-      const dateLabel = _samplingFmtDate(chosen);
-      const failures = [];
-      const { Resend } = require('resend');
-      const resend = new Resend(process.env.RESEND_API_KEY);
-
-      // Store confirmation — the store's ONLY email in the whole flow.
-      const storeTo = rec.contact?.email || '';
-      let storeFallbackTo = storeTo;
-      if (!storeFallbackTo) {
-        const acDoc = await db.collection('workspace/main/ac').doc(rec.accountId).get();
-        storeFallbackTo = acDoc.exists ? (acDoc.data().email || '') : '';
+      const proposed = String(src.date || '').slice(0, 10);
+      const err = _samplingValidDate(proposed, cfg);
+      if (err) {
+        return send('Pick a day', `<h1>Hmm — ${escHtml(err)}</h1><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Try another day</a>`);
       }
-      if (storeFallbackTo) {
+      const storeKey = require('crypto').randomBytes(24).toString('hex');
+      await ref.update({ status: 'proposed_alt', altDate: proposed, proposedAt: new Date().toISOString(), storeActionToken: storeKey });
+      // Email the store the counter-offer with its own armed links.
+      let storeTo = rec.contact?.email || '';
+      if (!storeTo) {
+        const acDoc = await db.collection('workspace/main/ac').doc(rec.accountId).get();
+        storeTo = acDoc.exists ? (acDoc.data().email || '') : '';
+      }
+      const altLabel = _samplingFmtDate(proposed);
+      if (storeTo) {
         try {
+          const { Resend } = require('resend');
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const slink = act => `${SAMPLING_ACTION_BASE}?r=${String(r)}&k=${storeKey}&a=${act}`;
           await resend.emails.send({
-            from: 'lavender@pbfwholesale.com', to: storeFallbackTo,
+            from: 'lavender@pbfwholesale.com', to: storeTo,
             replyTo: 'graham@pumpkinblossomfarm.com',
-            subject: `purpl demo day confirmed — ${dateLabel}`,
+            subject: `New day suggested for your purpl demo — ${altLabel}`,
             html: _samplingEmailShell(`
               <p style="font-size:17px;font-weight:500;margin:0 0 16px">Hi ${escHtml(rec.contact?.name || 'there')},</p>
-              <p>Your purpl in-store demo at <strong>${escHtml(rec.accountName)}</strong> is confirmed for <strong>${escHtml(dateLabel)}</strong> (${escHtml(w)}).</p>
-              <div style="background:#f9fafb;border-left:3px solid #4D2A6F;padding:14px 16px;border-radius:0 6px 6px 0;font-size:14px;line-height:1.8">
-                Our sampler ${escHtml(cfg.samplerName || '')} will arrive at the start of the window with everything needed — product, cups, ice, table.${cfg.samplerCell ? ' Day-of questions: ' + escHtml(cfg.samplerCell) + '.' : ''}
-              </div>
-              <p style="font-size:13px;color:#6b7280">A calendar invite is attached. Need to change the date? Just reply to this email.</p>`),
-            attachments: [icsAttachment],
+              <p>Our sampler can't make the days you picked for <strong>${escHtml(rec.accountName)}</strong> — but she CAN do <strong>${escHtml(altLabel)}</strong> (${escHtml(w)}). Does that work?</p>
+              <div style="text-align:center;margin:20px 0"><a href="${slink('saccept')}" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">YES — ${escHtml(altLabel)} works</a></div>
+              <div style="text-align:center;margin:12px 0"><a href="${slink('sdecline')}" style="display:block;padding:14px 16px;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;background:#ffffff;color:#1a1a2e;border:2px solid #d1d5db">That day doesn't work either</a></div>
+              <p style="font-size:13px;color:#6b7280">One tap confirms it and a calendar invite follows automatically.</p>`),
           });
-        } catch (e) { console.error('Store confirmation failed:', e.message); failures.push('store'); }
-      } else { failures.push('store-no-email'); }
-
-      // Sampler confirmation + run details + print link.
-      if (cfg.samplerEmail) {
-        try {
-          await resend.emails.send({
-            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
-            replyTo: 'graham@pumpkinblossomfarm.com',
-            subject: `Booked: ${rec.accountName} — ${dateLabel}`,
-            html: _samplingEmailShell(`
-              <p style="font-size:17px;font-weight:600;margin:0 0 16px">Booked ✓ ${escHtml(rec.accountName)} — ${escHtml(dateLabel)}</p>
-              <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.8">
-                📍 ${escHtml(rec.storeAddress || '')}<br>
-                👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>
-                🕐 ${escHtml(w)}
-              </div>
-              <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${String(r)}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>
-              <p style="font-size:13px;color:#6b7280">Calendar invite attached. You'll get a reminder with the full run sheet 2 days before.</p>`),
-            attachments: [icsAttachment],
-          });
-        } catch (e) { console.error('Sampler confirmation failed:', e.message); failures.push('sampler'); }
+        } catch (e) {
+          console.error('Proposal email failed:', e.message);
+          await ref.update({ proposeEmailFailed: true }).catch(() => {});
+        }
+      } else {
+        await ref.update({ proposeEmailFailed: true }).catch(() => {});
       }
+      return send('Sent', `<h1>Sent ✓</h1><p>We asked ${escHtml(rec.accountName)} about <strong>${escHtml(altLabel)}</strong>. If they say yes it books automatically and lands on your calendar. Nothing else for you to do.</p>`);
+    }
 
-      if (failures.length) await ref.update({ confirmEmailFailures: failures }).catch(() => {});
-      await _logCadenceEntry(rec.accountId, { stage: 'sampling_scheduled', subject: 'Demo day confirmed: ' + chosen });
-
-      return send('Booked', `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(dateLabel)}.<br>It's on your calendar. The store's been told.</p>${metaBox}${sheetBtn}`);
+    if (a === 'confirm1' || a === 'confirm2') {
+      const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
+      if (!chosen) return send('Hmm', '<h1>That option isn&#39;t available</h1><p>Please use the buttons in your email.</p>');
+      if (chosen < _samplingTodayET()) {
+        return send('Date passed', `<h1>That date already passed</h1><p>Suggest a day you can do instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
+      }
+      const result = await _samplingConfirmAndNotify(String(r), ref, rec, chosen, 'sampler');
+      return send('Booked', `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(result.dateLabel)}.<br>It's on your calendar. The store's been told.</p>${metaBox}${sheetBtn}`);
     }
 
     return res.status(400).send(_samplingActionPage('Not found', '<h1>Unknown action</h1><p>Please use the buttons in your email.</p>'));
@@ -2504,17 +2636,17 @@ exports.samplingAdmin = onCall(
 
     if (action === 'cancel') {
       if (['cancelled', 'completed'].includes(rec.status)) return { success: true, already: rec.status };
-      const wasConfirmed = rec.status === 'confirmed';
+      // Store hears about a cancellation only if it knew a date existed:
+      // confirmed, or a proposal sitting in its inbox.
+      const wasConfirmed = ['confirmed', 'proposed_alt'].includes(rec.status);
       await ref.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'staff' });
-      // Store hears about a cancellation ONLY if it had been confirmed —
-      // otherwise it never knew a date existed.
       if (wasConfirmed && rec.contact?.email) {
         try {
           await resend.emails.send({
             from: 'lavender@pbfwholesale.com', to: rec.contact.email,
             replyTo: 'graham@pumpkinblossomfarm.com',
             subject: 'purpl demo day cancelled — ' + (rec.accountName || ''),
-            html: _samplingEmailShell(`<p>Hi ${escHtml(rec.contact?.name || 'there')},</p><p>We need to cancel the purpl demo scheduled for <strong>${escHtml(_samplingFmtDate(rec.confirmedDate))}</strong> at ${escHtml(rec.accountName)}. Sorry about that — reply to this email and we'll set up a new date.</p>`),
+            html: _samplingEmailShell(`<p>Hi ${escHtml(rec.contact?.name || 'there')},</p><p>We need to cancel the purpl demo${rec.confirmedDate || rec.altDate ? ' planned for <strong>' + escHtml(_samplingFmtDate(rec.confirmedDate || rec.altDate)) + '</strong>' : ''} at ${escHtml(rec.accountName)}. Sorry about that — reply to this email and we'll set up a new date.</p>`),
           });
         } catch (e) { console.error('Store cancel notice failed:', e.message); }
       }
@@ -2532,5 +2664,79 @@ exports.samplingAdmin = onCall(
     }
 
     throw new HttpsError('invalid-argument', 'Unknown action');
+  }
+);
+
+// ── Daily sweep: T-2 sampler run-sheet reminder + 3-day sampler nudge ──
+// 8:00am ET daily. Each send is stamped on the request doc so a rerun (or a
+// crashed half-run) can never double-send. The store gets NO reminder by
+// owner decision — its confirmation + calendar invite is its whole footprint.
+exports.samplingDailySweep = onSchedule(
+  { schedule: '0 8 * * *', timeZone: 'America/New_York', secrets: [resendApiKey] },
+  async () => {
+    const db = admin.firestore();
+    const cfg = await _samplingConfig();
+    if (!cfg.samplerEmail) return;
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const today = _samplingTodayET();
+    const target = new Date(new Date(today + 'T12:00:00Z').getTime() + 2 * 864e5).toISOString().slice(0, 10);
+
+    // T-2 run-sheet reminders (equality-only query — no composite index).
+    try {
+      const snap = await db.collection('sampling_requests')
+        .where('status', '==', 'confirmed').where('confirmedDate', '==', target).get();
+      for (const doc of snap.docs) {
+        const rec = doc.data();
+        if (rec.samplerReminderSentAt) continue;
+        const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+        const L = rec.logistics || {};
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: `Demo in 2 days: ${rec.accountName} — ${_samplingFmtDate(rec.confirmedDate)}`,
+            html: _samplingEmailShell(`
+              <p style="font-size:17px;font-weight:600;margin:0 0 16px">Demo day in 2 days — everything you need is right here:</p>
+              <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.9">
+                🏪 <strong>${escHtml(rec.accountName)}</strong><br>
+                📅 ${escHtml(_samplingFmtDate(rec.confirmedDate))} — ${escHtml(w)}<br>
+                📍 ${escHtml(rec.storeAddress || '')}<br>
+                👤 Ask for ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>
+                ${L.table ? '🪑 Table: ' + escHtml(L.table) + '<br>' : ''}
+                ${L.power ? '🔌 Power: ' + escHtml(L.power) + '<br>' : ''}
+                ${L.parking ? '🚗 Parking/load-in: ' + escHtml(L.parking) + '<br>' : ''}
+                ${L.busyHours ? '⏰ Their busy hours: ' + escHtml(L.busyHours) + '<br>' : ''}
+                ${L.notes ? '📝 ' + escHtml(L.notes) + '<br>' : ''}
+                🎒 Bring: purpl (cold), cups, ice + bin, table + cloth, signage, trash bag, towel
+              </div>
+              <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${doc.id}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>`),
+          });
+          await doc.ref.update({ samplerReminderSentAt: new Date().toISOString() });
+        } catch (e) { console.error('Sampler T-2 reminder failed:', doc.id, e.message); }
+      }
+    } catch (e) { console.error('T-2 sweep failed:', e.message); }
+
+    // 3-day nudge on unanswered requests (once, then the CRM flag carries it).
+    try {
+      const snap = await db.collection('sampling_requests')
+        .where('status', '==', 'pending_sampler').get();
+      const cutoff = new Date(Date.now() - 3 * 864e5).toISOString();
+      for (const doc of snap.docs) {
+        const rec = doc.data();
+        if (rec.samplerNudgedAt) continue;
+        if ((rec.packetSentAt || rec.createdAt || '') > cutoff) continue;
+        try {
+          const mail = _samplingPacketEmail(doc.id, rec);
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: 'Still waiting — ' + mail.subject,
+            html: mail.html,
+          });
+          await doc.ref.update({ samplerNudgedAt: new Date().toISOString() });
+        } catch (e) { console.error('Sampler nudge failed:', doc.id, e.message); }
+      }
+    } catch (e) { console.error('Nudge sweep failed:', e.message); }
   }
 );
