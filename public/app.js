@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v199';
+const APP_VERSION = 'v200';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -3273,7 +3273,11 @@ function _latestByDate(arr) {
 // Stages that are bookkeeping, not contact: confirming a portal order sends
 // no email at all, and invoice emails/reminders are transactional. None of
 // these should move "Last Contacted" (owner: "I didn't contact this account").
-const _TRANSACTIONAL_STAGES = ['order_confirmation', 'invoice_sent', 'invoice_reminder'];
+// sampling_requested/scheduled/completed are the STORE acting (or internal
+// bookkeeping), not the owner reaching out — same class as a portal order.
+// sampling_invite stays OUT: sending the invite IS real outreach.
+const _TRANSACTIONAL_STAGES = ['order_confirmation', 'invoice_sent', 'invoice_reminder',
+  'sampling_requested', 'sampling_scheduled', 'sampling_completed'];
 
 function acLastContacted(a) {
   // Consider real contact signals: notes, outreach, and non-transactional
@@ -5071,6 +5075,9 @@ function renderEmailsTabHistory(accounts) {
       // crm_confirm entries are bookkeeping (confirming a portal order sends
       // no email) — they belong on the account timeline, not in EMAIL history.
       if (c.method === 'crm_confirm') return;
+      // Sampling bookkeeping: the store got no email at these stages (the
+      // packet went to the SAMPLER) — a "Not opened" row here would lie.
+      if (['sampling_requested', 'sampling_scheduled', 'sampling_completed'].includes(c.stage)) return;
       allEntries.push({...c, accountName: a.name, accountId: a.id});
     });
   });
@@ -18632,6 +18639,7 @@ function _samplingTimeline(r) {
   if (r.samplerDeclinedAt) ev.push([r.samplerDeclinedAt, `${who}: neither day works`]);
   if (r.proposedAt) ev.push([r.proposedAt, `${who} suggested ${fmtD(r.altDate)} — store asked`]);
   if (r.storeDeclinedAt) ev.push([r.storeDeclinedAt, 'Store declined the suggested day']);
+  if (r.altExpiredAt) ev.push([r.altExpiredAt, 'Store answered after the suggested day passed']);
   if (r.confirmedAt) ev.push([r.confirmedAt, `Confirmed for ${fmtD(r.confirmedDate)} (${r.decidedBy === 'store' ? 'store accepted' : who + ' tapped YES'})`]);
   if (r.samplerReminderSentAt) ev.push([r.samplerReminderSentAt, `2-day run-sheet reminder sent to ${who}`]);
   if (r.completedAt) ev.push([r.completedAt, 'Marked completed']);
@@ -18678,6 +18686,7 @@ function _samplingCard(r) {
       ${L.parking ? `<br>🚗 ${escHtml(L.parking)}` : ''}
       ${L.busyHours ? `<br>⏰ ${escHtml(L.busyHours)}` : ''}
       ${L.notes ? `<br>📝 ${escHtml(L.notes)}` : ''}
+      ${r.status === 'needs_reschedule' ? `<br><span style="color:#b45309">Agreed on a day by phone? Cancel this request and have the store re-book via its link — or Re-send so the sampler can suggest the new day.</span>` : ''}
       ${r.outcome ? `<br><span style="color:var(--text)">✅ Outcome: ${escHtml(r.outcome)}</span>` : ''}
       ${r.packetSendFailed ? `<br><span style="color:var(--red)">⚠️ Sampler email failed — use Re-send</span>` : ''}
       ${r.proposeEmailFailed ? `<br><span style="color:var(--red)">⚠️ Store never got the proposed date — call them (${escHtml(fmtD(r.altDate))})</span>` : ''}
@@ -18691,6 +18700,7 @@ function _samplingCard(r) {
 async function renderSampling() {
   const el = qs('#sampling-content');
   if (!el) return;
+  _samplingMonthOffset = 0; // fresh page entry always shows the current month
   const cfg = _samplingCfg || await _loadSamplingCfg();
   const wd = Array.isArray(cfg.blockedWeekdays) ? cfg.blockedWeekdays.map(Number) : [];
   const wdBox = (i, lbl) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin-right:10px"><input type="checkbox" class="sampling-wd" value="${i}" ${wd.includes(i) ? 'checked' : ''}>${lbl}</label>`;
@@ -18828,8 +18838,8 @@ async function samplingCancel(id) {
   if (!r) return;
   if (!confirm2(`Cancel this demo request for ${r.accountName || 'this store'}?` + (['confirmed', 'proposed_alt'].includes(r.status) ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store never knew a date existed so it gets no email.'))) return;
   try {
-    await firebase.functions().httpsCallable('samplingAdmin')({ action: 'cancel', requestId: id });
-    toast('Cancelled');
+    const resp = await firebase.functions().httpsCallable('samplingAdmin')({ action: 'cancel', requestId: id });
+    toast(resp?.data?.already ? 'Already ' + resp.data.already + ' — nothing to cancel' : 'Cancelled');
   } catch (e) {
     toast('Cancel failed' + (e?.message ? ': ' + e.message : ''), 6000);
   }
@@ -18841,7 +18851,15 @@ async function samplingComplete(id) {
   const outcome = prompt('How did it go? (cases sold, restock taken, worth repeating…)', r.outcome || '');
   if (outcome === null) return;
   try {
-    await firebase.firestore().collection('sampling_requests').doc(id).update({
+    // Fresh read first: the prompt() can sit open while someone cancels from
+    // another device — never flip cancelled -> completed on a stale card.
+    const ref = firebase.firestore().collection('sampling_requests').doc(id);
+    const fresh = await ref.get();
+    if (!fresh.exists || fresh.data().status !== 'confirmed') {
+      toast('This demo is ' + (fresh.exists ? fresh.data().status : 'gone') + ' — not marking it completed', 5000);
+      return;
+    }
+    await ref.update({
       status: 'completed', outcome: outcome.trim(), completedAt: new Date().toISOString(),
     });
     const entry = { id: uid(), stage: 'sampling_completed', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'crm_confirm', subject: outcome.trim() || 'Demo day completed' };

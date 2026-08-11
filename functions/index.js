@@ -2254,7 +2254,7 @@ async function _samplingConfirmAndNotify(reqId, ref, rec, chosen, decidedBy) {
   }
 
   if (failures.length) await ref.update({ confirmEmailFailures: failures }).catch(() => {});
-  await _logCadenceEntry(rec.accountId, { stage: 'sampling_scheduled', subject: 'Demo day confirmed: ' + chosen });
+  await _logCadenceEntry(rec.accountId, { stage: 'sampling_scheduled', subject: 'Demo day confirmed: ' + chosen, method: 'crm_confirm' });
   return { dateLabel, failures };
 }
 
@@ -2348,7 +2348,7 @@ exports.submitSamplingRequest = onCall(
       await ref.update({ packetSendFailed: true }).catch(() => {});
     }
 
-    await _logCadenceEntry(acct.acId, { stage: 'sampling_requested', subject: 'Demo day requested: ' + date1 });
+    await _logCadenceEntry(acct.acId, { stage: 'sampling_requested', subject: 'Demo day requested: ' + date1, method: 'crm_confirm' });
     return { success: true };
   }
 );
@@ -2427,7 +2427,7 @@ exports.samplingAction = onRequest(
       // POST
       if (a === 'saccept') {
         if ((rec.altDate || '') < _samplingTodayET()) {
-          await ref.update({ status: 'needs_reschedule', storeDeclinedAt: new Date().toISOString() });
+          await ref.update({ status: 'needs_reschedule', altExpiredAt: new Date().toISOString() });
           return send('Date passed', `<h1>That date already passed</h1><p>Sorry — this sat too long. Graham will reach out to find a new day.</p>`);
         }
         await _samplingConfirmAndNotify(String(r), ref, rec, rec.altDate, 'store');
@@ -2742,7 +2742,7 @@ exports.samplingDailySweep = onSchedule(
             subject: 'Still waiting — ' + mail.subject,
             html: mail.html,
           });
-          await doc.ref.update({ samplerNudgedAt: new Date().toISOString() });
+          await doc.ref.update({ samplerNudgedAt: new Date().toISOString(), packetSendFailed: admin.firestore.FieldValue.delete() });
         } catch (e) { console.error('Sampler nudge failed:', doc.id, e.message); }
       }
     } catch (e) { console.error('Nudge sweep failed:', e.message); }

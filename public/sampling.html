@@ -58,7 +58,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
 
   <div id="sp-invalid" class="card" style="display:none">
     <h2>This link is personal</h2>
-    <p class="lead">Demo scheduling works through the personal link in your email — it knows which store you are, so there's nothing to type. Can't find it? Email
+    <p class="lead">If you just opened your link, this may be a temporary connection hiccup — try refreshing once. Otherwise: demo scheduling works through the personal link in your email — it knows which store you are, so there's nothing to type. Can't find it? Email
     <a href="mailto:lavender@pbfwholesale.com" style="color:var(--purpl)">lavender@pbfwholesale.com</a> and we'll send a fresh one.</p>
   </div>
 
@@ -206,6 +206,7 @@ function spSubmit() {
   if (!date1) { spErr('Please pick a first-choice date.'); return; }
   if (date1 < spMinDate()) { spErr('First-choice date needs at least ' + SP_RULES.leadDays + ' days notice.'); return; }
   if (!spWeekdayOk(date1)) { spErr('That weekday isn’t available — please pick another day.'); return; }
+  if (date2 && date2 < spMinDate()) { spErr('Backup date needs at least ' + SP_RULES.leadDays + ' days notice.'); return; }
   if (date2 && !spWeekdayOk(date2)) { spErr('The backup weekday isn’t available — please pick another day.'); return; }
   if (date2 && date2 === date1) { spErr('The backup day should be different from your first choice.'); return; }
 
