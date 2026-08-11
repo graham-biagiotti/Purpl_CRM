@@ -4784,14 +4784,18 @@ async function emailsPageSendEmail() {
   if (_TEMPLATES_NEED_LINK.includes(_emailsSelectedTemplate)) {
     _emailsSendInFlight = true;
     try {
-      try {
-        const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
-        extra.portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
-      } catch (e) {
-        // Never send the hardcoded fallback password to a customer — refuse.
-        console.error('Portal password fetch failed:', e);
-        toast('Couldn\'t fetch the portal password — nothing was sent. Check your connection and try again.', 8000);
-        return;
+      // Password fetch only for templates that PRINT the password —
+      // sampling-invite needs a token but must not abort on a password blip.
+      if (['preorder-announcement', 'launch-announcement', 'approved'].includes(_emailsSelectedTemplate)) {
+        try {
+          const cfg = await firebase.firestore().collection('portal_settings').doc('config').get();
+          extra.portalPassword = cfg.exists ? (cfg.data().portalPassword || '') : '';
+        } catch (e) {
+          // Never send the hardcoded fallback password to a customer — refuse.
+          console.error('Portal password fetch failed:', e);
+          toast('Couldn\'t fetch the portal password — nothing was sent. Check your connection and try again.', 8000);
+          return;
+        }
       }
       if (!account.orderPortalToken) {
         try {
@@ -18579,7 +18583,9 @@ function _listenSamplingRequests() {
           if (n > 0) { badge.textContent = n; badge.style.display = 'inline'; }
           else badge.style.display = 'none';
         }
-        if (currentPage === 'sampling') renderSampling();
+        // Only the request list refreshes on snapshots — never the setup
+        // card or toolbar, so in-progress typing survives (verifier-caught).
+        if (currentPage === 'sampling') _renderSamplingList();
       }, err => console.warn('Sampling listener error:', err));
   } catch (e) { console.warn('Could not start sampling listener:', e); }
 }
@@ -18663,13 +18669,11 @@ async function renderSampling() {
   const el = qs('#sampling-content');
   if (!el) return;
   const cfg = _samplingCfg || await _loadSamplingCfg();
-  const q = (qs('#sampling-search')?.value || '').toLowerCase();
-  const match = r => !q || (r.accountName || '').toLowerCase().includes(q);
-  const active = _samplingReqs.filter(r => !['completed', 'cancelled'].includes(r.status)).filter(match);
-  const done = _samplingReqs.filter(r => ['completed', 'cancelled'].includes(r.status)).filter(match).slice(0, 30);
   const wd = Array.isArray(cfg.blockedWeekdays) ? cfg.blockedWeekdays.map(Number) : [];
   const wdBox = (i, lbl) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin-right:10px"><input type="checkbox" class="sampling-wd" value="${i}" ${wd.includes(i) ? 'checked' : ''}>${lbl}</label>`;
 
+  // Shell renders on page entry ONLY. Snapshots and search keystrokes go
+  // through _renderSamplingList so inputs are never rebuilt mid-typing.
   el.innerHTML = `
     <div class="card" style="padding:16px;margin-bottom:14px">
       <div style="font-weight:600;font-size:14px;margin-bottom:10px">Sampler setup</div>
@@ -18687,13 +18691,26 @@ async function renderSampling() {
       </div>
     </div>
     <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <input id="sampling-search" placeholder="Search stores…" value="${escHtml(q)}" oninput="renderSampling()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
+      <input id="sampling-search" placeholder="Search stores…" oninput="_renderSamplingList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
       <select id="sampling-copy-select" style="padding:8px;font-size:13px;max-width:220px">
         <option value="">Copy a store's booking link…</option>
         ${DB.a('ac').filter(a => a.status !== 'inactive').sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1).map(a => `<option value="${a.id}">${escHtml(a.name || '')}</option>`).join('')}
       </select>
       <button class="btn sm" onclick="samplingCopyLink()">Copy link</button>
     </div>
+    <div id="sampling-list"></div>
+  `;
+  _renderSamplingList();
+}
+
+function _renderSamplingList() {
+  const el = qs('#sampling-list');
+  if (!el) return;
+  const q = (qs('#sampling-search')?.value || '').toLowerCase();
+  const match = r => !q || (r.accountName || '').toLowerCase().includes(q);
+  const active = _samplingReqs.filter(r => !['completed', 'cancelled'].includes(r.status)).filter(match);
+  const done = _samplingReqs.filter(r => ['completed', 'cancelled'].includes(r.status)).filter(match).slice(0, 30);
+  el.innerHTML = `
     ${active.length ? active.map(_samplingCard).join('') : '<div class="card" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">No open demo requests. Send the Demo Day Invite from the Emails page to get stores booking.</div>'}
     ${done.length ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.05em">History</div>` + done.map(_samplingCard).join('') : ''}
   `;

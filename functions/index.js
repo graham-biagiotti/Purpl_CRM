@@ -2285,17 +2285,34 @@ exports.submitSamplingRequest = onCall(
 );
 
 // ── Sampler action links (public onRequest) ──
+// GET is ALWAYS read-only (state page, print sheet, or an "armed" page with
+// a POST form). Mutations happen ONLY on POST — a mail scanner or link
+// prefetcher walking the sampler's email can never book or decline a demo.
 exports.samplingAction = onRequest(
   { invoker: 'public', secrets: [resendApiKey] },
   async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const { r, k, a, f } = req.query || {};
+    const src = req.method === 'POST' ? (req.body || {}) : (req.query || {});
+    const r = src.r, k = src.k, a = src.a;
     const send = (title, body) => res.status(200).send(_samplingActionPage(title, body));
+    const postForm = (action, label) =>
+      `<form method="POST" action="${SAMPLING_ACTION_BASE}" style="margin:14px 0">
+        <input type="hidden" name="r" value="${escHtml(String(r))}">
+        <input type="hidden" name="k" value="${escHtml(String(k))}">
+        <input type="hidden" name="a" value="${escHtml(action)}">
+        <button type="submit" class="btn yes" style="width:100%;border:none;cursor:pointer;font-family:inherit">${label}</button>
+      </form>`;
+    const backLink = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}">GO BACK</a>`;
     if (!r || !k) return res.status(400).send(_samplingActionPage('Not found', '<h1>Link not valid</h1><p>This link is missing information. Please open it straight from your email.</p>'));
 
     const db = admin.firestore();
+    let snap;
+    try {
+      snap = await db.collection('sampling_requests').doc(String(r)).get();
+    } catch (e) {
+      return res.status(400).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>Please open the link straight from your email.</p>'));
+    }
     const ref = db.collection('sampling_requests').doc(String(r));
-    const snap = await ref.get();
     if (!snap.exists || snap.data().samplerActionToken !== k) {
       return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn\'t match a demo request. If you think that\'s wrong, text Graham.</p>'));
     }
@@ -2305,7 +2322,7 @@ exports.samplingAction = onRequest(
     const sheetBtn = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=sheet">🖨 Print demo sheet</a>`;
 
     // Printable one-pager — works in any status so old links stay useful.
-    if (a === 'sheet') {
+    if (req.method === 'GET' && a === 'sheet') {
       const L = rec.logistics || {};
       const dateLine = rec.confirmedDate ? _samplingFmtDate(rec.confirmedDate)
         : ('Requested: ' + _samplingFmtDate(rec.date1) + (rec.date2 ? ' / ' + _samplingFmtDate(rec.date2) : ''));
@@ -2331,8 +2348,8 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
 </table></body></html>`);
     }
 
-    // Already decided → every action shows current state (idempotent; a
-    // double-tap or forwarded link can never re-fire emails).
+    // Already decided → every path shows current state (idempotent; a
+    // double-tap, forwarded link, or replayed POST can never re-fire emails).
     if (rec.status !== 'pending_sampler') {
       const stateMsg = {
         confirmed: `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(_samplingFmtDate(rec.confirmedDate))}.<br>It's on your calendar.</p>${metaBox}${sheetBtn}`,
@@ -2343,6 +2360,33 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
       return send(rec.accountName || 'Demo request', stateMsg);
     }
 
+    // ── GET on a pending request: read-only pages that ARM a POST ──
+    if (req.method === 'GET') {
+      if (a === 'confirm1' || a === 'confirm2') {
+        const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
+        if (!chosen) return send('Hmm', '<h1>That option isn\'t available</h1><p>Please use the buttons in your email.</p>');
+        if (chosen < _samplingTodayET()) {
+          return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long.</p>${postForm('no', 'NO — Graham will sort a new date')}`);
+        }
+        // Double-booking warning: one sampler, one demo a day.
+        let clashLine = '';
+        const daySnap = await db.collection('sampling_requests')
+          .where('status', '==', 'confirmed').where('confirmedDate', '==', chosen).limit(5).get();
+        const clash = daySnap.docs.find(d => d.id !== String(r));
+        if (clash) clashLine = `<p style="color:#b45309"><strong>Heads up:</strong> you already have ${escHtml(clash.data().accountName || 'another store')} booked that day.</p>`;
+        return send('Confirm', `<h1>Book ${escHtml(rec.accountName)}?</h1><p><strong>${escHtml(_samplingFmtDate(chosen))}</strong> — ${escHtml(w)}</p>${clashLine}${metaBox}${postForm(a, clash ? 'YES — BOOK IT ANYWAY' : 'YES — BOOK IT')}${backLink}`);
+      }
+      if (a === 'no') {
+        return send('Neither works?', `<h1>Neither day works?</h1><p>Tap below and Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else needed from you.</p>${postForm('no', "CONFIRM — neither day works")}${backLink}`);
+      }
+      // Default: state page for a pending request — show the choices again.
+      return send(rec.accountName || 'Demo request', `<h1>${escHtml(rec.accountName)}</h1>${metaBox}
+<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm1">YES — ${escHtml(_samplingFmtDate(rec.date1))}</a>
+${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm2">YES — ${escHtml(_samplingFmtDate(rec.date2))}</a>` : ''}
+<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">NO — neither day works</a>`);
+    }
+
+    // ── POST: the only mutations ──
     if (a === 'no') {
       await ref.update({ status: 'needs_reschedule', samplerDeclinedAt: new Date().toISOString() });
       return send('Got it', `<h1>No problem</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`);
@@ -2352,19 +2396,7 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
       const chosen = a === 'confirm1' ? rec.date1 : rec.date2;
       if (!chosen) return send('Hmm', '<h1>That option isn\'t available</h1><p>Please use the buttons in your email.</p>');
       if (chosen < _samplingTodayET()) {
-        return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long — tap NO and Graham will sort a new date.</p><a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">NO — pick a different day</a>`);
-      }
-      // Double-booking guard: one sampler, one demo a day.
-      if (f !== '1') {
-        const daySnap = await db.collection('sampling_requests')
-          .where('status', '==', 'confirmed').where('confirmedDate', '==', chosen).limit(5).get();
-        const clash = daySnap.docs.find(d => d.id !== String(r));
-        if (clash) {
-          const cName = clash.data().accountName || 'another store';
-          return send('Already booked', `<h1>You already have ${escHtml(cName)} that day</h1><p>${escHtml(_samplingFmtDate(chosen))}. Book <strong>${escHtml(rec.accountName)}</strong> anyway?</p>
-<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=${a}&f=1">YES — book both that day</a>
-<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}">GO BACK</a>`);
-        }
+        return send('Date passed', `<h1>That date already passed</h1><p>This request sat too long.</p>${postForm('no', 'NO — Graham will sort a new date')}`);
       }
 
       const nowIso = new Date().toISOString();
@@ -2431,11 +2463,7 @@ ${row('Bring', 'purpl (cold), cups, ice + bin, table + cloth, signage, trash bag
       return send('Booked', `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(dateLabel)}.<br>It's on your calendar. The store's been told.</p>${metaBox}${sheetBtn}`);
     }
 
-    // Default: state page for a pending request — show the buttons again.
-    return send(rec.accountName || 'Demo request', `<h1>${escHtml(rec.accountName)}</h1>${metaBox}
-<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm1">YES — ${escHtml(_samplingFmtDate(rec.date1))}</a>
-${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=confirm2">YES — ${escHtml(_samplingFmtDate(rec.date2))}</a>` : ''}
-<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">NO — neither day works</a>`);
+    return res.status(400).send(_samplingActionPage('Not found', '<h1>Unknown action</h1><p>Please use the buttons in your email.</p>'));
   }
 );
 
@@ -2465,7 +2493,12 @@ exports.samplingAdmin = onCall(
         replyTo: 'graham@pumpkinblossomfarm.com',
         subject: mail.subject, html: mail.html,
       });
-      await ref.update({ packetSentAt: new Date().toISOString(), packetSendFailed: admin.firestore.FieldValue.delete() });
+      const patch = { packetSentAt: new Date().toISOString(), packetSendFailed: admin.firestore.FieldValue.delete() };
+      // Re-sending from needs_reschedule RE-ARMS the request — otherwise the
+      // sampler gets an email full of buttons that all dead-end on the
+      // decided-state guard (verifier-caught dead-button trap).
+      if (rec.status === 'needs_reschedule') patch.status = 'pending_sampler';
+      await ref.update(patch);
       return { success: true };
     }
 
