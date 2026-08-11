@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v202';
+const APP_VERSION = 'v203';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1446,21 +1446,10 @@ function renderDashQuickActions() {
   const od = x => { const due = x.dueDate || x.due || ''; return !['paid','draft','void'].includes(x.status) && due && due < todayStr; };
   const overdue = _allInvoices({excludeChildren: true}).filter(od).length;
   const drafts = _allInvoices({status: 'draft', excludeChildren: true}).length;
-  const pendingOrders = (() => {
-    const pending = DB.a('orders').filter(o => o.status === 'pending');
-    const seen = new Set();
-    let n = 0;
-    for (const o of pending) {
-      const key = o.combinedOrderGroupId || o.id;
-      if (!seen.has(key)) { seen.add(key); n++; }
-    }
-    return n;
-  })();
   const wix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
   const cards = [];
   if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
   if (drafts)        cards.push({n:drafts, label:'Draft invoice'+(drafts>1?'s':'')+' to send', cls:'qa-amber', go:"nav('invoices')"});
-  if (pendingOrders) cards.push({n:pendingOrders, label:'Order'+(pendingOrders>1?'s':'')+' to schedule', cls:'qa-blue', go:"nav('orders-delivery')"});
   if (wix)           cards.push({n:wix, label:'LF deduction'+(wix>1?'s':'')+' pending', cls:'qa-green', go:"nav('invoices')"});
   if (!cards.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = 'flex';
@@ -1692,7 +1681,6 @@ function renderDash() {
   }
 
   renderFollowUps();
-  renderPendingOrders();
   renderInvoiceStatus();
   renderProjections();
   renderProdPlan();
@@ -2945,18 +2933,16 @@ function sortInv(key) {
 // ── Revenue Projections ───────────────────────────────────
 function renderProjections() {
   const {proj30, proj60, proj90, accountsWithData} = calcProjections();
-  const pendingVal = DB.a('orders').filter(o=>o.status==='pending').reduce((s,o)=>s+calcOrderValue(o),0);
 
   const el = qs('#dash-projections');
   if (!el) return;
   el.innerHTML = `
     <div>${kpiHtml('Projected 30d', fmtC(proj30), 'green')}</div>
     <div>${kpiHtml('Projected 60d', fmtC(proj60), 'blue')}</div>
-    <div>${kpiHtml('Projected 90d', fmtC(proj90), 'purple')}</div>
-    <div>${kpiHtml('Pending Orders', fmtC(pendingVal), 'amber')}</div>`;
+    <div>${kpiHtml('Projected 90d', fmtC(proj90), 'purple')}</div>`;
 
   const note = qs('#dash-projection-notes');
-  if (note) note.textContent = `Based on order history from ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders. Pending orders value shown separately.`;
+  if (note) note.textContent = `Based on order history from ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders.`;
 }
 
 function calcProjections() {

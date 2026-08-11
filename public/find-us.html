@@ -36,11 +36,12 @@
   .searchbar button { padding:10px 14px; font-size:13.5px; border:none; border-radius:8px; background:var(--purpl); color:#fff; cursor:pointer; font-weight:600; font-family:inherit; }
 
   .fu-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
-  .fu-card { border:2px solid var(--border); border-radius:10px; padding:10px 8px 9px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; position:relative; user-select:none; opacity:.5; }
+  .fu-card { border:2px solid var(--border); border-radius:10px; padding:10px 8px 9px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; position:relative; user-select:none; opacity:.5; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; min-height:98px; }
   .fu-card.active { opacity:1; }
   .fu-card.active.fu-purpl { border-color:var(--purpl); background:#F1EDF6; }
   .fu-card.active.fu-lf { border-color:var(--lf); background:#EEF1F6; }
-  .fu-card img { margin:0 auto 6px; display:block; height:auto; }
+  /* Fixed logo box so both tiles align: same image height, names on one baseline. */
+  .fu-card img { margin:0 auto 6px; display:block; height:52px; width:auto; max-width:86px; object-fit:contain; }
   .fu-card .fu-name { font-family:Georgia,serif; font-size:12.5px; color:var(--text); }
   .fu-check { display:none; position:absolute; top:5px; right:5px; width:17px; height:17px; border-radius:50%; color:#fff; font-size:10px; line-height:17px; text-align:center; }
   .fu-card.active .fu-check { display:block; }
@@ -114,12 +115,12 @@
       <div class="fu-cards">
         <div class="fu-card fu-purpl active" id="fu-card-purpl" onclick="toggleBrandCard('purpl')">
           <div class="fu-check">✓</div>
-          <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" style="max-width:74px" onerror="this.style.display='none'">
+          <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" onerror="this.style.display='none'">
           <div class="fu-name">purpl lemonade</div>
         </div>
         <div class="fu-card fu-lf active" id="fu-card-lf" onclick="toggleBrandCard('lf')">
           <div class="fu-check">✓</div>
-          <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" style="max-width:46px" onerror="this.style.display='none'">
+          <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" onerror="this.style.display='none'">
           <div class="fu-name">Lavender Fields</div>
         </div>
       </div>
