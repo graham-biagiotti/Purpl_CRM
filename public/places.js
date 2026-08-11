@@ -70,7 +70,7 @@
 
     const ac = new google.maps.places.Autocomplete(inputEl, {
       componentRestrictions: { country: 'us' },
-      fields: ['formatted_address', 'geometry'],
+      fields: ['formatted_address', 'geometry', 'address_components'],
     });
 
     // On selection: fill address + store coords
@@ -83,6 +83,24 @@
 
       inputEl.dataset.lat = lat;
       inputEl.dataset.lng = lng;
+
+      // Structured components: ShipStation (and anything else that needs
+      // street/city/state/zip) should never have to re-parse a free-text
+      // address string that Google already broke apart for us.
+      if (Array.isArray(place.address_components)) {
+        const get = (type, short) => {
+          const c = place.address_components.find(x => (x.types || []).includes(type));
+          return c ? (short ? c.short_name : c.long_name) : '';
+        };
+        const parts = {
+          street1: [get('street_number'), get('route')].filter(Boolean).join(' '),
+          street2: get('subpremise'),
+          city: get('locality') || get('postal_town') || get('sublocality') || get('administrative_area_level_3'),
+          state: get('administrative_area_level_1', true),
+          zip: get('postal_code'),
+        };
+        if (parts.street1 || parts.city) inputEl.dataset.addrParts = JSON.stringify(parts);
+      }
 
       // Fill in the clean formatted address
       if (place.formatted_address) {
@@ -98,6 +116,7 @@
     inputEl.addEventListener('input', () => {
       delete inputEl.dataset.lat;
       delete inputEl.dataset.lng;
+      delete inputEl.dataset.addrParts;
     });
   }
 

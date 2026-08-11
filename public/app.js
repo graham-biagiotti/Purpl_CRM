@@ -532,16 +532,37 @@ function _parseAddress(addr) {
   let rest = addr.trim().replace(/,?\s*(USA|United States)\.?\s*$/i, '').trim();
   const zipM = rest.match(/(\d{5}(?:-\d{4})?)\s*$/);
   if (zipM) { out.zip = zipM[1]; rest = rest.slice(0, zipM.index).replace(/[,\s]+$/, ''); }
+  // Only strip a trailing 2-letter token as the STATE if it actually is one —
+  // "24 Main St" used to lose its "St" to state:"ST" (pre-existing flaw).
+  const _US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
   const stM = rest.match(/[,\s]+([A-Za-z]{2})\s*$/);
-  if (stM) { out.state = stM[1].toUpperCase(); rest = rest.slice(0, stM.index).replace(/[,\s]+$/, ''); }
+  if (stM && _US_STATES.includes(stM[1].toUpperCase())) { out.state = stM[1].toUpperCase(); rest = rest.slice(0, stM.index).replace(/[,\s]+$/, ''); }
   const segs = rest.split(',').map(p => p.trim()).filter(Boolean);
   if (segs.length >= 2) {
     out.city = segs[segs.length - 1];
     out.street1 = segs.slice(0, segs.length - 1).join(', ');
   } else {
-    out.street1 = segs[0] || rest;
+    // No commas ("393 Pumpkin Hill Rd Warner NH 03278"): everything after the
+    // LAST street-suffix word is the town — otherwise the town rode along in
+    // street1 and ShipStation got a blank city.
+    const one = segs[0] || rest;
+    const SUF = '(?:rd|road|st|street|ave|avenue|dr|drive|ln|lane|way|hwy|highway|blvd|boulevard|pl|place|ct|court|cir|circle|ter|terrace|pike|tpke|turnpike|(?:rt|route)\\s*\\d+[a-z]?)';
+    const m = one.match(new RegExp('^(.+\\b' + SUF + '\\.?)\\s+([A-Za-z][A-Za-z .\'-]{1,30})$', 'i'));
+    if (m) { out.street1 = m[1]; out.city = m[2].trim(); }
+    else out.street1 = one;
   }
   return out;
+}
+
+// Structured address for shipping: prefer the Google-parsed components saved
+// on the account (addrParts, stamped when an autocomplete suggestion is
+// picked); fall back to parsing the free-text line.
+function _shipAddrFor(ac) {
+  const p = ac?.addrParts;
+  if (p && p.street1 && p.city) {
+    return { street1: p.street1, street2: p.street2 || '', city: p.city, state: p.state || '', zip: p.zip || '' };
+  }
+  return _parseAddress(ac?.shipAddress || ac?.address || '');
 }
 
 async function pushInvoiceToShipStation(invoiceId, collection) {
@@ -555,7 +576,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   const ac = DB.a('ac').find(a => a.id === inv.accountId) || {};
   if (!ac.address && !ac.shipAddress) { _stickyError('Cannot push to ShipStation: no shipping address on this account. Add one in the account first.'); return false; }
 
-  const addr = _parseAddress(ac.shipAddress || ac.address || '');
+  const addr = _shipAddrFor(ac);
   const ss = DB.obj('shipstation_settings', {});
   const invNum = inv.number || inv.invoiceNumber || '';
   const brand = collection === 'combined_invoices' ? 'purpl + LF' : (collection === 'lf_invoices' ? 'Lavender Fields' : 'purpl');
@@ -5956,6 +5977,8 @@ async function saveAccount(id, isNew) {
     const phone      = row.querySelector('.eac-loc-phone')?.value?.trim()||'';
     const dropOffRules = row.querySelector('.eac-loc-droprules')?.value?.trim()||'';
     let lat = null, lng = null;
+    let addrParts = null;
+    try { if (addrEl?.dataset?.addrParts) addrParts = JSON.parse(addrEl.dataset.addrParts); } catch(e) {}
     if (address && window.PlacesAC) {
       const coords = await PlacesAC.getCoords(addrEl).catch(()=>null);
       if (coords) { lat = coords.lat; lng = coords.lng; }
@@ -5968,7 +5991,14 @@ async function saveAccount(id, isNew) {
       if (prevLoc && prevLoc.address === address && prevLoc.lat && prevLoc.lng) { lat = prevLoc.lat; lng = prevLoc.lng; }
       else if (!existing?.locs?.length && existing?.address === address && existing?.lat && existing?.lng) { lat = existing.lat; lng = existing.lng; }
     }
-    locs.push({id: locId, label, address, lat, lng, contact, phone, dropOffRules});
+    // Same preservation rule for structured parts: an unchanged address keeps
+    // the parts already on the record (typed edits cleared the dataset).
+    if (!addrParts) {
+      const prevLoc = (existing?.locs||[]).find(l=>l.id===locId);
+      if (prevLoc && prevLoc.address === address && prevLoc.addrParts) addrParts = prevLoc.addrParts;
+      else if (!existing?.locs?.length && existing?.address === address && existing?.addrParts) addrParts = existing.addrParts;
+    }
+    locs.push({id: locId, label, address, lat, lng, addrParts: addrParts || null, contact, phone, dropOffRules});
   }
 
   // Collect contacts from the contacts section
@@ -6002,6 +6032,7 @@ async function saveAccount(id, isNew) {
     address:      locs[0]?.address||'',
     lat:          locs[0]?.lat||null,
     lng:          locs[0]?.lng||null,
+    addrParts:    locs[0]?.addrParts||null,
     // Changed address gets a fresh shot at map geocoding
     geocodeFailed: ((locs[0]?.address||'') === (existing?.address||'')) ? (existing?.geocodeFailed || null) : null,
     locs,
@@ -6885,7 +6916,7 @@ async function pushSampleToShipStation(accountId) {
   const ac = DB.a('ac').find(a => a.id === accountId);
   if (!ac) { toast('Account not found'); return; }
   if (!ac.address && !ac.shipAddress) { toast('No address on file — add one first'); return; }
-  const addr = _parseAddress(ac.shipAddress || ac.address || '');
+  const addr = _shipAddrFor(ac);
   const ss = DB.obj('shipstation_settings', {});
   const sampleNum = 'SAMPLE-' + (ac.name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() + '-' + Date.now().toString(36).slice(-4);
 
