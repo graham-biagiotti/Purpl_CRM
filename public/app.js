@@ -592,6 +592,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
 
   const items = [];
   _lineItems.forEach(li => {
+    if (li.skuId === '__discount__') return; // not a shippable item — money only
     if (li.hasVariants && li.variantLines) {
       li.variantLines.forEach(vl => items.push({
         sku: (li.skuId||li.skuName||'') + '-' + (vl.variantId||vl.variantName||''),
@@ -12708,7 +12709,7 @@ function openLfInvoiceModal(id) {
   const container = qs('#lfi-line-items');
   if (container) {
     container.innerHTML = '';
-    const rows = inv?.lineItems?.length ? inv.lineItems : [];
+    const rows = (inv?.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__');
     if (rows.length) {
       rows.forEach(item => _lfInvRenderLineRow(item));
     } else {
@@ -13043,7 +13044,19 @@ function _saveLfInvoiceCore(id, isNew) {
     lineItems.push(..._existingShip);
   }
 
-  const total    = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0);
+  // Discount: the LF modal has no discount field (the Preview shell is its
+  // editor) — CARRY the existing __discount__ line so a modal save can never
+  // silently drop a granted discount and re-raise an already-emailed pay
+  // total (verifier-caught). Re-clamped against the edited lines.
+  const _existingDisc = (existing?.lineItems || []).filter(li => li.skuId === '__discount__');
+  if (_existingDisc.length) {
+    const _preDisc = Math.round(lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0) * 100) / 100;
+    const _dOld = Math.abs(_existingDisc.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0));
+    const _d = Math.round(Math.min(_dOld, Math.max(0, _preDisc)) * 100) / 100;
+    if (_d > 0) lineItems.push({ skuId: '__discount__', skuName: 'Discount', description: 'Discount', qty: 1, cases: 0, unitPrice: -_d, lineTotal: -_d, total: -_d });
+  }
+
+  const total    = Math.round(lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0) * 100) / 100;
 
   const rec = {
     ...(existing||{}),
