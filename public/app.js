@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v208';
+const APP_VERSION = 'v209';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2608,7 +2608,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   qs('#iv-modal-title').textContent = isNew ? 'New purpl Invoice' : 'Edit purpl Invoice';
 
   if (isNew) {
-    if (qs('#iv-number')) qs('#iv-number').value = peekNextInvoiceNumber();
+    if (qs('#iv-number')) { const _pk = peekNextInvoiceNumber(); qs('#iv-number').value = _pk; qs('#iv-number').dataset.prefill = _pk; }
     if (qs('#iv-date'))   qs('#iv-date').value   = today();
     const settingsTerms = DB.obj('invoice_settings',{}).terms || _payTerms();
     const defaultTermsKey = Object.entries(_TERMS_DAYS).find(([,d]) => d === settingsTerms)?.[0] || 'net30';
@@ -8380,7 +8380,9 @@ function _openDistInvModal(distId, existingId) {
     </div>`;
   }).join('');
 
-  qs('#mdinv-number').value  = existing?.invoiceNumber || peekNextInvoiceNumber();
+  { const _pk = existing?.invoiceNumber ? '' : peekNextInvoiceNumber();
+    qs('#mdinv-number').value = existing?.invoiceNumber || _pk;
+    qs('#mdinv-number').dataset.prefill = _pk; }
   qs('#mdinv-date').value    = existing?.dateIssued || today();
   qs('#mdinv-po-ref').value  = existing?.poRef || '';
   qs('#mdinv-ext-ref').value = existing?.externalRef || '';
@@ -8418,7 +8420,8 @@ async function saveDistInvoice(existingId) {
   if (!date) { toast('Date required'); return; }
 
   const userNum = qs('#mdinv-number')?.value?.trim();
-  const invNum = userNum || await getNextInvoiceNumber('dist');
+  const invNum = (userNum && userNum !== qs('#mdinv-number')?.dataset?.prefill)
+    ? userNum : await getNextInvoiceNumber('dist');
 
   const pricing = DB.a('dist_pricing').filter(p => p.distId === distId);
   // On EDIT, keep each line's ORIGINAL price — repricing from current
@@ -12667,7 +12670,7 @@ function openLfInvoiceModal(id) {
 
   // Auto-number / load fields
   if (isNew) {
-    if (qs('#lfi-number')) qs('#lfi-number').value = peekNextInvoiceNumber();
+    if (qs('#lfi-number')) { const _pk = peekNextInvoiceNumber(); qs('#lfi-number').value = _pk; qs('#lfi-number').dataset.prefill = _pk; }
     if (qs('#lfi-issued')) qs('#lfi-issued').value  = today();
     const terms  = DB.obj('invoice_settings',{}).terms || _payTerms();
     const dueStr = new Date(Date.now() + terms * 864e5).toISOString().slice(0,10);
@@ -12740,6 +12743,7 @@ function openLfInvoiceModal(id) {
       lfiSendBtn.disabled = true; lfiSendBtn.textContent = 'Saving…';
       try {
         // Persist first — works for brand-new invoices too (one-step send)
+        await _reserveModalNumber('#lfi-number', isNew);
         const out = _saveLfInvoiceCore(id, isNew);
         if (!out) { lfiSendBtn.disabled = false; lfiSendBtn.textContent = _lfiIsShip() ? 'Save & Push to ShipStation' : 'Save & Send'; return; }
         const inv = out.rec;
@@ -12953,7 +12957,8 @@ function _lfInvCalcTotal() {
   if (el) el.textContent = fmtC(total);
 }
 
-function saveLfInvoice(id, isNew) {
+async function saveLfInvoice(id, isNew) {
+  await _reserveModalNumber('#lfi-number', isNew);
   const out = _saveLfInvoiceCore(id, isNew);
   if (!out) return;
   closeModal('modal-lf-invoice');
@@ -13308,6 +13313,22 @@ function peekNextInvoiceNumber() {
   return `INV-${String(Math.max(_maxCachedInvoiceNum() + 1, settingsNext)).padStart(4,'0')}`;
 }
 
+// A previewed number in a creation form is a PREVIEW, not a reservation.
+// Before saving a NEW invoice, swap an untouched prefill for a number
+// reserved through the transaction (the combined modal used to save the
+// previewed parent number while its children reserved the same value —
+// parent and purpl child collided on every manual combined invoice).
+// A number the user actually typed is honored untouched.
+async function _reserveModalNumber(sel, isNew) {
+  if (!isNew) return;
+  const el = qs(sel);
+  if (!el) return;
+  const v = (el.value || '').trim();
+  if (v && v !== el.dataset.prefill) return; // user-typed override
+  el.value = await getNextInvoiceNumber();
+  el.dataset.prefill = ''; // it's a real reservation now
+}
+
 // Claim the next invoice number atomically via Firestore transaction.
 // Prevents two tabs from claiming the same INV-XXXX.
 async function getNextInvoiceNumber(type) {
@@ -13386,7 +13407,7 @@ function openNewCombinedModal() {
   const accts = DB.a('ac').filter(a => a.isPbf).sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
   _populateAccountSelect('nciv-account', accts, '', 'Select account...');
 
-  if (qs('#nciv-number')) qs('#nciv-number').value = peekNextInvoiceNumber();
+  if (qs('#nciv-number')) { const _pk = peekNextInvoiceNumber(); qs('#nciv-number').value = _pk; qs('#nciv-number').dataset.prefill = _pk; }
   if (qs('#nciv-date')) qs('#nciv-date').value = today();
   const terms = DB.obj('invoice_settings',{}).terms || _payTerms();
   const d = new Date(Date.now() + terms * 86400000);
@@ -13755,10 +13776,15 @@ async function saveNewCombinedInvoice() {
     return;
   }
 
-  // Read next numbers atomically before any write
+  // Read next numbers atomically before any write. PARENT FIRST: the field
+  // holds an unreserved preview, and reserving the children first handed the
+  // purpl child that same number (parent + child collided on every manual
+  // combined invoice). An untouched prefill now reserves properly; only a
+  // genuinely typed number is honored verbatim.
+  const _typedComb = (userNum && userNum !== qs('#nciv-number')?.dataset?.prefill) ? userNum : null;
+  const combNum  = _typedComb || await getNextInvoiceNumber('combined');
   const purplNum = await getNextInvoiceNumber('purpl');
   const lfNum    = await getNextInvoiceNumber('lf');
-  const combNum  = userNum || await getNextInvoiceNumber('combined');
   const purplId  = uid();
   const lfId     = uid();
   const combId   = uid();
@@ -18147,6 +18173,7 @@ async function _saveInvCore(id, isNew) {
   if (_saveInvInFlight) return;
   _saveInvInFlight = true;
   setTimeout(() => { _saveInvInFlight = false; }, 2000);
+  await _reserveModalNumber('#iv-number', isNew !== false && !id);
   const number    = qs('#iv-number')?.value?.trim() || '';
   const accountId = qs('#iv-account')?.value;
   const date      = qs('#iv-date')?.value || today();
