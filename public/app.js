@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v205';
+const APP_VERSION = 'v206';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13828,7 +13828,11 @@ function _buildPaymentHTML(payLink) {
   const otherMethods = [];
   if (s.achRouting) otherMethods.push(`<strong>ACH / Wire:</strong> Routing ${s.achRouting} · Account ${s.achAccount || '—'}`);
   if (s.checkInstructions || s.paymentInstructions) otherMethods.push(escHtml(s.checkInstructions || s.paymentInstructions));
-  if (!otherMethods.length) otherMethods.push('Make checks payable to <strong>Pumpkin Blossom Farm LLC</strong>');
+  if (!otherMethods.length) otherMethods.push('Make checks payable to <strong>' + escHtml(s.fromName || 'Pumpkin Blossom Farm LLC') + '</strong>');
+  // The remit-to ADDRESS lives on page 1 with the payment options — it used
+  // to exist only in the page-bottom footer, which printing pushed onto a
+  // mostly-blank page 2, so nobody knew where to mail checks.
+  otherMethods.push('<strong>Mail checks to:</strong> ' + escHtml(s.fromName || 'Pumpkin Blossom Farm LLC') + ', ' + escHtml(s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278'));
   return `${link ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">
     <tr><td align="center" style="padding:0">
       <table cellpadding="0" cellspacing="0"><tr><td align="center" style="background:#1a1a2e;border-radius:6px">
@@ -13870,7 +13874,7 @@ function _legalTermsHTML() {
       ? `<div style="margin-top:3px"><strong style="color:#6b7280">${escHtml(m[1])}:</strong> ${escHtml(m[2])}</div>`
       : `<div style="margin-top:3px">${escHtml(l)}</div>`;
   }).join('');
-  return `<div style="font-size:10px;color:#6b7280;line-height:1.6;text-align:left">
+  return `<div class="legal-fine" style="font-size:10px;color:#6b7280;line-height:1.6;text-align:left">
     <div style="font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#4b5563;font-size:10px;margin-bottom:3px">${escHtml(title)}</div>
     ${body}
   </div>`;
@@ -14000,12 +14004,15 @@ function buildInvoiceDocHTML(o) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Invoice ${escHtml(o.number || '')}</title>
 <style>
-  @page { size: letter; margin: 0.5in; }
+  @page { size: letter; margin: 0.4in; }
   @media print {
     body { background:#fff !important; padding:0 !important; }
     .invoice-wrap { padding:0 !important; }
     .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
     .no-print { display:none !important; }
+    tr { page-break-inside: avoid; }
+    .legal-fine, .legal-fine * { font-size:9px !important; line-height:1.45 !important; }
+    .doc-footer { padding:10px 40px !important; font-size:9.5px !important; line-height:1.5 !important; }
   }
 </style>
 </head>
@@ -14096,7 +14103,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
 
   ${(DB.obj('invoice_settings',{}).footerNotes||'').trim() ? `<tr><td style="padding:0 48px 16px;font-size:12px;color:#6b7280;line-height:1.6">${escHtml(DB.obj('invoice_settings',{}).footerNotes.trim())}</td></tr>` : ''}
 
-  <tr><td style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#4b5563;line-height:1.8">
+  <tr><td class="doc-footer" style="padding:20px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#4b5563;line-height:1.8">
     <strong style="color:#1a1a2e">${escHtml(DB.obj('invoice_settings',{}).fromName || 'Pumpkin Blossom Farm LLC')}</strong> · ${escHtml((DB.obj('invoice_settings',{}).fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278').replace(/,\s*/g,' · '))}<br>
     <a href="mailto:lavender@pbfwholesale.com" style="color:#4b5563;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038
   </td></tr>
