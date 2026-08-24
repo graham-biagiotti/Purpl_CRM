@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v203';
+const APP_VERSION = 'v204';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2622,6 +2622,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = '';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = '';
     if (qs('#iv-shipping'))      qs('#iv-shipping').value      = '';
+    if (qs('#iv-discount'))      qs('#iv-discount').value      = '';
     if (qs('#iv-ship-status'))   qs('#iv-ship-status').style.display = 'none';
     if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
   } else if (inv) {
@@ -2635,6 +2636,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-delivery-date')) qs('#iv-delivery-date').value = inv.deliveryDate||'';
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
     if (qs('#iv-shipping'))      qs('#iv-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+    if (qs('#iv-discount'))      qs('#iv-discount').value      = _discountOfInv(inv) || '';
     ivDeliveryMethodChange();
     // paymentTerms may carry the preview shell's LABEL vocabulary ('Net 45')
     // — translate to this select's keys; an unmatched value must land on a
@@ -13875,19 +13877,27 @@ function _deliveryDetailsHTML(deliveryDate, tracking, style) {
 // channel (email + print/PDF + preview). Table-based markup only — Gmail
 // and Outlook strip flexbox, which used to scramble the Amount Due row.
 
+// Absolute dollars of __discount__ lines on an invoice (they store negative).
+function _discountOfInv(inv) {
+  return Math.abs((inv?.lineItems || []).filter(l => l.skuId === '__discount__')
+    .reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0));
+}
+
 function _normShippingLines(inv) {
-  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__').map(li => ({
-    name: li.description || li.skuName || 'Shipping',
+  // Extras block under the product sections: shipping AND discount lines
+  // (discounts store a NEGATIVE total and render as "−$X").
+  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__' || li.skuId === '__discount__').map(li => ({
+    name: li.description || li.skuName || (li.skuId === '__discount__' ? 'Discount' : 'Shipping'),
     sub: li.carrier ? 'via ' + li.carrier : '',
     qty: '', price: '',
-    total: parseFloat(li.lineTotal || li.total || li.pricePerCase || 0),
+    total: parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : li.pricePerCase)) || 0,
   }));
 }
 
 function _normPurplLines(inv) {
   const raw = (inv.lineItems && inv.lineItems.length) ? inv.lineItems
     : ((inv.cases || inv.amount) ? [{ skuName: 'Classic Lavender Lemonade', cases: inv.cases || 0, pricePerCase: inv.pricePerCase || 0, lineTotal: inv.amount != null ? inv.amount : (inv.total || 0) }] : []);
-  const lines = raw.filter(li => li.skuId !== '__shipping__');
+  const lines = raw.filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__');
   return lines.map(li => {
     const cases = li.cases || li.qty || 0;
     const ppc = parseFloat(li.pricePerCase != null ? li.pricePerCase : (li.unitPrice || 0)) || 0;
@@ -13904,7 +13914,7 @@ function _normPurplLines(inv) {
 
 function _normLfLines(inv) {
   const out = [];
-  (inv.lineItems || []).filter(li => li.skuId !== '__shipping__').forEach(li => {
+  (inv.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__').forEach(li => {
     const up = parseFloat(li.unitPrice != null ? li.unitPrice : (li.pricePerUnit || 0)) || 0;
     if (li.hasVariants && li.variantLines && li.variantLines.length) {
       li.variantLines.forEach(vl => {
@@ -14043,7 +14053,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
     <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e7eb;padding-top:10px">
       ${o.shippingLines.map(sl => `<tr>
         <td style="font-size:13px;color:#1a1a2e;padding:4px 0">${escHtml(sl.name)}${sl.sub ? ' <span style="color:#6b7280;font-size:11px">' + escHtml(sl.sub) + '</span>' : ''}</td>
-        <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">$${sl.total.toFixed(2)}</td>
+        <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">${sl.total < 0 ? '\u2212$' + Math.abs(sl.total).toFixed(2) : '$' + sl.total.toFixed(2)}</td>
       </tr>`).join('')}
     </table>
   </td></tr>` : ''}
@@ -14334,6 +14344,8 @@ async function openInvoicePreview(type, id) {
   if (fulfillSel) fulfillSel.value = rec.fulfillmentSource || 'warehouse';
   const shipChargeEl = qs('#civ-edit-shipping');
   if (shipChargeEl) shipChargeEl.value = (rec.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+  const discountEl = qs('#civ-edit-discount');
+  if (discountEl) discountEl.value = _discountOfInv(rec) || '';
 
   const shipBtn = qs('#civ-btn-ship');
   const whBtn = qs('#civ-btn-warehouse');
@@ -14366,6 +14378,7 @@ async function openInvoicePreview(type, id) {
     // Dist terms are profile-driven (paymentTermsDays) and the dist save patch
     // never writes paymentTerms — the select was a fake edit. Hide it.
     if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = 'none';
+    if (discountEl?.parentElement) discountEl.parentElement.style.display = 'none';
     if (shipBtn) shipBtn.style.display = 'none';
     // Force-show for dist (partner fulfills dist POs) — but never on void.
     // Paid stays pushable: a prepaid PO still needs warehouse prep.
@@ -14375,6 +14388,7 @@ async function openInvoicePreview(type, id) {
     if (fulfillSel?.parentElement) fulfillSel.parentElement.style.display = '';
     if (shipChargeEl?.parentElement) shipChargeEl.parentElement.style.display = '';
     if (qs('#civ-edit-terms')?.parentElement) qs('#civ-edit-terms').parentElement.style.display = '';
+    if (discountEl?.parentElement) discountEl.parentElement.style.display = '';
   }
   if (delivSel) delivSel.onchange = _updateFulfillBtns;
   if (fulfillSel) fulfillSel.onchange = _updateFulfillBtns;
@@ -14408,6 +14422,7 @@ async function openInvoicePreview(type, id) {
           fulfillmentSource: qs('#civ-edit-fulfillment')?.value || 'warehouse',
         };
     const shipRaw = type === 'dist' ? '' : (qs('#civ-edit-shipping')?.value ?? '');
+    const discRaw = type === 'dist' ? '' : (qs('#civ-edit-discount')?.value ?? '');
     DB.update(col, id, x => {
       const nx = { ...x, ...patch };
       // Blank = leave shipping untouched; a number (incl. 0) replaces the
@@ -14420,6 +14435,22 @@ async function openInvoicePreview(type, id) {
           ? [...rest, { skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }]
           : rest;
         const delta = shipVal - oldShip;
+        if (nx.total != null)  nx.total  = Math.round(((parseFloat(nx.total)||0)  + delta) * 100) / 100;
+        if (nx.amount != null) nx.amount = Math.round(((parseFloat(nx.amount)||0) + delta) * 100) / 100;
+      }
+      // Discount: same contract, applied after shipping so the clamp sees the
+      // final pre-discount sum. Stored as one NEGATIVE __discount__ line.
+      if (discRaw !== '') {
+        const askVal = Math.max(0, parseFloat(discRaw) || 0);
+        const oldDisc = Math.abs((nx.lineItems||[]).filter(l=>l.skuId==='__discount__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0));
+        const rest = (nx.lineItems||[]).filter(l=>l.skuId!=='__discount__');
+        const preDisc = Math.round(rest.reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) * 100) / 100;
+        const discVal = Math.round(Math.min(askVal, Math.max(0, preDisc)) * 100) / 100;
+        if (askVal > preDisc) toast('Discount capped at the invoice total (' + fmtC(Math.max(0, preDisc)) + ')');
+        nx.lineItems = discVal > 0
+          ? [...rest, { skuId: '__discount__', skuName: 'Discount', description: 'Discount', qty: 1, cases: 0, unitPrice: -discVal, lineTotal: -discVal, total: -discVal }]
+          : rest;
+        const delta = oldDisc - discVal; // more discount => lower total
         if (nx.total != null)  nx.total  = Math.round(((parseFloat(nx.total)||0)  + delta) * 100) / 100;
         if (nx.amount != null) nx.amount = Math.round(((parseFloat(nx.amount)||0) + delta) * 100) / 100;
       }
@@ -14528,6 +14559,9 @@ async function openCombinedInvoicePreview(combinedId) {
   const _ds = qs('#civ-edit-delivery'); if (_ds?.parentElement) _ds.parentElement.style.display = '';
   const _fs = qs('#civ-edit-fulfillment'); if (_fs?.parentElement) _fs.parentElement.style.display = '';
   const _tr = qs('#civ-edit-terms'); if (_tr?.parentElement) _tr.parentElement.style.display = '';
+  // Single-brand-only feature: hide the discount field on combined previews
+  // (the combined grandTotal recompute sites don't know about discounts yet).
+  const _dr = qs('#civ-edit-discount'); if (_dr?.parentElement) _dr.parentElement.style.display = 'none';
   // Older combined invoices were created without a number — backfill one,
   // since Stripe link generation requires it.
   if (!rec.number && !rec.invoiceNumber) {
@@ -14749,7 +14783,7 @@ async function openCombinedInvoicePreview(combinedId) {
               const purplInv = cache.retail_invoices[ri];
               const invNum = purplInv.number || purplInv.invoiceNumber || '';
               (purplInv.lineItems || []).forEach(li => {
-                if (li.skuId === '__shipping__') return; // shipping is not stock
+                if (li.skuId === '__shipping__' || li.skuId === '__discount__') return; // pseudo-lines are not stock
                 const cases = li.cases || li.qty || 0;
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
@@ -17912,7 +17946,7 @@ function markInvoiceSent(id) {
       const lines = inv.lineItems || inv.items || [];
       c.iv = c.iv || [];
       lines.forEach(li => {
-        if (li.skuId === '__shipping__') return; // shipping is not stock — the webhook line carries cases:1
+        if (li.skuId === '__shipping__' || li.skuId === '__discount__') return; // pseudo-lines are not stock
         const cases = li.cases || li.qty || 0;
         if (cases > 0) {
           c.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'warehouse', note: 'Invoice ' + invNum, invoiceId: id });
@@ -18146,9 +18180,28 @@ async function _saveInvCore(id, isNew) {
     lineItems.push(..._carryLines);
   }
 
-  const totalCases = lineItems.filter(l => l.skuId !== '__shipping__').reduce((s, l) => s + l.cases, 0);
+  // Discount: same rules as shipping — typed value wins, blank carries the
+  // existing __discount__ line, explicit 0 removes it. Stored as ONE negative
+  // pseudo-line so every total/report/Stripe path nets it automatically.
+  // Clamped so the invoice total can never go below zero.
+  const _discRaw = qs('#iv-discount')?.value;
+  const _discTyped = (_discRaw === '' || _discRaw == null) ? null : Math.max(0, parseFloat(_discRaw) || 0);
+  const _carryDisc = (existing?.lineItems || []).filter(li => li.skuId === '__discount__');
+  const _preDiscSum = Math.round(lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0) * 100) / 100;
+  if (_discTyped != null) {
+    const d = Math.round(Math.min(_discTyped, _preDiscSum) * 100) / 100;
+    if (_discTyped > _preDiscSum) toast('Discount capped at the invoice total (' + fmtC(_preDiscSum) + ')');
+    if (d > 0) lineItems.push({ skuId: '__discount__', skuName: 'Discount', description: 'Discount', qty: 1, cases: 0, unitPrice: -d, lineTotal: -d, total: -d });
+  } else if (_carryDisc.length) {
+    // Carried discount still may not exceed the (possibly edited) new subtotal.
+    const dOld = Math.abs(_carryDisc.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0));
+    const d = Math.round(Math.min(dOld, _preDiscSum) * 100) / 100;
+    if (d > 0) lineItems.push({ skuId: '__discount__', skuName: 'Discount', description: 'Discount', qty: 1, cases: 0, unitPrice: -d, lineTotal: -d, total: -d });
+  }
+
+  const totalCases = lineItems.filter(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__').reduce((s, l) => s + l.cases, 0);
   const totalCans  = totalCases * CANS_PER_CASE;
-  const totalAmt   = lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0);
+  const totalAmt   = Math.round(lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0) * 100) / 100;
 
   const _invNum = number || existing?.invoiceNumber || existing?.number || await getNextInvoiceNumber('purpl');
   const rec = {
