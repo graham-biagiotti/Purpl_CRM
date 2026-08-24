@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v206';
+const APP_VERSION = 'v207';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13833,7 +13833,7 @@ function _buildPaymentHTML(payLink) {
   // to exist only in the page-bottom footer, which printing pushed onto a
   // mostly-blank page 2, so nobody knew where to mail checks.
   otherMethods.push('<strong>Mail checks to:</strong> ' + escHtml(s.fromName || 'Pumpkin Blossom Farm LLC') + ', ' + escHtml(s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278'));
-  return `${link ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">
+  return `${link ? `<table class="no-print" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px">
     <tr><td align="center" style="padding:0">
       <table cellpadding="0" cellspacing="0"><tr><td align="center" style="background:#1a1a2e;border-radius:6px">
         <a href="${link}" target="_blank" style="display:inline-block;padding:14px 40px;font-family:Inter,Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.04em">Pay Online</a>
@@ -14011,6 +14011,7 @@ function buildInvoiceDocHTML(o) {
     .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
     .no-print { display:none !important; }
     tr { page-break-inside: avoid; }
+    .invoice-card { zoom: 0.93; }
     .legal-fine, .legal-fine * { font-size:9px !important; line-height:1.45 !important; }
     .doc-footer { padding:10px 40px !important; font-size:9.5px !important; line-height:1.5 !important; }
   }
@@ -14097,7 +14098,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
     <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(o.notes)}</div>
   </td></tr>` : ''}
 
-  ${o.portalLink ? `<tr><td style="padding:0 48px 20px;text-align:center"><a href="${o.portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
+  ${o.portalLink ? `<tr class="no-print"><td style="padding:0 48px 20px;text-align:center"><a href="${o.portalLink}" style="font-size:13px;color:#8B5FBF;text-decoration:none">Place your next order →</a></td></tr>` : ''}
 
   ${_legalTermsHTML() ? `<tr><td style="padding:0 48px 24px">${_legalTermsHTML()}</td></tr>` : ''}
 
