@@ -1638,11 +1638,18 @@ exports.shipStationWebhook = onRequest(
       for (const ship of shipments) {
         const on = ship.orderNumber || '';
         if (!on) continue;
-        if (!byOrder[on]) byOrder[on] = { trackingNumbers: [], carriers: [], totalShipCost: 0 };
+        if (!byOrder[on]) byOrder[on] = { trackingNumbers: [], carriers: [], totalShipCost: 0, perTracking: {} };
         if (ship.trackingNumber) byOrder[on].trackingNumbers.push(ship.trackingNumber);
         byOrder[on].carriers.push(ship.carrierCode || ship.serviceCode || '');
-        byOrder[on].totalShipCost += parseFloat(ship.shipmentCost || ship.shipment_cost || 0)
-                                   + parseFloat(ship.insuranceCost || ship.insurance_cost || 0);
+        const _shipC = parseFloat(ship.shipmentCost || ship.shipment_cost || 0)
+                     + parseFloat(ship.insuranceCost || ship.insurance_cost || 0);
+        byOrder[on].totalShipCost += _shipC;
+        // Per-parcel cost keyed by tracking number — the unit of idempotency:
+        // the same parcel retold replaces itself; a NEW parcel is a new key.
+        if (ship.trackingNumber) {
+          byOrder[on].perTracking[ship.trackingNumber] =
+            Math.round(((byOrder[on].perTracking[ship.trackingNumber] || 0) + _shipC) * 100) / 100;
+        }
       }
 
       const now = new Date().toISOString();
@@ -1807,16 +1814,27 @@ exports.shipStationWebhook = onRequest(
             // Remove any previous Shipping line item (idempotent for webhook retries)
             const itemsNoShip = existingItems.filter(li => li.skuId !== '__shipping__');
 
-            const shippingLine = shipCost > 0 ? {
+            // MULTI-PARCEL: one invoice can ship in several boxes at different
+            // times = separate webhook events. Costs live in a map keyed by
+            // tracking number: a redelivered event REPLACES its own parcels,
+            // a later parcel ADDS. Total = sum(map); tracking = all keys.
+            // (Old behavior replaced the whole line per event — the second
+            // parcel's cost overwrote the first and its tracking vanished.)
+            const shipMap = { ...(inv.shipmentsByTracking || {}) };
+            for (const [_tk, _c] of Object.entries(info.perTracking)) shipMap[_tk] = Math.round(_c * 100) / 100;
+            const totalShip = Math.round(Object.values(shipMap).reduce((s2, v) => s2 + (parseFloat(v) || 0), 0) * 100) / 100;
+            const allTracking = Object.keys(shipMap).join(', ');
+
+            const shippingLine = totalShip > 0 ? {
               skuId: '__shipping__',
               skuName: 'Shipping',
               sku: 'Shipping',
               description: carrierStr ? ('Shipping via ' + carrierStr) : 'Shipping',
               cases: 1, qty: 1, units: 1,
-              pricePerCase: shipCost,
-              unitPrice: shipCost,
-              lineTotal: shipCost,
-              total: shipCost,
+              pricePerCase: totalShip,
+              unitPrice: totalShip,
+              lineTotal: totalShip,
+              total: totalShip,
             } : null;
 
             const updatedItems = shippingLine ? [...itemsNoShip, shippingLine] : itemsNoShip;
@@ -1835,11 +1853,14 @@ exports.shipStationWebhook = onRequest(
             // replace-line semantics unchanged.
             const isCombinedFamily = col === 'combined_invoices' || !!inv.combinedInvoiceId;
             const update = {
-              trackingNumber: trackingStr,
+              trackingNumber: isCombinedFamily ? trackingStr : allTracking,
               carrier: carrierStr,
               deliveryMethod: 'ship',
             };
-            if (!isCombinedFamily) update.lineItems = updatedItems;
+            if (!isCombinedFamily) {
+              update.lineItems = updatedItems;
+              update.shipmentsByTracking = shipMap;
+            }
             // readyToSend is a "draft is ready — go send it" nudge. If the
             // invoice was already sent/paid (owner sent first, label came
             // after), setting it would pulse a stale badge nothing clears.
@@ -1927,8 +1948,17 @@ exports.shipStationWebhook = onRequest(
                       child.data = { ...child.data, lineItems: prod, total: prodTotal, amount: prodTotal };
                     }
                   }
-                  // This event's charge replaces its own key.
-                  if (shipCost > 0 && orderNumber) map[String(orderNumber)] = r2(shipCost);
+                  // MULTI-PARCEL: one key per parcel ('ON#TRACKING') — a
+                  // redelivered parcel replaces itself, a later parcel SUMS.
+                  // Deleting the legacy plain-orderNumber key IS the old
+                  // replace-per-event semantics during the transition; from
+                  // here on parcels accumulate under their own keys.
+                  if (orderNumber) {
+                    delete map[String(orderNumber)];
+                    for (const [_tk, _c] of Object.entries(info.perTracking)) {
+                      if (_c > 0) map[String(orderNumber) + '#' + _tk] = r2(_c);
+                    }
+                  }
                   // The event key supersedes any migrated key an EARLIER event
                   // created for this same child (same charge, two keys —
                   // otherwise a plain redelivery against a legacy family
