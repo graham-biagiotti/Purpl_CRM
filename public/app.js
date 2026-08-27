@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v209';
+const APP_VERSION = 'v210';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -295,7 +295,7 @@ function nav(page) {
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
     'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails',
-    sampling:'Sampling'
+    sampling:'Sampling', 'purchase-orders':'Purchase Orders'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) {
@@ -333,6 +333,7 @@ const renders = {
   invoices:         () => { renderInvoicesPage(); loadInvoiceSettings(); },
   emails:           renderEmailsPage,
   sampling:         renderSampling,
+  'purchase-orders': renderPurchaseOrders,
 };
 
 // ── Audit Log ────────────────────────────────────────────
@@ -19075,4 +19076,445 @@ async function samplingComplete(id) {
     console.error(e);
     toast('Could not mark completed', 5000);
   }
+}
+
+// ═══════════════════ PURCHASE ORDERS ═══════════════════
+// Supplier POs (sugar, cans, labels…). Fully standalone: documents live in
+// the top-level `purchase_orders` collection and are read/written directly
+// with the Firestore SDK — deliberately OUTSIDE the db.js cache layer, so
+// nothing here can touch accounts, invoices, inventory, or their counters.
+// PO numbering has its own counter in purchase_orders/_meta.
+
+let _poDocs = [];
+let _poEditing = null; // null = list only; object = editor open (no id = new)
+
+async function _poFetch() {
+  try {
+    const snap = await firebase.firestore().collection('purchase_orders').get();
+    _poDocs = snap.docs.filter(d => d.id !== '_meta')
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+  } catch (e) {
+    console.error('PO fetch failed', e);
+    _poDocs = [];
+  }
+}
+
+function _poMoney(v) {
+  const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+// Counter with the same self-healing rule the invoice allocator learned the
+// hard way: never hand out a number at or below the highest one already in
+// the list, even if the counter doc got clobbered.
+function _poMaxExistingNum() {
+  return _poDocs.reduce((m, p) => {
+    const n = parseInt(String(p.number || '').replace(/\D/g, ''), 10);
+    return isFinite(n) && n > m ? n : m;
+  }, 1000);
+}
+
+async function _poNextNumber() {
+  const ref = firebase.firestore().collection('purchase_orders').doc('_meta');
+  const floor = _poMaxExistingNum() + 1;
+  return firebase.firestore().runTransaction(async tx => {
+    const d = await tx.get(ref);
+    const stored = d.exists ? parseInt(d.data().nextPoNum, 10) : NaN;
+    const assign = Math.max(isFinite(stored) ? stored : 1001, floor);
+    tx.set(ref, { nextPoNum: assign + 1 }, { merge: true });
+    return 'PO-' + assign;
+  });
+}
+
+async function renderPurchaseOrders() {
+  const el = qs('#po-content');
+  if (!el) return;
+  _poEditing = null; // fresh page entry always shows the list
+  el.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:13px">Loading purchase orders…</div>';
+  await _poFetch();
+  _poRender();
+}
+
+function _poRender() {
+  const el = qs('#po-content');
+  if (!el) return;
+  el.innerHTML = `
+    ${_poEditing ? _poEditorHTML(_poEditing) : `
+    <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;color:var(--muted)">POs you send to suppliers (sugar, cans, labels…). Standalone — separate numbering, no effect on invoices or inventory.</div>
+      <button class="btn sm primary" onclick="poNew()">+ New PO</button>
+    </div>`}
+    <div id="po-list">${_poListHTML()}</div>
+  `;
+  if (_poEditing) _poRecalc();
+}
+
+function _poListHTML() {
+  if (!_poDocs.length) return '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">No purchase orders yet.</div>';
+  const badge = st => st === 'sent'
+    ? '<span class="badge blue" style="font-size:11px">sent</span>'
+    : '<span class="badge gray" style="font-size:11px">draft</span>';
+  return `<div class="card" style="padding:6px 16px">` + _poDocs.map(p => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div style="min-width:180px">
+        <span style="font-weight:600">${escHtml(p.number || '—')}</span> ${badge(p.status)}
+        <div style="font-size:12px;color:var(--muted)">${escHtml(p.vendorName || '')} · ${escHtml(p.issueDate || '')}</div>
+      </div>
+      <div style="font-weight:600;white-space:nowrap">$${(_poMoney(p.total)).toFixed(2)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn xs" onclick="poOpenDoc('${p.id}')">🖨 PDF</button>
+        <button class="btn xs" onclick="poEdit('${p.id}')">Edit</button>
+        <button class="btn xs" onclick="poDuplicate('${p.id}')">Duplicate</button>
+        <button class="btn xs" onclick="poToggleSent('${p.id}')">${p.status === 'sent' ? 'Back to draft' : 'Mark sent'}</button>
+        <button class="btn xs" onclick="poDelete('${p.id}')" style="color:#dc2626">Delete</button>
+      </div>
+    </div>`).join('') + `</div>`;
+}
+
+function _poLineRowHTML(l) {
+  l = l || {};
+  return `<tr class="po-line">
+    <td><input class="po-l-desc" value="${escHtml(l.desc || '')}" placeholder="Granulated cane sugar" style="width:100%;padding:6px;font-size:13px"></td>
+    <td><input class="po-l-item" value="${escHtml(l.itemNo || '')}" placeholder="Item #" style="width:90px;padding:6px;font-size:13px"></td>
+    <td><input class="po-l-qty" value="${escHtml(String(l.qty != null ? l.qty : ''))}" oninput="_poRecalc()" placeholder="Qty" style="width:64px;padding:6px;font-size:13px;text-align:right"></td>
+    <td><input class="po-l-unit" value="${escHtml(l.unit || '')}" placeholder="50-lb bags" style="width:90px;padding:6px;font-size:13px"></td>
+    <td><input class="po-l-price" value="${escHtml(String(l.unitPrice != null ? l.unitPrice : ''))}" oninput="_poRecalc()" placeholder="$/unit" style="width:80px;padding:6px;font-size:13px;text-align:right"></td>
+    <td class="po-l-total" style="text-align:right;font-size:13px;font-weight:600;white-space:nowrap;padding:0 6px">$0.00</td>
+    <td><button class="btn xs" onclick="this.closest('tr').remove();_poRecalc()" title="Remove line">✕</button></td>
+  </tr>`;
+}
+
+function _poEditorHTML(po) {
+  const s = DB.obj('invoice_settings', {});
+  const last = _poDocs[0] || {};
+  const v = (field, fallback) => po[field] != null ? po[field] : (po.id ? '' : (fallback != null ? fallback : ''));
+  const lines = (po.lines && po.lines.length) ? po.lines : [{}, {}];
+  const vendors = {};
+  _poDocs.forEach(p => { const k = (p.vendorName || '').trim(); if (k && !vendors[k]) vendors[k] = p; });
+  const fg = (label, id, val, ph, type) => `<div class="form-group" style="margin:0"><label style="font-size:11px">${label}</label><input id="${id}" type="${type || 'text'}" value="${escHtml(String(val || ''))}" placeholder="${escHtml(ph || '')}"></div>`;
+  return `
+  <div class="card" style="padding:16px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-weight:600;font-size:14px">${po.id ? 'Edit ' + escHtml(po.number || '') : 'New Purchase Order'}</div>
+      <div style="font-size:12px;color:var(--muted)">${po.id ? '' : 'PO number is assigned when you save'}</div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Vendor</div>
+    <datalist id="po-vendor-list">${Object.keys(vendors).map(n => `<option value="${escHtml(n)}">`).join('')}</datalist>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Vendor / company *</label><input id="po-f-vendor" list="po-vendor-list" value="${escHtml(v('vendorName') || '')}" placeholder="Domino Foods" onchange="_poVendorPrefill()"></div>
+      ${fg('Contact person', 'po-f-vcontact', v('vendorContact'), 'Sales rep')}
+      ${fg('Email', 'po-f-vemail', v('vendorEmail'), 'orders@vendor.com')}
+      ${fg('Phone', 'po-f-vphone', v('vendorPhone'), '')}
+      ${fg('Address', 'po-f-vaddr', v('vendorAddress'), 'Street, City, ST Zip')}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Ship to</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px">
+      ${fg('Ship-to name', 'po-f-shipname', v('shipToName', last.shipToName || (s.fromName || 'Pumpkin Blossom Farm LLC')), '')}
+      ${fg('Ship-to address', 'po-f-shipaddr', v('shipToAddress', last.shipToAddress || (s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278')), '')}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Order details</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+      ${fg('Issue date', 'po-f-issue', v('issueDate', today()), '', 'date')}
+      ${fg('Needed by', 'po-f-needed', v('neededBy'), '', 'date')}
+      ${fg('Payment terms', 'po-f-terms', v('terms', last.terms || 'Net 30'), 'Net 30')}
+      ${fg('Ship via / FOB', 'po-f-shipvia', v('shipVia'), 'Best way')}
+    </div>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px">
+      <thead><tr style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left">
+        <th style="padding:4px">Description</th><th style="padding:4px">Item #</th><th style="padding:4px">Qty</th><th style="padding:4px">Unit</th><th style="padding:4px">Unit price</th><th style="padding:4px;text-align:right">Total</th><th></th>
+      </tr></thead>
+      <tbody id="po-lines-body">${lines.map(_poLineRowHTML).join('')}</tbody>
+    </table>
+    <button class="btn xs" onclick="qs('#po-lines-body').insertAdjacentHTML('beforeend', _poLineRowHTML());_poRecalc()">+ Add line</button>
+
+    <div style="display:flex;justify-content:flex-end;gap:18px;align-items:center;margin:14px 0;flex-wrap:wrap">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Freight / shipping ($)</label><input id="po-f-freight" value="${escHtml(String(v('freight') || ''))}" oninput="_poRecalc()" placeholder="0.00" style="width:100px;text-align:right"></div>
+      <div style="font-size:15px;font-weight:700">Total: <span id="po-f-total">$0.00</span></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px">
+      <div class="form-group" style="margin:0"><label style="font-size:11px">Notes / special instructions</label><textarea id="po-f-notes" rows="2" style="font-size:13px">${escHtml(v('notes') || '')}</textarea></div>
+      ${fg('Authorized by', 'po-f-auth', v('authorizedBy', last.authorizedBy || ''), 'Your name')}
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn sm primary" onclick="savePurchaseOrder()">${po.id ? 'Save changes' : 'Save PO'}</button>
+      <button class="btn sm" onclick="_poEditing=null;_poRender()">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function _poVendorPrefill() {
+  const name = (qs('#po-f-vendor')?.value || '').trim().toLowerCase();
+  if (!name) return;
+  const past = _poDocs.find(p => (p.vendorName || '').trim().toLowerCase() === name);
+  if (!past) return;
+  [['po-f-vcontact', 'vendorContact'], ['po-f-vemail', 'vendorEmail'], ['po-f-vphone', 'vendorPhone'], ['po-f-vaddr', 'vendorAddress']].forEach(([id, f]) => {
+    const el = qs('#' + id);
+    if (el && !el.value.trim() && past[f]) el.value = past[f];
+  });
+}
+
+function _poReadLines() {
+  return [...document.querySelectorAll('#po-lines-body tr.po-line')].map(tr => {
+    const g = c => tr.querySelector('.' + c)?.value?.trim() || '';
+    const qty = _poMoney(g('po-l-qty')), unitPrice = _poMoney(g('po-l-price'));
+    return {
+      desc: g('po-l-desc'), itemNo: g('po-l-item'), unit: g('po-l-unit'),
+      qty, unitPrice, total: Math.round(qty * unitPrice * 100) / 100,
+    };
+  }).filter(l => l.desc || l.itemNo || l.qty || l.unitPrice);
+}
+
+function _poRecalc() {
+  let sub = 0;
+  document.querySelectorAll('#po-lines-body tr.po-line').forEach(tr => {
+    const qty = _poMoney(tr.querySelector('.po-l-qty')?.value);
+    const price = _poMoney(tr.querySelector('.po-l-price')?.value);
+    const t = Math.round(qty * price * 100) / 100;
+    sub += t;
+    const cell = tr.querySelector('.po-l-total');
+    if (cell) cell.textContent = '$' + t.toFixed(2);
+  });
+  const freight = _poMoney(qs('#po-f-freight')?.value);
+  const totalEl = qs('#po-f-total');
+  if (totalEl) totalEl.textContent = '$' + (Math.round((sub + freight) * 100) / 100).toFixed(2);
+}
+
+function poNew() { _poEditing = {}; _poRender(); }
+
+function poEdit(id) {
+  const p = _poDocs.find(x => x.id === id);
+  if (!p) return;
+  _poEditing = { ...p };
+  _poRender();
+}
+
+function poDuplicate(id) {
+  const p = _poDocs.find(x => x.id === id);
+  if (!p) return;
+  const copy = { ...p };
+  delete copy.id; delete copy.number; delete copy.createdAt; delete copy.sentAt;
+  copy.status = 'draft';
+  copy.issueDate = today();
+  _poEditing = copy;
+  _poRender();
+}
+
+async function savePurchaseOrder() {
+  const g = id => qs('#' + id)?.value?.trim() || '';
+  const vendorName = g('po-f-vendor');
+  if (!vendorName) { toast('Vendor name is required', 4000); return; }
+  const lines = _poReadLines();
+  if (!lines.length) { toast('Add at least one line item', 4000); return; }
+  const subtotal = Math.round(lines.reduce((s2, l) => s2 + l.total, 0) * 100) / 100;
+  const freight = _poMoney(g('po-f-freight'));
+  const data = {
+    vendorName,
+    vendorContact: g('po-f-vcontact'), vendorEmail: g('po-f-vemail'),
+    vendorPhone: g('po-f-vphone'), vendorAddress: g('po-f-vaddr'),
+    shipToName: g('po-f-shipname'), shipToAddress: g('po-f-shipaddr'),
+    issueDate: g('po-f-issue') || today(), neededBy: g('po-f-needed'),
+    terms: g('po-f-terms'), shipVia: g('po-f-shipvia'),
+    notes: g('po-f-notes'), authorizedBy: g('po-f-auth'),
+    lines, subtotal, freight,
+    total: Math.round((subtotal + freight) * 100) / 100,
+    updatedAt: new Date().toISOString(),
+  };
+  const btns = document.querySelectorAll('#po-content .btn');
+  btns.forEach(b => b.disabled = true);
+  try {
+    const editing = _poEditing || {};
+    if (editing.id) {
+      await firebase.firestore().collection('purchase_orders').doc(editing.id)
+        .set({ ...editing, ...data }, { merge: true });
+      toast('PO updated ✓');
+    } else {
+      const number = await _poNextNumber();
+      const id = uid();
+      await firebase.firestore().collection('purchase_orders').doc(id).set({
+        ...data, id, number, status: 'draft', createdAt: new Date().toISOString(),
+      });
+      toast(number + ' saved ✓');
+    }
+    _poEditing = null;
+    await _poFetch();
+    _poRender();
+  } catch (e) {
+    console.error(e);
+    toast('Save failed' + (e?.message ? ': ' + e.message : ''), 6000);
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+async function poToggleSent(id) {
+  const p = _poDocs.find(x => x.id === id);
+  if (!p) return;
+  const toSent = p.status !== 'sent';
+  try {
+    await firebase.firestore().collection('purchase_orders').doc(id).update(
+      toSent ? { status: 'sent', sentAt: new Date().toISOString() } : { status: 'draft' }
+    );
+    p.status = toSent ? 'sent' : 'draft';
+    _poRender();
+  } catch (e) { toast('Update failed', 4000); }
+}
+
+async function poDelete(id) {
+  const p = _poDocs.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm('Delete ' + (p.number || 'this PO') + '? This cannot be undone.')) return;
+  try {
+    await firebase.firestore().collection('purchase_orders').doc(id).delete();
+    _poDocs = _poDocs.filter(x => x.id !== id);
+    _poRender();
+    toast('Deleted');
+  } catch (e) { toast('Delete failed', 4000); }
+}
+
+function poOpenDoc(id) {
+  const p = _poDocs.find(x => x.id === id);
+  if (!p) return;
+  const blob = new Blob([_poDocHTML(p)], { type: 'text/html' });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+// Same document language as the invoices (dual-logo header, one clean
+// printed page). "Print / Save as PDF" -> browser's Save as PDF gives the
+// downloadable file; the <title> becomes the default PDF filename.
+function _poDocHTML(p) {
+  const s = DB.obj('invoice_settings', {});
+  const fmtLong = d => { if (!d) return ''; try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); } catch (e) { return d; } };
+  const cell = 'padding:9px 0;font-size:13px;border-bottom:1px solid #e5e7eb;color:#1a1a2e';
+  const headTh = a => `text-align:${a};font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e`;
+  const detail = (lbl, val) => val ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">${lbl}: <strong>${escHtml(val)}</strong></div>` : '';
+  const rows = (p.lines || []).map(l => `<tr>
+    <td style="${cell}">${escHtml(l.desc || '')}</td>
+    <td style="${cell};white-space:nowrap">${escHtml(l.itemNo || '')}</td>
+    <td style="${cell};text-align:right;white-space:nowrap">${escHtml(String(l.qty || ''))}</td>
+    <td style="${cell};white-space:nowrap">${escHtml(l.unit || '')}</td>
+    <td style="${cell};text-align:right;white-space:nowrap">$${_poMoney(l.unitPrice).toFixed(2)}</td>
+    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap">$${_poMoney(l.total).toFixed(2)}</td>
+  </tr>`).join('');
+  const fromName = s.fromName || 'Pumpkin Blossom Farm LLC';
+  const fromAddr = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escHtml(p.number || 'PO')}${p.vendorName ? ' — ' + escHtml(p.vendorName) : ''}</title>
+<style>
+  @page { size: letter; margin: 0.4in; }
+  @media print {
+    body { background:#fff !important; padding:0 !important; }
+    .invoice-wrap { padding:0 !important; }
+    .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
+    .no-print { display:none !important; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:Inter,Arial,sans-serif;color:#1a1a2e">
+<div class="no-print" style="position:fixed;top:14px;right:14px;z-index:10"><button onclick="window.print()" style="background:#7B4FA0;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)">🖨️ Print / Save as PDF</button></div>
+<table class="invoice-wrap" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+<tr><td align="center">
+<table class="invoice-card" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px">
+
+  <tr><td style="padding:36px 48px 20px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:middle">
+        <table cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:middle;padding-right:18px">
+            <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="140" style="display:block;height:auto">
+          </td>
+          <td style="vertical-align:middle;padding:0 4px"><div style="width:1px;height:44px;background:#d1d5db"></div></td>
+          <td style="vertical-align:middle;padding-left:18px">
+            <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="52" height="52" style="display:block">
+          </td>
+        </tr></table>
+      </td>
+      <td align="right" style="vertical-align:middle">
+        <div style="font-size:22px;font-weight:700;color:#1a1a2e;letter-spacing:1px">PURCHASE ORDER</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(p.number || '')}</div>
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <tr><td style="padding:8px 48px 24px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:top;width:34%">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Vendor</div>
+        <div style="font-size:14px;font-weight:600;color:#1a1a2e">${escHtml(p.vendorName || '')}</div>
+        ${p.vendorContact ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(p.vendorContact)}</div>` : ''}
+        ${p.vendorAddress ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(p.vendorAddress)}</div>` : ''}
+        ${p.vendorEmail ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(p.vendorEmail)}</div>` : ''}
+        ${p.vendorPhone ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(p.vendorPhone)}</div>` : ''}
+      </td>
+      <td style="vertical-align:top;width:33%">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Ship To</div>
+        <div style="font-size:14px;font-weight:600;color:#1a1a2e">${escHtml(p.shipToName || fromName)}</div>
+        <div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(p.shipToAddress || fromAddr)}</div>
+      </td>
+      <td style="vertical-align:top;text-align:right">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Details</div>
+        ${detail('Issued', fmtLong(p.issueDate))}
+        ${detail('Needed by', fmtLong(p.neededBy))}
+        ${detail('Terms', p.terms)}
+        ${detail('Ship via', p.shipVia)}
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <tr><td style="padding:0 48px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px">
+      <thead><tr>
+        <th style="${headTh('left')}">Description</th>
+        <th style="${headTh('left')}">Item #</th>
+        <th style="${headTh('right')}">Qty</th>
+        <th style="${headTh('left')};padding-left:10px">Unit</th>
+        <th style="${headTh('right')}">Unit Price</th>
+        <th style="${headTh('right')}">Total</th>
+      </tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" style="font-size:13px;color:#9ca3af;padding:10px 0">No items</td></tr>`}</tbody>
+    </table>
+    ${_poMoney(p.freight) ? `<table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="font-size:13px;color:#1a1a2e;padding:4px 0">Freight / Shipping</td>
+      <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">$${_poMoney(p.freight).toFixed(2)}</td>
+    </tr></table>` : ''}
+  </td></tr>
+
+  <tr><td style="padding:8px 48px 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1a2e">
+      <tr>
+        <td style="padding-top:14px;font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">PO Total</td>
+        <td style="padding-top:14px;text-align:right;font-size:24px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${_poMoney(p.total).toFixed(2)}</td>
+      </tr>
+    </table>
+  </td></tr>
+
+  ${p.notes ? `<tr><td style="padding:0 48px 24px">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Notes</div>
+    <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(p.notes)}</div>
+  </td></tr>` : ''}
+
+  <tr><td style="padding:0 48px 28px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="width:55%;font-size:13px;color:#1a1a2e">
+        Authorized by: <strong>${escHtml(p.authorizedBy || '')}</strong>
+      </td>
+      <td style="text-align:right;font-size:12px;color:#6b7280">
+        <div style="border-bottom:1px solid #9ca3af;width:220px;display:inline-block;height:24px"></div><br>Signature / Date
+      </td>
+    </tr></table>
+  </td></tr>
+
+  <tr><td class="doc-footer" style="padding:18px 48px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#4b5563;line-height:1.8">
+    <strong style="color:#1a1a2e">${escHtml(fromName)}</strong> · ${escHtml(fromAddr.replace(/,\s*/g, ' · '))}<br>
+    <a href="mailto:lavender@pbfwholesale.com" style="color:#4b5563;text-decoration:none">lavender@pbfwholesale.com</a> · 603-748-3038 · Please reference ${escHtml(p.number || 'the PO number')} on all invoices and shipments.
+  </td></tr>
+
+</table></td></tr></table></body></html>`;
 }

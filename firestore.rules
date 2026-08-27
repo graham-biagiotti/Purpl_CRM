@@ -68,6 +68,12 @@ service cloud.firestore {
       allow create: if false;
     }
 
+    // Purchase orders (supplier POs, e.g. sugar): staff-only, standalone —
+    // no public access of any kind. Includes the _meta counter doc.
+    match /purchase_orders/{poId} {
+      allow read, write: if isStaff();
+    }
+
     // Portal: public can sign up for notifications
     match /portal_notify/{docId} {
       allow create: if true
