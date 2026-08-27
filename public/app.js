@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v210';
+const APP_VERSION = 'v211';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -19108,6 +19108,10 @@ function _poMoney(v) {
 // Counter with the same self-healing rule the invoice allocator learned the
 // hard way: never hand out a number at or below the highest one already in
 // the list, even if the counter doc got clobbered.
+function _poFmt(v) {
+  return '$' + _poMoney(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function _poMaxExistingNum() {
   return _poDocs.reduce((m, p) => {
     const n = parseInt(String(p.number || '').replace(/\D/g, ''), 10);
@@ -19161,7 +19165,7 @@ function _poListHTML() {
         <span style="font-weight:600">${escHtml(p.number || '—')}</span> ${badge(p.status)}
         <div style="font-size:12px;color:var(--muted)">${escHtml(p.vendorName || '')} · ${escHtml(p.issueDate || '')}</div>
       </div>
-      <div style="font-weight:600;white-space:nowrap">$${(_poMoney(p.total)).toFixed(2)}</div>
+      <div style="font-weight:600;white-space:nowrap">${_poFmt(p.total)}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn xs" onclick="poOpenDoc('${p.id}')">🖨 PDF</button>
         <button class="btn xs" onclick="poEdit('${p.id}')">Edit</button>
@@ -19394,12 +19398,12 @@ function _poDocHTML(p) {
   const headTh = a => `text-align:${a};font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600;padding:6px 0;border-bottom:1px solid #1a1a2e`;
   const detail = (lbl, val) => val ? `<div style="font-size:13px;color:#1a1a2e;margin-top:2px">${lbl}: <strong>${escHtml(val)}</strong></div>` : '';
   const rows = (p.lines || []).map(l => `<tr>
-    <td style="${cell}">${escHtml(l.desc || '')}</td>
-    <td style="${cell};white-space:nowrap">${escHtml(l.itemNo || '')}</td>
+    <td style="${cell};padding-right:14px">${escHtml(l.desc || '')}</td>
+    <td style="${cell};white-space:nowrap;padding-right:14px">${escHtml(l.itemNo || '')}</td>
     <td style="${cell};text-align:right;white-space:nowrap">${escHtml(String(l.qty || ''))}</td>
-    <td style="${cell};white-space:nowrap">${escHtml(l.unit || '')}</td>
-    <td style="${cell};text-align:right;white-space:nowrap">$${_poMoney(l.unitPrice).toFixed(2)}</td>
-    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap">$${_poMoney(l.total).toFixed(2)}</td>
+    <td style="${cell};white-space:nowrap;padding-left:16px">${escHtml(l.unit || '')}</td>
+    <td style="${cell};text-align:right;white-space:nowrap;padding-left:16px">${_poFmt(l.unitPrice)}</td>
+    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap;padding-left:16px">${_poFmt(l.total)}</td>
   </tr>`).join('');
   const fromName = s.fromName || 'Pumpkin Blossom Farm LLC';
   const fromAddr = s.fromAddress || '393 Pumpkin Hill Rd, Warner, NH 03278';
@@ -19414,6 +19418,15 @@ function _poDocHTML(p) {
     .invoice-card { border:none !important; max-width:100% !important; width:100% !important; }
     .no-print { display:none !important; }
     tr { page-break-inside: avoid; }
+    /* Fill the letter page: the outer one-column table becomes a flex
+       column and the spacer row soaks up the leftover height, so the
+       signature sits low and the footer lands at the page bottom instead
+       of the whole doc huddling in the top half. Inner tables unaffected. */
+    .invoice-card { display:block !important; }
+    .invoice-card > tbody { display:flex !important; flex-direction:column !important; min-height:10.1in; }
+    .invoice-card > tbody > tr { display:block !important; }
+    .invoice-card > tbody > tr > td { display:block !important; width:100% !important; box-sizing:border-box; }
+    tr.po-spacer { flex:1 1 auto; }
   }
 </style>
 </head>
@@ -19474,7 +19487,7 @@ function _poDocHTML(p) {
         <th style="${headTh('left')}">Description</th>
         <th style="${headTh('left')}">Item #</th>
         <th style="${headTh('right')}">Qty</th>
-        <th style="${headTh('left')};padding-left:10px">Unit</th>
+        <th style="${headTh('left')};padding-left:16px">Unit</th>
         <th style="${headTh('right')}">Unit Price</th>
         <th style="${headTh('right')}">Total</th>
       </tr></thead>
@@ -19482,7 +19495,7 @@ function _poDocHTML(p) {
     </table>
     ${_poMoney(p.freight) ? `<table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="font-size:13px;color:#1a1a2e;padding:4px 0">Freight / Shipping</td>
-      <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">$${_poMoney(p.freight).toFixed(2)}</td>
+      <td style="text-align:right;font-size:13px;font-weight:600;color:#1a1a2e;padding:4px 0">${_poFmt(p.freight)}</td>
     </tr></table>` : ''}
   </td></tr>
 
@@ -19490,7 +19503,7 @@ function _poDocHTML(p) {
     <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1a2e">
       <tr>
         <td style="padding-top:14px;font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">PO Total</td>
-        <td style="padding-top:14px;text-align:right;font-size:24px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${_poMoney(p.total).toFixed(2)}</td>
+        <td style="padding-top:14px;text-align:right;font-size:24px;font-weight:700;color:#1a1a2e;white-space:nowrap">${_poFmt(p.total)}</td>
       </tr>
     </table>
   </td></tr>
@@ -19500,13 +19513,17 @@ function _poDocHTML(p) {
     <div style="font-size:13px;color:#1a1a2e;padding:12px 14px;background:#f9fafb;border-radius:4px;border-left:3px solid #1a1a2e;white-space:pre-wrap">${escHtml(p.notes)}</div>
   </td></tr>` : ''}
 
-  <tr><td style="padding:0 48px 28px">
+  <tr class="po-spacer"><td style="padding:0"></td></tr>
+
+  <tr><td style="padding:8px 48px 30px">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td style="width:55%;font-size:13px;color:#1a1a2e">
-        Authorized by: <strong>${escHtml(p.authorizedBy || '')}</strong>
+      <td style="width:55%;vertical-align:bottom">
+        <div style="font-family:'Segoe Script','Brush Script MT','Snell Roundhand',cursive;font-size:26px;color:#1a1a2e;padding:0 6px 4px 2px;display:inline-block">${escHtml(p.authorizedBy || '')}</div>
+        <div style="border-top:1px solid #9ca3af;width:240px;padding-top:5px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600">Authorized Signature</div>
       </td>
-      <td style="text-align:right;font-size:12px;color:#6b7280">
-        <div style="border-bottom:1px solid #9ca3af;width:220px;display:inline-block;height:24px"></div><br>Signature / Date
+      <td style="text-align:right;vertical-align:bottom">
+        <div style="font-size:14px;color:#1a1a2e;padding:0 2px 6px;display:inline-block">${escHtml(fmtLong(p.issueDate))}</div>
+        <div style="border-top:1px solid #9ca3af;width:180px;margin-left:auto;padding-top:5px;font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;font-weight:600">Date</div>
       </td>
     </tr></table>
   </td></tr>
