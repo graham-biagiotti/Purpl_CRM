@@ -1083,7 +1083,12 @@ exports.fieldStoreList = onCall(async (request) => {
   const snap = await db.collection('workspace/main/ac').get();
   const stores = snap.docs.map((d) => {
     const a = d.data() || {};
-    if (a.status === 'inactive') return null;
+    // Allowlist, not blocklist: the rep sees only stores worth a visit.
+    // 'active' + 'pending' (approved, no order yet) are in; 'paused',
+    // 'inactive', and anything unrecognized are out. Missing status on
+    // old rows counts as active.
+    const st = a.status || 'active';
+    if (st !== 'active' && st !== 'pending') return null;
     const parts = a.addrParts || {};
     return {
       id: d.id,
