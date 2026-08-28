@@ -964,7 +964,9 @@ exports.inviteEmployee = onCall(
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     throw new HttpsError('invalid-argument', 'Valid email required');
   }
-  const assignRole = (role === 'admin') ? 'admin' : 'employee';
+  // 'field' = road sales rep: NOT staff in the rules — can only use /field
+  // (field_logs + the slim store list). Everything else stays server-denied.
+  const assignRole = (role === 'admin') ? 'admin' : (role === 'field' ? 'field' : 'employee');
 
   try {
     let userRecord;
@@ -1019,12 +1021,12 @@ exports.inviteEmployee = onCall(
   </td></tr>
   <tr><td style="padding:28px 32px;font-size:15px;color:#1a1a2e;line-height:1.7">
     <p>Hi ${escHtml(displayName || email.split('@')[0])},</p>
-    <p>You've been invited to join the <strong>purpl CRM</strong> team as ${assignRole === 'admin' ? 'an admin' : 'an employee'}.</p>
+    <p>You've been invited to join the <strong>purpl CRM</strong> team as ${assignRole === 'admin' ? 'an admin' : assignRole === 'field' ? 'a field sales rep' : 'an employee'}.</p>
     <p>Click the button below to set your password and sign in:</p>
     <div style="text-align:center;margin:24px 0">
       <a href="${link}" style="display:inline-block;background:#4D2A6F;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">Set Password &amp; Sign In</a>
     </div>
-    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="https://purpl-crm.web.app" style="color:#4D2A6F">purpl-crm.web.app</a> to sign in.</p>
+    <p style="font-size:13px;color:#6b7280">After setting your password, go to <a href="${assignRole === 'field' ? 'https://purpl-crm.web.app/field' : 'https://purpl-crm.web.app'}" style="color:#4D2A6F">${assignRole === 'field' ? 'purpl-crm.web.app/field' : 'purpl-crm.web.app'}</a> to sign in.</p>
   </td></tr>
   <tr><td style="background:#f9fafb;padding:14px 32px;text-align:center;font-size:11px;color:#6b7280">
     Pumpkin Blossom Farm LLC · Warner, NH
@@ -1042,6 +1044,34 @@ exports.inviteEmployee = onCall(
     console.error('inviteEmployee error:', err.message);
     throw new HttpsError('internal', 'Invite failed: ' + (err.message || 'unknown error'));
   }
+});
+
+// ── Field rep store list ─────────────────────────────────
+// Slim account list for the /field log page: names, towns, addresses ONLY.
+// A 'field' role has no Firestore read access to accounts (isStaff denies
+// it), so this callable is the only window — and it never includes sales
+// data, contacts, pricing, or revenue. Staff can call it too (harmless).
+exports.fieldStoreList = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const db = admin.firestore();
+  const userSnap = await db.collection('users').doc(request.auth.uid).get();
+  const role = userSnap.exists ? userSnap.data().role : null;
+  if (!['field', 'employee', 'admin'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Not authorized');
+  }
+  const snap = await db.collection('accounts').get();
+  const stores = snap.docs.map((d) => {
+    const a = d.data() || {};
+    if (a.status === 'inactive') return null;
+    const parts = a.addrParts || {};
+    return {
+      id: d.id,
+      name: String(a.name || '').slice(0, 200),
+      town: String(parts.city || '').slice(0, 100),
+      address: String(a.address || '').slice(0, 300),
+    };
+  }).filter(Boolean).sort((x, y) => x.name.localeCompare(y.name));
+  return { stores };
 });
 
 // ── 8a. Stripe Diagnostic ────────────────────────────────

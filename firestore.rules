@@ -16,6 +16,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'employee'];
     }
 
+    // Helper: road sales rep. Deliberately NOT staff — a field login can
+    // touch field_logs only; every other collection stays denied.
+    function isField() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'field';
+    }
+
     // Users collection: user can read own doc, admins can read/write all.
     // Create rule blocks role field — prevents self-elevation.
     match /users/{userId} {
@@ -72,6 +80,27 @@ service cloud.firestore {
     // no public access of any kind. Includes the _meta counter doc.
     match /purchase_orders/{poId} {
       allow read, write: if isStaff();
+    }
+
+    // Field log: road-rep visit entries. Field reps create logs stamped
+    // with their own uid and read/fix ONLY their own; staff read/update
+    // all (review stamps); delete stays admin-only. Never public.
+    match /field_logs/{logId} {
+      allow read: if isStaff() || (isField() && resource.data.uid == request.auth.uid);
+      allow create: if (isStaff() || isField())
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'createdAt', 'storeName'])
+        && request.resource.data.storeName is string
+        && request.resource.data.storeName.size() > 0
+        && request.resource.data.storeName.size() < 200
+        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
+        && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
+        && request.resource.data.size() < 40;
+      allow update: if isStaff()
+        || (isField() && resource.data.uid == request.auth.uid
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.size() < 40);
+      allow delete: if isAdmin();
     }
 
     // Portal: public can sign up for notifications

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>purpl Field Log</title>
+  <meta name="theme-color" content="#4D2A6F">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, -apple-system, 'Segoe UI', Arial, sans-serif; background: #f5f3f8; color: #1a1a2e; min-height: 100vh; }
+    .hdr { background: linear-gradient(135deg, #4D2A6F 0%, #7A5C9E 100%); color: #fff; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5; }
+    .hdr .ttl { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+    .hdr .sub { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; }
+    .hdr button { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 14px 14px 60px; }
+    .card { background: #fff; border: 1px solid #e5e0ec; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin: 12px 0 5px; }
+    input, textarea, select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #d6cfe2; border-radius: 8px; background: #fff; color: #1a1a2e; font-family: inherit; }
+    input:focus, textarea:focus { outline: 2px solid #7A5C9E; border-color: transparent; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { padding: 10px 14px; border: 1.5px solid #d6cfe2; border-radius: 20px; font-size: 14px; background: #fff; cursor: pointer; user-select: none; }
+    .chip.on { background: #4D2A6F; border-color: #4D2A6F; color: #fff; font-weight: 600; }
+    .btn { width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border: none; border-radius: 10px; background: #4D2A6F; color: #fff; cursor: pointer; margin-top: 14px; }
+    .btn:disabled { opacity: 0.5; }
+    .btn.ghost { background: #fff; color: #4D2A6F; border: 1.5px solid #4D2A6F; font-weight: 600; padding: 10px; font-size: 14px; margin-top: 8px; width: auto; }
+    .muted { font-size: 12px; color: #6b7280; }
+    .store-hit { padding: 11px 12px; border-bottom: 1px solid #f0edf5; cursor: pointer; font-size: 15px; }
+    .store-hit .muted { font-size: 12px; }
+    .store-picked { display: flex; justify-content: space-between; align-items: center; background: #efeaf4; border: 1px solid #d6cfe2; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; }
+    .store-picked button { background: none; border: none; color: #4D2A6F; font-size: 13px; cursor: pointer; text-decoration: underline; }
+    .xrow { display: flex; gap: 8px; margin-top: 8px; }
+    .xrow input { flex: 1; font-size: 14px; padding: 10px; }
+    .xrow button { background: #fff; border: 1px solid #d6cfe2; border-radius: 8px; padding: 0 12px; cursor: pointer; color: #9ca3af; }
+    .ent { border-bottom: 1px solid #f0edf5; padding: 11px 0; font-size: 14px; }
+    .ent:last-child { border-bottom: none; }
+    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #efeaf4; color: #4D2A6F; margin-right: 5px; }
+    .pill.sync { background: #fef3c7; color: #92400e; }
+    #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 12px 22px; border-radius: 10px; font-size: 14px; display: none; z-index: 50; max-width: 92vw; text-align: center; }
+    .center { max-width: 380px; margin: 10vh auto 0; padding: 0 16px; }
+    .logo-big { text-align: center; margin-bottom: 22px; }
+    .logo-big img { width: 130px; height: auto; }
+    #auth-msg { margin-top: 10px; font-size: 13px; color: #b91c1c; min-height: 18px; }
+    .offline-bar { display: none; background: #92400e; color: #fff; text-align: center; font-size: 12px; padding: 6px; }
+  </style>
+</head>
+<body>
+
+<div class="offline-bar" id="offline-bar">No signal — entries save on your phone and sync automatically.</div>
+
+<!-- ── Sign in ── -->
+<div id="v-auth" class="center" style="display:none">
+  <div class="logo-big"><img src="/images/purpl-logo-top-sprig.png" alt="purpl"></div>
+  <div class="card">
+    <div style="font-size:17px;font-weight:700;margin-bottom:2px">Field Log</div>
+    <div class="muted">Sign in with your purpl CRM login.</div>
+    <label>Email</label><input id="au-email" type="email" autocomplete="username" inputmode="email">
+    <label>Password</label><input id="au-pass" type="password" autocomplete="current-password">
+    <button class="btn" id="au-btn">Sign In</button>
+    <div style="text-align:center;margin-top:10px"><a href="#" id="au-forgot" class="muted">Forgot password?</a></div>
+    <div id="auth-msg"></div>
+  </div>
+</div>
+
+<div id="v-loading" class="center" style="display:none"><div class="card" style="text-align:center">Loading…</div></div>
+
+<!-- ── App ── -->
+<div id="v-app" style="display:none">
+  <div class="hdr">
+    <div><div class="ttl">purpl Field Log</div><div class="sub" id="hdr-who">Pumpkin Blossom Farm</div></div>
+    <button id="btn-signout">Sign out</button>
+  </div>
+  <div class="wrap">
+
+    <div class="card" id="form-card">
+      <div style="font-size:16px;font-weight:700">Log a stop</div>
+
+      <label>Store</label>
+      <div id="store-pick-wrap">
+        <input id="store-search" placeholder="Search stores…" autocomplete="off">
+        <div id="store-hits" style="max-height:220px;overflow-y:auto"></div>
+        <button class="btn ghost" id="btn-newplace">+ New place (not in the list)</button>
+      </div>
+      <div id="store-picked" style="display:none"></div>
+      <div id="newplace-wrap" style="display:none">
+        <input id="np-name" placeholder="Store / business name" style="margin-bottom:8px">
+        <input id="np-town" placeholder="Town, State">
+        <button class="btn ghost" id="btn-backtolist">← Back to store list</button>
+      </div>
+      <div id="store-last" class="muted" style="margin-top:8px"></div>
+
+      <label>What was it?</label>
+      <div class="chips" id="chips-type"></div>
+
+      <label>How did it go?</label>
+      <div class="chips" id="chips-outcome"></div>
+
+      <div id="fu-wrap" style="display:none">
+        <label>Follow up by</label>
+        <input id="f-followup" type="date">
+      </div>
+
+      <label>Who did you talk to? <span style="text-transform:none;font-weight:400">(fill what you got)</span></label>
+      <input id="f-cname" placeholder="Name" style="margin-bottom:8px">
+      <input id="f-crole" placeholder="Their role (buyer, manager…)" style="margin-bottom:8px">
+      <input id="f-cphone" placeholder="Phone" inputmode="tel" style="margin-bottom:8px">
+      <input id="f-cemail" placeholder="Email" inputmode="email">
+
+      <label>Notes</label>
+      <textarea id="f-notes" rows="4" placeholder="What happened, what they said, shelf situation…"></textarea>
+
+      <label>Extra details <span style="text-transform:none;font-weight:400">(anything else worth capturing)</span></label>
+      <div id="extras"></div>
+      <button class="btn ghost" id="btn-addextra">+ Add detail</button>
+      <div class="muted" style="margin-top:6px">Examples: Competitor price — $4.99 · Buyer's day off — Mondays · Shelf — cooler door 3</div>
+
+      <button class="btn" id="btn-submit">Log it</button>
+    </div>
+
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Your recent entries</div>
+      <div id="recent"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="/firebase-config.js"></script>
+<script>
+(function () {
+  'use strict';
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  // Offline queue: entries written with no signal persist in IndexedDB and
+  // sync when coverage returns. Failure (another tab open) is non-fatal.
+  db.enablePersistence({ synchronizeTabs: false }).catch(() => {});
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+  let toastTimer = null;
+  function toast(msg, ms) {
+    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, ms || 3000);
+  }
+
+  const TYPES = [['visit', 'Visit'], ['call', 'Call'], ['cold_stop', 'Cold stop']];
+  const OUTCOMES = [['order_interest', 'Wants to order'], ['interested', 'Interested'], ['follow_up', 'Follow up needed'], ['not_now', 'Not now'], ['dead', 'Not a fit']];
+  const OUTCOME_LABEL = Object.fromEntries(OUTCOMES);
+
+  let me = null, myName = '';
+  let stores = [];
+  let picked = null;      // {id, name, town} | null
+  let newPlace = false;
+  let selType = 'visit', selOutcome = '';
+  let myLogs = [];
+  let logsUnsub = null;
+
+  function show(view) {
+    ['v-auth', 'v-loading', 'v-app'].forEach((v) => { $(v).style.display = v === view ? '' : 'none'; });
+  }
+
+  // ── Auth ──
+  $('au-btn').onclick = async () => {
+    const email = $('au-email').value.trim(), pass = $('au-pass').value;
+    if (!email || !pass) { $('auth-msg').textContent = 'Enter your email and password.'; return; }
+    $('au-btn').disabled = true; $('auth-msg').textContent = '';
+    try { await auth.signInWithEmailAndPassword(email, pass); }
+    catch (e) { $('auth-msg').textContent = 'Sign-in failed — check email and password.'; }
+    $('au-btn').disabled = false;
+  };
+  $('au-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('au-btn').click(); });
+  $('au-forgot').onclick = async (e) => {
+    e.preventDefault();
+    const email = $('au-email').value.trim();
+    if (!email) { $('auth-msg').textContent = 'Type your email first, then tap Forgot password.'; return; }
+    try { await auth.sendPasswordResetEmail(email); $('auth-msg').textContent = 'Reset email sent — check your inbox.'; }
+    catch (_) { $('auth-msg').textContent = 'Could not send reset email.'; }
+  };
+  $('btn-signout').onclick = () => { if (confirm('Sign out?')) auth.signOut(); };
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) { if (logsUnsub) { logsUnsub(); logsUnsub = null; } show('v-auth'); return; }
+    show('v-loading');
+    let role = null;
+    try {
+      const snap = await db.collection('users').doc(user.uid).get();
+      role = snap.exists ? snap.data().role : null;
+    } catch (_) {}
+    if (!['field', 'employee', 'admin'].includes(role)) {
+      await auth.signOut();
+      show('v-auth');
+      $('auth-msg').textContent = 'This login is not authorized for the Field Log — contact Graham.';
+      return;
+    }
+    me = user;
+    myName = user.displayName || (user.email || '').split('@')[0];
+    $('hdr-who').textContent = myName;
+    show('v-app');
+    initForm();
+    loadStores();
+    listenMyLogs();
+  });
+
+  // ── Store list (callable; cached for offline mornings) ──
+  const STORE_CACHE_KEY = 'pcrm_field_stores';
+  async function loadStores() {
+    try {
+      const res = await firebase.functions().httpsCallable('fieldStoreList')({});
+      stores = (res.data && res.data.stores) || [];
+      try { localStorage.setItem(STORE_CACHE_KEY, JSON.stringify({ ts: Date.now(), stores })); } catch (_) {}
+    } catch (e) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(STORE_CACHE_KEY) || 'null');
+        stores = (cached && cached.stores) || [];
+      } catch (_) { stores = []; }
+      if (!stores.length) toast('Could not load the store list — you can still log with "New place".', 5000);
+    }
+    renderHits();
+  }
+
+  function renderHits() {
+    const q = ($('store-search').value || '').toLowerCase().trim();
+    const el = $('store-hits');
+    if (!q) { el.innerHTML = '<div class="muted" style="padding:8px 2px">Type to search your stores.</div>'; return; }
+    const hits = stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12);
+    el.innerHTML = hits.length
+      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong><div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
+      : '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>';
+    el.querySelectorAll('.store-hit').forEach((row) => {
+      row.onclick = () => pickStore(hits[+row.dataset.i]);
+    });
+  }
+  $('store-search').addEventListener('input', renderHits);
+
+  function pickStore(s) {
+    picked = s; newPlace = false;
+    $('store-pick-wrap').style.display = 'none';
+    $('newplace-wrap').style.display = 'none';
+    $('store-picked').style.display = '';
+    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
+    $('btn-unpick').onclick = unpickStore;
+    renderStoreLast();
+  }
+  function unpickStore() {
+    picked = null; newPlace = false;
+    $('store-picked').style.display = 'none';
+    $('newplace-wrap').style.display = 'none';
+    $('store-pick-wrap').style.display = '';
+    $('store-last').innerHTML = '';
+    renderHits();
+  }
+  $('btn-newplace').onclick = () => {
+    picked = null; newPlace = true;
+    $('store-pick-wrap').style.display = 'none';
+    $('newplace-wrap').style.display = '';
+    $('store-last').innerHTML = '';
+  };
+  $('btn-backtolist').onclick = unpickStore;
+
+  function renderStoreLast() {
+    const el = $('store-last');
+    if (!picked) { el.innerHTML = ''; return; }
+    const prior = myLogs.filter((l) => l.accountId === picked.id).slice(0, 2);
+    el.innerHTML = prior.length
+      ? 'Your last stop here: ' + prior.map((l) => `${esc((l.createdAt || '').slice(0, 10))} — ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}`).join(' · ')
+      : '';
+  }
+
+  // ── Chips / extras ──
+  function chipRow(elId, options, initial, onSel) {
+    const el = $(elId);
+    el.innerHTML = options.map(([v, l]) => `<div class="chip${v === initial ? ' on' : ''}" data-v="${v}">${l}</div>`).join('');
+    el.querySelectorAll('.chip').forEach((c) => {
+      c.onclick = () => {
+        el.querySelectorAll('.chip').forEach((x) => x.classList.remove('on'));
+        c.classList.add('on');
+        onSel(c.dataset.v);
+      };
+    });
+  }
+  function addExtraRow(label, value) {
+    const row = document.createElement('div');
+    row.className = 'xrow';
+    row.innerHTML = `<input class="x-label" placeholder="What (e.g. Competitor price)" value="${esc(label || '')}"><input class="x-value" placeholder="Detail" value="${esc(value || '')}"><button type="button">✕</button>`;
+    row.querySelector('button').onclick = () => row.remove();
+    $('extras').appendChild(row);
+  }
+  $('btn-addextra').onclick = () => addExtraRow();
+
+  function initForm() {
+    selType = 'visit'; selOutcome = '';
+    chipRow('chips-type', TYPES, 'visit', (v) => { selType = v; });
+    chipRow('chips-outcome', OUTCOMES, '', (v) => {
+      selOutcome = v;
+      $('fu-wrap').style.display = (v === 'follow_up' || v === 'order_interest') ? '' : 'none';
+    });
+    $('extras').innerHTML = '';
+  }
+
+  function clearForm() {
+    unpickStore();
+    $('store-search').value = '';
+    $('np-name').value = ''; $('np-town').value = '';
+    ['f-cname', 'f-crole', 'f-cphone', 'f-cemail', 'f-notes', 'f-followup'].forEach((id) => { $(id).value = ''; });
+    $('fu-wrap').style.display = 'none';
+    initForm();
+    renderHits();
+  }
+
+  // ── Submit ──
+  $('btn-submit').onclick = () => {
+    const npName = $('np-name').value.trim();
+    if (!picked && !(newPlace && npName)) { toast('Pick a store or add a New place first.'); return; }
+    if (!selOutcome) { toast('Tap how it went.'); return; }
+    const extras = [...document.querySelectorAll('#extras .xrow')].map((r) => ({
+      label: r.querySelector('.x-label').value.trim().slice(0, 120),
+      value: r.querySelector('.x-value').value.trim().slice(0, 500),
+    })).filter((x) => x.label || x.value).slice(0, 30);
+    const entry = {
+      uid: me.uid,
+      repName: myName.slice(0, 120),
+      repEmail: (me.email || '').slice(0, 200),
+      accountId: picked ? picked.id : null,
+      storeName: (picked ? picked.name : npName).slice(0, 199),
+      storeTown: (picked ? (picked.town || '') : $('np-town').value.trim()).slice(0, 120),
+      newPlace: !picked,
+      type: selType,
+      outcome: selOutcome,
+      followUpDate: $('f-followup').value || '',
+      contactName: $('f-cname').value.trim().slice(0, 150),
+      contactRole: $('f-crole').value.trim().slice(0, 150),
+      contactPhone: $('f-cphone').value.trim().slice(0, 60),
+      contactEmail: $('f-cemail').value.trim().slice(0, 200),
+      notes: $('f-notes').value.trim().slice(0, 7900),
+      extras,
+      createdAt: new Date().toISOString(),
+      reviewed: false,
+    };
+    const id = uid();
+    // Optimistic: clear immediately; persistence carries it if offline.
+    db.collection('field_logs').doc(id).set({ ...entry, id })
+      .then(() => toast('Logged ✓'))
+      .catch((e) => toast('⚠️ Log rejected: ' + (e.message || e.code) + ' — tell Graham.', 8000));
+    if (!navigator.onLine) toast('Saved on your phone — will sync when you have signal.', 5000);
+    clearForm();
+  };
+
+  // ── My recent entries (live; offline-queued ones show as "syncing") ──
+  function listenMyLogs() {
+    if (logsUnsub) logsUnsub();
+    logsUnsub = db.collection('field_logs').where('uid', '==', me.uid)
+      .onSnapshot({ includeMetadataChanges: true }, (snap) => {
+        myLogs = snap.docs.map((d) => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() }))
+          .sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+        renderRecent();
+        renderStoreLast();
+      }, () => {});
+  }
+  function renderRecent() {
+    const el = $('recent');
+    if (!myLogs.length) { el.innerHTML = '<div class="muted">Nothing logged yet.</div>'; return; }
+    el.innerHTML = myLogs.slice(0, 25).map((l) => `<div class="ent">
+      <strong>${esc(l.storeName || '')}</strong>${l.newPlace ? ' <span class="pill">new place</span>' : ''}${l._pending ? ' <span class="pill sync">syncing…</span>' : ''}
+      <div class="muted">${esc((l.createdAt || '').slice(0, 10))} · ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}${l.notes ? ' — ' + esc(l.notes.slice(0, 90)) : ''}</div>
+    </div>`).join('');
+  }
+
+  // ── Online/offline bar ──
+  function syncBar() { $('offline-bar').style.display = navigator.onLine ? 'none' : 'block'; }
+  window.addEventListener('online', syncBar);
+  window.addEventListener('offline', syncBar);
+  syncBar();
+})();
+</script>
+</body>
+</html>

@@ -150,6 +150,14 @@ async function bootApp() {
         window._userRole = 'employee';
       }
 
+      // Field reps never see the CRM shell — their whole world is the
+      // mobile log page. (Their DB.init above fails per-collection under
+      // the rules and is harmless; the redirect happens before render.)
+      if (window._userRole === 'field') {
+        window.location.replace('/field');
+        return;
+      }
+
       checkMigration();
 
       loadingScreen.style.display = 'none';

@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v211';
+const APP_VERSION = 'v212';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -295,7 +295,7 @@ function nav(page) {
     production:'Production', delivery:'Today\'s Run', projections:'Projections',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
     'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails',
-    sampling:'Sampling', 'purchase-orders':'Purchase Orders'
+    sampling:'Sampling', 'purchase-orders':'Purchase Orders', 'field-log':'Field Log'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) {
@@ -334,6 +334,7 @@ const renders = {
   emails:           renderEmailsPage,
   sampling:         renderSampling,
   'purchase-orders': renderPurchaseOrders,
+  'field-log':      renderFieldLog,
 };
 
 // ── Audit Log ────────────────────────────────────────────
@@ -5078,6 +5079,7 @@ function renderEmailsTabHistory(accounts) {
     'sampling_invite':      'Demo Day Invite',
     'sampling_requested':   'Demo Day Requested',
     'sampling_scheduled':   'Demo Day Confirmed',
+    'field_visit':          'Field Visit',
     'sampling_completed':   'Demo Day Completed',
   };
   const allEntries = [];
@@ -11932,21 +11934,29 @@ function renderTeamTab() {
         <tbody>${users.map(u => `<tr>
           <td>${escHtml(u.displayName||'—')}</td>
           <td>${escHtml(u.email||'—')}</td>
-          <td><span class="badge ${u.role==='admin'?'purple':'blue'}">${u.role||'employee'}</span></td>
+          <td><span class="badge ${u.role==='admin'?'purple':(u.role==='field'?'green':'blue')}">${u.role||'employee'}</span></td>
           <td>${u.createdAt?fmtD(u.createdAt.slice(0,10)):'—'}</td>
-          ${_isAdmin()?`<td>${u.uid !== window._currentUser?.uid ? `<button class="btn xs" onclick="toggleUserRole('${u.uid}','${u.role}')">${u.role==='admin'?'Make Employee':'Make Admin'}</button>`:''}</td>`:''}
+          ${_isAdmin()?`<td>${u.uid !== window._currentUser?.uid ? `<select onchange="setUserRole('${u.uid}', this.value, '${escHtml(u.role||'employee')}')" style="font-size:12px;padding:4px">
+            ${['admin','employee','field'].map(r=>`<option value="${r}"${(u.role||'employee')===r?' selected':''}>${r}</option>`).join('')}
+          </select>`:''}</td>`:''}
         </tr>`).join('')}</tbody>
       </table>` : '<div class="empty">No team members yet</div>';
   }).catch(() => { list.innerHTML = '<div class="empty">Could not load team members</div>'; });
 }
 
 function toggleUserRole(uid, currentRole) {
+  // Legacy two-role toggle — kept for any stale markup; new UI uses setUserRole.
+  setUserRole(uid, currentRole === 'admin' ? 'employee' : 'admin', currentRole);
+}
+
+function setUserRole(uid, newRole, currentRole) {
   if (!_requireAdmin('change user roles')) return;
-  const newRole = currentRole === 'admin' ? 'employee' : 'admin';
-  if (!confirm2(`Change this user to ${newRole}?`)) return;
+  if (!['admin', 'employee', 'field'].includes(newRole)) return;
+  if (newRole === currentRole) return;
+  if (!confirm2(`Change this user to ${newRole}?`)) { renderTeamTab(); return; }
   firebase.firestore().collection('users').doc(uid).update({ role: newRole })
     .then(() => { toast(`Role changed to ${newRole}`); renderTeamTab(); })
-    .catch(e => toast('Failed: ' + e.message));
+    .catch(e => { toast('Failed: ' + e.message); renderTeamTab(); });
   auditLog('update', 'user', uid, `Role changed to ${newRole}`);
 }
 
@@ -15436,6 +15446,7 @@ window.onAppReady = function() {
   // ── Real-time listener for portal orders ────────────────
   _listenPortalOrders();
   _listenSamplingRequests();
+  _listenFieldLogs();
 
   // Navigate to dashboard
   nav('dashboard');
@@ -19534,4 +19545,209 @@ function _poDocHTML(p) {
   </td></tr>
 
 </table></td></tr></table></body></html>`;
+}
+
+// ═══════════════════ FIELD LOG (road rep review) ═══════════════════
+// Entries arrive from field.html into the top-level `field_logs` collection
+// (written by 'field'-role logins that can touch nothing else). This module
+// is read/review only from the CRM side: applying an entry to an account
+// happens HERE, on a staff device, through the normal DB.update path — the
+// rep's device never writes shared CRM data.
+
+let _flLogs = [];
+let _flUnsub = null;
+
+const _FL_TYPE = { visit: 'Visit', call: 'Call', cold_stop: 'Cold stop' };
+const _FL_OUTCOME = {
+  order_interest: 'Wants to order', interested: 'Interested',
+  follow_up: 'Follow up needed', not_now: 'Not now', dead: 'Not a fit',
+};
+
+function _listenFieldLogs() {
+  if (_flUnsub) _flUnsub();
+  try {
+    _flUnsub = firebase.firestore().collection('field_logs')
+      .orderBy('createdAt', 'desc').limit(300)
+      .onSnapshot(snap => {
+        _flLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const n = _flLogs.filter(l => !l.reviewed).length;
+        const badge = qs('#nav-field-log-badge');
+        if (badge) {
+          if (n > 0) { badge.textContent = n; badge.style.display = 'inline'; }
+          else badge.style.display = 'none';
+        }
+        // Snapshots refresh only the list — never the toolbar, so the
+        // search box survives typing (same rule as the Sampling page).
+        if (currentPage === 'field-log') _renderFieldLogList();
+      }, err => console.warn('Field log listener error:', err));
+  } catch (e) { console.warn('Could not start field log listener:', e); }
+}
+
+function renderFieldLog() {
+  const el = qs('#fl-content');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <select id="fl-filter" onchange="_renderFieldLogList()" style="padding:8px;font-size:13px">
+        <option value="open">Needs review</option>
+        <option value="all">All entries</option>
+      </select>
+      <input id="fl-search" placeholder="Search store, rep, notes…" oninput="_renderFieldLogList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
+      <span style="font-size:12px;color:var(--muted)">Reps log from purpl-crm.web.app/field</span>
+    </div>
+    <div id="fl-list"></div>
+  `;
+  _renderFieldLogList();
+}
+
+function _renderFieldLogList() {
+  const el = qs('#fl-list');
+  if (!el) return;
+  const mode = qs('#fl-filter')?.value || 'open';
+  const q = (qs('#fl-search')?.value || '').toLowerCase().trim();
+  let list = _flLogs;
+  if (mode === 'open') list = list.filter(l => !l.reviewed);
+  if (q) list = list.filter(l =>
+    ((l.storeName || '') + ' ' + (l.repName || '') + ' ' + (l.notes || '') + ' ' + (l.contactName || '')).toLowerCase().includes(q));
+  if (!list.length) {
+    el.innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">${mode === 'open' ? 'Nothing waiting for review.' : 'No entries.'}</div>`;
+    return;
+  }
+  el.innerHTML = list.map(_flCard).join('');
+}
+
+function _flCard(l) {
+  const a = l.accountId ? DB.a('ac').find(x => x.id === l.accountId) : null;
+  const when = l.createdAt ? new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
+  const chip = (txt, extra) => `<span class="badge ${extra || 'gray'}" style="font-size:11px">${escHtml(txt)}</span>`;
+  const outcomeCls = { order_interest: 'green', interested: 'blue', follow_up: 'orange', not_now: 'gray', dead: 'red' }[l.outcome] || 'gray';
+  const btns = [];
+  if (a) {
+    btns.push(l.historyAppliedAt
+      ? `<button class="btn xs" disabled>✓ In history</button>`
+      : `<button class="btn xs primary" onclick="flAddHistory('${l.id}')">Add to account history</button>`);
+    if (hasContact) btns.push(l.contactSavedAt
+      ? `<button class="btn xs" disabled>✓ Contact saved</button>`
+      : `<button class="btn xs" onclick="flSaveContact('${l.id}')">Save contact</button>`);
+    btns.push(`<button class="btn xs" onclick="openAccount('${l.accountId}')">Open account</button>`);
+  } else if (l.newPlace) {
+    btns.push(l.prospectId
+      ? `<button class="btn xs" disabled>✓ Prospect created</button>`
+      : `<button class="btn xs primary" onclick="flCreateProspect('${l.id}')">Create prospect</button>`);
+  }
+  if (!l.reviewed) btns.push(`<button class="btn xs" onclick="flMarkReviewed('${l.id}')">Mark reviewed</button>`);
+  if (_isAdmin()) btns.push(`<button class="btn xs" onclick="flDelete('${l.id}')" style="color:#dc2626">Delete</button>`);
+  return `<div class="card" style="padding:14px 16px;margin-bottom:10px;${l.reviewed ? 'opacity:0.75' : ''}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <div>
+        <span style="font-weight:600;font-size:14px">${escHtml(l.storeName || '—')}</span>
+        ${l.newPlace ? chip('NEW PLACE', 'purple') : ''}
+        ${l.storeTown ? `<span style="font-size:12px;color:var(--muted)"> · ${escHtml(l.storeTown)}</span>` : ''}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${escHtml(l.repName || '')} · ${escHtml(when)}${l.reviewed ? ' · reviewed' : ''}</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        ${chip(_FL_TYPE[l.type] || l.type || '—')}
+        ${chip(_FL_OUTCOME[l.outcome] || l.outcome || '—', outcomeCls)}
+        ${l.followUpDate ? chip('Follow up ' + fmtD(l.followUpDate), 'orange') : ''}
+      </div>
+    </div>
+    ${hasContact ? `<div style="font-size:12.5px;margin-top:8px;padding:8px 10px;background:var(--bg-alt,#f9fafb);border-radius:6px">
+      👤 ${[l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).map(escHtml).join(' · ')}
+    </div>` : ''}
+    ${l.notes ? `<div style="font-size:13px;margin-top:8px;white-space:pre-wrap">${escHtml(l.notes)}</div>` : ''}
+    ${(l.extras || []).length ? `<div style="font-size:12.5px;margin-top:8px;color:var(--muted)">
+      ${l.extras.map(x => `<div>• ${escHtml(x.label || '')}${x.label && x.value ? ': ' : ''}${escHtml(x.value || '')}</div>`).join('')}
+    </div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${btns.join('')}</div>
+  </div>`;
+}
+
+function _flExtrasText(l) {
+  return (l.extras || []).map(x => [x.label, x.value].filter(Boolean).join(': ')).filter(Boolean).join('\n');
+}
+
+function flAddHistory(id) {
+  const l = _flLogs.find(x => x.id === id);
+  if (!l || !l.accountId || l.historyAppliedAt) return;
+  const a = DB.a('ac').find(x => x.id === l.accountId);
+  if (!a) { toast('Account not found — it may have been deleted', 5000); return; }
+  const d = (l.createdAt || '').slice(0, 10) || today();
+  const subj = [(_FL_TYPE[l.type] || 'Visit') + ' by ' + (l.repName || 'field rep'),
+    _FL_OUTCOME[l.outcome] || l.outcome, (l.notes || '').slice(0, 200)].filter(Boolean).join(' — ');
+  // 'field_visit' is real human contact — unlike sampling bookkeeping it is
+  // NOT in _TRANSACTIONAL_STAGES, so it moves Last Contacted (by design).
+  const entry = { id: uid(), stage: 'field_visit', sentAt: l.createdAt || new Date().toISOString(), sentBy: l.repName || 'field rep', method: 'field_log', subject: subj };
+  DB.update('ac', l.accountId, x => ({
+    ...x,
+    lastContacted: (x.lastContacted || '') > d ? x.lastContacted : d,
+    cadence: _pushCadence(x.cadence, entry),
+  }));
+  firebase.firestore().collection('field_logs').doc(id).update({ historyAppliedAt: new Date().toISOString() }).catch(() => {});
+  toast('Added to account history ✓');
+}
+
+function flSaveContact(id) {
+  const l = _flLogs.find(x => x.id === id);
+  if (!l || !l.accountId || l.contactSavedAt) return;
+  const a = DB.a('ac').find(x => x.id === l.accountId);
+  if (!a) { toast('Account not found', 5000); return; }
+  if (!(l.contactName || l.contactEmail || l.contactPhone)) { toast('No contact info on this entry'); return; }
+  DB.update('ac', l.accountId, x => {
+    const contacts = [...(x.contacts || [])];
+    const keyOf = c => ((c.email || '').toLowerCase().trim() || (c.name || '').toLowerCase().trim());
+    const newKey = ((l.contactEmail || '').toLowerCase().trim() || (l.contactName || '').toLowerCase().trim());
+    const existing = newKey ? contacts.find(c => keyOf(c) === newKey) : null;
+    if (existing) {
+      // Fill blanks only — never overwrite what's already on the account.
+      if (!existing.role && l.contactRole) existing.role = l.contactRole;
+      if (!existing.phone && l.contactPhone) existing.phone = l.contactPhone;
+      if (!existing.email && l.contactEmail) existing.email = l.contactEmail;
+      if (!existing.name && l.contactName) existing.name = l.contactName;
+    } else {
+      contacts.push({ name: l.contactName || '', role: l.contactRole || '', phone: l.contactPhone || '', email: l.contactEmail || '', isPrimary: contacts.length === 0 });
+    }
+    return { ...x, contacts };
+  });
+  firebase.firestore().collection('field_logs').doc(id).update({ contactSavedAt: new Date().toISOString() }).catch(() => {});
+  toast('Contact saved to account ✓');
+}
+
+function flCreateProspect(id) {
+  const l = _flLogs.find(x => x.id === id);
+  if (!l || !l.newPlace || l.prospectId) return;
+  const d = (l.createdAt || '').slice(0, 10) || today();
+  const noteText = [l.notes, _flExtrasText(l)].filter(Boolean).join('\n');
+  const p = {
+    id: uid(),
+    name: l.storeName || 'Unnamed store',
+    contact: l.contactName || '',
+    phone: l.contactPhone || '',
+    email: l.contactEmail || '',
+    type: '', status: 'contacted',
+    territory: '', source: 'Field visit — ' + (l.repName || 'rep'),
+    notes: noteText ? [{ id: uid(), date: d, text: noteText, author: l.repName || 'field rep' }] : [],
+    lastContacted: d,
+    nextAction: l.followUpDate ? 'Follow up (' + (_FL_OUTCOME[l.outcome] || '') + ')' : '',
+    nextDate: l.followUpDate || '',
+  };
+  if (l.storeTown) p.notes.unshift({ id: uid(), date: d, text: 'Location: ' + l.storeTown, author: l.repName || 'field rep' });
+  DB.push('pr', p);
+  firebase.firestore().collection('field_logs').doc(id).update({ prospectId: p.id }).catch(() => {});
+  toast('Prospect created ✓');
+}
+
+function flMarkReviewed(id) {
+  firebase.firestore().collection('field_logs').doc(id).update({
+    reviewed: true, reviewedAt: new Date().toISOString(), reviewedBy: _currentUserName(),
+  }).then(() => toast('Reviewed ✓'))
+    .catch(e => toast('Failed: ' + (e.message || ''), 4000));
+}
+
+function flDelete(id) {
+  const l = _flLogs.find(x => x.id === id);
+  if (!confirm('Delete this field log entry' + (l ? ' for ' + (l.storeName || '') : '') + '? This cannot be undone.')) return;
+  firebase.firestore().collection('field_logs').doc(id).delete()
+    .then(() => toast('Deleted'))
+    .catch(e => toast('Delete failed: ' + (e.message || ''), 4000));
 }
