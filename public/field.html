@@ -466,13 +466,16 @@
   }
 
   // ── My notepad (one private doc per rep, auto-saved) ──
-  let padTimer = null, padLoaded = false;
+  let padTimer = null, padDirty = false;
   function initPad() {
     db.collection('field_notes').doc(me.uid).get().then((snap) => {
-      if (snap.exists && !padLoaded) $('pad').value = snap.data().text || '';
-      padLoaded = true;
-    }).catch(() => { padLoaded = true; });
+      // Never clobber keystrokes typed before this (possibly slow, mobile)
+      // read resolves — verifier NB-1: the loaded value only fills a pad
+      // the rep hasn't touched.
+      if (snap.exists && !padDirty && !$('pad').value) $('pad').value = snap.data().text || '';
+    }).catch(() => {});
     $('pad').addEventListener('input', () => {
+      padDirty = true;
       $('pad-status').textContent = 'Saving…';
       clearTimeout(padTimer);
       padTimer = setTimeout(() => {

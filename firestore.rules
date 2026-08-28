@@ -104,7 +104,10 @@ service cloud.firestore {
       allow update: if isStaff()
         || (isField() && resource.data.uid == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['followUpDone', 'followUpDoneAt']));
+                 .hasOnly(['followUpDone', 'followUpDoneAt'])
+            && request.resource.data.followUpDone is bool
+            && request.resource.data.followUpDoneAt is string
+            && request.resource.data.followUpDoneAt.size() < 40);
       allow delete: if isAdmin();
     }
 
@@ -117,7 +120,9 @@ service cloud.firestore {
         && (isField() || isStaff())
         && request.resource.data.keys().hasOnly(['text', 'updatedAt'])
         && request.resource.data.text is string
-        && request.resource.data.text.size() < 20000;
+        && request.resource.data.text.size() < 20000
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40;
       allow delete: if isAdmin();
     }
 
