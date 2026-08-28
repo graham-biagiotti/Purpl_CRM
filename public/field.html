@@ -71,6 +71,11 @@
   </div>
   <div class="wrap">
 
+    <div class="card" id="fu-card" style="display:none">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">Follow-ups</div>
+      <div id="fu-list"></div>
+    </div>
+
     <div class="card" id="form-card">
       <div style="font-size:16px;font-weight:700">Log a stop</div>
 
@@ -109,12 +114,7 @@
       <input id="f-cemail" placeholder="Email" inputmode="email">
 
       <label>Notes</label>
-      <textarea id="f-notes" rows="4" placeholder="What happened, what they said, shelf situation…"></textarea>
-
-      <label>Extra details <span style="text-transform:none;font-weight:400">(anything else worth capturing)</span></label>
-      <div id="extras"></div>
-      <button class="btn ghost" id="btn-addextra">+ Add detail</button>
-      <div class="muted" style="margin-top:6px">Examples: Competitor price — $4.99 · Buyer's day off — Mondays · Shelf — cooler door 3</div>
+      <textarea id="f-notes" rows="6" placeholder="What happened, what they said, prices seen, shelf situation — anything worth remembering…"></textarea>
 
       <button class="btn" id="btn-submit">Log it</button>
     </div>
@@ -122,6 +122,12 @@
     <div class="card">
       <div style="font-size:15px;font-weight:700;margin-bottom:6px">Your recent entries</div>
       <div id="recent"></div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px">My notepad</div>
+      <textarea id="pad" rows="6" placeholder="Route ideas, reminders, questions for Graham — anything. Saves by itself."></textarea>
+      <div class="muted" id="pad-status" style="margin-top:5px;min-height:16px"></div>
     </div>
 
   </div>
@@ -211,6 +217,7 @@
     initForm();
     loadStores();
     listenMyLogs();
+    initPad();
     // Address autocomplete on the New place field (same Places key/machinery
     // as the CRM; the key's referrer allowlist covers purpl-crm.web.app).
     // Failure to load is silent — the field still works as plain text.
@@ -296,7 +303,7 @@
       : '';
   }
 
-  // ── Chips / extras ──
+  // ── Chips ──
   function chipRow(elId, options, initial, onSel) {
     const el = $(elId);
     el.innerHTML = options.map(([v, l]) => `<div class="chip${v === initial ? ' on' : ''}" data-v="${v}">${l}</div>`).join('');
@@ -308,15 +315,6 @@
       };
     });
   }
-  function addExtraRow(label, value) {
-    const row = document.createElement('div');
-    row.className = 'xrow';
-    row.innerHTML = `<input class="x-label" placeholder="What (e.g. Competitor price)" value="${esc(label || '')}"><input class="x-value" placeholder="Detail" value="${esc(value || '')}"><button type="button">✕</button>`;
-    row.querySelector('button').onclick = () => row.remove();
-    $('extras').appendChild(row);
-  }
-  $('btn-addextra').onclick = () => addExtraRow();
-
   function initForm() {
     selType = 'visit'; selOutcome = '';
     chipRow('chips-type', TYPES, 'visit', (v) => { selType = v; });
@@ -326,7 +324,6 @@
     });
     selNpType = '';
     chipRow('chips-nptype', NP_TYPES, '', (v) => { selNpType = v; });
-    $('extras').innerHTML = '';
   }
 
   function clearForm() {
@@ -346,10 +343,6 @@
     const npName = $('np-name').value.trim();
     if (!picked && !(newPlace && npName)) { toast('Pick a store or add a New place first.'); return; }
     if (!selOutcome) { toast('Tap how it went.'); return; }
-    const extras = [...document.querySelectorAll('#extras .xrow')].map((r) => ({
-      label: r.querySelector('.x-label').value.trim().slice(0, 120),
-      value: r.querySelector('.x-value').value.trim().slice(0, 500),
-    })).filter((x) => x.label || x.value).slice(0, 30);
     const entry = {
       uid: me.uid,
       repName: myName.slice(0, 120),
@@ -373,7 +366,6 @@
       contactPhone: $('f-cphone').value.trim().slice(0, 60),
       contactEmail: $('f-cemail').value.trim().slice(0, 200),
       notes: $('f-notes').value.trim().slice(0, 7900),
-      extras,
       createdAt: new Date().toISOString(),
       reviewed: false,
     };
@@ -395,7 +387,103 @@
           .sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
         renderRecent();
         renderStoreLast();
+        renderFollowUps();
       }, () => {});
+  }
+
+  // ── Follow-ups dashboard ──
+  // Derived purely from his own logs: entries with a followUpDate that are
+  // not checked off and not superseded by a NEWER log at the same place.
+  function _storeKey(l) {
+    return l.prospectRefId || l.accountId || ('np:' + (l.storeName || '').toLowerCase().trim());
+  }
+  function computeFollowUps(logs, todayIso) {
+    const latestByStore = {};
+    logs.forEach((l) => {
+      const k = _storeKey(l);
+      if (!latestByStore[k] || (l.createdAt || '') > (latestByStore[k].createdAt || '')) latestByStore[k] = l;
+    });
+    return logs
+      .filter((l) => l.followUpDate && !l.followUpDone)
+      .filter((l) => latestByStore[_storeKey(l)] === l) // a newer stop supersedes
+      .map((l) => ({ l, due: l.followUpDate, bucket: l.followUpDate < todayIso ? 'overdue' : (l.followUpDate === todayIso ? 'today' : 'upcoming') }))
+      .sort((a, b) => a.due < b.due ? -1 : 1);
+  }
+  function _todayIso() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function renderFollowUps() {
+    const card = $('fu-card'), el = $('fu-list');
+    const fus = computeFollowUps(myLogs, _todayIso());
+    if (!fus.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    const label = { overdue: '⚠️ Overdue', today: 'Today', upcoming: 'Coming up' };
+    const color = { overdue: '#b91c1c', today: '#1a1a2e', upcoming: '#6b7280' };
+    let lastBucket = '';
+    el.innerHTML = fus.map(({ l, due, bucket }, i) => {
+      const head = bucket !== lastBucket ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color[bucket]};margin:${i ? '12px' : '4px'} 0 4px">${label[bucket]}</div>` : '';
+      lastBucket = bucket;
+      return `${head}<div class="ent" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="min-width:0">
+          <strong>${esc(l.storeName || '')}</strong> <span class="muted">· due ${esc(due)}</span>
+          ${l.notes ? `<div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.notes.slice(0, 80))}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn ghost" style="margin:0;padding:8px 10px;font-size:13px" data-fu-log="${i}">Log stop</button>
+          <button class="btn ghost" style="margin:0;padding:8px 10px;font-size:13px" data-fu-done="${i}">✓</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('[data-fu-log]').forEach((b) => {
+      b.onclick = () => fuLogStop(fus[+b.dataset.fuLog].l);
+    });
+    el.querySelectorAll('[data-fu-done]').forEach((b) => {
+      b.onclick = () => fuDone(fus[+b.dataset.fuDone].l);
+    });
+  }
+  function fuLogStop(l) {
+    // Prefill the form for this place and scroll to it.
+    const inList = l.prospectRefId ? stores.find((s) => s.id === l.prospectRefId) : null;
+    if (inList) {
+      pickStore(inList);
+    } else {
+      picked = null; newPlace = true;
+      $('store-pick-wrap').style.display = 'none';
+      $('newplace-wrap').style.display = '';
+      $('store-picked').style.display = 'none';
+      $('np-name').value = l.storeName || '';
+      $('np-town').value = l.storeTown || '';
+    }
+    $('form-card').scrollIntoView({ behavior: 'smooth' });
+  }
+  function fuDone(l) {
+    db.collection('field_logs').doc(l.id).update({ followUpDone: true, followUpDoneAt: new Date().toISOString() })
+      .catch(() => toast('Could not check that off — try again with signal.', 5000));
+    // Optimistic: the snapshot will confirm, but clear it locally now.
+    l.followUpDone = true;
+    renderFollowUps();
+  }
+
+  // ── My notepad (one private doc per rep, auto-saved) ──
+  let padTimer = null, padLoaded = false;
+  function initPad() {
+    db.collection('field_notes').doc(me.uid).get().then((snap) => {
+      if (snap.exists && !padLoaded) $('pad').value = snap.data().text || '';
+      padLoaded = true;
+    }).catch(() => { padLoaded = true; });
+    $('pad').addEventListener('input', () => {
+      $('pad-status').textContent = 'Saving…';
+      clearTimeout(padTimer);
+      padTimer = setTimeout(() => {
+        db.collection('field_notes').doc(me.uid).set({
+          text: $('pad').value.slice(0, 19000),
+          updatedAt: new Date().toISOString(),
+        }).then(() => { $('pad-status').textContent = 'Saved ✓'; })
+          .catch(() => { $('pad-status').textContent = navigator.onLine ? 'Save failed — will retry' : 'Saved on phone — syncs with signal'; });
+        if (!navigator.onLine) $('pad-status').textContent = 'Saved on phone — syncs with signal';
+      }, 800);
+    });
   }
   function renderRecent() {
     const el = $('recent');

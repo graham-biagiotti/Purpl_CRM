@@ -96,10 +96,28 @@ service cloud.firestore {
         && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
         && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
         && request.resource.data.size() < 40;
-      // Field reps create-only (the /field page never edits a log). Updates
-      // — reviewed flags, applied stamps — are staff-only, so a field login
-      // cannot hide its own entries or forge applied-stamps.
-      allow update: if isStaff();
+      // Field reps are create-only EXCEPT one narrow carve-out: checking off
+      // their own follow-ups. The diff guard means a field login can touch
+      // ONLY followUpDone/followUpDoneAt on ONLY its own docs — reviewed
+      // flags and applied-stamps stay staff-only, so a rep still cannot
+      // hide entries or forge review state.
+      allow update: if isStaff()
+        || (isField() && resource.data.uid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['followUpDone', 'followUpDoneAt']));
+      allow delete: if isAdmin();
+    }
+
+    // Field rep notepad: one free-text doc per rep, keyed by uid. The rep
+    // (or a staff member, for their own uid) writes only their own doc,
+    // shape-locked to {text, updatedAt}. Staff can read; never public.
+    match /field_notes/{noteUid} {
+      allow read: if isStaff() || (request.auth != null && request.auth.uid == noteUid);
+      allow create, update: if request.auth != null && request.auth.uid == noteUid
+        && (isField() || isStaff())
+        && request.resource.data.keys().hasOnly(['text', 'updatedAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() < 20000;
       allow delete: if isAdmin();
     }
 
