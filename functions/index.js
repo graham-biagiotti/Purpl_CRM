@@ -1076,7 +1076,11 @@ exports.fieldStoreList = onCall(async (request) => {
   if (!['field', 'employee', 'admin'].includes(role)) {
     throw new HttpsError('permission-denied', 'Not authorized');
   }
-  const snap = await db.collection('accounts').get();
+  // The CRM's authoritative account list lives at workspace/main/ac — NOT
+  // the top-level `accounts` collection, which is only the slim portal-token
+  // mirror (tokened accounts only, no addresses). Reading the mirror here
+  // made the rep's store search miss most stores.
+  const snap = await db.collection('workspace/main/ac').get();
   const stores = snap.docs.map((d) => {
     const a = d.data() || {};
     if (a.status === 'inactive') return null;
@@ -1087,7 +1091,7 @@ exports.fieldStoreList = onCall(async (request) => {
       town: String(parts.city || '').slice(0, 100),
       address: String(a.address || '').slice(0, 300),
     };
-  }).filter(Boolean).sort((x, y) => x.name.localeCompare(y.name));
+  }).filter((s) => s && s.name).sort((x, y) => x.name.localeCompare(y.name));
   return { stores };
 });
 

@@ -228,11 +228,15 @@
   function renderHits() {
     const q = ($('store-search').value || '').toLowerCase().trim();
     const el = $('store-hits');
-    if (!q) { el.innerHTML = '<div class="muted" style="padding:8px 2px">Type to search your stores.</div>'; return; }
-    const hits = stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12);
+    // Empty search shows the whole (alphabetical) list so the page never
+    // looks broken/empty; typing narrows it.
+    const hits = q
+      ? stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
+      : stores.slice(0, 400);
     el.innerHTML = hits.length
       ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong><div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
-      : '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>';
+      : (q ? '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>'
+           : '<div class="muted" style="padding:8px 2px">No stores loaded — check signal, or use "New place" below.</div>');
     el.querySelectorAll('.store-hit').forEach((row) => {
       row.onclick = () => pickStore(hits[+row.dataset.i]);
     });
