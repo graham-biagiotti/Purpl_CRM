@@ -60,10 +60,25 @@ async function _htmlToPdf(html) {
 }
 
 // ── 1. Send Email ─────────────────────────────────────────
+// Shared staff gate for authenticated callables. The 'field' role (road
+// sales rep) signs in with real credentials but must never reach money /
+// email / shipping / AI callables — only admin+employee may. A non-staff
+// authenticated caller is rejected here. Throws; callers that formerly
+// returned {ok:false} for the unauth case keep that line ahead of this.
+async function _assertStaffRole(request) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const snap = await admin.firestore().collection('users').doc(request.auth.uid).get();
+  const role = snap.exists ? snap.data().role : null;
+  if (role !== 'admin' && role !== 'employee') {
+    throw new HttpsError('permission-denied', 'Staff access required');
+  }
+}
+
 exports.sendEmail = onCall(
   {secrets: [resendApiKey], memory: '1GiB', timeoutSeconds: 120},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    await _assertStaffRole(request);
     const data = request.data;
     if (!data.to || !data.subject || !data.html) {
       throw new HttpsError('invalid-argument', 'Missing required fields: to, subject, html');
@@ -141,6 +156,7 @@ exports.sendCombinedInvoice = onCall(
   {secrets: [resendApiKey]},
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    await _assertStaffRole(request);
     const data = request.data;
     if (!data.to || !data.html) {
       throw new HttpsError('invalid-argument', 'Missing required fields: to, html');
@@ -460,6 +476,7 @@ exports.sendApplicationConfirmation = onCall(
 exports.callAnthropic = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    await _assertStaffRole(request);
     const data = request.data;
     if (!data.prompt || typeof data.prompt !== 'string') {
       throw new HttpsError('invalid-argument', 'Missing prompt');
@@ -1081,6 +1098,7 @@ exports.stripeStatus = onCall(
   {secrets: [stripeSecretKey]},
   async (request) => {
     if (!request.auth) return {ok: false, step: 'auth', msg: 'Not signed in'};
+    await _assertStaffRole(request);
     const steps = [];
     // 1. Check key
     const raw = process.env.STRIPE_SECRET_KEY;
@@ -1123,6 +1141,7 @@ exports.createPayLink = onCall(
   {secrets: [stripeSecretKey]},
   async (request) => {
     if (!request.auth) return {ok: false, v: 2, error: 'Not signed in'};
+    await _assertStaffRole(request);
     const data = request.data || {};
     if (!data.invoiceId || !data.invoiceType) return {ok: false, v: 2, error: 'Missing invoiceId or invoiceType'};
 
@@ -1262,6 +1281,7 @@ exports.createStripePaymentLink = onCall(
   {secrets: [stripeSecretKey]},
   async (request) => {
     if (!request.auth) return {ok: false, error: 'Not signed in'};
+    await _assertStaffRole(request);
     const data = request.data;
     if (!data.invoiceId || !data.invoiceType) return {ok: false, error: 'Missing invoiceId or invoiceType'};
 
@@ -1513,6 +1533,7 @@ exports.pushToShipStation = onCall(
   {secrets: [shipStationApiKey]},
   async (request) => {
     if (!request.auth) return {ok: false, error: 'Not signed in'};
+    await _assertStaffRole(request);
     const data = request.data || {};
     if (!data.invoiceNumber || !data.shipTo) return {ok: false, error: 'Missing invoice number or shipping address'};
     if (!data.items || !data.items.length) return {ok: false, error: 'No line items to ship'};
@@ -1596,6 +1617,7 @@ exports.shipStationStatus = onCall(
   {secrets: [shipStationApiKey]},
   async (request) => {
     if (!request.auth) return {ok: false, error: 'Not signed in'};
+    await _assertStaffRole(request);
     const key = (process.env.SHIPSTATION_API_KEY || '').trim();
     if (!key) return {ok: false, error: 'SHIPSTATION_API_KEY not set'};
     const authVal = key.includes(':') ? key : key + ':';
@@ -2664,6 +2686,7 @@ exports.samplingAdmin = onCall(
   { secrets: [resendApiKey] },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+    await _assertStaffRole(request);
     const { action, requestId } = request.data || {};
     if (!requestId || typeof requestId !== 'string') throw new HttpsError('invalid-argument', 'Missing requestId');
     const ref = admin.firestore().collection('sampling_requests').doc(requestId);

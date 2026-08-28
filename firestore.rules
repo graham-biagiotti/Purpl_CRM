@@ -96,10 +96,10 @@ service cloud.firestore {
         && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
         && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
         && request.resource.data.size() < 40;
-      allow update: if isStaff()
-        || (isField() && resource.data.uid == request.auth.uid
-            && request.resource.data.uid == resource.data.uid
-            && request.resource.data.size() < 40);
+      // Field reps create-only (the /field page never edits a log). Updates
+      // — reviewed flags, applied stamps — are staff-only, so a field login
+      // cannot hide its own entries or forge applied-stamps.
+      allow update: if isStaff();
       allow delete: if isAdmin();
     }
 

@@ -19614,6 +19614,31 @@ function _renderFieldLogList() {
     return;
   }
   el.innerHTML = list.map(_flCard).join('');
+  // SECURITY: buttons carry the log id in a data-attribute (escHtml-safe in
+  // pure attribute context) and dispatch through ONE delegated handler —
+  // never inlined into onclick. The id is a Firestore doc id, and a field-
+  // role login can create a log with an ATTACKER-CHOSEN doc id (quotes,
+  // angle brackets, event handlers). Inlining it into onclick was a stored-
+  // XSS vector executing in the staff session on render; data-attr + lookup
+  // by id closes it. dataset values are only ever used as lookup keys, never
+  // re-inserted into HTML.
+  if (!el._flWired) {
+    el._flWired = true;
+    el.addEventListener('click', ev => {
+      const btn = ev.target.closest('button[data-fl-act]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-fl-id') || '';
+      const act = btn.getAttribute('data-fl-act');
+      if (act === 'openAccount') {
+        const l = _flLogs.find(x => x.id === id);
+        if (l && l.accountId) openAccount(l.accountId);
+      } else if (act === 'addHistory') flAddHistory(id);
+      else if (act === 'saveContact') flSaveContact(id);
+      else if (act === 'createProspect') flCreateProspect(id);
+      else if (act === 'markReviewed') flMarkReviewed(id);
+      else if (act === 'delete') flDelete(id);
+    });
+  }
 }
 
 function _flCard(l) {
@@ -19622,22 +19647,26 @@ function _flCard(l) {
   const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
   const chip = (txt, extra) => `<span class="badge ${extra || 'gray'}" style="font-size:11px">${escHtml(txt)}</span>`;
   const outcomeCls = { order_interest: 'green', interested: 'blue', follow_up: 'orange', not_now: 'gray', dead: 'red' }[l.outcome] || 'gray';
+  // id goes ONLY into a data-attribute (escHtml-escaped); see the delegated
+  // handler note above for why it must never touch onclick.
+  const did = escHtml(l.id || '');
+  const actBtn = (act, label, cls, style) => `<button class="btn xs ${cls || ''}" data-fl-act="${act}" data-fl-id="${did}"${style ? ' style="' + style + '"' : ''}>${label}</button>`;
   const btns = [];
   if (a) {
     btns.push(l.historyAppliedAt
       ? `<button class="btn xs" disabled>✓ In history</button>`
-      : `<button class="btn xs primary" onclick="flAddHistory('${l.id}')">Add to account history</button>`);
+      : actBtn('addHistory', 'Add to account history', 'primary'));
     if (hasContact) btns.push(l.contactSavedAt
       ? `<button class="btn xs" disabled>✓ Contact saved</button>`
-      : `<button class="btn xs" onclick="flSaveContact('${l.id}')">Save contact</button>`);
-    btns.push(`<button class="btn xs" onclick="openAccount('${l.accountId}')">Open account</button>`);
+      : actBtn('saveContact', 'Save contact'));
+    btns.push(actBtn('openAccount', 'Open account'));
   } else if (l.newPlace) {
     btns.push(l.prospectId
       ? `<button class="btn xs" disabled>✓ Prospect created</button>`
-      : `<button class="btn xs primary" onclick="flCreateProspect('${l.id}')">Create prospect</button>`);
+      : actBtn('createProspect', 'Create prospect', 'primary'));
   }
-  if (!l.reviewed) btns.push(`<button class="btn xs" onclick="flMarkReviewed('${l.id}')">Mark reviewed</button>`);
-  if (_isAdmin()) btns.push(`<button class="btn xs" onclick="flDelete('${l.id}')" style="color:#dc2626">Delete</button>`);
+  if (!l.reviewed) btns.push(actBtn('markReviewed', 'Mark reviewed'));
+  if (_isAdmin()) btns.push(actBtn('delete', 'Delete', '', 'color:#dc2626'));
   return `<div class="card" style="padding:14px 16px;margin-bottom:10px;${l.reviewed ? 'opacity:0.75' : ''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
       <div>
