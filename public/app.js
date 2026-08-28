@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v215';
+const APP_VERSION = 'v216';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -19557,10 +19557,11 @@ function _poDocHTML(p) {
 let _flLogs = [];
 let _flUnsub = null;
 
-const _FL_TYPE = { visit: 'Visit', call: 'Call', cold_stop: 'Cold stop' };
+const _FL_TYPE = { visit: 'Visit', call: 'Call', cold_stop: 'Cold stop', scout: 'Scouted' };
 const _FL_OUTCOME = {
   order_interest: 'Wants to order', interested: 'Interested',
   follow_up: 'Follow up needed', not_now: 'Not now', dead: 'Not a fit',
+  scouted: 'Added to list — no visit yet',
 };
 
 function _listenFieldLogs() {

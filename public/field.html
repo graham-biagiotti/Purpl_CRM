@@ -114,12 +114,17 @@
       </div>
       <div id="store-picked" style="display:none"></div>
       <div id="newplace-wrap" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 10px">
+          <strong style="font-size:14px;color:var(--purpl)">New place</strong>
+          <button id="btn-npclose" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;font-family:inherit;padding:4px 8px">✕ Cancel</button>
+        </div>
         <input id="np-name" placeholder="Store / business name" style="margin-bottom:8px">
         <input id="np-addr" placeholder="Address — start typing, tap the suggestion" autocomplete="off" style="margin-bottom:8px">
         <input id="np-town" placeholder="Town, State">
         <label>Store type</label>
         <div class="chips" id="chips-nptype"></div>
-        <button class="btn ghost" id="btn-backtolist">← Back to store list</button>
+        <button class="btn ghost" id="btn-saveplace">💾 Save place only — no stop to log</button>
+        <div class="muted" style="margin-top:5px">Saves it to your list so you can log stops there later. Add a follow-up date below to plan the drop.</div>
       </div>
       <div id="store-last" class="muted" style="margin-top:8px"></div>
 
@@ -129,10 +134,9 @@
       <label>How did it go?</label>
       <div class="chips" id="chips-outcome"></div>
 
-      <div id="fu-wrap" style="display:none">
-        <label>Follow up by</label>
-        <input id="f-followup" type="date">
-      </div>
+      <label>Follow up? <span class="lite">(optional — puts it on your dashboard)</span></label>
+      <div class="chips" id="chips-fudate"></div>
+      <input id="f-followup" type="date" style="margin-top:8px;display:none">
 
       <label>Who did you talk to? <span class="lite">(fill what you got)</span></label>
       <input id="f-cname" placeholder="Name" style="margin-bottom:8px">
@@ -193,6 +197,8 @@
   const NP_TYPES = ['Grocery', 'Café', 'Restaurant', 'Specialty / Gift', 'Farm / Country Store', 'Co-op / Natural', 'Gym', 'Other'].map((t) => [t, t]);
   const OUTCOMES = [['order_interest', 'Wants to order'], ['interested', 'Interested'], ['follow_up', 'Follow up needed'], ['not_now', 'Not now'], ['dead', 'Not a fit']];
   const OUTCOME_LABEL = Object.fromEntries(OUTCOMES);
+  OUTCOME_LABEL.scouted = 'Scouted — no visit yet';
+  const FU_CHIPS = [['', 'None'], ['1', 'Tomorrow'], ['3', 'In 3 days'], ['7', 'Next week'], ['14', 'In 2 weeks'], ['pick', 'Pick a date']];
 
   let me = null, myName = '';
   let stores = [];
@@ -280,20 +286,40 @@
     renderHits();
   }
 
+  // His own "New place" logs join the list immediately (they only become
+  // real prospects after Graham reviews) — so re-picking a place he found
+  // yesterday never needs re-typing and never dupes.
+  function myNewPlaces() {
+    const known = new Set(stores.map((s) => (s.name || '').toLowerCase().trim()));
+    const seen = new Set();
+    const out = [];
+    myLogs.forEach((l) => {
+      if (!l.newPlace) return;
+      const k = (l.storeName || '').toLowerCase().trim();
+      if (!k || known.has(k) || seen.has(k)) return;
+      seen.add(k);
+      out.push({ mylog: true, name: l.storeName, town: l.storeTown || '', log: l });
+    });
+    return out;
+  }
   function renderHits() {
     const q = ($('store-search').value || '').toLowerCase().trim();
     const el = $('store-hits');
+    const all = [...stores, ...myNewPlaces()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     // Empty search shows the whole (alphabetical) list so the page never
     // looks broken/empty; typing narrows it.
     const hits = q
-      ? stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
-      : stores.slice(0, 400);
+      ? all.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
+      : all.slice(0, 400);
     el.innerHTML = hits.length
-      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong><div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
+      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong>${s.mylog ? ' <span class="pill">your find</span>' : ''}<div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
       : (q ? '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>'
            : '<div class="muted" style="padding:8px 2px">No stores loaded — check signal, or use "New place" below.</div>');
     el.querySelectorAll('.store-hit').forEach((row) => {
-      row.onclick = () => pickStore(hits[+row.dataset.i]);
+      row.onclick = () => {
+        const s = hits[+row.dataset.i];
+        if (s.mylog) openNewPlace(s.log); else pickStore(s);
+      };
     });
   }
   $('store-search').addEventListener('input', renderHits);
@@ -315,13 +341,26 @@
     $('store-last').innerHTML = '';
     renderHits();
   }
-  $('btn-newplace').onclick = () => {
+  function openNewPlace(prefillLog) {
     picked = null; newPlace = true;
     $('store-pick-wrap').style.display = 'none';
+    $('store-picked').style.display = 'none';
     $('newplace-wrap').style.display = '';
     $('store-last').innerHTML = '';
-  };
-  $('btn-backtolist').onclick = unpickStore;
+    if (prefillLog) {
+      $('np-name').value = prefillLog.storeName || '';
+      $('np-town').value = prefillLog.storeTown || '';
+      $('np-addr').value = prefillLog.storeAddress || '';
+      selNpType = prefillLog.storeType || '';
+      chipRow('chips-nptype', NP_TYPES, selNpType, (v) => { selNpType = v; });
+      const prior = myLogs.filter((l) => l.newPlace && (l.storeName || '').toLowerCase().trim() === (prefillLog.storeName || '').toLowerCase().trim()).slice(0, 2);
+      $('store-last').innerHTML = prior.length
+        ? 'Your last stop here: ' + prior.map((l) => `${esc((l.createdAt || '').slice(0, 10))} — ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}`).join(' · ')
+        : '';
+    }
+  }
+  $('btn-newplace').onclick = () => openNewPlace(null);
+  $('btn-npclose').onclick = unpickStore;
 
   function renderStoreLast() {
     const el = $('store-last');
@@ -347,12 +386,18 @@
   function initForm() {
     selType = 'visit'; selOutcome = '';
     chipRow('chips-type', TYPES, 'visit', (v) => { selType = v; });
-    chipRow('chips-outcome', OUTCOMES, '', (v) => {
-      selOutcome = v;
-      $('fu-wrap').style.display = (v === 'follow_up' || v === 'order_interest') ? '' : 'none';
-    });
+    chipRow('chips-outcome', OUTCOMES, '', (v) => { selOutcome = v; });
     selNpType = '';
     chipRow('chips-nptype', NP_TYPES, '', (v) => { selNpType = v; });
+    chipRow('chips-fudate', FU_CHIPS, '', (v) => {
+      if (v === 'pick') { $('f-followup').style.display = ''; }
+      else if (v === '') { $('f-followup').value = ''; $('f-followup').style.display = 'none'; }
+      else { $('f-followup').value = _isoPlus(parseInt(v, 10)); $('f-followup').style.display = ''; }
+    });
+  }
+  function _isoPlus(days) {
+    const d = new Date(); d.setDate(d.getDate() + days);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   function clearForm() {
@@ -362,16 +407,24 @@
     $('np-addr').value = '';
     delete $('np-addr').dataset.addrParts; delete $('np-addr').dataset.lat; delete $('np-addr').dataset.lng;
     ['f-cname', 'f-crole', 'f-cphone', 'f-cemail', 'f-notes', 'f-followup'].forEach((id) => { $(id).value = ''; });
-    $('fu-wrap').style.display = 'none';
+    $('f-followup').style.display = 'none';
     initForm();
     renderHits();
   }
 
   // ── Submit ──
-  $('btn-submit').onclick = () => {
+  // mode 'stop' = a real visit/call (outcome required).
+  // mode 'place' = "Save place only": scout a prospect with no stop —
+  // logged as type scout / outcome scouted so it joins his list (and the
+  // dashboard, if he set a follow-up date to plan the drop).
+  function submitEntry(mode) {
     const npName = $('np-name').value.trim();
-    if (!picked && !(newPlace && npName)) { toast('Pick a store or add a New place first.'); return; }
-    if (!selOutcome) { toast('Tap how it went.'); return; }
+    if (mode === 'place') {
+      if (!(newPlace && npName)) { toast('Type the place name first.'); return; }
+    } else {
+      if (!picked && !(newPlace && npName)) { toast('Pick a store or add a New place first.'); return; }
+      if (!selOutcome) { toast('Tap how it went.'); return; }
+    }
     const entry = {
       uid: me.uid,
       repName: myName.slice(0, 120),
@@ -387,8 +440,8 @@
       storeName: (picked ? picked.name : npName).slice(0, 199),
       storeTown: (picked ? (picked.town || '') : $('np-town').value.trim()).slice(0, 120),
       newPlace: !picked,
-      type: selType,
-      outcome: selOutcome,
+      type: mode === 'place' ? 'scout' : selType,
+      outcome: mode === 'place' ? 'scouted' : selOutcome,
       followUpDate: $('f-followup').value || '',
       contactName: $('f-cname').value.trim().slice(0, 150),
       contactRole: $('f-crole').value.trim().slice(0, 150),
@@ -401,11 +454,13 @@
     const id = uid();
     // Optimistic: clear immediately; persistence carries it if offline.
     db.collection('field_logs').doc(id).set({ ...entry, id })
-      .then(() => toast('Logged ✓'))
+      .then(() => toast(mode === 'place' ? "Place saved ✓ — it's in your list now." : 'Logged ✓'))
       .catch((e) => toast('⚠️ Log rejected: ' + (e.message || e.code) + ' — tell Graham.', 8000));
     if (!navigator.onLine) toast('Saved on your phone — will sync when you have signal.', 5000);
     clearForm();
-  };
+  }
+  $('btn-submit').onclick = () => submitEntry('stop');
+  $('btn-saveplace').onclick = () => submitEntry('place');
 
   // ── My recent entries (live; offline-queued ones show as "syncing") ──
   function listenMyLogs() {
@@ -417,6 +472,7 @@
         renderRecent();
         renderStoreLast();
         renderFollowUps();
+        renderHits(); // his own new places live in the picker list
       }, () => {});
   }
 
@@ -474,16 +530,7 @@
   function fuLogStop(l) {
     // Prefill the form for this place and scroll to it.
     const inList = l.prospectRefId ? stores.find((s) => s.id === l.prospectRefId) : null;
-    if (inList) {
-      pickStore(inList);
-    } else {
-      picked = null; newPlace = true;
-      $('store-pick-wrap').style.display = 'none';
-      $('newplace-wrap').style.display = '';
-      $('store-picked').style.display = 'none';
-      $('np-name').value = l.storeName || '';
-      $('np-town').value = l.storeTown || '';
-    }
+    if (inList) pickStore(inList); else openNewPlace(l);
     $('form-card').scrollIntoView({ behavior: 'smooth' });
   }
   function fuDone(l) {
