@@ -1080,28 +1080,12 @@ exports.fieldStoreList = onCall(async (request) => {
   // the top-level `accounts` collection, which is only the slim portal-token
   // mirror (tokened accounts only, no addresses). Reading the mirror here
   // made the rep's store search miss most stores.
-  const [acSnap2, prSnap] = await Promise.all([
-    db.collection('workspace/main/ac').get(),
-    db.collection('workspace/main/pr').get(),
-  ]);
-  // Allowlist, not blocklist: the rep sees only stores worth a visit.
-  // Accounts: 'active' + 'pending' (approved, no order yet); 'paused',
-  // 'inactive', and anything unrecognized are out. Missing status on old
-  // rows counts as active. Prospects: every in-play stage; won/lost out.
-  const accounts = acSnap2.docs.map((d) => {
-    const a = d.data() || {};
-    const st = a.status || 'active';
-    if (st !== 'active' && st !== 'pending') return null;
-    const parts = a.addrParts || {};
-    return {
-      id: d.id,
-      kind: 'account',
-      name: String(a.name || '').slice(0, 200),
-      town: String(parts.city || '').slice(0, 100),
-      address: String(a.address || '').slice(0, 300),
-    };
-  });
-  const prospects = prSnap.docs.map((d) => {
+  // PROSPECTS ONLY — owner's call (8/28): the rep must see NOTHING about
+  // regular accounts, so the customer book never leaves the server in any
+  // form. His list is in-play prospects (won/lost excluded) plus whatever
+  // he adds via "New place" on the field page.
+  const prSnap = await db.collection('workspace/main/pr').get();
+  const stores = prSnap.docs.map((d) => {
     const p = d.data() || {};
     if (p.status === 'won' || p.status === 'lost') return null;
     return {
@@ -1111,10 +1095,7 @@ exports.fieldStoreList = onCall(async (request) => {
       town: String(p.territory || '').slice(0, 100),
       address: '',
     };
-  });
-  const stores = [...accounts, ...prospects]
-    .filter((s) => s && s.name)
-    .sort((x, y) => x.name.localeCompare(y.name));
+  }).filter((s) => s && s.name).sort((x, y) => x.name.localeCompare(y.name));
   return { stores };
 });
 

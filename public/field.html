@@ -74,9 +74,9 @@
     <div class="card" id="form-card">
       <div style="font-size:16px;font-weight:700">Log a stop</div>
 
-      <label>Store</label>
+      <label>Store / prospect</label>
       <div id="store-pick-wrap">
-        <input id="store-search" placeholder="Search stores…" autocomplete="off">
+        <input id="store-search" placeholder="Search prospects…" autocomplete="off">
         <div id="store-hits" style="max-height:220px;overflow-y:auto"></div>
         <button class="btn ghost" id="btn-newplace">+ New place (not in the list)</button>
       </div>
@@ -234,7 +234,7 @@
       ? stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
       : stores.slice(0, 400);
     el.innerHTML = hits.length
-      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong>${s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : ''}<div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
+      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong><div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
       : (q ? '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>'
            : '<div class="muted" style="padding:8px 2px">No stores loaded — check signal, or use "New place" below.</div>');
     el.querySelectorAll('.store-hit').forEach((row) => {
@@ -248,7 +248,7 @@
     $('store-pick-wrap').style.display = 'none';
     $('newplace-wrap').style.display = 'none';
     $('store-picked').style.display = '';
-    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : ''}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
+    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
     $('btn-unpick').onclick = unpickStore;
     renderStoreLast();
   }
