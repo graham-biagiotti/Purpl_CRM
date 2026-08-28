@@ -83,7 +83,10 @@
       <div id="store-picked" style="display:none"></div>
       <div id="newplace-wrap" style="display:none">
         <input id="np-name" placeholder="Store / business name" style="margin-bottom:8px">
+        <input id="np-addr" placeholder="Address — start typing, tap the suggestion" autocomplete="off" style="margin-bottom:8px">
         <input id="np-town" placeholder="Town, State">
+        <label>Store type</label>
+        <div class="chips" id="chips-nptype"></div>
         <button class="btn ghost" id="btn-backtolist">← Back to store list</button>
       </div>
       <div id="store-last" class="muted" style="margin-top:8px"></div>
@@ -131,6 +134,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="/firebase-config.js"></script>
+<script src="/places.js"></script>
 <script>
 (function () {
   'use strict';
@@ -151,6 +155,7 @@
   }
 
   const TYPES = [['visit', 'Visit'], ['call', 'Call'], ['cold_stop', 'Cold stop']];
+  const NP_TYPES = ['Grocery', 'Café', 'Restaurant', 'Specialty / Gift', 'Farm / Country Store', 'Co-op / Natural', 'Gym', 'Other'].map((t) => [t, t]);
   const OUTCOMES = [['order_interest', 'Wants to order'], ['interested', 'Interested'], ['follow_up', 'Follow up needed'], ['not_now', 'Not now'], ['dead', 'Not a fit']];
   const OUTCOME_LABEL = Object.fromEntries(OUTCOMES);
 
@@ -158,7 +163,7 @@
   let stores = [];
   let picked = null;      // {id, name, town} | null
   let newPlace = false;
-  let selType = 'visit', selOutcome = '';
+  let selType = 'visit', selOutcome = '', selNpType = '';
   let myLogs = [];
   let logsUnsub = null;
 
@@ -206,6 +211,20 @@
     initForm();
     loadStores();
     listenMyLogs();
+    // Address autocomplete on the New place field (same Places key/machinery
+    // as the CRM; the key's referrer allowlist covers purpl-crm.web.app).
+    // Failure to load is silent — the field still works as plain text.
+    if (window.PlacesAC) {
+      window.PlacesAC.load().then((ok) => { if (ok) window.PlacesAC.attach($('np-addr')); }).catch(() => {});
+      $('np-addr').addEventListener('addressSelected', () => {
+        try {
+          const parts = JSON.parse($('np-addr').dataset.addrParts || '{}');
+          if (!$('np-town').value.trim() && (parts.city || parts.state)) {
+            $('np-town').value = [parts.city, parts.state].filter(Boolean).join(', ');
+          }
+        } catch (_) {}
+      });
+    }
   });
 
   // ── Store list (callable; cached for offline mornings) ──
@@ -305,6 +324,8 @@
       selOutcome = v;
       $('fu-wrap').style.display = (v === 'follow_up' || v === 'order_interest') ? '' : 'none';
     });
+    selNpType = '';
+    chipRow('chips-nptype', NP_TYPES, '', (v) => { selNpType = v; });
     $('extras').innerHTML = '';
   }
 
@@ -312,6 +333,8 @@
     unpickStore();
     $('store-search').value = '';
     $('np-name').value = ''; $('np-town').value = '';
+    $('np-addr').value = '';
+    delete $('np-addr').dataset.addrParts; delete $('np-addr').dataset.lat; delete $('np-addr').dataset.lng;
     ['f-cname', 'f-crole', 'f-cphone', 'f-cemail', 'f-notes', 'f-followup'].forEach((id) => { $(id).value = ''; });
     $('fu-wrap').style.display = 'none';
     initForm();
@@ -333,6 +356,12 @@
       repEmail: (me.email || '').slice(0, 200),
       accountId: (picked && picked.kind !== 'prospect') ? picked.id : null,
       prospectRefId: (picked && picked.kind === 'prospect') ? picked.id : null,
+      storeAddress: !picked ? $('np-addr').value.trim().slice(0, 300) : '',
+      storeAddrParts: (() => {
+        if (picked) return null;
+        try { const p = JSON.parse($('np-addr').dataset.addrParts || 'null'); return (p && (p.street1 || p.city)) ? p : null; } catch (_) { return null; }
+      })(),
+      storeType: !picked ? selNpType : '',
       storeName: (picked ? picked.name : npName).slice(0, 199),
       storeTown: (picked ? (picked.town || '') : $('np-town').value.trim()).slice(0, 120),
       newPlace: !picked,
