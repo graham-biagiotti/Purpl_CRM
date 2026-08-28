@@ -5,46 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>purpl Field Log</title>
   <meta name="theme-color" content="#4D2A6F">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --purpl: #4D2A6F; --purpl-soft: #7A5C9E; --green: #B3C8C1; --blue: #4F5D80;
+      --ink: #1a1a2e; --muted: #6b7280; --line: #E7E1F0; --tint: #F6F3FA;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Inter, -apple-system, 'Segoe UI', Arial, sans-serif; background: #f5f3f8; color: #1a1a2e; min-height: 100vh; }
-    .hdr { background: linear-gradient(135deg, #4D2A6F 0%, #7A5C9E 100%); color: #fff; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5; }
-    .hdr .ttl { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
-    .hdr .sub { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.85; }
-    .hdr button { background: rgba(255,255,255,0.15); color: #fff; border: none; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
-    .wrap { max-width: 560px; margin: 0 auto; padding: 14px 14px 60px; }
-    .card { background: #fff; border: 1px solid #e5e0ec; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-    label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin: 12px 0 5px; }
-    input, textarea, select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #d6cfe2; border-radius: 8px; background: #fff; color: #1a1a2e; font-family: inherit; }
-    input:focus, textarea:focus { outline: 2px solid #7A5C9E; border-color: transparent; }
+    body { font-family: 'Inter', -apple-system, 'Segoe UI', Arial, sans-serif; background: #F4F2F7; color: var(--ink); min-height: 100vh; }
+    /* tri-color brand ribbon */
+    .ribbon { height: 4px; background: linear-gradient(90deg, var(--purpl) 0%, var(--purpl) 45%, var(--blue) 45%, var(--blue) 72%, var(--green) 72%, var(--green) 100%); }
+    .hdr { background: #fff; border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5; box-shadow: 0 1px 8px rgba(77,42,111,.05); }
+    .hdr .brand { display: flex; align-items: center; gap: 10px; }
+    .hdr .brand img { height: 34px; width: auto; display: block; }
+    .hdr .brand .divide { width: 1px; height: 26px; background: var(--line); }
+    .hdr .ttl { font-size: 15px; font-weight: 800; color: var(--purpl); letter-spacing: -0.2px; line-height: 1.1; }
+    .hdr .sub { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .hdr button { background: var(--tint); color: var(--purpl); border: 1px solid var(--line); border-radius: 8px; padding: 8px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 16px 14px 30px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(77,42,111,.06); }
+    .card-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--purpl); margin-bottom: 10px; display: flex; align-items: center; gap: 7px; }
+    .card-title::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+    label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--blue); margin: 14px 0 6px; }
+    label .lite { text-transform: none; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+    input, textarea, select { width: 100%; padding: 12px 13px; font-size: 16px; border: 1.5px solid var(--line); border-radius: 10px; background: #FDFCFE; color: var(--ink); font-family: inherit; transition: border-color .15s; }
+    input:focus, textarea:focus { outline: none; border-color: var(--purpl-soft); background: #fff; }
+    ::placeholder { color: #A79FB5; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip { padding: 10px 14px; border: 1.5px solid #d6cfe2; border-radius: 20px; font-size: 14px; background: #fff; cursor: pointer; user-select: none; }
-    .chip.on { background: #4D2A6F; border-color: #4D2A6F; color: #fff; font-weight: 600; }
-    .btn { width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border: none; border-radius: 10px; background: #4D2A6F; color: #fff; cursor: pointer; margin-top: 14px; }
+    .chip { padding: 10px 15px; border: 1.5px solid var(--line); border-radius: 20px; font-size: 14px; font-weight: 500; background: #FDFCFE; color: var(--ink); cursor: pointer; user-select: none; transition: all .12s; }
+    .chip.on { background: var(--purpl); border-color: var(--purpl); color: #fff; font-weight: 700; box-shadow: 0 2px 8px rgba(77,42,111,.28); }
+    .btn { width: 100%; padding: 15px; font-size: 16px; font-weight: 700; border: none; border-radius: 12px; background: var(--purpl); color: #fff; cursor: pointer; margin-top: 16px; font-family: inherit; box-shadow: 0 3px 12px rgba(77,42,111,.25); }
+    .btn:active { transform: translateY(1px); }
     .btn:disabled { opacity: 0.5; }
-    .btn.ghost { background: #fff; color: #4D2A6F; border: 1.5px solid #4D2A6F; font-weight: 600; padding: 10px; font-size: 14px; margin-top: 8px; width: auto; }
-    .muted { font-size: 12px; color: #6b7280; }
-    .store-hit { padding: 11px 12px; border-bottom: 1px solid #f0edf5; cursor: pointer; font-size: 15px; }
+    .btn.ghost { background: var(--tint); color: var(--purpl); border: 1.5px solid var(--line); font-weight: 600; padding: 10px 14px; font-size: 14px; margin-top: 10px; width: auto; box-shadow: none; }
+    .muted { font-size: 12px; color: var(--muted); }
+    .store-hit { padding: 12px; border-bottom: 1px solid var(--tint); cursor: pointer; font-size: 15px; border-radius: 8px; }
+    .store-hit:active { background: var(--tint); }
     .store-hit .muted { font-size: 12px; }
-    .store-picked { display: flex; justify-content: space-between; align-items: center; background: #efeaf4; border: 1px solid #d6cfe2; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 600; }
-    .store-picked button { background: none; border: none; color: #4D2A6F; font-size: 13px; cursor: pointer; text-decoration: underline; }
-    .xrow { display: flex; gap: 8px; margin-top: 8px; }
-    .xrow input { flex: 1; font-size: 14px; padding: 10px; }
-    .xrow button { background: #fff; border: 1px solid #d6cfe2; border-radius: 8px; padding: 0 12px; cursor: pointer; color: #9ca3af; }
-    .ent { border-bottom: 1px solid #f0edf5; padding: 11px 0; font-size: 14px; }
-    .ent:last-child { border-bottom: none; }
-    .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #efeaf4; color: #4D2A6F; margin-right: 5px; }
-    .pill.sync { background: #fef3c7; color: #92400e; }
-    #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 12px 22px; border-radius: 10px; font-size: 14px; display: none; z-index: 50; max-width: 92vw; text-align: center; }
-    .center { max-width: 380px; margin: 10vh auto 0; padding: 0 16px; }
-    .logo-big { text-align: center; margin-bottom: 22px; }
-    .logo-big img { width: 130px; height: auto; }
+    .store-picked { display: flex; justify-content: space-between; align-items: center; background: var(--tint); border: 1.5px solid #D8CCE8; border-radius: 10px; padding: 13px; font-size: 15px; font-weight: 600; }
+    .store-picked button { background: none; border: none; color: var(--purpl); font-size: 13px; cursor: pointer; text-decoration: underline; font-family: inherit; }
+    .ent { border-bottom: 1px solid var(--tint); padding: 11px 0; font-size: 14px; }
+    .ent:last-child { border-bottom: none; padding-bottom: 2px; }
+    .pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #E9EFED; color: #3E5A50; margin-left: 5px; vertical-align: 1px; }
+    .pill.sync { background: #FEF3C7; color: #92400E; }
+    .fu-row { border-left: 3px solid var(--line); padding-left: 10px; margin: 6px 0; }
+    .fu-row.overdue { border-left-color: #DC2626; }
+    .fu-row.today { border-left-color: var(--purpl); }
+    .fu-row.upcoming { border-left-color: var(--green); }
+    #pad { background: #FBFAFD; min-height: 120px; }
+    .foot { text-align: center; font-size: 11px; color: #A79FB5; padding: 6px 0 26px; letter-spacing: 0.04em; }
+    .foot strong { color: var(--purpl-soft); font-weight: 700; }
+    #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 12px 22px; border-radius: 12px; font-size: 14px; display: none; z-index: 50; max-width: 92vw; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+    .center { max-width: 380px; margin: 8vh auto 0; padding: 0 16px; }
+    .logo-big { text-align: center; margin-bottom: 20px; }
+    .logo-big img { width: 150px; height: auto; }
     #auth-msg { margin-top: 10px; font-size: 13px; color: #b91c1c; min-height: 18px; }
-    .offline-bar { display: none; background: #92400e; color: #fff; text-align: center; font-size: 12px; padding: 6px; }
+    .offline-bar { display: none; background: #92400E; color: #fff; text-align: center; font-size: 12px; padding: 6px; }
   </style>
 </head>
 <body>
 
+<div class="ribbon"></div>
 <div class="offline-bar" id="offline-bar">No signal — entries save on your phone and sync automatically.</div>
 
 <!-- ── Sign in ── -->
@@ -66,18 +89,22 @@
 <!-- ── App ── -->
 <div id="v-app" style="display:none">
   <div class="hdr">
-    <div><div class="ttl">purpl Field Log</div><div class="sub" id="hdr-who">Pumpkin Blossom Farm</div></div>
+    <div class="brand">
+      <img src="/images/purpl-logo-top-sprig.png" alt="purpl">
+      <div class="divide"></div>
+      <div><div class="ttl">Field Log</div><div class="sub" id="hdr-who">Pumpkin Blossom Farm</div></div>
+    </div>
     <button id="btn-signout">Sign out</button>
   </div>
   <div class="wrap">
 
     <div class="card" id="fu-card" style="display:none">
-      <div style="font-size:16px;font-weight:700;margin-bottom:4px">Follow-ups</div>
+      <div class="card-title">Follow-ups</div>
       <div id="fu-list"></div>
     </div>
 
     <div class="card" id="form-card">
-      <div style="font-size:16px;font-weight:700">Log a stop</div>
+      <div class="card-title">Log a stop</div>
 
       <label>Store / prospect</label>
       <div id="store-pick-wrap">
@@ -107,7 +134,7 @@
         <input id="f-followup" type="date">
       </div>
 
-      <label>Who did you talk to? <span style="text-transform:none;font-weight:400">(fill what you got)</span></label>
+      <label>Who did you talk to? <span class="lite">(fill what you got)</span></label>
       <input id="f-cname" placeholder="Name" style="margin-bottom:8px">
       <input id="f-crole" placeholder="Their role (buyer, manager…)" style="margin-bottom:8px">
       <input id="f-cphone" placeholder="Phone" inputmode="tel" style="margin-bottom:8px">
@@ -120,15 +147,17 @@
     </div>
 
     <div class="card">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px">Your recent entries</div>
+      <div class="card-title">Your recent entries</div>
       <div id="recent"></div>
     </div>
 
     <div class="card">
-      <div style="font-size:15px;font-weight:700;margin-bottom:6px">My notepad</div>
-      <textarea id="pad" rows="6" placeholder="Route ideas, reminders, questions for Graham — anything. Saves by itself."></textarea>
+      <div class="card-title">My notepad</div>
+      <textarea id="pad" rows="6" placeholder="Route ideas, reminders, anything — saves by itself."></textarea>
       <div class="muted" id="pad-status" style="margin-top:5px;min-height:16px"></div>
     </div>
+
+    <div class="foot"><strong>purpl</strong> · Pumpkin Blossom Farm LLC · Warner, NH</div>
 
   </div>
 </div>
@@ -424,9 +453,9 @@
     el.innerHTML = fus.map(({ l, due, bucket }, i) => {
       const head = bucket !== lastBucket ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color[bucket]};margin:${i ? '12px' : '4px'} 0 4px">${label[bucket]}</div>` : '';
       lastBucket = bucket;
-      return `${head}<div class="ent" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      return `${head}<div class="ent fu-row ${bucket}" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="min-width:0">
-          <strong>${esc(l.storeName || '')}</strong> <span class="muted">· due ${esc(due)}</span>
+          <strong>${esc(l.storeName || '')}</strong> <span class="muted" style="white-space:nowrap">· due ${esc((() => { try { return new Date(due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) { return due; } })())}</span>
           ${l.notes ? `<div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.notes.slice(0, 80))}</div>` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
