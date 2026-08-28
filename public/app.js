@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v212';
+const APP_VERSION = 'v213';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -19632,7 +19632,11 @@ function _renderFieldLogList() {
       if (act === 'openAccount') {
         const l = _flLogs.find(x => x.id === id);
         if (l && l.accountId) openAccount(l.accountId);
+      } else if (act === 'openProspect') {
+        const l = _flLogs.find(x => x.id === id);
+        if (l && l.prospectRefId) openProspect(l.prospectRefId);
       } else if (act === 'addHistory') flAddHistory(id);
+      else if (act === 'addProspectNote') flAddProspectNote(id);
       else if (act === 'saveContact') flSaveContact(id);
       else if (act === 'createProspect') flCreateProspect(id);
       else if (act === 'markReviewed') flMarkReviewed(id);
@@ -19643,6 +19647,7 @@ function _renderFieldLogList() {
 
 function _flCard(l) {
   const a = l.accountId ? DB.a('ac').find(x => x.id === l.accountId) : null;
+  const pr = l.prospectRefId ? DB.a('pr').find(x => x.id === l.prospectRefId) : null;
   const when = l.createdAt ? new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
   const chip = (txt, extra) => `<span class="badge ${extra || 'gray'}" style="font-size:11px">${escHtml(txt)}</span>`;
@@ -19660,6 +19665,11 @@ function _flCard(l) {
       ? `<button class="btn xs" disabled>✓ Contact saved</button>`
       : actBtn('saveContact', 'Save contact'));
     btns.push(actBtn('openAccount', 'Open account'));
+  } else if (pr) {
+    btns.push(l.historyAppliedAt
+      ? `<button class="btn xs" disabled>✓ In prospect notes</button>`
+      : actBtn('addProspectNote', 'Add to prospect notes', 'primary'));
+    btns.push(actBtn('openProspect', 'Open prospect'));
   } else if (l.newPlace) {
     btns.push(l.prospectId
       ? `<button class="btn xs" disabled>✓ Prospect created</button>`
@@ -19672,6 +19682,7 @@ function _flCard(l) {
       <div>
         <span style="font-weight:600;font-size:14px">${escHtml(l.storeName || '—')}</span>
         ${l.newPlace ? chip('NEW PLACE', 'purple') : ''}
+        ${l.prospectRefId ? chip('PROSPECT', 'blue') : ''}
         ${l.storeTown ? `<span style="font-size:12px;color:var(--muted)"> · ${escHtml(l.storeTown)}</span>` : ''}
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${escHtml(l.repName || '')} · ${escHtml(when)}${l.reviewed ? ' · reviewed' : ''}</div>
       </div>
@@ -19714,6 +19725,29 @@ function flAddHistory(id) {
   }));
   firebase.firestore().collection('field_logs').doc(id).update({ historyAppliedAt: new Date().toISOString() }).catch(() => {});
   toast('Added to account history ✓');
+}
+
+function flAddProspectNote(id) {
+  const l = _flLogs.find(x => x.id === id);
+  if (!l || !l.prospectRefId || l.historyAppliedAt) return;
+  const p = DB.a('pr').find(x => x.id === l.prospectRefId);
+  if (!p) { toast('Prospect not found — it may have been deleted or won', 5000); return; }
+  const d = (l.createdAt || '').slice(0, 10) || today();
+  const text = [
+    (_FL_TYPE[l.type] || 'Visit') + ' — ' + (_FL_OUTCOME[l.outcome] || l.outcome || ''),
+    l.contactName ? 'Spoke to: ' + [l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).join(' ') : '',
+    l.notes || '',
+    _flExtrasText(l),
+  ].filter(Boolean).join('\n');
+  const note = { id: uid(), date: d, text, author: l.repName || 'field rep' };
+  DB.update('pr', l.prospectRefId, x => ({
+    ...x,
+    lastContacted: (x.lastContacted || '') > d ? x.lastContacted : d,
+    notes: [...(x.notes || []), note],
+    ...(l.followUpDate ? { nextAction: 'Follow up (field visit)', nextDate: l.followUpDate } : {}),
+  }));
+  firebase.firestore().collection('field_logs').doc(id).update({ historyAppliedAt: new Date().toISOString() }).catch(() => {});
+  toast('Added to prospect notes ✓');
 }
 
 function flSaveContact(id) {

@@ -234,7 +234,7 @@
       ? stores.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
       : stores.slice(0, 400);
     el.innerHTML = hits.length
-      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong><div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
+      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong>${s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : ''}<div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
       : (q ? '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>'
            : '<div class="muted" style="padding:8px 2px">No stores loaded — check signal, or use "New place" below.</div>');
     el.querySelectorAll('.store-hit').forEach((row) => {
@@ -248,7 +248,7 @@
     $('store-pick-wrap').style.display = 'none';
     $('newplace-wrap').style.display = 'none';
     $('store-picked').style.display = '';
-    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
+    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : ''}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
     $('btn-unpick').onclick = unpickStore;
     renderStoreLast();
   }
@@ -271,7 +271,7 @@
   function renderStoreLast() {
     const el = $('store-last');
     if (!picked) { el.innerHTML = ''; return; }
-    const prior = myLogs.filter((l) => l.accountId === picked.id).slice(0, 2);
+    const prior = myLogs.filter((l) => (picked.kind === 'prospect' ? l.prospectRefId === picked.id : l.accountId === picked.id)).slice(0, 2);
     el.innerHTML = prior.length
       ? 'Your last stop here: ' + prior.map((l) => `${esc((l.createdAt || '').slice(0, 10))} — ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}`).join(' · ')
       : '';
@@ -331,7 +331,8 @@
       uid: me.uid,
       repName: myName.slice(0, 120),
       repEmail: (me.email || '').slice(0, 200),
-      accountId: picked ? picked.id : null,
+      accountId: (picked && picked.kind !== 'prospect') ? picked.id : null,
+      prospectRefId: (picked && picked.kind === 'prospect') ? picked.id : null,
       storeName: (picked ? picked.name : npName).slice(0, 199),
       storeTown: (picked ? (picked.town || '') : $('np-town').value.trim()).slice(0, 120),
       newPlace: !picked,
