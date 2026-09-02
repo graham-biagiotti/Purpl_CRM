@@ -48,6 +48,7 @@
     .store-picked button { background: none; border: none; color: var(--purpl); font-size: 13px; cursor: pointer; text-decoration: underline; font-family: inherit; }
     .ent { border-bottom: 1px solid var(--tint); padding: 11px 0; font-size: 14px; }
     .ent:last-child { border-bottom: none; padding-bottom: 2px; }
+    .detail { background: var(--tint); border: 1.5px solid #D8CCE8; border-radius: 12px; padding: 14px; margin: 4px 0 10px; }
     .pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #E9EFED; color: #3E5A50; margin-left: 5px; vertical-align: 1px; }
     .pill.sync { background: #FEF3C7; color: #92400E; }
     .fu-row { border-left: 3px solid var(--line); padding-left: 10px; margin: 6px 0; }
@@ -188,12 +189,22 @@
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
   let toastTimer = null;
-  function toast(msg, ms) {
-    const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  function toast(msg, ms, actionLabel, actionFn) {
+    const t = $('toast'); t.textContent = msg;
+    if (actionLabel && actionFn) {
+      const b = document.createElement('button');
+      b.textContent = actionLabel;
+      b.style.cssText = 'margin-left:14px;background:none;border:none;color:#CBB8E6;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;text-decoration:underline';
+      b.onclick = () => { t.style.display = 'none'; clearTimeout(toastTimer); actionFn(); };
+      t.appendChild(b);
+    }
+    t.style.display = 'block';
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, ms || 3000);
   }
 
   const TYPES = [['visit', 'Visit'], ['call', 'Call'], ['cold_stop', 'Cold stop']];
+  const TYPE_LABEL = Object.fromEntries(TYPES);
+  TYPE_LABEL.scout = 'Scouted';
   const NP_TYPES = ['Grocery', 'Café', 'Restaurant', 'Specialty / Gift', 'Farm / Country Store', 'Co-op / Natural', 'Gym', 'Other'].map((t) => [t, t]);
   const OUTCOMES = [['order_interest', 'Wants to order'], ['interested', 'Interested'], ['follow_up', 'Follow up needed'], ['not_now', 'Not now'], ['dead', 'Not a fit']];
   const OUTCOME_LABEL = Object.fromEntries(OUTCOMES);
@@ -253,6 +264,7 @@
     loadStores();
     listenMyLogs();
     initPad();
+    if (!window._entryListsWired) { window._entryListsWired = true; wireEntryLists(); }
     // Address autocomplete on the New place field (same Places key/machinery
     // as the CRM; the key's referrer allowlist covers purpl-crm.web.app).
     // Failure to load is silent — the field still works as plain text.
@@ -334,41 +346,192 @@
     renderStoreLast();
   }
   function unpickStore() {
-    picked = null; newPlace = false;
+    picked = null; newPlace = false; _npKey = '';
     $('store-picked').style.display = 'none';
     $('newplace-wrap').style.display = 'none';
     $('store-pick-wrap').style.display = '';
     $('store-last').innerHTML = '';
     renderHits();
   }
+  let _npKey = '';
   function openNewPlace(prefillLog) {
     picked = null; newPlace = true;
     $('store-pick-wrap').style.display = 'none';
     $('store-picked').style.display = 'none';
     $('newplace-wrap').style.display = '';
-    $('store-last').innerHTML = '';
+    _npKey = prefillLog ? (prefillLog.storeName || '').toLowerCase().trim() : '';
     if (prefillLog) {
       $('np-name').value = prefillLog.storeName || '';
       $('np-town').value = prefillLog.storeTown || '';
       $('np-addr').value = prefillLog.storeAddress || '';
       selNpType = prefillLog.storeType || '';
       chipRow('chips-nptype', NP_TYPES, selNpType, (v) => { selNpType = v; });
-      const prior = myLogs.filter((l) => l.newPlace && (l.storeName || '').toLowerCase().trim() === (prefillLog.storeName || '').toLowerCase().trim()).slice(0, 2);
-      $('store-last').innerHTML = prior.length
-        ? 'Your last stop here: ' + prior.map((l) => `${esc((l.createdAt || '').slice(0, 10))} — ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}`).join(' · ')
-        : '';
     }
+    renderStoreLast();
   }
   $('btn-newplace').onclick = () => openNewPlace(null);
   $('btn-npclose').onclick = unpickStore;
 
   function renderStoreLast() {
     const el = $('store-last');
-    if (!picked) { el.innerHTML = ''; return; }
-    const prior = myLogs.filter((l) => (picked.kind === 'prospect' ? l.prospectRefId === picked.id : l.accountId === picked.id)).slice(0, 2);
-    el.innerHTML = prior.length
-      ? 'Your last stop here: ' + prior.map((l) => `${esc((l.createdAt || '').slice(0, 10))} — ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}`).join(' · ')
-      : '';
+    if (picked) {
+      const match = (l) => picked.kind === 'prospect' ? l.prospectRefId === picked.id : l.accountId === picked.id;
+      _renderHistoryInto(el, myLogs.filter(match), 'store-last');
+    } else if (newPlace && _npKey) {
+      _renderHistoryInto(el, myLogs.filter((l) => l.newPlace && (l.storeName || '').toLowerCase().trim() === _npKey), 'store-last');
+    } else { el.innerHTML = ''; }
+  }
+  function _renderHistoryInto(el, list, where) {
+    if (!list.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--blue);margin:12px 0 2px">Your stops here (${list.length})</div>` +
+      list.slice(0, 15).map((l) => _entryRowHTML(l, where)).join('');
+  }
+
+  // ── Entry detail / edit ──
+  // Tap a row (recent list, follow-up card, or place history) to open the
+  // full entry; ✕ closes. Content edits allowed until Graham reviews the
+  // entry; follow-up scheduling is editable forever (mirrors the rules).
+  let openEntryId = null, openEntryWhere = '', editingEntry = false, _editSel = {};
+
+  function _fmtDT(iso) { try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (_) { return (iso || '').slice(0, 10); } }
+  function _fmtD(d) { try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) { return d; } }
+
+  function _entryRowHTML(l, where) {
+    const open = l.id === openEntryId && openEntryWhere === where;
+    return `<div class="ent" data-eid="${esc(l.id)}" style="cursor:pointer${open ? ';border-bottom:none' : ''}">
+      <strong>${esc(l.storeName || '')}</strong>${l.newPlace ? ' <span class="pill">new place</span>' : ''}${l._pending ? ' <span class="pill sync">syncing…</span>' : ''}
+      <div class="muted">${esc((l.createdAt || '').slice(0, 10))} · ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}${l.notes ? ' — ' + esc(l.notes.slice(0, 90)) : ''}</div>
+    </div>${open ? (editingEntry ? _entryEditHTML(l) : _entryDetailHTML(l)) : ''}`;
+  }
+
+  function _entryDetailHTML(l) {
+    const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
+    const fuChip = (v, lab) => `<span class="chip" style="padding:7px 12px;font-size:13px" data-eact="fuset" data-eid="${esc(l.id)}" data-v="${v}">${lab}</span>`;
+    return `<div class="detail">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong style="color:var(--purpl);font-size:15px">${esc(l.storeName || '')}</strong>
+        <button data-eact="close" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:4px 8px;font-family:inherit">✕</button>
+      </div>
+      <div class="muted">${esc(_fmtDT(l.createdAt))} · ${esc(TYPE_LABEL[l.type] || l.type || '')} · ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}${l.editedAt ? ' · edited' : ''}${l.reviewed ? ' · ✅ reviewed' : ''}</div>
+      ${(l.storeAddress || l.storeTown || l.storeType) ? `<div class="muted" style="margin-top:4px">📍 ${esc([l.storeAddress, l.storeTown, l.storeType].filter(Boolean).join(' · '))}</div>` : ''}
+      ${hasContact ? `<div style="font-size:13.5px;margin-top:9px;padding:9px 11px;background:#fff;border-radius:8px">
+        👤 <strong>${esc(l.contactName || '(no name)')}</strong>${l.contactRole ? ' — ' + esc(l.contactRole) : ''}
+        ${l.contactPhone ? `<div class="muted" style="margin-top:2px">📞 ${esc(l.contactPhone)}</div>` : ''}
+        ${l.contactEmail ? `<div class="muted">✉️ ${esc(l.contactEmail)}</div>` : ''}
+      </div>` : ''}
+      ${l.notes ? `<div style="font-size:14px;margin-top:9px;white-space:pre-wrap">${esc(l.notes)}</div>` : ''}
+      <div style="margin-top:12px">
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--blue)">Follow up:</span>
+        <span style="font-size:13px">${l.followUpDate ? esc(_fmtD(l.followUpDate)) + (l.followUpDone ? ' — ✓ done' : '') : 'none'}</span>
+        <div class="chips" style="margin-top:7px">${fuChip('1', 'Tomorrow')}${fuChip('3', '3 days')}${fuChip('7', 'Next week')}${fuChip('14', '2 weeks')}${l.followUpDate ? fuChip('clear', 'Clear') : ''}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        ${l.reviewed ? '' : `<button class="btn ghost" style="margin:0" data-eact="edit">✏️ Edit</button>`}
+        <button class="btn ghost" style="margin:0" data-eact="logagain" data-eid="${esc(l.id)}">➕ Log another stop here</button>
+      </div>
+      ${l.reviewed ? `<div class="muted" style="margin-top:8px">Reviewed entries are locked — log a new stop for anything new. The follow-up above still works.</div>` : ''}
+    </div>`;
+  }
+
+  function _entryEditHTML(l) {
+    return `<div class="detail">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong style="color:var(--purpl);font-size:15px">Edit — ${esc(l.storeName || '')}</strong>
+        <button data-eact="canceledit" style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:4px 8px;font-family:inherit">✕</button>
+      </div>
+      <label>What was it?</label><div class="chips" id="chips-edit-type"></div>
+      <label>How did it go?</label><div class="chips" id="chips-edit-outcome"></div>
+      <label>Who did you talk to?</label>
+      <input id="e-cname" value="${esc(l.contactName || '')}" placeholder="Name" style="margin-bottom:8px">
+      <input id="e-crole" value="${esc(l.contactRole || '')}" placeholder="Their role" style="margin-bottom:8px">
+      <input id="e-cphone" value="${esc(l.contactPhone || '')}" placeholder="Phone" inputmode="tel" style="margin-bottom:8px">
+      <input id="e-cemail" value="${esc(l.contactEmail || '')}" placeholder="Email" inputmode="email">
+      <label>Notes</label><textarea id="e-notes" rows="5">${esc(l.notes || '')}</textarea>
+      <label>Follow up by</label><input id="e-followup" type="date" value="${esc(l.followUpDate || '')}">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" style="margin-top:14px;width:auto;padding:12px 26px" data-eact="saveedit">Save changes</button>
+        <button class="btn ghost" style="margin-top:14px" data-eact="canceledit">Cancel</button>
+      </div>
+    </div>`;
+  }
+
+  function _afterRenderDetail() {
+    if (!editingEntry || !$('chips-edit-type')) return;
+    const l = myLogs.find((x) => x.id === openEntryId);
+    if (!l) return;
+    _editSel = { type: l.type || 'visit', outcome: l.outcome || '' };
+    chipRow('chips-edit-type', TYPES, _editSel.type, (v) => { _editSel.type = v; });
+    chipRow('chips-edit-outcome', OUTCOMES, _editSel.outcome, (v) => { _editSel.outcome = v; });
+  }
+
+  function rerenderLists() {
+    renderRecent(); renderFollowUps(); renderStoreLast();
+    _afterRenderDetail();
+  }
+  function toggleEntry(id, where) {
+    if (openEntryId === id && openEntryWhere === where) return closeEntry();
+    openEntryId = id; openEntryWhere = where; editingEntry = false;
+    rerenderLists();
+  }
+  function closeEntry() { openEntryId = null; openEntryWhere = ''; editingEntry = false; rerenderLists(); }
+
+  function handleEntryAction(act, id, elBtn) {
+    const l = myLogs.find((x) => x.id === (id || openEntryId));
+    if (act === 'close') return closeEntry();
+    if (act === 'edit') { editingEntry = true; return rerenderLists(); }
+    if (act === 'canceledit') { editingEntry = false; return rerenderLists(); }
+    if (act === 'logagain') { closeEntry(); if (l) fuLogStop(l); return; }
+    if (act === 'saveedit') return saveEntryEdit(l);
+    if (act === 'fuset') return quickFollowUp(l, elBtn.getAttribute('data-v'));
+  }
+
+  // Follow-up scheduling: editable forever (the rules' planning tier).
+  function quickFollowUp(l, v) {
+    if (!l) return;
+    const val = v === 'clear' ? '' : _isoPlus(parseInt(v, 10));
+    const payload = { followUpDate: val, followUpDone: false, updatedAt: new Date().toISOString() };
+    db.collection('field_logs').doc(l.id).update(payload)
+      .then(() => toast(val ? 'Follow-up set for ' + _fmtD(val) + ' ✓' : 'Follow-up cleared'))
+      .catch(() => toast('Could not update — try again with signal.', 5000));
+    Object.assign(l, payload);
+    rerenderLists();
+  }
+
+  // Content edits: allowed until reviewed (enforced server-side too).
+  function saveEntryEdit(l) {
+    if (!l) return;
+    if (l.reviewed) { toast('This entry was reviewed — it is locked.'); return; }
+    const now = new Date().toISOString();
+    const payload = {
+      type: _editSel.type || l.type || 'visit',
+      outcome: _editSel.outcome || l.outcome || '',
+      contactName: $('e-cname').value.trim().slice(0, 150),
+      contactRole: $('e-crole').value.trim().slice(0, 150),
+      contactPhone: $('e-cphone').value.trim().slice(0, 60),
+      contactEmail: $('e-cemail').value.trim().slice(0, 200),
+      notes: $('e-notes').value.trim().slice(0, 7900),
+      followUpDate: $('e-followup').value || '',
+      editedAt: now, updatedAt: now,
+    };
+    if (payload.followUpDate !== (l.followUpDate || '') && l.followUpDone) payload.followUpDone = false;
+    db.collection('field_logs').doc(l.id).update(payload)
+      .then(() => toast('Saved ✓'))
+      .catch((e) => toast('⚠️ Edit rejected: ' + (e.message || e.code), 7000));
+    Object.assign(l, payload);
+    editingEntry = false;
+    rerenderLists();
+  }
+
+  function wireEntryLists() {
+    ['recent', 'fu-list', 'store-last'].forEach((cid) => {
+      $(cid).addEventListener('click', (ev) => {
+        const actEl = ev.target.closest('[data-eact]');
+        if (actEl) { ev.stopPropagation(); handleEntryAction(actEl.getAttribute('data-eact'), actEl.getAttribute('data-eid'), actEl); return; }
+        if (ev.target.closest('button') || ev.target.closest('.detail') || ev.target.closest('input,textarea')) return;
+        const row = ev.target.closest('[data-eid]');
+        if (row) toggleEntry(row.getAttribute('data-eid'), cid);
+      });
+    });
   }
 
   // ── Chips ──
@@ -469,6 +632,9 @@
       .onSnapshot({ includeMetadataChanges: true }, (snap) => {
         myLogs = snap.docs.map((d) => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() }))
           .sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+        // An open detail/edit card must not be rebuilt under the rep's
+        // thumbs by a sync echo — lists refresh when it closes.
+        if (openEntryId) { renderHits(); return; }
         renderRecent();
         renderStoreLast();
         renderFollowUps();
@@ -509,16 +675,17 @@
     el.innerHTML = fus.map(({ l, due, bucket }, i) => {
       const head = bucket !== lastBucket ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color[bucket]};margin:${i ? '12px' : '4px'} 0 4px">${label[bucket]}</div>` : '';
       lastBucket = bucket;
-      return `${head}<div class="ent fu-row ${bucket}" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      const open = l.id === openEntryId && openEntryWhere === 'fu-list';
+      return `${head}<div class="ent fu-row ${bucket}" data-eid="${esc(l.id)}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer">
         <div style="min-width:0">
-          <strong>${esc(l.storeName || '')}</strong> <span class="muted" style="white-space:nowrap">· due ${esc((() => { try { return new Date(due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) { return due; } })())}</span>
+          <strong>${esc(l.storeName || '')}</strong> <span class="muted" style="white-space:nowrap">· due ${esc(_fmtD(due))}</span>
           ${l.notes ? `<div class="muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.notes.slice(0, 80))}</div>` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn ghost" style="margin:0;padding:8px 10px;font-size:13px" data-fu-log="${i}">Log stop</button>
           <button class="btn ghost" style="margin:0;padding:8px 10px;font-size:13px" data-fu-done="${i}">✓</button>
         </div>
-      </div>`;
+      </div>${open ? (editingEntry ? _entryEditHTML(l) : _entryDetailHTML(l)) : ''}`;
     }).join('');
     el.querySelectorAll('[data-fu-log]').forEach((b) => {
       b.onclick = () => fuLogStop(fus[+b.dataset.fuLog].l);
@@ -539,6 +706,11 @@
     // Optimistic: the snapshot will confirm, but clear it locally now.
     l.followUpDone = true;
     renderFollowUps();
+    toast('Checked off ✓', 6000, 'Undo', () => {
+      db.collection('field_logs').doc(l.id).update({ followUpDone: false, updatedAt: new Date().toISOString() }).catch(() => {});
+      l.followUpDone = false;
+      renderFollowUps();
+    });
   }
 
   // ── My notepad (one private doc per rep, auto-saved) ──
@@ -567,10 +739,7 @@
   function renderRecent() {
     const el = $('recent');
     if (!myLogs.length) { el.innerHTML = '<div class="muted">Nothing logged yet.</div>'; return; }
-    el.innerHTML = myLogs.slice(0, 25).map((l) => `<div class="ent">
-      <strong>${esc(l.storeName || '')}</strong>${l.newPlace ? ' <span class="pill">new place</span>' : ''}${l._pending ? ' <span class="pill sync">syncing…</span>' : ''}
-      <div class="muted">${esc((l.createdAt || '').slice(0, 10))} · ${esc(OUTCOME_LABEL[l.outcome] || l.outcome || '')}${l.notes ? ' — ' + esc(l.notes.slice(0, 90)) : ''}</div>
-    </div>`).join('');
+    el.innerHTML = myLogs.slice(0, 25).map((l) => _entryRowHTML(l, 'recent')).join('');
   }
 
   // ── Online/offline bar ──

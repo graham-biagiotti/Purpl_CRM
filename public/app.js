@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v216';
+const APP_VERSION = 'v217';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -19685,7 +19685,7 @@ function _flCard(l) {
         ${l.newPlace ? chip('NEW PLACE', 'purple') : ''}
         ${l.prospectRefId ? chip('PROSPECT', 'blue') : ''}
         ${l.storeTown ? `<span style="font-size:12px;color:var(--muted)"> · ${escHtml(l.storeTown)}</span>` : ''}
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${escHtml(l.repName || '')} · ${escHtml(when)}${l.reviewed ? ' · reviewed' : ''}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${escHtml(l.repName || '')} · ${escHtml(when)}${l.editedAt ? ' · <span style="color:#B45309">✏ edited</span>' : ''}${l.reviewed ? ' · reviewed' : ''}</div>
       </div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         ${chip(_FL_TYPE[l.type] || l.type || '—')}

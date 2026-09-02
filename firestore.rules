@@ -96,18 +96,40 @@ service cloud.firestore {
         && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
         && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
         && request.resource.data.size() < 40;
-      // Field reps are create-only EXCEPT one narrow carve-out: checking off
-      // their own follow-ups. The diff guard means a field login can touch
-      // ONLY followUpDone/followUpDoneAt on ONLY its own docs — reviewed
-      // flags and applied-stamps stay staff-only, so a rep still cannot
-      // hide entries or forge review state.
+      // Field reps update their OWN docs in two tiers:
+      //  - Planning tier (ALWAYS): follow-up scheduling only — their to-do
+      //    list, never Graham's record.
+      //  - Content tier (only while NOT reviewed): fix what they typed —
+      //    notes/contact/type/outcome + an editedAt stamp. Once staff marks
+      //    an entry reviewed, content freezes.
+      // Structural facts (uid, storeName, accountId, prospectRefId,
+      // newPlace, createdAt) and review flags/applied-stamps are NEVER in
+      // either allowlist, so identity and review state cannot be forged.
+      // Value guards check the post-update doc for every rep-writable key.
       allow update: if isStaff()
         || (isField() && resource.data.uid == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['followUpDone', 'followUpDoneAt'])
-            && request.resource.data.followUpDone is bool
-            && request.resource.data.followUpDoneAt is string
-            && request.resource.data.followUpDoneAt.size() < 40);
+            && (!('followUpDate' in request.resource.data) || (request.resource.data.followUpDate is string && request.resource.data.followUpDate.size() < 12))
+            && (!('followUpDone' in request.resource.data) || request.resource.data.followUpDone is bool)
+            && (!('followUpDoneAt' in request.resource.data) || (request.resource.data.followUpDoneAt is string && request.resource.data.followUpDoneAt.size() < 40))
+            && (!('updatedAt' in request.resource.data) || (request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() < 40))
+            && (!('editedAt' in request.resource.data) || (request.resource.data.editedAt is string && request.resource.data.editedAt.size() < 40))
+            && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
+            && (!('contactName' in request.resource.data) || (request.resource.data.contactName is string && request.resource.data.contactName.size() < 200))
+            && (!('contactRole' in request.resource.data) || (request.resource.data.contactRole is string && request.resource.data.contactRole.size() < 200))
+            && (!('contactPhone' in request.resource.data) || (request.resource.data.contactPhone is string && request.resource.data.contactPhone.size() < 100))
+            && (!('contactEmail' in request.resource.data) || (request.resource.data.contactEmail is string && request.resource.data.contactEmail.size() < 200))
+            && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() < 40))
+            && (!('outcome' in request.resource.data) || (request.resource.data.outcome is string && request.resource.data.outcome.size() < 40))
+            && request.resource.data.size() < 45
+            && (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['followUpDate', 'followUpDone', 'followUpDoneAt', 'updatedAt'])
+              || (resource.data.reviewed != true
+                  && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['notes', 'contactName', 'contactRole', 'contactPhone',
+                                 'contactEmail', 'type', 'outcome', 'followUpDate',
+                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt']))
+            ));
       allow delete: if isAdmin();
     }
 
