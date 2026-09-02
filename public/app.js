@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v217';
+const APP_VERSION = 'v218';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -594,7 +594,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
 
   const items = [];
   _lineItems.forEach(li => {
-    if (li.skuId === '__discount__') return; // not a shippable item — money only
+    if (li.skuId === '__discount__' || li.skuId === '__misc__') return; // not shippable items — money only
     if (li.hasVariants && li.variantLines) {
       li.variantLines.forEach(vl => items.push({
         sku: (li.skuId||li.skuName||'') + '-' + (vl.variantId||vl.variantName||''),
@@ -2626,6 +2626,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = '';
     if (qs('#iv-shipping'))      qs('#iv-shipping').value      = '';
     if (qs('#iv-discount'))      qs('#iv-discount').value      = '';
+    _renderMiscRows('iv', []);
     if (qs('#iv-ship-status'))   qs('#iv-ship-status').style.display = 'none';
     if (qs('#iv-delete-btn')) qs('#iv-delete-btn').style.display = 'none';
   } else if (inv) {
@@ -2640,6 +2641,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
     if (qs('#iv-tracking'))      qs('#iv-tracking').value      = inv.trackingNumber||'';
     if (qs('#iv-shipping'))      qs('#iv-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
     if (qs('#iv-discount'))      qs('#iv-discount').value      = _discountOfInv(inv) || '';
+    _renderMiscRows('iv', _miscLinesOf(inv));
     ivDeliveryMethodChange();
     // paymentTerms may carry the preview shell's LABEL vocabulary ('Net 45')
     // — translate to this select's keys; an unmatched value must land on a
@@ -12694,6 +12696,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = '';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = '';
     if (qs('#lfi-shipping'))      qs('#lfi-shipping').value      = '';
+    _renderMiscRows('lfi', []);
     if (qs('#lfi-ship-status'))   qs('#lfi-ship-status').style.display = 'none';
     if (qs('#lfi-delete-btn')) qs('#lfi-delete-btn').style.display = 'none';
   } else {
@@ -12708,6 +12711,7 @@ function openLfInvoiceModal(id) {
     if (qs('#lfi-delivery-date')) qs('#lfi-delivery-date').value = inv.deliveryDate||'';
     if (qs('#lfi-tracking'))      qs('#lfi-tracking').value      = inv.trackingNumber||'';
     if (qs('#lfi-shipping'))      qs('#lfi-shipping').value      = (inv.lineItems||[]).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+(parseFloat(l.lineTotal!=null?l.lineTotal:l.total)||0),0) || '';
+    _renderMiscRows('lfi', _miscLinesOf(inv));
     lfiDeliveryMethodChange();
     if (qs('#lfi-delete-btn')) {
       qs('#lfi-delete-btn').style.display = _isAdmin() ? '' : 'none';
@@ -12723,7 +12727,7 @@ function openLfInvoiceModal(id) {
   const container = qs('#lfi-line-items');
   if (container) {
     container.innerHTML = '';
-    const rows = (inv?.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__');
+    const rows = (inv?.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__' && li.skuId !== '__misc__');
     if (rows.length) {
       rows.forEach(item => _lfInvRenderLineRow(item));
     } else {
@@ -13040,8 +13044,6 @@ function _saveLfInvoiceCore(id, isNew) {
     }
   });
 
-  if (!lineItems.length) { toast('Add at least one line item'); return; }
-
   const existing = isNew ? null : DB.a('lf_invoices').find(x => x.id === id);
   const saveId   = isNew ? uid() : id;
 
@@ -13059,6 +13061,16 @@ function _saveLfInvoiceCore(id, isNew) {
   } else {
     lineItems.push(..._existingShip);
   }
+
+  // Misc items: the modal's rows are the editor and round-trip visibly, so
+  // rows-present replaces; if the rows UI isn't in the DOM (older markup or
+  // non-modal path), CARRY existing __misc__ lines so they can't be dropped.
+  if (qs('#lfi-misc-rows')) lineItems.push(..._readMiscRows('lfi'));
+  else lineItems.push(...(existing?.lineItems || []).filter(li => li.skuId === '__misc__'));
+
+  // At least one REAL line (product or misc) — shipping/discount alone is
+  // not an invoice. Checked after misc so misc-only one-offs are allowed.
+  if (!lineItems.some(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__')) { toast('Add at least one line item'); return; }
 
   // Discount: the LF modal has no discount field (the Preview shell is its
   // editor) — CARRY the existing __discount__ line so a modal save can never
@@ -13100,7 +13112,7 @@ function _saveLfInvoiceCore(id, isNew) {
     accountId:     rec.accountId,
     accountName:   rec.accountName,
     date:          existingDeduction?.date || today(),
-    items:         lineItems.filter(l => l.skuId !== '__shipping__').flatMap(l => l.hasVariants
+    items:         lineItems.filter(l => l.skuId !== '__shipping__' && l.skuId !== '__misc__').flatMap(l => l.hasVariants
       ? l.variantLines.map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
       : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
     confirmed:     existingDeduction?.confirmed || false,
@@ -13937,11 +13949,39 @@ function _discountOfInv(inv) {
     .reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0));
 }
 
+// ── Misc items (third pseudo-line: description + dollar amount, no cases) ──
+// Same discipline as __shipping__/__discount__: cases:0, excluded from
+// inventory/stock/product KPIs, summed into totals (so Stripe pay links,
+// which read the server-side total, are automatically correct), rendered
+// in the extras block under the product sections.
+function _miscLinesOf(inv) { return (inv?.lineItems || []).filter(l => l.skuId === '__misc__'); }
+function _miscRowHTML(desc, amt) {
+  return `<div class="misc-row" style="display:flex;gap:6px;margin-top:6px;align-items:center">
+    <input class="misc-desc" placeholder="Description (e.g. Glassware)" value="${escHtml(String(desc == null ? '' : desc))}" style="flex:2">
+    <input class="misc-amt" type="number" step="0.01" min="0" placeholder="0.00" value="${escHtml(String(amt == null ? '' : amt))}" style="flex:1;max-width:110px">
+    <button type="button" class="btn xs" onclick="this.closest('.misc-row').remove()">✕</button>
+  </div>`;
+}
+function _renderMiscRows(prefix, lines) {
+  const box = qs('#' + prefix + '-misc-rows');
+  if (!box) return;
+  box.innerHTML = (lines || []).map(l => _miscRowHTML(l.description || l.skuName || '', parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || '')).join('');
+}
+function addMiscRow(prefix) { qs('#' + prefix + '-misc-rows')?.insertAdjacentHTML('beforeend', _miscRowHTML('', '')); }
+function _readMiscRows(prefix) {
+  return [...document.querySelectorAll('#' + prefix + '-misc-rows .misc-row')].map(r => {
+    const desc = (r.querySelector('.misc-desc')?.value || '').trim().slice(0, 120);
+    const amt = Math.round(Math.max(0, parseFloat(r.querySelector('.misc-amt')?.value) || 0) * 100) / 100;
+    return { desc, amt };
+  }).filter(x => x.desc && x.amt > 0)
+    .map(x => ({ skuId: '__misc__', skuName: x.desc, description: x.desc, qty: 1, cases: 0, unitPrice: x.amt, lineTotal: x.amt, total: x.amt }));
+}
+
 function _normShippingLines(inv) {
-  // Extras block under the product sections: shipping AND discount lines
-  // (discounts store a NEGATIVE total and render as "−$X").
-  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__' || li.skuId === '__discount__').map(li => ({
-    name: li.description || li.skuName || (li.skuId === '__discount__' ? 'Discount' : 'Shipping'),
+  // Extras block under the product sections: shipping, discount AND misc
+  // lines (discounts store a NEGATIVE total and render as "−$X").
+  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__' || li.skuId === '__discount__' || li.skuId === '__misc__').map(li => ({
+    name: li.description || li.skuName || (li.skuId === '__discount__' ? 'Discount' : (li.skuId === '__misc__' ? 'Misc item' : 'Shipping')),
     sub: li.carrier ? 'via ' + li.carrier : '',
     qty: '', price: '',
     total: parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : li.pricePerCase)) || 0,
@@ -13951,7 +13991,7 @@ function _normShippingLines(inv) {
 function _normPurplLines(inv) {
   const raw = (inv.lineItems && inv.lineItems.length) ? inv.lineItems
     : ((inv.cases || inv.amount) ? [{ skuName: 'Classic Lavender Lemonade', cases: inv.cases || 0, pricePerCase: inv.pricePerCase || 0, lineTotal: inv.amount != null ? inv.amount : (inv.total || 0) }] : []);
-  const lines = raw.filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__');
+  const lines = raw.filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__' && li.skuId !== '__misc__');
   return lines.map(li => {
     const cases = li.cases || li.qty || 0;
     const ppc = parseFloat(li.pricePerCase != null ? li.pricePerCase : (li.unitPrice || 0)) || 0;
@@ -13968,7 +14008,7 @@ function _normPurplLines(inv) {
 
 function _normLfLines(inv) {
   const out = [];
-  (inv.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__').forEach(li => {
+  (inv.lineItems || []).filter(li => li.skuId !== '__shipping__' && li.skuId !== '__discount__' && li.skuId !== '__misc__').forEach(li => {
     const up = parseFloat(li.unitPrice != null ? li.unitPrice : (li.pricePerUnit || 0)) || 0;
     if (li.hasVariants && li.variantLines && li.variantLines.length) {
       li.variantLines.forEach(vl => {
@@ -14841,7 +14881,7 @@ async function openCombinedInvoicePreview(combinedId) {
               const purplInv = cache.retail_invoices[ri];
               const invNum = purplInv.number || purplInv.invoiceNumber || '';
               (purplInv.lineItems || []).forEach(li => {
-                if (li.skuId === '__shipping__' || li.skuId === '__discount__') return; // pseudo-lines are not stock
+                if (li.skuId === '__shipping__' || li.skuId === '__discount__' || li.skuId === '__misc__') return; // pseudo-lines are not stock
                 const cases = li.cases || li.qty || 0;
                 if (cases > 0) {
                   cache.iv = cache.iv || [];
@@ -18005,7 +18045,7 @@ function markInvoiceSent(id) {
       const lines = inv.lineItems || inv.items || [];
       c.iv = c.iv || [];
       lines.forEach(li => {
-        if (li.skuId === '__shipping__' || li.skuId === '__discount__') return; // pseudo-lines are not stock
+        if (li.skuId === '__shipping__' || li.skuId === '__discount__' || li.skuId === '__misc__') return; // pseudo-lines are not stock
         const cases = li.cases || li.qty || 0;
         if (cases > 0) {
           c.iv.push({ id: uid(), date: today(), sku: li.skuId || li.sku || 'classic', type: 'out', qty: cases * CANS_PER_CASE, pool: inv.fulfillmentSource || 'warehouse', note: 'Invoice ' + invNum, invoiceId: id });
@@ -18221,8 +18261,6 @@ async function _saveInvCore(id, isNew) {
     });
   });
 
-  if (!lineItems.length) { _saveInvInFlight = false; toast('Enter at least one case quantity'); return; }  // LOW-5
-
   // isNew may be undefined if called from old code paths — treat missing id as new
   const _isNew   = isNew !== false && !id;
   const existing = _isNew ? null : findInvoice(id);
@@ -18239,6 +18277,16 @@ async function _saveInvCore(id, isNew) {
   } else {
     lineItems.push(..._carryLines);
   }
+
+  // Misc items: rows-present replaces (they round-trip visibly in the
+  // modal); rows-absent carries existing __misc__ lines. Pushed BEFORE the
+  // discount block so the discount clamp base includes misc amounts.
+  if (qs('#iv-misc-rows')) lineItems.push(..._readMiscRows('iv'));
+  else lineItems.push(...(existing?.lineItems || []).filter(li => li.skuId === '__misc__'));
+
+  // At least one REAL line (cases or misc) — shipping/discount alone is not
+  // an invoice. Checked after misc so misc-only one-offs are allowed. LOW-5
+  if (!lineItems.some(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__')) { _saveInvInFlight = false; toast('Enter at least one case quantity or misc item'); return; }
 
   // Discount: same rules as shipping — typed value wins, blank carries the
   // existing __discount__ line, explicit 0 removes it. Stored as ONE negative
@@ -18259,7 +18307,7 @@ async function _saveInvCore(id, isNew) {
     if (d > 0) lineItems.push({ skuId: '__discount__', skuName: 'Discount', description: 'Discount', qty: 1, cases: 0, unitPrice: -d, lineTotal: -d, total: -d });
   }
 
-  const totalCases = lineItems.filter(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__').reduce((s, l) => s + l.cases, 0);
+  const totalCases = lineItems.filter(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__' && l.skuId !== '__misc__').reduce((s, l) => s + l.cases, 0);
   const totalCans  = totalCases * CANS_PER_CASE;
   const totalAmt   = Math.round(lineItems.reduce((s, l) => s + (parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0), 0) * 100) / 100;
 
