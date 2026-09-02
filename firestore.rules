@@ -95,6 +95,14 @@ service cloud.firestore {
         && request.resource.data.storeName.size() < 200
         && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
         && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
+        // Review state cannot be forged at create either: a new log must
+        // arrive unreviewed and without staff stamps.
+        && (!('reviewed' in request.resource.data) || request.resource.data.reviewed == false)
+        && !('reviewedAt' in request.resource.data)
+        && !('reviewedBy' in request.resource.data)
+        && !('historyAppliedAt' in request.resource.data)
+        && !('contactSavedAt' in request.resource.data)
+        && !('prospectId' in request.resource.data)
         && request.resource.data.size() < 40;
       // Field reps update their OWN docs in two tiers:
       //  - Planning tier (ALWAYS): follow-up scheduling only — their to-do
@@ -124,7 +132,7 @@ service cloud.firestore {
             && (
               request.resource.data.diff(resource.data).affectedKeys()
                 .hasOnly(['followUpDate', 'followUpDone', 'followUpDoneAt', 'updatedAt'])
-              || (resource.data.reviewed != true
+              || ((!('reviewed' in resource.data) || resource.data.reviewed != true)
                   && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['notes', 'contactName', 'contactRole', 'contactPhone',
                                  'contactEmail', 'type', 'outcome', 'followUpDate',
