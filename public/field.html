@@ -330,7 +330,7 @@
     el.querySelectorAll('.store-hit').forEach((row) => {
       row.onclick = () => {
         const s = hits[+row.dataset.i];
-        if (s.mylog) openNewPlace(s.log); else pickStore(s);
+        if (s.mylog) pickMyPlace(s.name); else pickStore(s);
       };
     });
   }
@@ -346,7 +346,8 @@
     renderStoreLast();
   }
   function unpickStore() {
-    picked = null; newPlace = false; _npKey = '';
+    picked = null; newPlace = false; _npKey = ''; editPlaceInfoOpen = false;
+    _setNpMode('new');
     $('store-picked').style.display = 'none';
     $('newplace-wrap').style.display = 'none';
     $('store-pick-wrap').style.display = '';
@@ -354,20 +355,70 @@
     renderHits();
   }
   let _npKey = '';
-  function openNewPlace(prefillLog) {
-    picked = null; newPlace = true;
+  let editPlaceInfoOpen = false;
+
+  function openNewPlace() {
+    // Brand-new place only. Re-opening one of his finds goes through
+    // pickMyPlace — it behaves like picking any store, never like re-adding.
+    picked = null; newPlace = true; _npKey = ''; editPlaceInfoOpen = false;
     $('store-pick-wrap').style.display = 'none';
     $('store-picked').style.display = 'none';
     $('newplace-wrap').style.display = '';
-    _npKey = prefillLog ? (prefillLog.storeName || '').toLowerCase().trim() : '';
-    if (prefillLog) {
-      $('np-name').value = prefillLog.storeName || '';
-      $('np-town').value = prefillLog.storeTown || '';
-      $('np-addr').value = prefillLog.storeAddress || '';
-      selNpType = prefillLog.storeType || '';
-      chipRow('chips-nptype', NP_TYPES, selNpType, (v) => { selNpType = v; });
-    }
+    _setNpMode('new');
     renderStoreLast();
+  }
+
+  // Best-known info for one of his places: newest non-empty value per field
+  // across all his entries there, so a quick follow-up log never loses the
+  // address he typed on day one.
+  function _latestPlaceInfo(nameKey) {
+    const info = { town: '', address: '', addrParts: null, type: '' };
+    myLogs.filter((l) => l.newPlace && (l.storeName || '').toLowerCase().trim() === nameKey).forEach((l) => {
+      if (!info.town && l.storeTown) info.town = l.storeTown;
+      if (!info.address && l.storeAddress) info.address = l.storeAddress;
+      if (!info.addrParts && l.storeAddrParts) info.addrParts = l.storeAddrParts;
+      if (!info.type && l.storeType) info.type = l.storeType;
+    });
+    return info;
+  }
+
+  function pickMyPlace(name) {
+    newPlace = false; editPlaceInfoOpen = false;
+    _npKey = (name || '').toLowerCase().trim();
+    picked = { kind: 'myplace', id: null, name: name };
+    const info = _latestPlaceInfo(_npKey);
+    picked.town = info.town;
+    $('store-pick-wrap').style.display = 'none';
+    $('newplace-wrap').style.display = 'none';
+    $('store-picked').style.display = '';
+    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(name)} <span class="pill">your find</span>${info.town ? ' <span class="muted">· ' + esc(info.town) + '</span>' : ''}</span><span style="display:flex;gap:10px"><button id="btn-editinfo">edit info</button><button id="btn-unpick">change</button></span></div>`;
+    $('btn-unpick').onclick = unpickStore;
+    $('btn-editinfo').onclick = toggleEditPlaceInfo;
+    renderStoreLast();
+  }
+
+  // "Edit info" reuses the New place fields inline (name locked — renaming
+  // would orphan the place's history). Saved with his next logged entry.
+  function _setNpMode(mode) {
+    const isEdit = mode === 'edit';
+    $('np-name').style.display = isEdit ? 'none' : '';
+    $('btn-saveplace').style.display = isEdit ? 'none' : '';
+    $('btn-npclose').style.display = isEdit ? 'none' : '';
+  }
+  function toggleEditPlaceInfo() {
+    editPlaceInfoOpen = !editPlaceInfoOpen;
+    if (editPlaceInfoOpen) {
+      const info = _latestPlaceInfo(_npKey);
+      $('newplace-wrap').style.display = '';
+      _setNpMode('edit');
+      $('np-name').value = picked ? picked.name : '';
+      $('np-town').value = info.town;
+      $('np-addr').value = info.address;
+      selNpType = info.type || '';
+      chipRow('chips-nptype', NP_TYPES, selNpType, (v) => { selNpType = v; });
+    } else {
+      $('newplace-wrap').style.display = 'none';
+    }
   }
   $('btn-newplace').onclick = () => openNewPlace(null);
   $('btn-npclose').onclick = unpickStore;
@@ -375,10 +426,10 @@
   function renderStoreLast() {
     const el = $('store-last');
     if (picked) {
-      const match = (l) => picked.kind === 'prospect' ? l.prospectRefId === picked.id : l.accountId === picked.id;
+      const match = (l) => picked.kind === 'myplace'
+        ? (l.newPlace && (l.storeName || '').toLowerCase().trim() === _npKey)
+        : (picked.kind === 'prospect' ? l.prospectRefId === picked.id : l.accountId === picked.id);
       _renderHistoryInto(el, myLogs.filter(match), 'store-last');
-    } else if (newPlace && _npKey) {
-      _renderHistoryInto(el, myLogs.filter((l) => l.newPlace && (l.storeName || '').toLowerCase().trim() === _npKey), 'store-last');
     } else { el.innerHTML = ''; }
   }
   function _renderHistoryInto(el, list, where) {
@@ -588,21 +639,28 @@
       if (!picked && !(newPlace && npName)) { toast('Pick a store or add a New place first.'); return; }
       if (!selOutcome) { toast('Tap how it went.'); return; }
     }
+    // His own places keep newPlace:true (that's their identity until Graham
+    // promotes them) and carry the best-known info forward on every entry —
+    // edited fields win when the Edit-info panel is open.
+    const isMy = !!(picked && picked.kind === 'myplace');
+    const npParse = () => { try { const p = JSON.parse($('np-addr').dataset.addrParts || 'null'); return (p && (p.street1 || p.city)) ? p : null; } catch (_) { return null; } };
+    const placeInfo = isMy
+      ? (editPlaceInfoOpen
+          ? { town: $('np-town').value.trim(), address: $('np-addr').value.trim(), addrParts: npParse(), type: selNpType }
+          : _latestPlaceInfo(_npKey))
+      : null;
     const entry = {
       uid: me.uid,
       repName: myName.slice(0, 120),
       repEmail: (me.email || '').slice(0, 200),
-      accountId: (picked && picked.kind !== 'prospect') ? picked.id : null,
+      accountId: (picked && picked.kind !== 'prospect' && picked.kind !== 'myplace') ? picked.id : null,
       prospectRefId: (picked && picked.kind === 'prospect') ? picked.id : null,
-      storeAddress: !picked ? $('np-addr').value.trim().slice(0, 300) : '',
-      storeAddrParts: (() => {
-        if (picked) return null;
-        try { const p = JSON.parse($('np-addr').dataset.addrParts || 'null'); return (p && (p.street1 || p.city)) ? p : null; } catch (_) { return null; }
-      })(),
-      storeType: !picked ? selNpType : '',
+      storeAddress: isMy ? (placeInfo.address || '').slice(0, 300) : (!picked ? $('np-addr').value.trim().slice(0, 300) : ''),
+      storeAddrParts: isMy ? (placeInfo.addrParts || null) : (!picked ? npParse() : null),
+      storeType: isMy ? (placeInfo.type || '') : (!picked ? selNpType : ''),
       storeName: (picked ? picked.name : npName).slice(0, 199),
-      storeTown: (picked ? (picked.town || '') : $('np-town').value.trim()).slice(0, 120),
-      newPlace: !picked,
+      storeTown: (isMy ? (placeInfo.town || '') : (picked ? (picked.town || '') : $('np-town').value.trim())).slice(0, 120),
+      newPlace: !picked || isMy,
       type: mode === 'place' ? 'scout' : selType,
       outcome: mode === 'place' ? 'scouted' : selOutcome,
       followUpDate: $('f-followup').value || '',
@@ -697,7 +755,7 @@
   function fuLogStop(l) {
     // Prefill the form for this place and scroll to it.
     const inList = l.prospectRefId ? stores.find((s) => s.id === l.prospectRefId) : null;
-    if (inList) pickStore(inList); else openNewPlace(l);
+    if (inList) pickStore(inList); else pickMyPlace(l.storeName || '');
     $('form-card').scrollIntoView({ behavior: 'smooth' });
   }
   function fuDone(l) {

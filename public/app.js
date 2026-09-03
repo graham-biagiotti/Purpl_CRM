@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v218';
+const APP_VERSION = 'v219';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -19642,11 +19642,46 @@ function renderFieldLog() {
         <option value="all">All entries</option>
       </select>
       <input id="fl-search" placeholder="Search store, rep, notes…" oninput="_renderFieldLogList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
-      <span style="font-size:12px;color:var(--muted)">Reps log from purpl-crm.web.app/field</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin:-6px 2px 12px;line-height:1.5">
+      One tile per place — all of the rep's stops there together. He works his places
+      (logs from purpl-crm.web.app/field); when a store closes, <strong>Create prospect</strong> on its tile
+      carries everything over. Otherwise: read the entries, push the good stuff into the
+      prospect (notes / contact), <strong>Mark reviewed</strong>.
     </div>
     <div id="fl-list"></div>
   `;
   _renderFieldLogList();
+}
+
+function _flPlaceKey(l) {
+  return l.prospectRefId ? ('p:' + l.prospectRefId)
+    : (l.accountId ? ('a:' + l.accountId)
+    : ('n:' + (l.storeName || '').toLowerCase().trim()));
+}
+
+// One tile per PLACE: all of a store's entries grouped, newest place first.
+function _flGroups(entries) {
+  const map = new Map();
+  entries.forEach(l => {
+    const k = _flPlaceKey(l);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(l);
+  });
+  return [...map.entries()].map(([key, list]) => {
+    list.sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+    const newest = list[0];
+    return {
+      key, entries: list, newest,
+      name: newest.storeName || '—',
+      isProspect: !!newest.prospectRefId,
+      isAccount: !!newest.accountId,
+      isNew: !newest.prospectRefId && !newest.accountId,
+      prospectId: (list.find(x => x.prospectId) || {}).prospectId || null,
+      unreviewed: list.filter(x => !x.reviewed).length,
+      pendingFu: list.find(x => x.followUpDate && !x.followUpDone) || null,
+    };
+  }).sort((a, b) => (a.newest.createdAt || '') < (b.newest.createdAt || '') ? 1 : -1);
 }
 
 function _renderFieldLogList() {
@@ -19662,15 +19697,12 @@ function _renderFieldLogList() {
     el.innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">${mode === 'open' ? 'Nothing waiting for review.' : 'No entries.'}</div>`;
     return;
   }
-  el.innerHTML = list.map(_flCard).join('');
-  // SECURITY: buttons carry the log id in a data-attribute (escHtml-safe in
-  // pure attribute context) and dispatch through ONE delegated handler —
-  // never inlined into onclick. The id is a Firestore doc id, and a field-
-  // role login can create a log with an ATTACKER-CHOSEN doc id (quotes,
-  // angle brackets, event handlers). Inlining it into onclick was a stored-
-  // XSS vector executing in the staff session on render; data-attr + lookup
-  // by id closes it. dataset values are only ever used as lookup keys, never
-  // re-inserted into HTML.
+  el.innerHTML = _flGroups(list).map(_flTileHTML).join('');
+  // SECURITY: ids/keys travel ONLY in data-attributes (escHtml-safe in pure
+  // attribute context) and dispatch through ONE delegated handler — never
+  // inlined into onclick. A field-role login can create a log with an
+  // ATTACKER-CHOSEN doc id; dataset values are only ever used as lookup
+  // keys, never re-inserted into HTML.
   if (!el._flWired) {
     el._flWired = true;
     el.addEventListener('click', ev => {
@@ -19684,25 +19716,61 @@ function _renderFieldLogList() {
       } else if (act === 'openProspect') {
         const l = _flLogs.find(x => x.id === id);
         if (l && l.prospectRefId) openProspect(l.prospectRefId);
-      } else if (act === 'addHistory') flAddHistory(id);
+      } else if (act === 'openMadeProspect') {
+        const l = _flLogs.find(x => x.id === id);
+        if (l && l.prospectId) openProspect(l.prospectId);
+      } else if (act === 'createProspectPlace') flCreateProspectPlace(btn.getAttribute('data-fl-key') || '');
+      else if (act === 'addHistory') flAddHistory(id);
       else if (act === 'addProspectNote') flAddProspectNote(id);
       else if (act === 'saveContact') flSaveContact(id);
-      else if (act === 'createProspect') flCreateProspect(id);
       else if (act === 'markReviewed') flMarkReviewed(id);
       else if (act === 'delete') flDelete(id);
     });
   }
 }
 
-function _flCard(l) {
-  const a = l.accountId ? DB.a('ac').find(x => x.id === l.accountId) : null;
+const _flChip = (txt, extra) => `<span class="badge ${extra || 'gray'}" style="font-size:11px">${escHtml(txt)}</span>`;
+
+function _flTileHTML(g) {
+  const info = (f) => ((g.entries.find(x => x[f]) || {})[f] || '');
+  const outcomeCls = { order_interest: 'green', interested: 'blue', follow_up: 'orange', not_now: 'gray', dead: 'red' }[g.newest.outcome] || 'gray';
+  const nid = escHtml(g.newest.id || '');
+  const btns = [];
+  if (g.isProspect) btns.push(`<button class="btn xs" data-fl-act="openProspect" data-fl-id="${nid}">Open prospect</button>`);
+  if (g.isAccount) btns.push(`<button class="btn xs" data-fl-act="openAccount" data-fl-id="${nid}">Open account</button>`);
+  if (g.isNew) {
+    btns.push(g.prospectId
+      ? `<button class="btn xs" data-fl-act="openMadeProspect" data-fl-id="${escHtml((g.entries.find(x => x.prospectId) || {}).id || '')}">✓ Prospect — open</button>`
+      : `<button class="btn xs primary" data-fl-act="createProspectPlace" data-fl-key="${escHtml(g.key)}">Create prospect (all ${g.entries.length})</button>`);
+  }
+  return `<div class="card" style="padding:0;margin-bottom:12px;overflow:hidden">
+    <div style="padding:12px 16px;background:var(--bg-alt,#f9fafb);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+      <div style="min-width:0">
+        <span style="font-weight:700;font-size:14.5px">${escHtml(g.name)}</span>
+        ${g.isProspect ? _flChip('PROSPECT', 'blue') : ''}
+        ${g.isAccount ? _flChip('ACCOUNT', 'green') : ''}
+        ${g.isNew ? _flChip('NEW PLACE', 'purple') : ''}
+        ${g.unreviewed ? `<span class="badge red" style="font-size:11px">${g.unreviewed} to review</span>` : ''}
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
+          ${[info('storeTown'), info('storeType'), info('storeAddress')].filter(Boolean).map(escHtml).join(' · ') || '&nbsp;'}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${_flChip(_FL_OUTCOME[g.newest.outcome] || g.newest.outcome || '—', outcomeCls)}
+        ${g.pendingFu ? _flChip('Follow up ' + fmtD(g.pendingFu.followUpDate), 'orange') : ''}
+        ${btns.join('')}
+      </div>
+    </div>
+    <div style="padding:2px 16px 10px">${g.entries.map(_flEntryHTML).join('')}</div>
+  </div>`;
+}
+
+function _flEntryHTML(l) {
   const pr = l.prospectRefId ? DB.a('pr').find(x => x.id === l.prospectRefId) : null;
+  const a = l.accountId ? DB.a('ac').find(x => x.id === l.accountId) : null;
   const when = l.createdAt ? new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
-  const chip = (txt, extra) => `<span class="badge ${extra || 'gray'}" style="font-size:11px">${escHtml(txt)}</span>`;
   const outcomeCls = { order_interest: 'green', interested: 'blue', follow_up: 'orange', not_now: 'gray', dead: 'red' }[l.outcome] || 'gray';
-  // id goes ONLY into a data-attribute (escHtml-escaped); see the delegated
-  // handler note above for why it must never touch onclick.
   const did = escHtml(l.id || '');
   const actBtn = (act, label, cls, style) => `<button class="btn xs ${cls || ''}" data-fl-act="${act}" data-fl-id="${did}"${style ? ' style="' + style + '"' : ''}>${label}</button>`;
   const btns = [];
@@ -19713,46 +19781,77 @@ function _flCard(l) {
     if (hasContact) btns.push(l.contactSavedAt
       ? `<button class="btn xs" disabled>✓ Contact saved</button>`
       : actBtn('saveContact', 'Save contact'));
-    btns.push(actBtn('openAccount', 'Open account'));
   } else if (pr) {
     btns.push(l.historyAppliedAt
       ? `<button class="btn xs" disabled>✓ In prospect notes</button>`
       : actBtn('addProspectNote', 'Add to prospect notes', 'primary'));
-    btns.push(actBtn('openProspect', 'Open prospect'));
-  } else if (l.newPlace) {
-    btns.push(l.prospectId
-      ? `<button class="btn xs" disabled>✓ Prospect created</button>`
-      : actBtn('createProspect', 'Create prospect', 'primary'));
   }
   if (!l.reviewed) btns.push(actBtn('markReviewed', 'Mark reviewed'));
   if (_isAdmin()) btns.push(actBtn('delete', 'Delete', '', 'color:#dc2626'));
-  return `<div class="card" style="padding:14px 16px;margin-bottom:10px;${l.reviewed ? 'opacity:0.75' : ''}">
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--border);${l.reviewed ? 'opacity:0.7' : ''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-      <div>
-        <span style="font-weight:600;font-size:14px">${escHtml(l.storeName || '—')}</span>
-        ${l.newPlace ? chip('NEW PLACE', 'purple') : ''}
-        ${l.prospectRefId ? chip('PROSPECT', 'blue') : ''}
-        ${l.storeTown ? `<span style="font-size:12px;color:var(--muted)"> · ${escHtml(l.storeTown)}</span>` : ''}
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${escHtml(l.repName || '')} · ${escHtml(when)}${l.editedAt ? ' · <span style="color:#B45309">✏ edited</span>' : ''}${l.reviewed ? ' · reviewed' : ''}</div>
-      </div>
+      <div style="font-size:11.5px;color:var(--muted)">${escHtml(l.repName || '')} · ${escHtml(when)}${l.editedAt ? ' · <span style="color:#B45309">✏ edited</span>' : ''}${l.reviewed ? ' · reviewed' : ''}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
-        ${chip(_FL_TYPE[l.type] || l.type || '—')}
-        ${chip(_FL_OUTCOME[l.outcome] || l.outcome || '—', outcomeCls)}
-        ${l.followUpDate ? chip('Follow up ' + fmtD(l.followUpDate) + (l.followUpDone ? ' ✓' : ''), l.followUpDone ? 'gray' : 'orange') : ''}
+        ${_flChip(_FL_TYPE[l.type] || l.type || '—')}
+        ${_flChip(_FL_OUTCOME[l.outcome] || l.outcome || '—', outcomeCls)}
+        ${l.followUpDate ? _flChip('Follow up ' + fmtD(l.followUpDate) + (l.followUpDone ? ' ✓' : ''), l.followUpDone ? 'gray' : 'orange') : ''}
       </div>
     </div>
-    ${(l.newPlace && (l.storeAddress || l.storeType)) ? `<div style="font-size:12.5px;margin-top:8px;color:var(--muted)">
-      ${l.storeType ? '🏷 ' + escHtml(l.storeType) : ''}${l.storeType && l.storeAddress ? ' · ' : ''}${l.storeAddress ? '📍 ' + escHtml(l.storeAddress) : ''}
-    </div>` : ''}
-    ${hasContact ? `<div style="font-size:12.5px;margin-top:8px;padding:8px 10px;background:var(--bg-alt,#f9fafb);border-radius:6px">
+    ${hasContact ? `<div style="font-size:12.5px;margin-top:7px;padding:7px 10px;background:var(--bg-alt,#f9fafb);border-radius:6px">
       👤 ${[l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).map(escHtml).join(' · ')}
     </div>` : ''}
-    ${l.notes ? `<div style="font-size:13px;margin-top:8px;white-space:pre-wrap">${escHtml(l.notes)}</div>` : ''}
-    ${(l.extras || []).length ? `<div style="font-size:12.5px;margin-top:8px;color:var(--muted)">
+    ${l.notes ? `<div style="font-size:13px;margin-top:7px;white-space:pre-wrap">${escHtml(l.notes)}</div>` : ''}
+    ${(l.extras || []).length ? `<div style="font-size:12.5px;margin-top:7px;color:var(--muted)">
       ${l.extras.map(x => `<div>• ${escHtml(x.label || '')}${x.label && x.value ? ': ' : ''}${escHtml(x.value || '')}</div>`).join('')}
     </div>` : ''}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${btns.join('')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">${btns.join('')}</div>
   </div>`;
+}
+
+// Create ONE prospect from a whole place tile: newest info wins, every
+// entry's notes fold in chronologically, all entries get the link stamp.
+function flCreateProspectPlace(key) {
+  const g = _flGroups(_flLogs).find(x => x.key === key);
+  if (!g || !g.isNew) return;
+  if (g.prospectId) { toast('Prospect already created for this place'); return; }
+  const info = (f) => ((g.entries.find(x => x[f]) || {})[f] || '');
+  const notes = [];
+  [...g.entries].reverse().forEach(l => {
+    const d = (l.createdAt || '').slice(0, 10) || today();
+    const txt = [
+      (_FL_TYPE[l.type] || 'Visit') + ' — ' + (_FL_OUTCOME[l.outcome] || l.outcome || ''),
+      l.contactName ? 'Spoke to: ' + [l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).join(' ') : '',
+      l.notes || '',
+      _flExtrasText(l),
+    ].filter(Boolean).join('\n');
+    if (txt) notes.push({ id: uid(), date: d, text: txt, author: l.repName || 'field rep' });
+  });
+  const contactSrc = g.entries.find(x => x.contactName || x.contactEmail || x.contactPhone) || {};
+  const d0 = (g.newest.createdAt || '').slice(0, 10) || today();
+  const fu = g.pendingFu;
+  const p = {
+    id: uid(),
+    name: g.name,
+    contact: contactSrc.contactName || '',
+    phone: contactSrc.contactPhone || '',
+    email: contactSrc.contactEmail || '',
+    type: info('storeType') || '', status: 'contacted',
+    territory: info('storeTown') || '', source: 'Field — ' + (g.newest.repName || 'rep'),
+    notes,
+    lastContacted: d0,
+    nextAction: fu ? 'Follow up (field)' : '',
+    nextDate: fu ? fu.followUpDate : '',
+  };
+  if (info('storeAddress')) p.address = info('storeAddress');
+  const parts = (g.entries.find(x => x.storeAddrParts) || {}).storeAddrParts;
+  if (parts && typeof parts === 'object') p.addrParts = parts;
+  DB.push('pr', p);
+  g.entries.forEach(l => {
+    firebase.firestore().collection('field_logs').doc(l.id).update({ prospectId: p.id }).catch(() => {});
+    l.prospectId = p.id;
+  });
+  toast('Prospect created from ' + g.entries.length + ' entr' + (g.entries.length === 1 ? 'y' : 'ies') + ' ✓');
+  _renderFieldLogList();
 }
 
 function _flExtrasText(l) {
