@@ -65,6 +65,16 @@ async function _htmlToPdf(html) {
 // email / shipping / AI callables — only admin+employee may. A non-staff
 // authenticated caller is rejected here. Throws; callers that formerly
 // returned {ok:false} for the unauth case keep that line ahead of this.
+// Optional CC list on outbound email: string or array in, validated
+// array (max 5, each a plausible address) or undefined out.
+function _ccList(raw) {
+  const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(/[,;]+/) : []);
+  const out = arr.map((e) => String(e || '').trim()).filter(Boolean)
+    .filter((e) => e.length < 200 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+    .slice(0, 5);
+  return out.length ? out : undefined;
+}
+
 async function _assertStaffRole(request) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
   const snap = await admin.firestore().collection('users').doc(request.auth.uid).get();
@@ -128,6 +138,7 @@ exports.sendEmail = onCall(
       const result = await resend.emails.send({
         from: data.from,
         to: data.to,
+        ...(_ccList(data.cc) ? { cc: _ccList(data.cc) } : {}),
         subject: data.subject,
         html: data.html,
         ...(attachments ? {attachments} : {}),
@@ -169,6 +180,7 @@ exports.sendCombinedInvoice = onCall(
       const result = await resend.emails.send({
         from: 'lavender@pbfwholesale.com',
         to: data.to,
+        ...(_ccList(data.cc) ? { cc: _ccList(data.cc) } : {}),
         replyTo: 'graham@pumpkinblossomfarm.com',
         subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
         html: data.html,

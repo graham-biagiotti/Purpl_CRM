@@ -94,7 +94,17 @@ function _invRecipient(inv, account) {
     const kid = (pc?.billingEmail || '').trim() || (lc?.billingEmail || '').trim();
     if (kid) return kid;
   }
+  // Account-level Billing / AP email: where invoices go by default for
+  // stores whose buyer doesn't pay the bills.
+  const abe = (account?.billingEmail || '').trim();
+  if (abe) return abe;
   return account?.email || '';
+}
+
+// Comma/semicolon-separated address list -> validated array (max 5).
+function _parseEmailList(raw) {
+  return String(raw || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean)
+    .filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).slice(0, 5);
 }
 
 function _invoiceCol(id) {
@@ -441,11 +451,12 @@ const PBF_HEADER_HTML = `
 </table>`;
 
 // ── Firebase Functions client helpers ─────────────────────
-async function callSendEmail(to, from, subject, html, attachments) {
+async function callSendEmail(to, from, subject, html, attachments, cc) {
   try {
     const fn = firebase.functions().httpsCallable('sendEmail');
     const payload = {to, from, subject, html};
     if (attachments && attachments.length) payload.attachments = attachments;
+    if (cc && cc.length) payload.cc = cc;
     const result = await fn(payload);
     return result.data;
   } catch (err) {
@@ -759,10 +770,12 @@ async function _getStripePayLink(invoice, type) {
   return 'https://purpl-crm.web.app/pay?inv=' + encodeURIComponent(invoice.id) + '&t=' + encodeURIComponent(type || 'retail');
 }
 
-async function callSendCombinedInvoice(to, accountName, subject, html, accountId, invoiceNumber) {
+async function callSendCombinedInvoice(to, accountName, subject, html, accountId, invoiceNumber, cc) {
   try {
     const fn = firebase.functions().httpsCallable('sendCombinedInvoice');
-    const result = await fn({to, accountName, subject, html, accountId: accountId || null, invoiceNumber: invoiceNumber || null});
+    const payload = {to, accountName, subject, html, accountId: accountId || null, invoiceNumber: invoiceNumber || null};
+    if (cc && cc.length) payload.cc = cc;
+    const result = await fn(payload);
     return result.data;
   } catch (err) {
     console.error('Send combined invoice error:', err);
@@ -5916,6 +5929,7 @@ function editAccount(id) {
   eacRenderContacts(_editContacts);
   qs('#eac-type').value = a.type||'Grocery';
   qs('#eac-territory').value = a.territory||'';
+  if (qs('#eac-billing-email')) qs('#eac-billing-email').value = a.billingEmail||'';
   qs('#eac-status').value = a.status||'active';
   qs('#eac-since').value = a.since||today();
   if (qs('#eac-ispbf')) qs('#eac-ispbf').checked = !!a.isPbf;
@@ -6088,6 +6102,7 @@ async function saveAccount(id, isNew) {
     locs,
     type:         qs('#eac-type')?.value||'Grocery',
     territory:    qs('#eac-territory')?.value?.trim()||'',
+    billingEmail: qs('#eac-billing-email')?.value?.trim()||'',
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
     dropOffRules: locs[0]?.dropOffRules||'',
@@ -14569,14 +14584,19 @@ async function openInvoicePreview(type, id) {
   const sendBtn = qs('#civ-btn-gmail');
   if (sendBtn) {
     sendBtn.disabled = false; sendBtn.textContent = 'Send Invoice to Customer';
+    // Prefill the editable To (billing/AP default) and clear CC on each open.
+    if (qs('#civ-send-to')) qs('#civ-send-to').value = _invRecipient(rec, account) || '';
+    if (qs('#civ-send-cc')) qs('#civ-send-cc').value = '';
     sendBtn.onclick = async () => {
-      const to = _invRecipient(rec, account);
-      if (!to) { toast('No email address on file for this account'); return; }
+      const _typedTo = (qs('#civ-send-to')?.value || '').trim();
+      const to = _parseEmailList(_typedTo)[0] || '';
+      if (!to) { toast(_typedTo ? 'Send-to address doesn\'t look like an email' : 'No email address on file for this account'); return; }
+      const cc = _parseEmailList(qs('#civ-send-cc')?.value).filter(e => e.toLowerCase() !== to.toLowerCase());
       sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
       try {
         if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) { try { await pushInvoiceToShipStation(id, col); } catch (e) {} }
         const subject = 'Invoice from Pumpkin Blossom Farm — ' + (rec.accountName || account.name || '');
-        const result = await callSendEmail(to, 'lavender@pbfwholesale.com', subject, html);
+        const result = await callSendEmail(to, 'lavender@pbfwholesale.com', subject, html, undefined, cc);
         toast('Invoice sent ✓');
         // purpl deducts inventory via markInvoiceSent; LF is Wix-managed; dist
         // stock already moved at Log Shipment — status flip only for both.
@@ -14844,22 +14864,25 @@ async function openCombinedInvoicePreview(combinedId) {
       .catch(() => toast('Copy failed'));
   };
   const _gmailBtn = qs('#civ-btn-gmail');
+  // Prefill the editable To with the billing/AP chain; clear CC per open.
+  if (qs('#civ-send-to')) qs('#civ-send-to').value = _invRecipient(rec, account) || '';
+  if (qs('#civ-send-cc')) qs('#civ-send-cc').value = '';
   if (_gmailBtn) _gmailBtn.onclick = async () => {
     if (_gmailBtn.disabled) return;
     _gmailBtn.disabled = true; _gmailBtn.textContent = 'Sending…';
     try {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
-    const _pcInv = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId);
-    const _lcInv = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId);
-    const to = (rec.billingEmail||'').trim() || (_pcInv?.billingEmail||'').trim() || (_lcInv?.billingEmail||'').trim() || account.email || '';
-    if (!to) { toast('No email address on file for this account'); return; }
+    const _typedTo = (qs('#civ-send-to')?.value || '').trim();
+    const to = _parseEmailList(_typedTo)[0] || _invRecipient(rec, account) || '';
+    if (!to) { toast(_typedTo ? 'Send-to address doesn\'t look like an email' : 'No email address on file for this account'); return; }
+    const cc = _parseEmailList(qs('#civ-send-cc')?.value).filter(e => e.toLowerCase() !== to.toLowerCase());
     if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
       await pushInvoiceToShipStation(combinedId, 'combined_invoices');
     }
     const sendHtml = html;
     // AWAIT the chain — it was fire-and-forget, so the finally re-enabled the
     // button mid-send and a double-click emailed the customer twice.
-    await callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber)
+    await callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber, cc)
       .then((result) => {
         toast('Invoice sent ✓');
         const invoiceRef = rec.number || rec.invoiceNumber || '';

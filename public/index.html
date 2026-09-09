@@ -2267,6 +2267,7 @@
         <select id="eac-status"><option value="active">Active</option><option value="pending">Pending (no order yet)</option><option value="paused">Paused</option><option value="inactive">Inactive</option></select>
       </div>
     </div>
+    <div class="form-group" style="margin-bottom:10px"><label>Billing / AP email <span style="text-transform:none;font-weight:400;color:var(--muted)">(invoices &amp; reminders go here; blank = primary contact)</span></label><input id="eac-billing-email" type="email" placeholder="ap@store.com"></div>
     <div class="form-group" style="margin-bottom:10px"><label>Customer since</label><input type="date" id="eac-since"></div>
     <div class="form-group" style="margin-bottom:10px"><label>Served by Distributor</label>
       <select id="eac-fulfilled-by">
@@ -3583,6 +3584,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <button class="btn sm primary" id="civ-btn-save" style="width:100%;justify-content:center">Save Changes</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="form-group" style="margin:0"><label style="font-size:11px">Send to</label><input id="civ-send-to" type="email" placeholder="billing@store.com"></div>
+          <div class="form-group" style="margin:0 0 4px"><label style="font-size:11px">CC <span style="text-transform:none;font-weight:400">(optional, comma-separated)</span></label><input id="civ-send-cc" placeholder="buyer@store.com, owner@store.com"></div>
           <button class="btn primary" id="civ-btn-gmail" style="justify-content:center;font-weight:600">Send Invoice to Customer</button>
           <button class="btn blue" id="civ-btn-ship" style="display:none;justify-content:center">📦 Push to ShipStation</button>
           <button class="btn" id="civ-btn-warehouse" style="display:none;justify-content:center;border-color:#0891b2;color:#0891b2">🏭 Push to Warehouse</button>
