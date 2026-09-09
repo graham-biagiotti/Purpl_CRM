@@ -80,9 +80,27 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
     </div>
 
     <div class="section-label">When</div>
-    <div class="row2">
-      <div class="fg"><label>First choice <span class="req">*</span></label><input id="sp-date1" type="date"><div class="hint" id="sp-date-hint"></div></div>
-      <div class="fg"><label>Backup day</label><input id="sp-date2" type="date"></div>
+    <style>
+      .spc-dow,.spc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+      .spc-dow div{font-size:10px;color:#6b7280;text-align:center}
+      .spc-m{font-size:14px;font-weight:700;margin:12px 0 5px}
+      .spc-d{min-height:42px;border-radius:8px;border:1px solid #e5e7eb;font-size:14px;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;background:#fff;width:100%;padding:2px}
+      .spc-d span{font-size:8px;font-weight:800;letter-spacing:.02em}
+      button.spc-d{cursor:pointer}
+      .spc-mut{background:transparent;border-color:transparent;color:#c9c4d2}
+      .spc-s1{background:#4D2A6F;border-color:#4D2A6F;color:#fff}
+      .spc-s2{background:#4F5D80;border-color:#4F5D80;color:#fff}
+    </style>
+    <div class="fg"><label>Pick a day <span class="req">*</span></label>
+      <div class="hint" id="sp-date-hint"></div>
+      <div id="sp-cal" style="display:none"></div>
+      <div class="hint" id="sp-picked-line" style="margin-top:6px;font-weight:600"></div>
+    </div>
+    <div id="sp-dates-fallback">
+      <div class="row2">
+        <div class="fg"><label>First choice <span class="req">*</span></label><input id="sp-date1" type="date"></div>
+        <div class="fg"><label>Backup day</label><input id="sp-date2" type="date"></div>
+      </div>
     </div>
     <div class="fg"><label>Time window <span class="req">*</span></label>
       <select id="sp-window">
@@ -180,13 +198,73 @@ function spInit() {
       var min = spMinDate();
       document.getElementById('sp-date1').min = min;
       document.getElementById('sp-date2').min = min;
-      document.getElementById('sp-date-hint').textContent = 'At least ' + SP_RULES.leadDays + ' days out.';
+      SP_OPEN = Array.isArray(d.openDays) ? d.openDays : [];
+      if (SP_OPEN.length) {
+        // Calendar mode: only genuinely open days are tappable.
+        document.getElementById('sp-date-hint').textContent = 'Tap your first-choice day, then (optionally) tap a backup day.';
+        document.getElementById('sp-dates-fallback').style.display = 'none';
+        document.getElementById('sp-cal').style.display = '';
+        spRenderCal();
+      } else {
+        document.getElementById('sp-date-hint').textContent = 'At least ' + SP_RULES.leadDays + ' days out.';
+      }
       spShow('sp-form-card');
     })
     .catch(function(e) {
       console.error('Sampling check failed:', e);
       spShow('sp-invalid');
     });
+}
+
+// ── Open-days calendar (calendar mode) ──
+var SP_OPEN = [];
+var SP_SEL1 = '', SP_SEL2 = '';
+function spPick(iso) {
+  if (iso === SP_SEL1) { SP_SEL1 = SP_SEL2; SP_SEL2 = ''; }
+  else if (iso === SP_SEL2) { SP_SEL2 = ''; }
+  else if (!SP_SEL1) { SP_SEL1 = iso; }
+  else { SP_SEL2 = iso; }
+  document.getElementById('sp-date1').value = SP_SEL1;
+  document.getElementById('sp-date2').value = SP_SEL2;
+  var line = '';
+  if (SP_SEL1) line = 'First choice: ' + spFmt(SP_SEL1) + (SP_SEL2 ? ' · Backup: ' + spFmt(SP_SEL2) : '');
+  document.getElementById('sp-picked-line').textContent = line;
+  spRenderCal();
+}
+function spFmt(iso) {
+  try { return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
+  catch (e) { return iso; }
+}
+function spRenderCal() {
+  var box = document.getElementById('sp-cal');
+  if (!SP_OPEN.length) return;
+  var openSet = {};
+  SP_OPEN.forEach(function (d) { openSet[d] = 1; });
+  var first = new Date(SP_OPEN[0] + 'T12:00:00Z');
+  var last = new Date(SP_OPEN[SP_OPEN.length - 1] + 'T12:00:00Z');
+  var nMonths = Math.min(3, (last.getUTCFullYear() - first.getUTCFullYear()) * 12 + (last.getUTCMonth() - first.getUTCMonth()) + 1);
+  var html = '';
+  for (var m = 0; m < nMonths; m++) {
+    var f = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + m, 1, 12));
+    var y = f.getUTCFullYear(), mo = f.getUTCMonth();
+    var daysIn = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+    var startDow = new Date(Date.UTC(y, mo, 1)).getUTCDay();
+    var label = f.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    var cells = '';
+    for (var i = 0; i < startDow; i++) cells += '<div></div>';
+    for (var d = 1; d <= daysIn; d++) {
+      var iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      if (!openSet[iso]) { cells += '<div class="spc-d spc-mut">' + d + '</div>'; continue; }
+      var cls = iso === SP_SEL1 ? ' spc-s1' : (iso === SP_SEL2 ? ' spc-s2' : '');
+      var tag = iso === SP_SEL1 ? '<span>1st</span>' : (iso === SP_SEL2 ? '<span>BKUP</span>' : '');
+      cells += '<button type="button" class="spc-d' + cls + '" data-iso="' + iso + '">' + d + tag + '</button>';
+    }
+    html += '<div class="spc-m">' + label + '</div><div class="spc-dow"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div class="spc-grid">' + cells + '</div>';
+  }
+  box.innerHTML = html;
+  [].forEach.call(box.querySelectorAll('button.spc-d'), function (b) {
+    b.onclick = function () { spPick(b.getAttribute('data-iso')); };
+  });
 }
 
 function spErr(msg) {
@@ -203,7 +281,7 @@ function spSubmit() {
   var date1 = document.getElementById('sp-date1').value;
   var date2 = document.getElementById('sp-date2').value;
   if (!name || !cell) { spErr('Please add the contact name and cell number.'); return; }
-  if (!date1) { spErr('Please pick a first-choice date.'); return; }
+  if (!date1) { spErr(SP_OPEN.length ? 'Please tap a day on the calendar.' : 'Please pick a first-choice date.'); return; }
   if (date1 < spMinDate()) { spErr('First-choice date needs at least ' + SP_RULES.leadDays + ' days notice.'); return; }
   if (!spWeekdayOk(date1)) { spErr('That weekday isn’t available — please pick another day.'); return; }
   if (date2 && date2 < spMinDate()) { spErr('Backup date needs at least ' + SP_RULES.leadDays + ' days notice.'); return; }

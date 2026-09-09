@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v219';
+const APP_VERSION = 'v220';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -18891,6 +18891,12 @@ async function _loadSamplingCfg() {
     const snap = await firebase.firestore().collection('portal_settings').doc('sampling').get();
     _samplingCfg = snap.exists ? snap.data() : {};
   } catch (e) { _samplingCfg = _samplingCfg || {}; }
+  // Sampler's days off (her calendar page writes this doc) — shown greyed
+  // in the month grid so Graham sees why a day isn't bookable.
+  try {
+    const av = await firebase.firestore().collection('portal_settings').doc('sampling_availability').get();
+    _samplingCfg.blockedDates = (av.exists && av.data().blockedDates) || {};
+  } catch (e) { _samplingCfg.blockedDates = _samplingCfg.blockedDates || {}; }
   return _samplingCfg;
 }
 
@@ -19009,8 +19015,10 @@ async function renderSampling() {
       <div style="margin-top:4px">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((l, i) => wdBox(i, l)).join('')}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
         <button class="btn sm primary" onclick="saveSamplingSettings()">Save setup</button>
+        ${cfg.samplerKey ? `<button class="btn sm" onclick="samplingCopyCalLink()">📅 Copy ${escHtml(cfg.samplerName || 'sampler')}'s calendar link</button>` : `<span style="font-size:11px;color:var(--muted)">Save setup once to create the sampler's calendar link.</span>`}
         <span style="font-size:11px;color:var(--muted)">${cfg.samplerEmail ? '' : '⚠️ No sampler email — stores cannot request demos until this is set.'}</span>
       </div>
+      ${cfg.samplerKey ? `<div style="font-size:11px;color:var(--muted);margin-top:6px">Her days-off calendar — text it to her once, she bookmarks it. Days she marks OFF disappear from the store booking calendar.</div>` : ''}
     </div>
     <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input id="sampling-search" placeholder="Search stores…" oninput="_renderSamplingList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
@@ -19044,11 +19052,13 @@ function _samplingMonthGrid() {
   });
   let cells = '';
   for (let i = 0; i < startDow; i++) cells += '<div></div>';
+  const offDays = (_samplingCfg && _samplingCfg.blockedDates) || {};
   for (let d = 1; d <= daysIn; d++) {
     const di = iso(d);
     const demos = byDay[di] || [];
-    cells += `<div style="min-height:52px;border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:10.5px;${di === todayIso ? 'background:#EFEAF4;border-color:#CFC4DE;' : ''}">
-      <div style="font-weight:600;color:var(--muted)">${d}</div>
+    const off = !!offDays[di];
+    cells += `<div style="min-height:52px;border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:10.5px;${di === todayIso ? 'background:#EFEAF4;border-color:#CFC4DE;' : (off ? 'background:#F3F4F6;' : '')}" ${off ? 'title="Sampler marked this day off"' : ''}>
+      <div style="font-weight:600;color:var(--muted)">${d}${off ? ' <span style="font-size:8.5px;font-weight:800;color:#9CA3AF">OFF</span>' : ''}</div>
       ${demos.map(r => `<div style="background:${r.status === 'completed' ? '#e5e7eb' : '#4D2A6F'};color:${r.status === 'completed' ? '#374151' : '#fff'};border-radius:4px;padding:1px 4px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.accountName || '')}">${escHtml(r.accountName || '')}</div>`).join('')}
     </div>`;
   }
@@ -19087,15 +19097,27 @@ async function saveSamplingSettings() {
     leadDays: (v => isNaN(v) || v < 1 ? 7 : Math.min(60, v))(parseInt(qs('#sampling-cfg-lead')?.value)),
     blockedWeekdays: [...document.querySelectorAll('.sampling-wd:checked')].map(x => parseInt(x.value)),
   };
+  // Permanent personal key for the sampler's availability calendar —
+  // generated once, NEVER rotated (her bookmarked link must live forever).
+  const _existingKey = _samplingCfg?.samplerKey || '';
+  cfg.samplerKey = _existingKey || [...crypto.getRandomValues(new Uint8Array(24))].map(b => b.toString(16).padStart(2, '0')).join('');
   try {
     await firebase.firestore().collection('portal_settings').doc('sampling').set(cfg, { merge: true });
-    _samplingCfg = cfg;
+    _samplingCfg = { ..._samplingCfg, ...cfg };
     toast('Sampling setup saved ✓');
     renderSampling();
   } catch (e) {
     console.error('Sampling settings save failed:', e);
     toast('Save failed — are you signed in as admin?', 6000);
   }
+}
+
+function samplingCopyCalLink() {
+  const k = _samplingCfg?.samplerKey;
+  if (!k) { toast('Save the sampling setup first'); return; }
+  const url = 'https://pbfwholesale.com/sampling-action?a=cal&k=' + encodeURIComponent(k);
+  navigator.clipboard.writeText(url).then(() => toast('Calendar link copied ✓ — text it to her'))
+    .catch(() => prompt('Copy the calendar link:', url));
 }
 
 async function samplingCopyLink() {

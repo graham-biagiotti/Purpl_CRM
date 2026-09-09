@@ -2222,7 +2222,70 @@ async function _samplingConfig() {
     samplerEmail: d.samplerEmail || '',
     leadDays: Number.isFinite(parseInt(d.leadDays)) ? parseInt(d.leadDays) : 7,
     blockedWeekdays: Array.isArray(d.blockedWeekdays) ? d.blockedWeekdays.map(Number) : [],
+    samplerKey: typeof d.samplerKey === 'string' ? d.samplerKey : '',
   };
+}
+
+// ── Sampler availability (blocked-days model) ──
+// Ashley marks days OFF on her calendar page; everything else is bookable
+// (minus blocked weekdays, lead time, and already-taken days). Stored in
+// portal_settings/sampling_availability { blockedDates: { 'YYYY-MM-DD': true } }.
+async function _samplingAvailability() {
+  const snap = await admin.firestore().collection('portal_settings').doc('sampling_availability').get();
+  const d = snap.exists ? snap.data() : {};
+  return (d.blockedDates && typeof d.blockedDates === 'object') ? d.blockedDates : {};
+}
+
+// Day locks: one demo per day, race-proof. sampling_daylocks/{date} is
+// created transactionally with a booking and released when the request dies
+// or moves. No client rules for this collection — Cloud Functions only
+// (default-deny covers it).
+async function _samplingTakeDay(iso, reqId) {
+  const ref = admin.firestore().collection('sampling_daylocks').doc(iso);
+  await admin.firestore().runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (s.exists && s.data().requestId !== reqId) {
+      throw new HttpsError('already-exists', 'That day was just booked — please pick another.');
+    }
+    tx.set(ref, { requestId: reqId, date: iso, at: new Date().toISOString() });
+  });
+}
+async function _samplingFreeDay(iso, reqId) {
+  if (!iso) return;
+  const ref = admin.firestore().collection('sampling_daylocks').doc(iso);
+  await admin.firestore().runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (s.exists && s.data().requestId === reqId) tx.delete(ref);
+  }).catch(() => {});
+}
+
+// Bookable days for the store calendar: next ~10 weeks, minus lead time,
+// blocked weekdays, Ashley's days off, day-locked bookings and pending
+// proposals.
+async function _samplingOpenDays(cfg) {
+  const db = admin.firestore();
+  const blocked = await _samplingAvailability();
+  const today = _samplingTodayET();
+  const taken = new Set();
+  try {
+    const locks = await db.collection('sampling_daylocks').where('date', '>=', today).get();
+    locks.docs.forEach((d) => taken.add(d.data().date));
+  } catch (e) { /* locks are an optimization — validation still guards */ }
+  try {
+    const alts = await db.collection('sampling_requests').where('status', '==', 'proposed_alt').get();
+    alts.docs.forEach((d) => { const x = d.data(); if ((x.altDate || '') >= today) taken.add(x.altDate); });
+  } catch (e) { /* same */ }
+  const start = new Date(new Date(today + 'T12:00:00Z').getTime() + cfg.leadDays * 864e5);
+  const out = [];
+  for (let i = 0; i < 70 && out.length < 45; i++) {
+    const iso = new Date(start.getTime() + i * 864e5).toISOString().slice(0, 10);
+    const wd = new Date(iso + 'T12:00:00').getDay();
+    if (cfg.blockedWeekdays.includes(wd)) continue;
+    if (blocked[iso]) continue;
+    if (taken.has(iso)) continue;
+    out.push(iso);
+  }
+  return out;
 }
 
 function _samplingValidDate(iso, cfg) {
@@ -2376,11 +2439,14 @@ exports.submitSamplingRequest = onCall(
 
     if (data.check) {
       const cfg = await _samplingConfig();
+      let openDays = [];
+      try { openDays = await _samplingOpenDays(cfg); } catch (e) { /* calendar degrades to date inputs */ }
       return {
         accountName: acct.name,
         storeAddress: acct.address,
         leadDays: cfg.leadDays,
         blockedWeekdays: cfg.blockedWeekdays,
+        openDays,
         open: open ? {
           status: open.status, date1: open.date1, date2: open.date2,
           confirmedDate: open.confirmedDate || null,
@@ -2431,7 +2497,21 @@ exports.submitSamplingRequest = onCall(
       createdAt: new Date().toISOString(),
       source: 'portal-link',
     };
-    const ref = await admin.firestore().collection('sampling_requests').add(rec);
+    // Availability check + race-proof day lock: the preferred day must be
+    // one Ashley hasn't blocked, and two stores tapping the same open slot
+    // at once can't both get it — the lock and the request are created in
+    // ONE transaction, so the loser gets a clean "just booked" error.
+    const _blockedDates = await _samplingAvailability();
+    if (_blockedDates[date1]) throw new HttpsError('invalid-argument', 'That day just became unavailable — please pick another.');
+    const db2 = admin.firestore();
+    const ref = db2.collection('sampling_requests').doc();
+    const lockRef = db2.collection('sampling_daylocks').doc(date1);
+    await db2.runTransaction(async (tx) => {
+      const lock = await tx.get(lockRef);
+      if (lock.exists) throw new HttpsError('already-exists', 'That day was just booked — please pick another.');
+      tx.set(lockRef, { requestId: ref.id, date: date1, at: new Date().toISOString() });
+      tx.set(ref, rec);
+    });
 
     // The ONLY email at this step: the sampler's packet (owner trimmed volume;
     // the store sees an on-page confirmation instead).
@@ -2482,6 +2562,89 @@ exports.samplingAction = onRequest(
         <button type="submit" class="btn no" style="width:100%;cursor:pointer;font-family:inherit">${label}</button>
       </form>`;
     const backLink = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}">GO BACK</a>`;
+
+    // ── Ashley's availability calendar (permanent personal key, no request id) ──
+    // GET a=cal renders three months of tappable days; POST a=calset toggles
+    // one day off/on. Key is portal_settings/sampling.samplerKey — separate
+    // from per-request tokens, so the link lives in her bookmarks forever.
+    if (a === 'cal' || a === 'calset') {
+      const cfg = await _samplingConfig();
+      if (!cfg.samplerKey || String(k) !== cfg.samplerKey) {
+        return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>Ask Graham for your calendar link.</p>'));
+      }
+      const calUrl = `${SAMPLING_ACTION_BASE}?a=cal&k=${encodeURIComponent(cfg.samplerKey)}`;
+      if (a === 'calset') {
+        if (req.method !== 'POST') return res.redirect(303, calUrl);
+        const d0 = String(src.d || '').slice(0, 10);
+        const block = String(src.v) === '1';
+        const okDate = /^\d{4}-\d{2}-\d{2}$/.test(d0) && !isNaN(new Date(d0 + 'T12:00:00Z').getTime());
+        if (okDate && d0 >= _samplingTodayET()) {
+          const avRef = admin.firestore().collection('portal_settings').doc('sampling_availability');
+          if (block) await avRef.set({ blockedDates: { [d0]: true } }, { merge: true });
+          else await avRef.set({ blockedDates: { [d0]: admin.firestore.FieldValue.delete() } }, { merge: true });
+        }
+        return res.redirect(303, calUrl);
+      }
+      const blocked = await _samplingAvailability();
+      const today = _samplingTodayET();
+      const taken = new Map();
+      try {
+        const ups = await admin.firestore().collection('sampling_requests')
+          .where('status', 'in', ['confirmed', 'pending_sampler', 'proposed_alt']).get();
+        ups.docs.forEach((d) => {
+          const x = d.data();
+          const dd = x.confirmedDate || x.altDate || x.date1;
+          if ((dd || '') >= today) taken.set(dd, (x.accountName || 'booked').slice(0, 14));
+        });
+      } catch (e) { /* booked labels are a nicety */ }
+      const base = new Date(today + 'T12:00:00Z');
+      let months = '';
+      for (let m = 0; m < 3; m++) {
+        const first = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + m, 1, 12));
+        const y = first.getUTCFullYear(), mo = first.getUTCMonth();
+        const label = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+        const daysIn = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+        const startDow = new Date(Date.UTC(y, mo, 1)).getUTCDay();
+        let cells = '';
+        for (let i = 0; i < startDow; i++) cells += '<div></div>';
+        for (let d = 1; d <= daysIn; d++) {
+          const iso = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const wd = new Date(iso + 'T12:00:00').getDay();
+          const bookedLbl = taken.get(iso);
+          const off = !!blocked[iso];
+          if (iso < today) cells += `<div class="day past">${d}</div>`;
+          else if (bookedLbl) cells += `<div class="day booked">${d}<span>${escHtml(bookedLbl)}</span></div>`;
+          else if (cfg.blockedWeekdays.includes(wd)) cells += `<div class="day wd">${d}</div>`;
+          else cells += `<form method="POST" action="${SAMPLING_ACTION_BASE}" style="display:contents">
+            <input type="hidden" name="a" value="calset"><input type="hidden" name="k" value="${escHtml(cfg.samplerKey)}">
+            <input type="hidden" name="d" value="${iso}"><input type="hidden" name="v" value="${off ? '0' : '1'}">
+            <button type="submit" class="day ${off ? 'off' : 'open'}">${d}${off ? '<span>OFF</span>' : ''}</button></form>`;
+        }
+        months += `<h2>${escHtml(label)}</h2><div class="dow"><div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div></div><div class="grid">${cells}</div>`;
+      }
+      return res.status(200).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My demo days</title>
+<style>body{font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:14px;color:#1a1a2e;background:#F4F2F7}
+h1{font-size:20px;color:#4D2A6F}h2{font-size:15px;margin:18px 0 6px}
+.dow,.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.dow div{font-size:10px;color:#6b7280;text-align:center}
+.day{width:100%;min-height:46px;border-radius:8px;border:1px solid #E7E1F0;font-size:14px;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px}
+.day span{font-size:8.5px;font-weight:700;overflow:hidden;max-width:100%}
+button.day{cursor:pointer}
+.open{background:#fff;color:#1a1a2e}
+.off{background:#1a1a2e;color:#fff}
+.past,.wd{background:transparent;border-color:transparent;color:#c4bfce}
+.booked{background:#4D2A6F;color:#fff}
+.legend{font-size:12px;color:#6b7280;margin:10px 0;line-height:1.7}
+</style></head><body>
+<h1>My demo days</h1>
+<div class="legend">Tap a day to mark yourself <strong>OFF</strong> — stores can't book it. Tap it again to open it back up.<br>
+<span style="display:inline-block;width:11px;height:11px;background:#4D2A6F;border-radius:3px"></span> booked demo &nbsp;
+<span style="display:inline-block;width:11px;height:11px;background:#1a1a2e;border-radius:3px"></span> day off &nbsp;
+<span style="display:inline-block;width:11px;height:11px;background:#fff;border:1px solid #E7E1F0;border-radius:3px"></span> open</div>
+${months}
+</body></html>`);
+    }
+
     if (!r || !k) return res.status(400).send(_samplingActionPage('Not found', '<h1>Link not valid</h1><p>This link is missing information. Please open it straight from your email.</p>'));
 
     const db = admin.firestore();
@@ -2531,6 +2694,12 @@ exports.samplingAction = onRequest(
         if ((rec.altDate || '') < _samplingTodayET()) {
           await ref.update({ status: 'needs_reschedule', altExpiredAt: new Date().toISOString() });
           return send('Date passed', `<h1>That date already passed</h1><p>Sorry — this sat too long. Graham will reach out to find a new day.</p>`);
+        }
+        // Hard-lock the accepted day (open-days only soft-blocked it).
+        try { await _samplingTakeDay(rec.altDate, String(r)); }
+        catch (e) {
+          await ref.update({ status: 'needs_reschedule', altClashAt: new Date().toISOString() });
+          return send('Day taken', `<h1>That day just got taken</h1><p>Sorry — another demo grabbed ${escHtml(_samplingFmtDate(rec.altDate))} first. Graham will reach out to find a new day.</p>`);
         }
         await _samplingConfirmAndNotify(String(r), ref, rec, rec.altDate, 'store');
         return send('Confirmed', `<h1>Confirmed ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(altLabel)}.<br>A calendar invite is on its way to your inbox.</p>`);
@@ -2642,6 +2811,7 @@ ${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURICom
     // ── POST: the only mutations ──
     if (a === 'no') {
       await ref.update({ status: 'needs_reschedule', samplerDeclinedAt: new Date().toISOString() });
+      await _samplingFreeDay(rec.date1, String(r)); // day opens back up on the store calendar
       return send('Got it', `<h1>No problem</h1><p>Graham will sort out a new date with ${escHtml(rec.accountName)}. Nothing else for you to do.</p>`);
     }
 
@@ -2654,6 +2824,9 @@ ${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURICom
       }
       const storeKey = require('crypto').randomBytes(24).toString('hex');
       await ref.update({ status: 'proposed_alt', altDate: proposed, proposedAt: new Date().toISOString(), storeActionToken: storeKey });
+      // Original ask is dead — free its day. The proposed altDate blocks the
+      // store calendar via the open-days computation (hard lock on accept).
+      await _samplingFreeDay(rec.date1, String(r));
       // Email the store the counter-offer with its own armed links.
       let storeTo = rec.contact?.email || '';
       if (!storeTo) {
@@ -2692,6 +2865,15 @@ ${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURICom
       if (!chosen) return send('Hmm', '<h1>That option isn&#39;t available</h1><p>Please use the buttons in your email.</p>');
       if (chosen < _samplingTodayET()) {
         return send('Date passed', `<h1>That date already passed</h1><p>Suggest a day you can do instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
+      }
+      // Booking the backup day moves the day lock: take date2 first (another
+      // store may have booked it since), then release date1.
+      if (a === 'confirm2' && chosen !== rec.date1) {
+        try { await _samplingTakeDay(chosen, String(r)); }
+        catch (e) {
+          return send('Day taken', `<h1>That day just got booked</h1><p>Another demo took ${escHtml(_samplingFmtDate(chosen))}. Suggest a different day instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
+        }
+        await _samplingFreeDay(rec.date1, String(r));
       }
       const result = await _samplingConfirmAndNotify(String(r), ref, rec, chosen, 'sampler');
       return send('Booked', `<h1>Booked ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(result.dateLabel)}.<br>It's on your calendar. The store's been told.</p>${metaBox}${sheetBtn}`);
@@ -2743,6 +2925,10 @@ exports.samplingAdmin = onCall(
       // confirmed, or a proposal sitting in its inbox.
       const wasConfirmed = ['confirmed', 'proposed_alt'].includes(rec.status);
       await ref.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'staff' });
+      // Release every day this request might hold so the calendar reopens.
+      for (const dd of new Set([rec.date1, rec.confirmedDate, rec.altDate].filter(Boolean))) {
+        await _samplingFreeDay(dd, requestId);
+      }
       // Same recipient fallback as confirmations: form email, else account email.
       let cancelStoreTo = rec.contact?.email || '';
       if (wasConfirmed && !cancelStoreTo && rec.accountId) {
