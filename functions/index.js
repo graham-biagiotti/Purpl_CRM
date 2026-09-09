@@ -2272,8 +2272,17 @@ async function _samplingOpenDays(cfg) {
     locks.docs.forEach((d) => taken.add(d.data().date));
   } catch (e) { /* locks are an optimization — validation still guards */ }
   try {
-    const alts = await db.collection('sampling_requests').where('status', '==', 'proposed_alt').get();
-    alts.docs.forEach((d) => { const x = d.data(); if ((x.altDate || '') >= today) taken.add(x.altDate); });
+    // Union ACTIVE REQUEST dates too, mirroring the sampler calendar page:
+    // legacy confirmed/pending demos predate the lock system (no daylock
+    // doc), and a re-armed request's date1 lock was freed — without this
+    // union those days would show as open (verifier-caught double-booking).
+    const ups = await db.collection('sampling_requests')
+      .where('status', 'in', ['confirmed', 'pending_sampler', 'proposed_alt']).get();
+    ups.docs.forEach((d) => {
+      const x = d.data();
+      const dd = x.status === 'proposed_alt' ? x.altDate : (x.confirmedDate || x.date1);
+      if ((dd || '') >= today) taken.add(dd);
+    });
   } catch (e) { /* same */ }
   const start = new Date(new Date(today + 'T12:00:00Z').getTime() + cfg.leadDays * 864e5);
   const out = [];
@@ -2866,13 +2875,15 @@ ${rec.date2 ? `<a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURICom
       if (chosen < _samplingTodayET()) {
         return send('Date passed', `<h1>That date already passed</h1><p>Suggest a day you can do instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
       }
-      // Booking the backup day moves the day lock: take date2 first (another
-      // store may have booked it since), then release date1.
+      // Take (or re-take) the chosen day's lock for BOTH confirms — taking
+      // is idempotent for our own request, and a re-armed request (whose
+      // original lock was freed on 'no'/'propose') must re-claim its day
+      // here or a second store could book it (verifier-caught).
+      try { await _samplingTakeDay(chosen, String(r)); }
+      catch (e) {
+        return send('Day taken', `<h1>That day just got booked</h1><p>Another demo took ${escHtml(_samplingFmtDate(chosen))}. Suggest a different day instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
+      }
       if (a === 'confirm2' && chosen !== rec.date1) {
-        try { await _samplingTakeDay(chosen, String(r)); }
-        catch (e) {
-          return send('Day taken', `<h1>That day just got booked</h1><p>Another demo took ${escHtml(_samplingFmtDate(chosen))}. Suggest a different day instead:</p><a class="btn yes" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(k))}&a=no">Pick a different day</a>`);
-        }
         await _samplingFreeDay(rec.date1, String(r));
       }
       const result = await _samplingConfirmAndNotify(String(r), ref, rec, chosen, 'sampler');

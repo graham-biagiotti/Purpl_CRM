@@ -14873,7 +14873,9 @@ async function openCombinedInvoicePreview(combinedId) {
     try {
     const subject = 'Invoice from Pumpkin Blossom Farm — ' + rec.accountName;
     const _typedTo = (qs('#civ-send-to')?.value || '').trim();
-    const to = _parseEmailList(_typedTo)[0] || _invRecipient(rec, account) || '';
+    // A typed-but-invalid To must BLOCK, never silently fall back to the
+    // default recipient (verifier-caught: real invoice to the wrong inbox).
+    const to = _parseEmailList(_typedTo)[0] || (!_typedTo ? _invRecipient(rec, account) : '');
     if (!to) { toast(_typedTo ? 'Send-to address doesn\'t look like an email' : 'No email address on file for this account'); return; }
     const cc = _parseEmailList(qs('#civ-send-cc')?.value).filter(e => e.toLowerCase() !== to.toLowerCase());
     if (rec.deliveryMethod === 'ship' && !rec.shipStationOrderId) {
