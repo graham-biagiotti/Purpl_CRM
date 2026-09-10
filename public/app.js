@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v221';
+const APP_VERSION = 'v222';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -201,6 +201,11 @@ const _parseD = (s) => { if (!s) return NaN; return s.includes('T') ? new Date(s
 const fmtD  = (s) => { const d = _parseD(s); return isNaN(d) ? '—' : d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
 const fmtDLong = (s) => { const d = _parseD(s); return isNaN(d) ? '—' : d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); };
 const daysAgo = (s) => { const d = _parseD(s); return isNaN(d) ? 999 : Math.floor((Date.now()-d)/(864e5)); };
+
+// Sort-direction toggles (accounts / prospects) — pure view state.
+let _acSortDir = false, _prSortDir = false;
+function toggleAcSortDir() { _acSortDir = !_acSortDir; const b = qs('#ac-sort-dir'); if (b) b.textContent = _acSortDir ? '⇅ flipped' : '⇅'; renderAccounts(); }
+function togglePrSortDir() { _prSortDir = !_prSortDir; const b = qs('#pr-sort-dir'); if (b) b.textContent = _prSortDir ? '⇅ flipped' : '⇅'; renderProspects(); }
 
 function _currentUserName() {
   const u = window._currentUser;
@@ -1965,10 +1970,12 @@ function renderAttention() {
   });
 
   // Accounts with overdue follow-up dates and no newer contact logged
-  ac.filter(a=>a.status==='active'&&a.nextFollowUp&&a.nextFollowUp<todayStr).forEach(a=>{
+  ac.filter(a=>a.status==='active').forEach(a=>{
+    const nf = acNextFollowUp(a);
+    if (!nf || nf.date >= todayStr) return;
     const lastContact = acLastContacted(a);
-    if (!lastContact || lastContact < a.nextFollowUp) {
-      items.push({icon:'📅', name:a.name, reason:`Follow-up overdue — was due ${fmtD(a.nextFollowUp)}`, action:`openAccount('${a.id}')`, accountId:a.id, borderColor:'#d97706'});
+    if (!lastContact || lastContact < nf.date) {
+      items.push({icon:'📅', name:a.name, reason:`Follow-up overdue — was due ${fmtD(nf.date)}${nf.what ? ' · ' + nf.what : ''}`, action:`openAccount('${a.id}')`, accountId:a.id, borderColor:'#d97706'});
     }
   });
 
@@ -2050,22 +2057,14 @@ function renderFollowUps() {
 
   DB.a('ac').forEach(a=>{
     if ((a.status||'active') !== 'active') return; // only active accounts nag, matching Needs-Attention
-    if (a.nextFollowUp && a.nextFollowUp <= in14) {
-      const daysUntil = Math.ceil((new Date(a.nextFollowUp+'T12:00:00')-Date.now())/864e5);
-      items.push({type:'account', name:a.name, date:a.nextFollowUp, action:'Follow up', id:a.id, daysUntil});
-      return;
-    }
-    if (!a.notes?.length) return;
-    // MED-8: scan ALL notes for the soonest pending follow-up — reading only
-    // the last appended note dropped earlier pending follow-ups whenever a
-    // later note without a nextDate was added.
-    let ln = null;
-    for (const n of a.notes) {
-      if (n?.nextDate && n.nextDate <= in14 && (!ln || n.nextDate < ln.nextDate)) ln = n;
-    }
-    if (ln) {
-      const daysUntil = Math.ceil((new Date(ln.nextDate+'T12:00:00')-Date.now())/864e5);
-      items.push({type:'account', name:a.name, date:ln.nextDate, action:ln.nextAction||'Follow up', id:a.id, daysUntil});
+    // ONE canonical follow-up per account (acNextFollowUp reads the account
+    // field first, legacy note/outreach dates as fallback) — the old dual
+    // path (field + separate notes scan) listed the same account twice with
+    // conflicting dates.
+    const nf = acNextFollowUp(a);
+    if (nf && nf.date <= in14) {
+      const daysUntil = Math.ceil((new Date(nf.date+'T12:00:00')-Date.now())/864e5);
+      items.push({type:'account', name:a.name, date:nf.date, action:nf.what||'Follow up', id:a.id, daysUntil});
     }
   });
 
@@ -2113,7 +2112,7 @@ function dashMarkFollowUpDone(id, type) {
   if (!DB._firestoreReady) return;
   if (type === 'account') {
     const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
-    DB.update('ac', id, x => ({...x, nextFollowUp: null, outreach: [...(x.outreach||[]), entry]}));
+    DB.update('ac', id, x => ({...x, nextFollowUp: null, nextFollowUpNote: null, nextFollowUpClearedAt: today(), outreach: [...(x.outreach||[]), entry]}));
   } else {
     const entry = { id: uid(), date: today(), type: 'outreach', note: 'Follow-up completed', ts: Date.now() };
     DB.update('pr', id, x => ({...x, nextDate: null, nextAction: null, outreach: [...(x.outreach||[]), entry]}));
@@ -3360,6 +3359,26 @@ function toggleAccountStar(id) {
 // perf: per-render indexes (orders & invoices grouped by accountId), built
 // once in renderAccounts so each card is an O(1) lookup instead of re-scanning
 // all orders + rebuilding the unified invoice array per card.
+// ── Canonical "Next follow-up" for an account ──
+// ONE source of truth: a.nextFollowUp (+ a.nextFollowUpNote), written by
+// every modal that captures a next step (note modal, outreach log, quick
+// note). Legacy fallback READS the newest dated next-step buried in old
+// notes/outreach entries — display only, never migrated or rewritten.
+function acNextFollowUp(a) {
+  if (a?.nextFollowUp) return { date: a.nextFollowUp, what: a.nextFollowUpNote || '' };
+  // Dashboard "done" sets nextFollowUp:null + stamps clearedAt — the
+  // fallback must not resurrect an older note's date past that point.
+  const cleared = a?.nextFollowUpClearedAt || '';
+  let best = null;
+  (a?.notes || []).forEach(n => {
+    if (n?.nextDate && n.nextDate > cleared && (!best || n.nextDate > best.date)) best = { date: n.nextDate, what: n.nextAction || '' };
+  });
+  (a?.outreach || []).forEach(o => {
+    if (o?.nextFollowUp && o.nextFollowUp > cleared && (!best || o.nextFollowUp > best.date)) best = { date: o.nextFollowUp, what: o.nextSteps || '' };
+  });
+  return best;
+}
+
 let _acIdxOrders = null, _acIdxInv = null;
 // Latest invoice date for an account — invoices are the real business record;
 // a.lastOrder is only stamped by a few paths (delivery runs, convert) and sat
@@ -3421,12 +3440,14 @@ function _acCardHTML(a, muted) {
   const locs = (a.locs && a.locs.length) ? a.locs
     : (a.address ? [{id:'legacy', label:'', address:a.address, contact:'', phone:'', dropOffRules:a.dropOffRules||''}] : []);
 
-  const nfu = a.nextFollowUp;
+  // Canonical follow-up (single source; legacy note dates via fallback).
+  const _nf = acNextFollowUp(a);
+  const nfu = _nf?.date || null;
   let nfuHtml = '';
   if (nfu) {
     const nfuColor = nfu < today() ? '#dc2626' : nfu === today() ? '#d97706' : '#1d4ed8';
     const nfuLabel = nfu < today() ? 'Overdue' : nfu === today() ? 'Today' : fmtD(nfu);
-    nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}</div></div>`;
+    nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}${_nf.what ? ' · ' + escHtml(_nf.what) : ''}</div></div>`;
   }
 
   return `<div class="ac-card${needsAttn?' needs-attention':''}${muted?' ac-dist-served':''}">
@@ -3471,7 +3492,6 @@ function _acCardHTML(a, muted) {
     </div>
     ${nfuHtml}
     ${lastNote?`<div class="ac-card-section"><div class="ac-card-section-label">Notes</div><div style="font-size:13px">${escHtml(lastNote.text)}</div></div>`:''}
-    ${lastNote?.nextAction?`<div class="pr-card-nextsteps"><div class="ac-card-section-label" style="color:#1e40af">☑ Next Steps</div><div class="pr-card-nextsteps-text">${escHtml(lastNote.nextAction)}${lastNote.nextDate?' — '+fmtD(lastNote.nextDate):''}</div></div>`:''}
     ${!lastNote&&lastOutreach?`<div class="ac-card-section"><div class="ac-card-section-label">Recent Outreach</div><div style="font-size:13px">${escHtml(lastOutreach.type||'')} · ${fmtD(lastOutreach.date)}${(lastOutreach.notes||lastOutreach.note)?' — '+escHtml(lastOutreach.notes||lastOutreach.note):''}</div></div>`:''}
     ${locs.length===1&&locs[0].dropOffRules?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(locs[0].dropOffRules)}</div></div>`:a.dropOffRules&&!locs.length?`<div class="ac-card-rules"><div class="ac-card-section-label">🚚 Drop-Off Rules</div><div class="ac-card-rules-text">${escHtml(a.dropOffRules)}</div></div>`:''}
     <div class="ac-card-actions">
@@ -3524,14 +3544,51 @@ function renderAccounts() {
   else if (fulfillFilter.startsWith('closedby:')) list = list.filter(a=>a.closedBy === fulfillFilter.slice(9)); // bookkeeping tag, no pricing coupling
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
+  // perf: index orders & invoices by account ONCE (was re-scanned/rebuilt per
+  // card → O(accounts × (orders + all invoices)); ~100 accounts made this slow).
+  // Built BEFORE the sort so "Last Invoice" sorting uses the SAME computed
+  // date the cards display — sorting by the stale a.lastOrder field while
+  // showing the invoice-derived date is what made the list look shuffled.
+  _acIdxOrders = new Map();
+  DB.a('orders').forEach(o => {
+    if (o.status === 'cancelled') return;
+    const arr = _acIdxOrders.get(o.accountId);
+    if (arr) arr.push(o); else _acIdxOrders.set(o.accountId, [o]);
+  });
+  _acIdxInv = new Map();
+  _allInvoices({ excludeChildren: true }).forEach(inv => {
+    const arr = _acIdxInv.get(inv.accountId);
+    if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
+  });
+
+  // Sort: pure reads. Dates default to newest-first (follow-ups: soonest
+  // first); accounts MISSING the date always group at the end regardless of
+  // the ⇅ direction toggle; name is the stable tiebreak.
+  const _flip = _acSortDir ? -1 : 1;
+  const _cmpStrA = (x, y) => { const a2 = x || '', b2 = y || ''; return a2 < b2 ? -1 : (a2 > b2 ? 1 : 0); };
+  const _cmpNewest = (da, db2) => {
+    if (!da && !db2) return 0;
+    if (!da) return 1;
+    if (!db2) return -1;
+    return (da < db2 ? 1 : (da > db2 ? -1 : 0)) * _flip;
+  };
+  const _cmpSoonest = (da, db2) => {
+    if (!da && !db2) return 0;
+    if (!da) return 1;
+    if (!db2) return -1;
+    return (da < db2 ? -1 : (da > db2 ? 1 : 0)) * _flip;
+  };
   list = list.slice().sort((a,b)=>{
     // Starred always floats to top
     if (!!a.starred !== !!b.starred) return a.starred ? -1 : 1;
-    if (sortVal==='name')          return (a.name||'') < (b.name||'') ? -1 : 1;
-    if (sortVal==='lastOrder')     return (a.lastOrder||'') < (b.lastOrder||'') ? 1 : -1;
-    if (sortVal==='lastContacted') return (acLastContacted(a)||'') < (acLastContacted(b)||'') ? 1 : -1;
-    if (sortVal==='territory')     return (a.territory||'') < (b.territory||'') ? -1 : 1;
-    return 0;
+    let c = 0;
+    if (sortVal==='name')               c = _cmpStrA(a.name, b.name) * _flip;
+    else if (sortVal==='lastOrder')     c = _cmpNewest(_acLastInvoiceDate(a), _acLastInvoiceDate(b));
+    else if (sortVal==='lastContacted') c = _cmpNewest(acLastContacted(a), acLastContacted(b));
+    else if (sortVal==='nextFollowUp')  c = _cmpSoonest(acNextFollowUp(a)?.date, acNextFollowUp(b)?.date);
+    else if (sortVal==='since')         c = _cmpNewest(a.since, b.since);
+    else if (sortVal==='territory')     c = _cmpStrA(a.territory, b.territory) * _flip;
+    return c || _cmpStrA(a.name, b.name);
   });
 
   const el = qs('#ac-cards');
@@ -3552,20 +3609,6 @@ function renderAccounts() {
 
   // Determine if any filter is active (for auto-expand logic)
   const hasActiveFilter = !!(search || typeFilter || fulfillFilter || (_acBrandFilter && _acBrandFilter !== ''));
-
-  // perf: index orders & invoices by account ONCE (was re-scanned/rebuilt per
-  // card → O(accounts × (orders + all invoices)); ~100 accounts made this slow).
-  _acIdxOrders = new Map();
-  DB.a('orders').forEach(o => {
-    if (o.status === 'cancelled') return;
-    const arr = _acIdxOrders.get(o.accountId);
-    if (arr) arr.push(o); else _acIdxOrders.set(o.accountId, [o]);
-  });
-  _acIdxInv = new Map();
-  _allInvoices({ excludeChildren: true }).forEach(inv => {
-    const arr = _acIdxInv.get(inv.accountId);
-    if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
-  });
 
   // Split into direct and per-distributor
   const directList = list.filter(a => !a.fulfilledBy || a.fulfilledBy === 'direct');
@@ -3749,9 +3792,10 @@ function openAccount(id) {
   }
   const nfuEl = qs('#mac-next-followup');
   if (nfuEl) {
-    if (a.nextFollowUp) {
-      const nfuColor = a.nextFollowUp < today() ? '#dc2626' : a.nextFollowUp === today() ? '#d97706' : '#1d4ed8';
-      nfuEl.innerHTML = `<span style="color:${nfuColor};font-weight:600">${fmtD(a.nextFollowUp)}</span>`;
+    const nf = acNextFollowUp(a);
+    if (nf) {
+      const nfuColor = nf.date < today() ? '#dc2626' : nf.date === today() ? '#d97706' : '#1d4ed8';
+      nfuEl.innerHTML = `<span style="color:${nfuColor};font-weight:600">${fmtD(nf.date)}</span>${nf.what ? ` <span style="font-size:12px;color:var(--muted)">· ${escHtml(nf.what)}</span>` : ''}`;
     } else {
       nfuEl.textContent = '—';
     }
@@ -3851,7 +3895,11 @@ function addAccountNote(id) {
   const next = qs('#mac-note-next')?.value?.trim();
   const nextDate = qs('#mac-note-next-date')?.value;
   const note = {id:uid(), date:today(), text, author:'you', nextAction:next, nextDate};
-  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]), note]}));
+  // Next-step typed on a note ALSO stamps the account's canonical follow-up
+  // (this was the missing link that made notes and follow-ups feel like
+  // separate features).
+  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]), note],
+    ...(nextDate ? { nextFollowUp: nextDate, nextFollowUpNote: (next||'').trim() } : {})}));
   if (qs('#mac-note-text')) qs('#mac-note-text').value='';
   if (qs('#mac-note-next')) qs('#mac-note-next').value='';
   if (qs('#mac-note-next-date')) qs('#mac-note-next-date').value='';
@@ -6239,11 +6287,21 @@ function renderProspects() {
   if (brandFilter === 'lf')    list = list.filter(p=>!!p.isPbf);
   if (brandFilter === 'purpl') list = list.filter(p=>!p.isPbf);
 
+  const _pflip = _prSortDir ? -1 : 1;
+  const _pCmpDate = (da, db2, soonest) => {
+    if (!da && !db2) return 0;
+    if (!da) return 1;    // missing always last, regardless of ⇅
+    if (!db2) return -1;
+    const c = da < db2 ? -1 : (da > db2 ? 1 : 0);
+    return (soonest ? c : -c) * _pflip;
+  };
   list = list.slice().sort((a,b)=>{
-    if (sortVal==='priority') return (PRIORITY_ORDER[a.priority||'medium']||1)-(PRIORITY_ORDER[b.priority||'medium']||1);
-    if (sortVal==='nextDate') return (a.nextDate||'9999')<(b.nextDate||'9999')?-1:1;
-    if (sortVal==='name')     return (a.name||'')<(b.name||'')?-1:1;
-    return 0;
+    let c = 0;
+    if (sortVal==='priority') c = ((PRIORITY_ORDER[a.priority||'medium']||1)-(PRIORITY_ORDER[b.priority||'medium']||1)) * _pflip;
+    else if (sortVal==='nextDate')      c = _pCmpDate(a.nextDate, b.nextDate, true);
+    else if (sortVal==='lastContacted') c = _pCmpDate(a.lastContacted, b.lastContacted, false);
+    else if (sortVal==='name')          c = ((a.name||'')<(b.name||'')?-1:(a.name||'')>(b.name||'')?1:0) * _pflip;
+    return c || ((a.name||'')<(b.name||'')?-1:1);
   });
 
   const el = qs('#pr-cards');
@@ -6640,7 +6698,8 @@ function quickNote(id) {
   const next = prompt('Next action (leave blank to skip):') || '';
   const nextDate = next ? prompt('Next action date (YYYY-MM-DD):') || '' : '';
   const note = {id:uid(), date:today(), text:text.trim(), author:'you', nextAction:next.trim(), nextDate};
-  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]),note]}));
+  DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]),note],
+    ...(nextDate ? { nextFollowUp: nextDate, nextFollowUpNote: next.trim() } : {})}));
   renderAccounts();
   toast('Note saved');
 }
@@ -6720,7 +6779,7 @@ function saveLogOutreach() {
       ...a,
       lastContacted: date,
       outreach: [...(a.outreach||[]), entry],
-      ...(nextDate ? {nextFollowUp: nextDate} : {}),
+      ...(nextDate ? {nextFollowUp: nextDate, nextFollowUpNote: (next||'').trim()} : {}),
     }));
     renderAccounts();
     // Refresh outreach tab if account modal is still open

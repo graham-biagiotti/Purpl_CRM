@@ -347,10 +347,13 @@
         </select>
         <select id="ac-sort">
           <option value="name">Sort: Name A–Z</option>
-          <option value="lastOrder">Sort: Last Order</option>
+          <option value="lastOrder">Sort: Last Invoice</option>
           <option value="lastContacted">Sort: Last Contacted</option>
+          <option value="nextFollowUp">Sort: Next Follow-up</option>
+          <option value="since">Sort: Newest Accounts</option>
           <option value="territory">Sort: Territory</option>
         </select>
+        <button class="btn" id="ac-sort-dir" onclick="toggleAcSortDir()" title="Flip sort direction">⇅</button>
         <div class="spacer"></div>
         <span id="ac-count" style="font-size:13px;color:var(--muted)"></span>
         <button class="btn" id="ac-compact-btn" onclick="toggleAcCompact()" title="Toggle compact view">Compact</button>
@@ -378,8 +381,10 @@
         <select id="pr-sort">
           <option value="priority">Sort: Priority</option>
           <option value="nextDate">Sort: Follow-up Date</option>
+          <option value="lastContacted">Sort: Last Contacted</option>
           <option value="name">Sort: Name A–Z</option>
         </select>
+        <button class="btn" id="pr-sort-dir" onclick="togglePrSortDir()" title="Flip sort direction">⇅</button>
         <div class="spacer"></div>
         <span id="pr-count" style="font-size:13px;color:var(--muted)"></span>
         <button class="btn" id="pr-compact-btn" onclick="togglePrCompact()">Compact</button>
