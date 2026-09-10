@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v220';
+const APP_VERSION = 'v221';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -18962,8 +18962,20 @@ function _samplingCard(r) {
   if (r.status === 'confirmed' || r.status === 'completed') {
     btns.push(`<button class="btn xs" onclick="window.open('${_samplingSheetUrl(r)}','_blank')">🖨 Demo sheet</button>`);
   }
-  if (awaitingOutcome) {
+  if (awaitingOutcome && !r.report) {
     btns.push(`<button class="btn xs green" onclick="samplingComplete('${r.id}')">✓ Mark completed</button>`);
+  }
+  // Post-demo money actions from the sampler's report: invoice what she
+  // left behind, deduct what she poured. Stamp-guarded against doubles.
+  if (r.report && r.report.casesBackstock > 0) {
+    btns.push(r.backstockHandledAt
+      ? `<button class="btn xs" disabled>✓ Backstock invoiced (${r.report.casesBackstock} cs)</button>`
+      : `<button class="btn xs primary" onclick="samplingInvoiceBackstock('${r.id}')">💵 Invoice backstock (${r.report.casesBackstock} cs)</button>`);
+  }
+  if (r.report && r.report.casesUsed > 0) {
+    btns.push(r.usageLoggedAt
+      ? `<button class="btn xs" disabled>✓ Demo stock deducted (${r.report.casesUsed} cs)</button>`
+      : `<button class="btn xs" onclick="samplingLogUsage('${r.id}')">📦 Deduct demo stock (${r.report.casesUsed} cs)</button>`);
   }
   if (!['cancelled', 'completed'].includes(r.status)) {
     btns.push(`<button class="btn xs" style="color:var(--red);border-color:var(--red)" onclick="samplingCancel('${r.id}')">Cancel</button>`);
@@ -18984,7 +18996,7 @@ function _samplingCard(r) {
       ${L.busyHours ? `<br>⏰ ${escHtml(L.busyHours)}` : ''}
       ${L.notes ? `<br>📝 ${escHtml(L.notes)}` : ''}
       ${r.status === 'needs_reschedule' ? `<br><span style="color:#b45309">Agreed on a day by phone? Cancel this request and have the store re-book via its link — or Re-send so the sampler can suggest the new day.</span>` : ''}
-      ${r.outcome ? `<br><span style="color:var(--text)">✅ Outcome: ${escHtml(r.outcome)}</span>` : ''}
+      ${r.report ? `<br><span style="color:var(--text)">${{ Great: '🔥', Fine: '👍', Slow: '😴' }[r.report.vibe] || '✅'} <strong>${escHtml(r.report.vibe || '')}</strong> · used ${escHtml(String(r.report.casesUsed || 0))} cs · left <strong>${escHtml(String(r.report.casesBackstock || 0))} cs backstock</strong>${r.report.note ? ' · ' + escHtml(r.report.note) : ''}</span>` : (r.outcome ? `<br><span style="color:var(--text)">✅ Outcome: ${escHtml(r.outcome)}</span>` : '')}
       ${r.packetSendFailed ? `<br><span style="color:var(--red)">⚠️ Sampler email failed — use Re-send</span>` : ''}
       ${r.proposeEmailFailed ? `<br><span style="color:var(--red)">⚠️ Store never got the proposed date — call them (${escHtml(fmtD(r.altDate))})</span>` : ''}
       ${(r.confirmEmailFailures || []).length ? `<br><span style="color:var(--red)">⚠️ Confirmation email failed (${escHtml((r.confirmEmailFailures || []).join(', '))})</span>` : ''}
@@ -19077,6 +19089,25 @@ function _samplingMonthGrid() {
   </div>`;
 }
 
+// Demo ROI: of demos completed in the last 90 days, how many stores placed
+// any (non-draft, non-void) order within 30 days of the demo.
+function _samplingRoiLine() {
+  const t = _samplingToday();
+  const cutoff = new Date(new Date(t + 'T12:00:00').getTime() - 90 * 864e5).toISOString().slice(0, 10);
+  const done = _samplingReqs.filter(r => r.status === 'completed' && (r.confirmedDate || '') >= cutoff);
+  if (!done.length) return '';
+  const allInvs = [..._allPurplInvoices(), ...DB.a('lf_invoices'), ...DB.a('combined_invoices')];
+  const invDate = iv => (iv.date || iv.issued || iv.issueDate || iv.createdAt || '').slice(0, 10);
+  const conv = done.filter(r => {
+    if (!r.accountId || !r.confirmedDate) return false;
+    const until = new Date(new Date(r.confirmedDate + 'T12:00:00').getTime() + 30 * 864e5).toISOString().slice(0, 10);
+    return allInvs.some(iv => iv.accountId === r.accountId
+      && !['void', 'draft'].includes(iv.status)
+      && invDate(iv) >= r.confirmedDate && invDate(iv) <= until);
+  }).length;
+  return `<div class="card" style="padding:10px 16px;margin-bottom:14px;font-size:12.5px;color:var(--muted)">Demo ROI (last 90 days): <strong style="color:var(--text)">${done.length} completed</strong> · <strong style="color:var(--text)">${conv} led to an order within 30 days</strong></div>`;
+}
+
 function _renderSamplingList() {
   const el = qs('#sampling-list');
   if (!el) return;
@@ -19085,6 +19116,7 @@ function _renderSamplingList() {
   const active = _samplingReqs.filter(r => !['completed', 'cancelled'].includes(r.status)).filter(match);
   const done = _samplingReqs.filter(r => ['completed', 'cancelled'].includes(r.status)).filter(match).slice(0, 30);
   el.innerHTML = `
+    ${_samplingRoiLine()}
     ${_samplingMonthGrid()}
     ${active.length ? active.map(_samplingCard).join('') : '<div class="card" style="padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">No open demo requests. Send the Demo Day Invite from the Emails page to get stores booking.</div>'}
     ${done.length ? `<div style="font-size:12px;font-weight:600;color:var(--muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.05em">History</div>` + done.map(_samplingCard).join('') : ''}
@@ -19156,6 +19188,43 @@ async function samplingCancel(id) {
   } catch (e) {
     toast('Cancel failed' + (e?.message ? ': ' + e.message : ''), 6000);
   }
+}
+
+// "Invoice backstock": stamp the request (so the button can't double-fire),
+// then open a fresh purpl invoice for the account with the case count and
+// context in the notes — Graham enters the cases at the store's tier price
+// and sends through the normal, fully-guarded invoice path.
+function samplingInvoiceBackstock(id) {
+  const r = _samplingReqs.find(x => x.id === id);
+  if (!r || !r.report || !(r.report.casesBackstock > 0) || r.backstockHandledAt) return;
+  if (!r.accountId || !DB.a('ac').find(x => x.id === r.accountId)) { toast('Account not found for this demo', 5000); return; }
+  firebase.firestore().collection('sampling_requests').doc(id)
+    .update({ backstockHandledAt: new Date().toISOString(), backstockHandledBy: _currentUserName() })
+    .catch(() => {});
+  r.backstockHandledAt = new Date().toISOString();
+  _renderSamplingList();
+  openAddInv(r.accountId, 'direct', null,
+    'Demo backstock — ' + r.report.casesBackstock + ' case(s) left by ' + (_samplingCfg?.samplerName || 'sampler') + ' at the ' + fmtD(r.confirmedDate) + ' demo');
+  toast('Enter ' + r.report.casesBackstock + ' case(s) — the note carries the demo context', 6000);
+}
+
+// "Deduct demo stock": the cases she opened for sampling come out of the
+// warehouse pool as a tagged ledger entry. Stamp-guarded.
+function samplingLogUsage(id) {
+  const r = _samplingReqs.find(x => x.id === id);
+  if (!r || !r.report || !(r.report.casesUsed > 0) || r.usageLoggedAt) return;
+  DB.push('iv', {
+    id: uid(), date: today(), sku: 'classic', type: 'out',
+    qty: r.report.casesUsed * CANS_PER_CASE, pool: 'warehouse',
+    note: 'Demo sampling — ' + (r.accountName || '') + ' (' + fmtD(r.confirmedDate) + ')',
+    samplingId: id,
+  });
+  firebase.firestore().collection('sampling_requests').doc(id)
+    .update({ usageLoggedAt: new Date().toISOString() })
+    .catch(() => {});
+  r.usageLoggedAt = new Date().toISOString();
+  _renderSamplingList();
+  toast('Deducted ' + r.report.casesUsed + ' case(s) from warehouse as demo stock ✓');
 }
 
 async function samplingComplete(id) {

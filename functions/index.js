@@ -2446,6 +2446,33 @@ exports.submitSamplingRequest = onCall(
     all.sort((a, b) => (b.createdAt || '') < (a.createdAt || '') ? -1 : 1);
     const last = all[0] || null;
 
+    // Store self-serve reschedule: cancel the open request cleanly (freeing
+    // its days) so the calendar unlocks for an immediate re-book. The
+    // sampler is told only if a date was actually on her calendar.
+    if (data.cancelOpen) {
+      if (!open) return { success: true, nothingOpen: true };
+      const ref0 = admin.firestore().collection('sampling_requests').doc(open.id);
+      await ref0.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'store' });
+      for (const dd of new Set([open.date1, open.confirmedDate, open.altDate].filter(Boolean))) {
+        await _samplingFreeDay(dd, open.id);
+      }
+      const cfg0 = await _samplingConfig();
+      if (cfg0.samplerEmail && ['confirmed', 'proposed_alt'].includes(open.status)) {
+        try {
+          const { Resend } = require('resend');
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg0.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: 'Rescheduling: ' + (open.accountName || acct.name) + (open.confirmedDate ? ' — ' + _samplingFmtDate(open.confirmedDate) : ''),
+            html: _samplingEmailShell(`<p><strong>${escHtml(open.accountName || acct.name)}</strong> needs a different day${open.confirmedDate ? ' — take <strong>' + escHtml(_samplingFmtDate(open.confirmedDate)) + '</strong> off your calendar' : ''}. They're re-booking now; a fresh request will land in your inbox. Nothing else to do.</p>`),
+          });
+        } catch (e) { console.error('Store reschedule notice failed:', e.message); }
+      }
+      await _logCadenceEntry(acct.acId, { stage: 'sampling_requested', subject: 'Demo day reschedule requested by store', method: 'crm_confirm' });
+      return { success: true };
+    }
+
     if (data.check) {
       const cfg = await _samplingConfig();
       let openDays = [];
@@ -2597,15 +2624,36 @@ exports.samplingAction = onRequest(
       const blocked = await _samplingAvailability();
       const today = _samplingTodayET();
       const taken = new Map();
+      let upcomingHtml = '', reportHtml = '';
       try {
         const ups = await admin.firestore().collection('sampling_requests')
-          .where('status', 'in', ['confirmed', 'pending_sampler', 'proposed_alt']).get();
+          .where('status', 'in', ['confirmed', 'pending_sampler', 'proposed_alt', 'completed']).get();
+        const upcoming = [], needReport = [];
         ups.docs.forEach((d) => {
           const x = d.data();
-          const dd = x.confirmedDate || x.altDate || x.date1;
-          if ((dd || '') >= today) taken.set(dd, (x.accountName || 'booked').slice(0, 14));
+          const dd = x.status === 'proposed_alt' ? x.altDate : (x.confirmedDate || x.date1);
+          if (x.status !== 'completed' && (dd || '') >= today) taken.set(dd, (x.accountName || 'booked').slice(0, 14));
+          if (x.status === 'confirmed' && (x.confirmedDate || '') >= today) upcoming.push({ id: d.id, x });
+          const done = (x.status === 'completed' && !x.report) || (x.status === 'confirmed' && (x.confirmedDate || '') < today);
+          const recent = (x.confirmedDate || '') >= new Date(new Date(today + 'T12:00:00Z').getTime() - 21 * 864e5).toISOString().slice(0, 10);
+          if (done && recent) needReport.push({ id: d.id, x });
         });
-      } catch (e) { /* booked labels are a nicety */ }
+        upcoming.sort((p, q) => p.x.confirmedDate < q.x.confirmedDate ? -1 : 1);
+        const link = (id, key, act) => `${SAMPLING_ACTION_BASE}?r=${id}&k=${encodeURIComponent(key || '')}&a=${act}`;
+        if (upcoming.length) {
+          upcomingHtml = '<h2 style="margin-top:4px">Your upcoming demos</h2>' + upcoming.slice(0, 8).map(({ id, x }) => `
+            <div style="background:#fff;border:1px solid #E7E1F0;border-radius:10px;padding:11px 12px;margin:6px 0;font-size:13.5px;line-height:1.7">
+              <strong>${escHtml(_samplingFmtDate(x.confirmedDate))}</strong> — ${escHtml(x.accountName || '')} <span style="color:#6b7280">(${escHtml((SAMPLING_WINDOWS[x.timeWindow] || {}).label || '')})</span><br>
+              📍 <a href="https://maps.google.com/?q=${encodeURIComponent(x.storeAddress || '')}" style="color:#4F5D80">${escHtml(x.storeAddress || '')}</a><br>
+              👤 ${escHtml(x.contact?.name || '')} — ${escHtml(x.contact?.cell || '')} ·
+              <a href="${link(id, x.samplerActionToken, 'sheet')}" style="color:#4D2A6F;font-weight:700">🖨 demo sheet</a>
+            </div>`).join('');
+        }
+        if (needReport.length) {
+          reportHtml = '<h2>Waiting on your report</h2>' + needReport.slice(0, 6).map(({ id, x }) => `
+            <a href="${link(id, x.samplerActionToken, 'report')}" style="display:block;background:#4D2A6F;color:#fff;border-radius:10px;padding:12px;margin:6px 0;font-size:14px;font-weight:700;text-decoration:none;text-align:center">How'd it go at ${escHtml(x.accountName || '')}? (30 sec)</a>`).join('');
+        }
+      } catch (e) { /* homepage sections are a nicety */ }
       const base = new Date(today + 'T12:00:00Z');
       let months = '';
       for (let m = 0; m < 3; m++) {
@@ -2646,7 +2694,9 @@ button.day{cursor:pointer}
 .legend{font-size:12px;color:#6b7280;margin:10px 0;line-height:1.7}
 </style></head><body>
 <h1>My demo days</h1>
-<div class="legend">Tap a day to mark yourself <strong>OFF</strong> — stores can't book it. Tap it again to open it back up.<br>
+${reportHtml}
+${upcomingHtml}
+<div class="legend" style="margin-top:16px">Tap a day to mark yourself <strong>OFF</strong> — stores can't book it. Tap it again to open it back up.<br>
 <span style="display:inline-block;width:11px;height:11px;background:#4D2A6F;border-radius:3px"></span> booked demo &nbsp;
 <span style="display:inline-block;width:11px;height:11px;background:#1a1a2e;border-radius:3px"></span> day off &nbsp;
 <span style="display:inline-block;width:11px;height:11px;background:#fff;border:1px solid #E7E1F0;border-radius:3px"></span> open</div>
@@ -2760,6 +2810,49 @@ ${row('Their busy hours', L.busyHours)}
 ${row('Notes', L.notes)}
 ${row('Bring', 'purpl (cold), sample cups, table + cloth, signage, trash bag, towel')}
 </table></body></html>`);
+    }
+
+    // ── End-of-demo report (sampler): outcome + cases used + backstock ──
+    // Reachable on confirmed (day of / after) and completed requests; the
+    // numbers drive Graham's backstock invoice and demo-stock deduction.
+    if (a === 'report') {
+      if (!['confirmed', 'completed'].includes(rec.status)) {
+        return send('Not yet', `<h1>Nothing to report yet</h1><p>This demo isn't booked/finished. Use the buttons in your email.</p>`);
+      }
+      const already = rec.report && rec.report.reportedAt;
+      if (req.method === 'GET') {
+        if (already) {
+          const rp = rec.report;
+          return send('Report filed', `<h1>Report filed ✓</h1><p><strong>${escHtml(rec.accountName)}</strong> — ${escHtml(rp.vibe || '')}, used ${escHtml(String(rp.casesUsed || 0))} case(s), left ${escHtml(String(rp.casesBackstock || 0))} case(s) backstock.</p><p>Need to change it? Just text Graham.</p>`);
+        }
+        const radio = (v, lbl) => `<label style="display:flex;align-items:center;gap:10px;padding:14px;border:2px solid #d1d5db;border-radius:10px;margin:8px 0;font-size:17px;cursor:pointer"><input type="radio" name="vibe" value="${v}" required style="width:20px;height:20px">${lbl}</label>`;
+        const num = (name, lbl) => `<div style="margin:12px 0"><div style="font-weight:700;margin-bottom:4px">${lbl}</div><input type="number" name="${name}" min="0" max="99" value="0" required style="width:100%;padding:14px;font-size:18px;border:2px solid #d1d5db;border-radius:10px"></div>`;
+        return send('How did it go?', `<h1>How'd it go at ${escHtml(rec.accountName)}?</h1>
+<form method="POST" action="${SAMPLING_ACTION_BASE}">${hidden('report')}
+${radio('Great', '🔥 Great — busy, people loved it')}
+${radio('Fine', '👍 Fine — steady')}
+${radio('Slow', '😴 Slow day')}
+${num('used', 'Cases you opened for sampling')}
+${num('backstock', 'Cases you LEFT at the store (they keep them — Graham bills for these)')}
+<div style="margin:12px 0"><div style="font-weight:700;margin-bottom:4px">Anything else? (optional)</div><textarea name="note" maxlength="1000" rows="3" style="width:100%;padding:12px;font-size:16px;border:2px solid #d1d5db;border-radius:10px;font-family:inherit"></textarea></div>
+<button type="submit" class="btn yes" style="width:100%;border:none;cursor:pointer;font-family:inherit">SEND REPORT</button>
+</form>`);
+      }
+      // POST
+      if (already) return send('Report filed', `<h1>Already filed ✓</h1><p>Got your report for ${escHtml(rec.accountName)} — nothing else to do.</p>`);
+      const vibe = ['Great', 'Fine', 'Slow'].includes(String(src.vibe)) ? String(src.vibe) : 'Fine';
+      const nnum = (v) => { const n = parseInt(String(v), 10); return Number.isFinite(n) ? Math.min(99, Math.max(0, n)) : 0; };
+      const casesUsed = nnum(src.used), casesBackstock = nnum(src.backstock);
+      const note = String(src.note || '').trim().slice(0, 1000);
+      const outcome = `${vibe} — used ${casesUsed} cs, left ${casesBackstock} cs backstock${note ? '. ' + note : ''}`;
+      const patch = {
+        report: { vibe, casesUsed, casesBackstock, note, reportedAt: new Date().toISOString() },
+        outcome,
+      };
+      if (rec.status === 'confirmed') { patch.status = 'completed'; patch.completedAt = new Date().toISOString(); }
+      await ref.update(patch);
+      try { await _logCadenceEntry(rec.accountId, { stage: 'sampling_completed', subject: outcome.slice(0, 200), method: 'crm_confirm' }); } catch (e) { /* bookkeeping only */ }
+      return send('Thank you', `<h1>Got it — thank you! ✓</h1><p><strong>${escHtml(rec.accountName)}</strong>: ${escHtml(vibe)}, ${casesUsed} used, ${casesBackstock} left as backstock.${casesBackstock > 0 ? '<br>Graham will invoice the backstock — nothing for you to do.' : ''}</p>`);
     }
 
     // Already decided → every path shows current state (idempotent; a
@@ -3024,6 +3117,30 @@ exports.samplingDailySweep = onSchedule(
         } catch (e) { console.error('Sampler T-2 reminder failed:', doc.id, e.message); }
       }
     } catch (e) { console.error('T-2 sweep failed:', e.message); }
+
+    // Morning-after report request: yesterday's confirmed demos with no
+    // report get ONE "how'd it go?" email (stamped so a rerun can't repeat).
+    try {
+      const yday = new Date(new Date(today + 'T12:00:00Z').getTime() - 864e5).toISOString().slice(0, 10);
+      const snap = await db.collection('sampling_requests')
+        .where('status', '==', 'confirmed').where('confirmedDate', '==', yday).get();
+      for (const doc of snap.docs) {
+        const rec = doc.data();
+        if (rec.report || rec.reportRequestSentAt) continue;
+        try {
+          await resend.emails.send({
+            from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
+            replyTo: 'graham@pumpkinblossomfarm.com',
+            subject: `How'd it go at ${rec.accountName || 'the demo'}? (30 seconds)`,
+            html: _samplingEmailShell(`
+              <p style="font-size:17px;font-weight:600;margin:0 0 16px">Quick one about yesterday's demo at <strong>${escHtml(rec.accountName || '')}</strong>:</p>
+              <p>Tap below — three taps and two numbers, that's it. The backstock number is how Graham knows what to bill the store.</p>
+              <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${doc.id}&k=${rec.samplerActionToken}&a=report" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">FILE THE 30-SECOND REPORT</a></div>`),
+          });
+          await doc.ref.update({ reportRequestSentAt: new Date().toISOString() });
+        } catch (e) { console.error('Report request failed:', doc.id, e.message); }
+      }
+    } catch (e) { console.error('Report sweep failed:', e.message); }
 
     // 3-day nudge on unanswered requests (once, then the CRM flag carries it).
     try {

@@ -66,6 +66,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
     <h2 id="sp-status-title">Your demo day</h2>
     <p class="status-big" id="sp-status-line"></p>
     <p class="lead" id="sp-status-sub"></p>
+    <button id="sp-resched" onclick="spReschedule()" style="display:none;width:100%;padding:13px;font-size:15px;font-weight:600;border:2px solid #d1d5db;border-radius:10px;background:#fff;color:#1a1a2e;cursor:pointer;font-family:inherit;margin-top:8px">Need to change the day?</button>
   </div>
 
   <div id="sp-form-card" class="card" style="display:none">
@@ -177,6 +178,7 @@ function spInit() {
         document.getElementById('sp-status-title').textContent = d.accountName || 'Your demo day';
         document.getElementById('sp-status-line').textContent = line;
         document.getElementById('sp-status-sub').textContent = sub;
+        document.getElementById('sp-resched').style.display = '';
         spShow('sp-status');
         return;
       }
@@ -265,6 +267,22 @@ function spRenderCal() {
   [].forEach.call(box.querySelectorAll('button.spc-d'), function (b) {
     b.onclick = function () { spPick(b.getAttribute('data-iso')); };
   });
+}
+
+var _spReschedInFlight = false;
+function spReschedule() {
+  if (_spReschedInFlight) return;
+  if (!confirm('Cancel this demo day so you can pick a new one? Our sampler will be notified.')) return;
+  _spReschedInFlight = true;
+  var b = document.getElementById('sp-resched');
+  b.disabled = true; b.textContent = 'One sec…';
+  firebase.functions().httpsCallable('submitSamplingRequest')({ token: SP_TOKEN, cancelOpen: true })
+    .then(function () { location.reload(); })
+    .catch(function () {
+      _spReschedInFlight = false;
+      b.disabled = false; b.textContent = 'Need to change the day?';
+      alert('Could not cancel — please try again or reply to any of our emails.');
+    });
 }
 
 function spErr(msg) {
