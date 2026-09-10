@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v222';
+const APP_VERSION = 'v223';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1572,48 +1572,21 @@ function renderDash() {
   renderDashActivity();
   const ac  = DB.a('ac').filter(x=>x.status==='active');
   const pendingAc = DB.a('ac').filter(x=>x.status==='pending').length;
-  const pr  = DB.a('pr');
-  const ord = DB.a('orders');
-  const inv = DB.a('iv');
+  const todayStr = today();
 
-  const revenue30 = ord.filter(o=>daysAgo(o.created)<=30&&o.status!=='cancelled')
-    .reduce((s,o)=>s+calcOrderValue(o), 0);
-  const pipeline  = pr.filter(x=>!['won','lost'].includes(x.status)).length;
-  const overdue   = ord.filter(o=>o.status==='pending'&&o.dueDate<today()).length;
-  const lowStock  = SKUS.filter(s => _onHand(s.id, null) < 48).length;
-
-  const allAc  = DB.a('ac');
-  // Brand/fulfillment sub-counts use ACTIVE accounts (like the Active Accounts
-  // KPI), so the breakdown reconciles with the headline instead of silently
-  // including pending/inactive/paused accounts.
-  const lfCount      = ac.filter(a=>!!a.isPbf).length;
-  const purplOnly    = ac.filter(a=>!a.isPbf).length;
-  const directCount  = ac.filter(a=>!a.fulfilledBy||a.fulfilledBy==='direct').length;
-  const viaDistCount = ac.filter(a=>a.fulfilledBy&&a.fulfilledBy!=='direct').length;
-
-  // ── Combined 6-card KPI row ──────────────────────────────
   loadScratchpad();
-  // Brand counts filter to active accounts so they line up with the main
-  // "Active Accounts" KPI — pulling from allAc included churned accounts.
-  const purplAcCount = ac.filter(a => !a.isPbf).length;
-  const lfAcCount    = ac.filter(a => !!a.isPbf).length;
-  const allPurplInv = _allPurplInvoices();
-  const purplOutstanding = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status)).reduce((s,x) => s + parseFloat(x.total||x.amount||0), 0);
-  const lfOutstanding    = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + (i.total||0), 0);
-  // dist invoices were missing entirely — the dashboard disagreed with the
-  // Invoices page by exactly the open distributor balance.
-  const distOutstanding  = DB.a('dist_invoices').filter(i => !['paid','draft','void'].includes(i.status)).reduce((s,i) => s + parseFloat(i.total||0), 0);
-  const combinedOutstanding  = purplOutstanding + lfOutstanding + distOutstanding;
-  const purplOverdueCount    = allPurplInv.filter(x => !['paid','draft','void'].includes(x.status) && (x.dueDate||x.due) && (x.dueDate||x.due) < today()).length;
-  const lfOverdueCount       = DB.a('lf_invoices').filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
-  const combinedOverdueCount = purplOverdueCount + lfOverdueCount;
-  const pendingWixCount      = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  // ONE invoice universe for Outstanding + Overdue: children excluded so a
+  // combined order counts once via its parent (whose grandTotal includes
+  // shipping); dist invoices included in BOTH numbers. This is the same
+  // filter the quick-actions strip and Invoice Status counters use, so all
+  // three surfaces finally agree.
+  const _openInvs = _allInvoices({ excludeChildren: true })
+    .filter(x => !['paid','draft','void'].includes(x.status));
+  const combinedOutstanding  = _openInvs.reduce((s, x) => s + (_invAmt(x) || 0), 0);
+  const combinedOverdueCount = _openInvs.filter(x => { const d = x.dueDate || x.due || ''; return d && d < todayStr; }).length;
   if (qs('#dash-kpi-total-ac'))             qs('#dash-kpi-total-ac').innerHTML             = kpiHtml('Active Accounts', ac.length, 'purple') + (pendingAc>0?`<div style="font-size:11px;color:#1e40af;margin-top:4px;text-align:center">+${pendingAc} pending</div>`:'');
-  if (qs('#dash-kpi-purpl-ac'))             qs('#dash-kpi-purpl-ac').innerHTML             = kpiHtml('💜 purpl', purplAcCount, 'purple');
-  if (qs('#dash-kpi-lf-ac'))                qs('#dash-kpi-lf-ac').innerHTML                = kpiHtml('🪻 LF', lfAcCount, 'green');
   if (qs('#dash-kpi-combined-outstanding')) qs('#dash-kpi-combined-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(combinedOutstanding), combinedOutstanding > 0 ? 'amber' : 'gray');
   if (qs('#dash-kpi-combined-overdue'))     qs('#dash-kpi-combined-overdue').innerHTML     = kpiHtml('Overdue', combinedOverdueCount, combinedOverdueCount > 0 ? 'red' : 'gray');
-  if (qs('#dash-kpi-wix'))                  qs('#dash-kpi-wix').innerHTML                  = kpiHtml('LF Deductions', pendingWixCount, pendingWixCount > 0 ? 'amber' : 'gray');
 
   // Low inventory KPI
   const totalCans = SKUS.reduce((sum, sk) => sum + _onHand(sk.id, null), 0);
@@ -1644,38 +1617,11 @@ function renderDash() {
   }
 
   const allPr      = DB.a('pr');
-  const prPurplCount = allPr.filter(p => !p.isPbf).length;
-  const prLfCount    = allPr.filter(p => !!p.isPbf).length;
-  const prDueCount   = allPr.filter(p => !['won','lost'].includes(p.status) && p.nextDate && p.nextDate <= today()).length;
+  const prDueCount = allPr.filter(p => !['won','lost'].includes(p.status) && p.nextDate && p.nextDate <= todayStr).length;
   if (qs('#dash-kpi-pr-total')) qs('#dash-kpi-pr-total').innerHTML = kpiHtml('Prospects', allPr.length, 'blue');
-  if (qs('#dash-kpi-pr-purpl')) qs('#dash-kpi-pr-purpl').innerHTML = kpiHtml('💜 purpl Prospects', prPurplCount, 'purple');
-  if (qs('#dash-kpi-pr-lf'))    qs('#dash-kpi-pr-lf').innerHTML    = kpiHtml('🪻 LF Prospects', prLfCount, 'green');
   if (qs('#dash-kpi-pr-due'))   qs('#dash-kpi-pr-due').innerHTML   = kpiHtml('Follow-up Due', prDueCount, prDueCount > 0 ? 'red' : 'gray');
 
-  qs('#dash-kpi-revenue').innerHTML  = kpiHtml('Revenue (30d)',   fmtC(revenue30), 'green');
-  qs('#dash-kpi-accounts').innerHTML = kpiHtml('Active Accounts', ac.length,       'purple') +
-    `<div style="margin-top:8px;padding:0 4px;display:flex;flex-direction:column;gap:4px">
-      ${pendingAc>0?`<div class="dash-brand-stat" onclick="dashFilterStatus('pending')" title="View pending accounts (no order yet)" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#1e40af;background:#dbeafe;border-radius:6px;padding:3px 8px">
-        <span>⏳</span><span><strong>${pendingAc}</strong> pending (no order yet)</span>
-      </div>`:''}
-      <div class="dash-brand-stat" onclick="dashFilterBrand('lf')" title="View Lavender Fields + purpl accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#166534;background:#dcfce7;border-radius:6px;padding:3px 8px">
-        <span>🪻</span><span><strong>${lfCount}</strong> carry both purpl + Lavender Fields</span>
-      </div>
-      <div class="dash-brand-stat" onclick="dashFilterBrand('purpl')" title="View purpl-only accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
-        <span>🟣</span><span><strong>${purplOnly}</strong> carry purpl only</span>
-      </div>
-      <div class="dash-brand-stat" onclick="dashFilterFulfill('direct')" title="View direct accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#4B2082;background:#ede4f5;border-radius:6px;padding:3px 8px">
-        <span>🚗</span><span><strong>${directCount}</strong> direct accounts</span>
-      </div>
-      ${viaDistCount>0?`<div class="dash-brand-stat" onclick="dashFilterFulfill('dist')" title="View distributor-fulfilled accounts" style="cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;background:#fef3c7;border-radius:6px;padding:3px 8px">
-        <span>🚚</span><span><strong>${viaDistCount}</strong> via distributor</span>
-      </div>`:''}
-    </div>`;
-  qs('#dash-kpi-pipeline').innerHTML = kpiHtml('Open Prospects',  pipeline,        'blue');
-  qs('#dash-kpi-alerts').innerHTML   = kpiHtml('Alerts', overdue+lowStock, overdue+lowStock>0?'red':'gray');
-
   renderAttention();
-  renderReorderPredictions();
   renderInvoiceReminders();
 
   // Check for new wholesale applications (async, non-blocking)
@@ -1684,43 +1630,9 @@ function renderDash() {
     .then(snap => _updateApplicationsBadge(snap.size))
     .catch(() => {});
 
-  // Pending combined invoice notifications (portal orders awaiting invoicing)
-  const pendingInvs = DB.a('pending_invoices').filter(x => x.status === 'pending');
-  if (pendingInvs.length) {
-    const el = qs('#dash-attention');
-    if (el) {
-      el.innerHTML = pendingInvs.map(n => `
-        <div class="attn-item" style="border-left:3px solid #4a7c59">
-          <div class="attn-icon">📄</div>
-          <div class="attn-info" style="flex:1">
-            <div class="attn-name">${escHtml(n.accountName||'')} — ready to invoice</div>
-            <div class="attn-reason">New combined order · purpl + LF</div>
-          </div>
-          <button class="btn xs primary" onclick="nav('invoices')">Review &amp; Invoice</button>
-        </div>`).join('') + el.innerHTML;
-    }
-  }
-
   renderFollowUps();
   renderInvoiceStatus();
-  renderProjections();
-  renderProdPlan();
-  renderCadenceOverdue();
   renderDistDashKPIs();
-  renderLfDashKpis();
-}
-
-function renderQuickNotes() {
-  const el = qs('#dash-quick-notes');
-  if (!el) return;
-  const notes = DB.a('quick_notes').slice().sort((a,b)=>b.ts-a.ts).slice(0,8);
-  if (!notes.length) { el.innerHTML = '<div class="empty" style="padding:16px">No notes yet.</div>'; return; }
-  el.innerHTML = notes.map(n=>`
-    <div class="qn-item">
-      <div class="qn-meta">${n.author||'Team'} &nbsp;·&nbsp; ${fmtDt(n.ts)}</div>
-      <div class="qn-text">${escHtml(n.text)}</div>
-      <button class="btn xs red" style="margin-top:4px" onclick="deleteQuickNote('${n.id}')">Delete</button>
-    </div>`).join('');
 }
 
 // ── Dashboard notes scratchpad (sectioned, Firestore) ─────
@@ -1861,23 +1773,6 @@ function deleteNoteSection(id) {
 // debounceSaveScratchpad kept as alias for any stale references
 function debounceSaveScratchpad() { debounceNoteSectionSave(); }
 
-function addQuickNote() {
-  if (!DB._firestoreReady) return;
-  const inp = qs('#qn-input');
-  const text = (inp?.value||'').trim();
-  if (!text) return;
-  const note = { id: uid(), text, author: _currentUserName(), ts: Date.now() };
-  DB.push('quick_notes', note);
-  inp.value = '';
-  renderQuickNotes();
-}
-
-function deleteQuickNote(id) {
-  if (!DB._firestoreReady) return;
-  DB.remove('quick_notes', id);
-  renderQuickNotes();
-}
-
 function fmtDt(ts) {
   if (!ts) return '—';
   const d = new Date(ts);
@@ -1933,15 +1828,14 @@ function renderAttention() {
   const ac = DB.a('ac');
   const todayStr = today();
 
-  // Dashboard renders before the accounts page may have built the invoice
-  // index — build it here if needed so attention uses real invoice recency.
-  if (!_acIdxInv) {
-    _acIdxInv = new Map();
-    _allInvoices({ excludeChildren: true }).forEach(inv => {
-      const arr = _acIdxInv.get(inv.accountId);
-      if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
-    });
-  }
+  // ALWAYS rebuild the invoice index here: the dashboard used to reuse a
+  // stale index built by the accounts page, so an invoice created moments ago
+  // still showed the account as "No order in Nd" until a full reload.
+  _acIdxInv = new Map();
+  _allInvoices({ excludeChildren: true }).forEach(inv => {
+    const arr = _acIdxInv.get(inv.accountId);
+    if (arr) arr.push(inv); else _acIdxInv.set(inv.accountId, [inv]);
+  });
   ac.filter(a=>a.status==='active').forEach(a=>{
     const last = _acLastInvoiceDate(a);
     const days = daysAgo(last);
@@ -1958,11 +1852,11 @@ function renderAttention() {
     }
   });
 
+  // Warehouse only: the farm-pool check flagged every purpl SKU that simply
+  // isn't stocked at the farm as a permanent "0 cans at farm" alarm.
   SKUS.forEach(s=>{
     const whOh = _onHand(s.id, 'warehouse');
-    const fmOh = _onHand(s.id, 'farm');
     if (whOh < 48) items.push({icon:'📦', name:`${s.label} — Low (Warehouse)`, reason:`${whOh} cans in warehouse`, action:`nav('inventory')`, borderColor:'#d97706'});
-    if (fmOh < 48) items.push({icon:'📦', name:`${s.label} — Low (Farm)`, reason:`${fmOh} cans at farm`, action:`nav('inventory')`, borderColor:'#d97706'});
   });
 
   DB.a('pr').filter(p=>p.nextDate&&p.nextDate<todayStr&&!['won','lost'].includes(p.status)).forEach(p=>{
@@ -2122,133 +2016,6 @@ function dashMarkFollowUpDone(id, type) {
 }
 
 // ── Reorder Predictions ───────────────────────────────────
-function renderReorderPredictions() {
-  const el = qs('#dash-reorder');
-  if (!el) return;
-  const accounts = DB.a('ac').filter(a => a.status === 'active');
-  const orders = DB.a('orders').filter(o => o.status !== 'cancelled');
-  const predictions = [];
-
-  accounts.forEach(a => {
-    const acOrds = orders.filter(o => o.accountId === a.id)
-      .sort((x, y) => x.created > y.created ? 1 : -1);
-    if (acOrds.length < 2) return;
-
-    const intervals = [];
-    for (let i = 1; i < acOrds.length; i++) {
-      const d1 = new Date(acOrds[i-1].created);
-      const d2 = new Date(acOrds[i].created);
-      const diff = Math.round((d2 - d1) / 86400000);
-      if (diff > 0) intervals.push(diff);
-    }
-    if (!intervals.length) return;
-
-    const avgInterval = Math.round(intervals.reduce((s, v) => s + v, 0) / intervals.length);
-    const lastOrdDate = acOrds[acOrds.length - 1].created;
-    const daysUntilDue = avgInterval - daysAgo(lastOrdDate);
-
-    if (daysUntilDue <= 14) {
-      predictions.push({ a, avgInterval, daysUntilDue, lastOrdDate });
-    }
-  });
-
-  predictions.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
-
-  if (!predictions.length) {
-    el.innerHTML = '<div class="empty" style="padding:16px">No reorders predicted in the next 14 days.</div>';
-    return;
-  }
-
-  el.innerHTML = predictions.slice(0, 6).map(({ a, avgInterval, daysUntilDue, lastOrdDate }) => {
-    const overdue = daysUntilDue < 0;
-    const color = overdue ? 'var(--red)' : daysUntilDue <= 7 ? '#d97706' : 'var(--green)';
-    const label = overdue ? `${Math.abs(daysUntilDue)}d overdue` : daysUntilDue === 0 ? 'due today' : `in ${daysUntilDue}d`;
-    return `<div class="attn-item" style="cursor:pointer" onclick="openAccount('${a.id}')">
-      <div class="attn-icon">🔄</div>
-      <div class="attn-info" style="flex:1">
-        <div class="attn-name">${escHtml(a.name)}</div>
-        <div class="attn-reason">Every ~${avgInterval}d · last ${fmtD(lastOrdDate)}</div>
-      </div>
-      <span style="font-size:12px;font-weight:600;color:${color}">${label}</span>
-    </div>`;
-  }).join('');
-}
-
-// ── Cadence Overdue ───────────────────────────────────────
-function renderCadenceOverdue() {
-  const card = qs('#dash-cadence-card');
-  const el   = qs('#dash-cadence-overdue');
-  if (!el) return;
-
-  const flags = [];
-
-  // Active accounts with no welcome email sent
-  DB.a('ac').filter(a=>a.status==='active').forEach(a=>{
-    const cadence = a.cadence||[];
-    if (!cadence.some(c=>c.stage==='approved_welcome') && daysAgo(a.created)>=1) {
-      flags.push({id:a.id, name:a.name, reason:'Welcome email not sent', invoiceId:null});
-    }
-  });
-
-  // Invoices without a sent notification. Skip: drafts (nothing to send yet),
-  // paid/void (moot), anything already status sent/sentAt (markInvoiceSent
-  // logs no cadence), and combined children (the SEND logs the parent id, so
-  // children were flagged forever after every combined send).
-  DB.a('ac').forEach(a=>{
-    const sentIds = new Set((a.cadence||[]).filter(c=>c.stage==='invoice_sent').map(c=>c.invoiceId));
-    const needsFlag = inv => !sentIds.has(inv.id) && !inv.combinedInvoiceId &&
-      !['draft','paid','void','sent'].includes(inv.status || 'draft') && !inv.sentAt;
-    _allPurplInvoices().filter(x=>x.accountId===a.id&&needsFlag(x)).forEach(inv=>{
-      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number} not sent to retailer`, invoiceId:inv.id});
-    });
-    DB.a('lf_invoices').filter(x=>x.accountId===a.id&&needsFlag(x)).forEach(inv=>{
-      flags.push({id:a.id, name:a.name, reason:`Invoice ${inv.number||inv.id} not sent to retailer`, invoiceId:inv.id});
-    });
-  });
-
-  if (!flags.length) { if (card) card.style.display='none'; return; }
-  if (card) card.style.display='';
-  el.innerHTML = flags.slice(0,8).map(f=>`
-    <div class="attn-item">
-      <div class="attn-icon">⚠️</div>
-      <div class="attn-info" style="flex:1">
-        <div class="attn-name">${escHtml(f.name)}</div>
-        <div class="attn-reason">${escHtml(f.reason)}</div>
-      </div>
-      <button class="btn xs primary" onclick="openAccountToEmailsTab('${f.id}')">Send Now</button>
-    </div>`).join('');
-}
-
-// ── Pending Orders (with reschedule button) ───────────────
-function renderPendingOrders() {
-  const pending = DB.a('orders').filter(o=>o.status==='pending').sort((a,b)=>a.dueDate>b.dueDate?1:-1);
-  const el = qs('#dash-pending-orders');
-  if (!el) return;
-  el.innerHTML = pending.length ? pending.slice(0,8).map(o=>{
-    const ac2      = DB.a('ac').find(a=>a.id===o.accountId);
-    const isOverdue = o.dueDate < today();
-    return `<div class="attn-item">
-      <div class="attn-icon" onclick="openOrderDetail('${o.id}')" style="cursor:pointer">${isOverdue?'⚠️':'📋'}</div>
-      <div class="attn-info" style="flex:1;cursor:pointer" onclick="openOrderDetail('${o.id}')">
-        <div class="attn-name">${escHtml(ac2?.name||'Unknown')}</div>
-        <div class="attn-reason">${(o.items||[]).map(i=>`${skuBadge(i.sku)} ×${i.qty}`).join(' ')} &middot; Due ${fmtD(o.dueDate)}${isOverdue?' <span class="badge red">Overdue</span>':''}</div>
-      </div>
-      <button class="btn xs" onclick="rescheduleOrder('${o.id}')" title="Change due date">Reschedule</button>
-    </div>`;
-  }).join('') : '<div class="empty">No pending orders</div>';
-}
-
-function rescheduleOrder(id) {
-  if (!DB._firestoreReady) return;
-  const o = DB.a('orders').find(x=>x.id===id);
-  if (!o) return;
-  const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
-  if (!newDate || newDate===o.dueDate) return;
-  DB.update('orders', id, x=>({...x, dueDate:newDate}));
-  renderDash();
-  toast('Due date updated');
-}
-
 // ── Invoice Status ────────────────────────────────────────
 const INVOICE_STATUS = {
   none:     {label:'Not Invoiced',    cls:'gray'},
@@ -2301,82 +2068,14 @@ function renderInvoiceStatus() {
         <div style="font-size:11px;color:var(--muted)">Overdue</div>
       </div>
     </div>
-    ${overdueList.length ? overdueList.map(o=>{
+    ${overdueList.length ? overdueList.slice(0, 6).map(o=>{
       const nm = o.accountName || DB.a('ac').find(a=>a.id===o.accountId)?.name || 'Unknown';
       return `<div class="attn-item">
         <div class="attn-icon">💰</div>
         <div class="attn-info"><div class="attn-name">${escHtml(nm)} — ${escHtml(o.number)}</div><div class="attn-reason">Invoice overdue &middot; due ${fmtD(o.dueDate)}</div></div>
         <button class="btn xs" onclick="nav('invoices')">View</button>
       </div>`;
-    }).join('') : '<div class="empty">No invoice issues</div>'}
-    ${(()=>{
-      const _invStatusBadge = inv => {
-        const isDraft = inv.status === 'draft';
-        const isVoid  = inv.status === 'void';
-        const isPaid  = inv.status === 'paid';
-        const od      = !isDraft && !isVoid && !isPaid && _isOverdue(inv);
-        const cls     = isPaid ? 'green' : isDraft ? 'gray' : isVoid ? 'red' : od ? 'red' : 'blue';
-        const label   = isPaid ? 'Paid' : isDraft ? 'Draft' : isVoid ? 'Void' : od ? 'Overdue' : 'Sent';
-        return `<span class="badge ${cls}">${label}</span>`;
-      };
-      const rInvs = DB.a('retail_invoices').filter(x => !x.combinedInvoiceId).sort((a,b)=>b.date>a.date?1:-1);
-      const lInvs = DB.a('lf_invoices').filter(x => !x.combinedInvoiceId).sort((a,b)=>(b.issued||b.date||'')>(a.issued||a.date||'')?1:-1);
-      const cInvs = DB.a('combined_invoices').sort((a,b)=>(b.date||'')>(a.date||'')?1:-1);
-      if (!rInvs.length && !lInvs.length && !cInvs.length) return '';
-
-      const purplRows = rInvs.map(inv=>{
-        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
-        return `<tr>
-          <td><span class="badge purple" style="font-size:10px;margin-right:4px">purpl</span> ${escHtml(inv.invoiceNumber||inv.number||'—')}</td>
-          <td>${escHtml(acName)}</td>
-          <td>${fmtD(inv.dueDate||inv.due)}</td>
-          <td>${fmtC(inv.total||inv.amount||0)}</td>
-          <td>${_invStatusBadge(inv)}</td>
-          <td style="white-space:nowrap">
-            <button class="btn xs" onclick="generateInvoicePrint('${inv.id}')">🖨️</button>
-            ${inv.status!=='paid'?`<button class="btn xs green" onclick="markRetailInvPaid('${inv.id}')">✓ Paid</button>`:''}
-          </td>
-        </tr>`;
-      }).join('');
-
-      const lfRows = lInvs.map(inv=>{
-        const acName = DB.a('ac').find(a=>a.id===inv.accountId)?.name || '—';
-        return `<tr>
-          <td><span class="badge" style="font-size:10px;margin-right:4px;background:#dcfce7;color:#166534">LF</span> ${escHtml(inv.number||inv.invoiceNumber||'—')}</td>
-          <td>${escHtml(acName)}</td>
-          <td>${fmtD(inv.due)}</td>
-          <td>${fmtC(inv.total||0)}</td>
-          <td>${_invStatusBadge(inv)}</td>
-          <td style="white-space:nowrap">
-            <button class="btn xs" onclick="generateLfInvoicePrint('${inv.id}')">🖨️</button>
-            <button class="btn xs" onclick="openLfInvoiceModal('${inv.id}')">Edit</button>
-          </td>
-        </tr>`;
-      }).join('');
-
-      const combRows = cInvs.map(ci=>{
-        return `<tr>
-          <td><span class="badge amber" style="font-size:10px;margin-right:4px">Combined</span> ${escHtml(ci.number||ci.invoiceNumber||'—')}</td>
-          <td>${escHtml(ci.accountName||'—')}</td>
-          <td>${fmtD(ci.dueDate||ci.due)}</td>
-          <td>${fmtC(ci.grandTotal||0)}</td>
-          <td>${_invStatusBadge(ci)}</td>
-          <td style="white-space:nowrap">
-            <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">Preview</button>
-          </td>
-        </tr>`;
-      }).join('');
-
-      return `<div style="margin-top:16px">
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Recent Invoices</div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Invoice</th><th>Account</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-            <tbody>${purplRows}${lfRows}${combRows}</tbody>
-          </table>
-        </div>
-      </div>`;
-    })()}`;
+    }).join('') + (overdueList.length > 6 ? `<div style="text-align:center;margin-top:6px"><button class="btn xs" onclick="nav('invoices')">+ ${overdueList.length - 6} more overdue → Invoices</button></div>` : '') : '<div class="empty">No invoice issues</div>'}`;
 }
 
 // ── Invoice Reminders ─────────────────────────────────────
@@ -2392,7 +2091,7 @@ function renderInvoiceReminders() {
   _allPurplInvoices().forEach(inv => {
     if (inv.combinedInvoiceId) return;
     if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
-    if (inv.reminderSentAt) return;
+    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
@@ -2406,7 +2105,7 @@ function renderInvoiceReminders() {
     // due||dueDate: portal-confirmed LF invoices store dueDate only — they
     // never surfaced in this card at all.
     if (['paid','draft','void'].includes(inv.status) || !(inv.due||inv.dueDate) || !inv.accountId) return;
-    if (inv.reminderSentAt) return;
+    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
     const days = daysAgo(inv.due||inv.dueDate);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
@@ -2420,7 +2119,7 @@ function renderInvoiceReminders() {
   // combined_invoices collection.
   DB.a('combined_invoices').forEach(inv => {
     if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
-    if (inv.reminderSentAt) return;
+    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
@@ -2449,7 +2148,7 @@ function renderInvoiceReminders() {
       <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue</small>
     </div>
     <div id="dash-inv-reminders-list">
-      ${queue.map(({ inv, ac, collection, isOverdue, amount }) => `
+      ${queue.slice(0, 8).map(({ inv, ac, collection, isOverdue, amount }) => `
         <div class="attn-item" id="dir-${inv.id}">
           <div class="attn-icon">${isOverdue ? '🔴' : '🟡'}</div>
           <div class="attn-info" style="flex:1">
@@ -2459,6 +2158,7 @@ function renderInvoiceReminders() {
           <button class="btn xs primary" onclick="sendInvoiceReminder('${inv.id}','${collection}')">Send Reminder</button>
         </div>
       `).join('')}
+      ${queue.length > 8 ? `<div style="text-align:center;margin-top:6px;font-size:12px;color:var(--muted)">+ ${queue.length - 8} more — <a href="#" onclick="nav('invoices');return false">open Invoices</a></div>` : ''}
     </div>`;
 }
 
@@ -2762,8 +2462,15 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
 }
 
 function _ivGetPrice(ac, tier) {
+  // Direct tier falls back to the settings default (27.60 unless changed) so
+  // the price fields come prefilled instead of blank — still editable per line.
+  // Dist/custom tiers stay blank unless the account has a stored price.
+  if (tier === 'direct') {
+    const _defRaw = parseFloat(DB.obj('invoice_settings', {}).defaultCasePrice);
+    const _def = isNaN(_defRaw) ? 27.60 : _defRaw;
+    return parseFloat(ac?.pricePerCaseDirect) || _def;
+  }
   if (!ac) return 0;
-  if (tier === 'direct') return parseFloat(ac.pricePerCaseDirect) || 0;
   if (tier === 'dist')   return parseFloat(ac.pricePerCaseDist)   || 0;
   if (tier === 'custom') return parseFloat(ac.pricePerCaseCustom) || 0;
   return 0;
@@ -2948,149 +2655,6 @@ function sortInv(key) {
   renderInvoicesPage();
 }
 
-
-// ── Revenue Projections ───────────────────────────────────
-function renderProjections() {
-  const {proj30, proj60, proj90, accountsWithData} = calcProjections();
-
-  const el = qs('#dash-projections');
-  if (!el) return;
-  el.innerHTML = `
-    <div>${kpiHtml('Projected 30d', fmtC(proj30), 'green')}</div>
-    <div>${kpiHtml('Projected 60d', fmtC(proj60), 'blue')}</div>
-    <div>${kpiHtml('Projected 90d', fmtC(proj90), 'purple')}</div>`;
-
-  const note = qs('#dash-projection-notes');
-  if (note) note.textContent = `Based on order history from ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders.`;
-}
-
-function calcProjections() {
-  const allOrders = DB.a('orders').filter(o=>o.status!=='cancelled');
-  const accounts  = DB.a('ac').filter(a=>a.status==='active');
-  const now = Date.now();
-  const d30 = now+30*864e5, d60 = now+60*864e5, d90 = now+90*864e5;
-
-  let proj30=0, proj60=0, proj90=0, accountsWithData=0;
-  const velocities = [];
-
-  accounts.forEach(ac=>{
-    const acOrds = allOrders.filter(o=>o.accountId===ac.id).sort((a,b)=>a.dueDate>b.dueDate?1:-1);
-
-    // Units in last 90 days for velocity table
-    const recentOrds = acOrds.filter(o=>daysAgo(o.dueDate)<=90);
-    const totalUnits = Object.fromEntries(SKUS.map(s=>[s.id,0]));
-    recentOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+i.qty; }));
-
-    const periodDays = Math.max(7, Math.min(90, acOrds.length>0 ? Math.max(1, daysAgo(acOrds[0].dueDate)) : 90));
-    const weeksInPeriod = periodDays/7;
-    const weeklyUnits   = Object.fromEntries(SKUS.map(s=>[s.id, Math.round((totalUnits[s.id]||0)/weeksInPeriod*10)/10]));
-
-    let avgDays=null, nextProjected=null, avgOrderValue=0;
-
-    if (acOrds.length >= 2) {
-      const intervals = [];
-      for (let i=1;i<acOrds.length;i++) {
-        const diff = (new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
-        if (diff>0) intervals.push(diff);
-      }
-      if (intervals.length) {
-        avgDays        = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
-        avgOrderValue  = acOrds.reduce((s,o)=>s+calcOrderValue(o),0)/acOrds.length;
-        accountsWithData++;
-
-        const lastMs = new Date(acOrds[acOrds.length-1].dueDate+'T12:00:00').getTime();
-        let next = lastMs + avgDays*864e5;
-        while (next <= d90) {
-          if (next > now) {
-            if (next<=d30) proj30+=avgOrderValue;
-            if (next<=d60) proj60+=avgOrderValue;
-            proj90+=avgOrderValue;
-            if (!nextProjected) nextProjected = new Date(next).toISOString().slice(0,10);
-          }
-          next += avgDays*864e5;
-        }
-      }
-    }
-
-    velocities.push({account:ac, avgDays, avgOrderValue, nextProjected, weeklyUnits, ordCount:acOrds.length});
-  });
-
-  return {proj30, proj60, proj90, accountsWithData, velocities};
-}
-
-// ── Production Planning dashboard card ───────────────────────
-function renderProdPlan() {
-  const el = qs('#dash-prod-plan');
-  if (!el) return;
-
-  // Current on-hand cans (same calculation used in renderDash KPI)
-  const inv = DB.a('iv');
-  const currentCans = SKUS.reduce((sum, sk) => {
-    const totalIn  = inv.filter(i => i.sku === sk.id && (i.type === 'in'  || i.type === 'return')).reduce((t, i) => t + (i.qty || 0), 0);
-    const totalOut = inv.filter(i => i.sku === sk.id &&  i.type === 'out').reduce((t, i) => t + (i.qty || 0), 0);
-    return sum + Math.max(0, totalIn - totalOut);
-  }, 0);
-
-  // Projected 30-day demand in cans from velocity data
-  const { velocities } = calcProjections();
-  const totalWeeklyCases = velocities.reduce((sum, v) => {
-    return sum + SKUS.reduce((s, sk) => s + (v.weeklyUnits[sk.id] || 0), 0);
-  }, 0);
-  const projected30Cases = Math.round(totalWeeklyCases * (30 / 7));
-  const projected30Cans  = projected30Cases * CANS_PER_CASE;
-
-  const surplus = currentCans - projected30Cans;
-  const hasSurplus = surplus >= 0;
-
-  const surplusColor  = hasSurplus ? 'var(--green)' : 'var(--red)';
-  const surplusLabel  = hasSurplus
-    ? `<span style="color:var(--green);font-weight:600">+${fmt(surplus)} cans buffer</span>`
-    : `<span style="color:var(--red);font-weight:600">&minus;${fmt(Math.abs(surplus))} cans deficit</span>`;
-
-  el.innerHTML = `
-    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px">
-      <div style="flex:1;min-width:140px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Current Inventory</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text)">${fmt(currentCans)}</div>
-        <div style="font-size:12px;color:var(--muted)">cans on hand</div>
-      </div>
-      <div style="flex:1;min-width:140px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Projected 30-Day Demand</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text)">${fmt(projected30Cans)}</div>
-        <div style="font-size:12px;color:var(--muted)">${fmt(projected30Cases)} cases at ${CANS_PER_CASE} cans/case</div>
-      </div>
-      <div style="flex:1;min-width:140px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Surplus / Deficit</div>
-        <div style="font-size:28px;font-weight:700;color:${surplusColor}">${hasSurplus ? '+' : ''}${fmt(surplus)}</div>
-        <div style="font-size:12px;color:var(--muted)">cans (current &minus; projected)</div>
-      </div>
-    </div>
-    <div style="padding:12px 16px;border-radius:8px;background:${hasSurplus ? '#f0fdf4' : '#fef3c7'};border:1px solid ${hasSurplus ? '#bbf7d0' : '#fde68a'};font-size:13px;color:${hasSurplus ? '#166534' : '#92400e'}">
-      ${hasSurplus
-        ? `${surplusLabel} &mdash; you have enough stock to cover projected 30-day demand.`
-        : `${surplusLabel} &mdash; Schedule a production run. You need <strong>${fmt(Math.abs(surplus))} more cans</strong> (${fmt(Math.ceil(Math.abs(surplus) / CANS_PER_CASE))} cases) to meet projected demand.`}
-    </div>`;
-}
-
-// ── Store by Store Velocity ───────────────────────────────
-function renderVelocities() {
-  const {velocities} = calcProjections();
-  const el = qs('#dash-velocities');
-  if (!el) return;
-
-  el.innerHTML = velocities.length ? velocities.map(v=>{
-    const totalWkly = Math.round(SKUS.reduce((s,sk)=>s+(v.weeklyUnits[sk.id]||0),0)*10)/10;
-    const nextCls   = v.nextProjected && v.nextProjected < today() ? 'color:var(--red)' : 'color:var(--blue)';
-    return `<tr onclick="openAccount('${v.account.id}')" style="cursor:pointer">
-      <td><strong>${v.account.name}</strong><br><small style="color:var(--muted)">${v.account.territory||''}</small></td>
-      <td>${v.avgDays ? v.avgDays+'d' : '<span style="color:var(--muted)">—</span>'}</td>
-      <td>${v.nextProjected ? `<span style="${nextCls}">${fmtD(v.nextProjected)}</span>` : '<span style="color:var(--muted)">—</span>'}</td>
-      ${SKUS.map(s=>`<td>${v.weeklyUnits[s.id]||0}</td>`).join('')}
-      <td><strong>${totalWkly}</strong></td>
-      <td>${v.avgOrderValue ? fmtC(v.avgOrderValue) : '<span style="color:var(--muted)">—</span>'}</td>
-    </tr>`;
-  }).join('') : '<tr><td colspan="10" class="empty">No active accounts</td></tr>';
-}
 
 // ══════════════════════════════════════════════════════════
 //  PROJECTIONS PAGE (Phase 5)
@@ -3509,7 +3073,6 @@ function _acCardHTML(a, muted) {
       <button class="btn sm primary" onclick="openAccount('${a.id}')">View</button>
       <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
       <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
-      <button class="btn sm run" onclick="addAccountToRun('${a.id}')">+ Run</button>
       <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
       <button class="btn sm" onclick="generateOrderLink('${a.id}')">🔗 Copy Link</button>
       ${_isAdmin()?`<button class="btn sm" style="color:#dc2626" onclick="event.stopPropagation();deleteAccount('${a.id}')">Delete</button>`:''}
@@ -4092,7 +3655,6 @@ function markCadenceEmailSent(sentMessageId) {
   DB.update('ac', accountId, a => ({...a, ...stamp, cadence: _pushCadence(a.cadence, entry)}));
   closeModal('modal-email-preview');
   openAccountToEmailsTab(accountId);
-  renderCadenceOverdue();
   toast('Email marked as sent');
 }
 
@@ -4204,7 +3766,6 @@ function markCadenceSent(accountId, stageId, method, invoiceId) {
   if (invoiceId) entry.invoiceId = invoiceId;
   DB.update('ac', accountId, a => ({...a, cadence: _pushCadence(a.cadence, entry)}));
   renderMacEmailsTab(accountId);
-  renderCadenceOverdue();
   toast('Email logged as sent');
 }
 
@@ -8558,6 +8119,8 @@ async function saveDistInvoice(existingId) {
     status: qs('#mdinv-status')?.value || 'draft',
     notes: qs('#mdinv-notes')?.value?.trim() || '',
   };
+  // Born-paid dist invoices: stamp the paid date (see purpl save; year-end filter).
+  if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
 
   if (existingId) DB.update('dist_invoices', existingId, () => rec);
   else DB.push('dist_invoices', rec);
@@ -8767,6 +8330,9 @@ function renderDistDashKPIs() {
 
   const dists    = DB.a('dist_profiles');
   const active   = dists.filter(d=>d.status==='active');
+  // No distributors = no permanent all-zero KPI band taking up a row.
+  if (!dists.length) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
   const chains   = DB.a('dist_chains');
   const totalDoors = active.reduce((s,d)=>{
     const dc = chains.filter(c=>c.distId===d.id).reduce((a,c)=>a+(c.doorCount||0),0);
@@ -10323,31 +9889,12 @@ function removeStop(i) {
 function clearRoute() {
   if (!confirm2('Clear today\'s route?')) return;
   const run = DB.obj('today_run', {stops:[]});
-  // Clean up orders/invoices for completed stops before archiving
-  const completedStops = (run.stops||[]).filter(s => s.done);
-  if (completedStops.length) {
-    DB.atomicUpdate(cache => {
-      const runDate = run.date || today();
-      const deletedInvIds = new Set();
-      completedStops.forEach(stop => {
-        const acId = stop.accountId || _findAccount(null, stop.name)?.id;
-        if (!acId) return;
-        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===runDate);
-        if (ord) {
-          cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
-          (cache['retail_invoices']||[])
-            .filter(inv => inv.source === 'delivery_run' && inv.accountId === acId && inv.date === runDate)
-            .forEach(inv => deletedInvIds.add(inv.id));
-          cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
-            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === runDate)
-          );
-        }
-      });
-      if (deletedInvIds.size) {
-        cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && deletedInvIds.has(e.invoiceId)));
-      }
-    });
-  }
+  // DATA-LOSS FIX: this used to DELETE the completed stops' orders, their
+  // retail invoices (source 'delivery_run' — regardless of status, even sent
+  // or paid), and those invoices' inventory deductions before archiving.
+  // Clearing a route must never erase sales records: the orders, invoices and
+  // iv rows now stay exactly as they are; only the route itself is archived
+  // and reset.
   // Archive completed run to history
   if (run.stops && run.stops.length > 0) {
     const totalCases = run.stops.reduce((sum,s)=>sum+SKUS.reduce((c,sk)=>c+(s[sk.id]||0),0),0);
@@ -11283,6 +10830,11 @@ function exportYearEnd() {
     const acName = x.accountName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number, 'purpl', acName, parseFloat(x.purplSubtotal||0).toFixed(2), 'Combined - purpl']);
     rows.push([pd, x.number, 'LF',    acName, parseFloat(x.lfSubtotal||0).toFixed(2),    'Combined - LF']);
+    // grandTotal = purplSub + lfSub + shipping — without this row the export
+    // ran short of what the customer actually paid by every combined
+    // shipping charge.
+    const _ship = Math.round(((parseFloat(x.grandTotal)||0) - (parseFloat(x.purplSubtotal)||0) - (parseFloat(x.lfSubtotal)||0)) * 100) / 100;
+    if (_ship > 0.004) rows.push([pd, x.number, '—', acName, _ship.toFixed(2), 'Combined - shipping']);
   });
 
   // DM-1 FIX: distributor invoices were missing from tax export
@@ -12859,8 +12411,7 @@ function openLfInvoiceModal(id) {
           toast('Saved — but no email address on file for this account');
           closeModal('modal-lf-invoice');
           if (currentPage === 'invoices') renderInvoicesPage();
-          renderLfDashKpis();
-          showWixPullModal(inv, out.deduction.id);
+                  showWixPullModal(inv, out.deduction.id);
           return;
         }
         lfiSendBtn.textContent = 'Generating link…';
@@ -12888,8 +12439,7 @@ function openLfInvoiceModal(id) {
         _clearReadyToSend(inv.id, 'lf_invoices');
         closeModal('modal-lf-invoice');
         if (currentPage === 'invoices') renderInvoicesPage();
-        renderLfDashKpis();
-        renderAccounts();
+              renderAccounts();
         toast('Invoice saved & sent ✓');
         showWixPullModal(inv, out.deduction.id);
       } catch (e) {
@@ -13067,7 +12617,6 @@ async function saveLfInvoice(id, isNew) {
   if (!out) return;
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
-  renderLfDashKpis();
   toast(`Invoice ${out.rec.number} saved ✓`);
   showWixPullModal(out.rec, out.deduction.id);
 }
@@ -13188,6 +12737,8 @@ function _saveLfInvoiceCore(id, isNew) {
     fulfillmentSource: qs('#lfi-fulfillment')?.value || existing?.fulfillmentSource || 'farm',
     notes, link, deliveryDate, trackingNumber,
   };
+  // Born-paid LF invoices: stamp the paid date (see purpl save; year-end filter).
+  if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
 
   if (isNew) DB.push('lf_invoices', rec);
   else DB.update('lf_invoices', id, () => rec);
@@ -13223,7 +12774,6 @@ function deleteLfInvoice(id) {
   deleteInvoiceWithCleanup(id);
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
-  renderLfDashKpis();
   toast('Invoice deleted');
 }
 
@@ -15338,30 +14888,9 @@ function confirmWixPull(confirmed) {
   }
   closeModal('modal-wix-pull');
   if (currentPage === 'invoices') renderInvoicesPage();
-  renderLfDashKpis();
   toast(confirmed ? '✓ Deduction confirmed' : 'Reminder set — deduct when ready');
   _wixPullDeductionId = null;
   _wixPullInvoiceId   = null;
-}
-
-// ── LF KPIs on dashboard ──────────────────────────────────
-
-function renderLfDashKpis() {
-  const el = qs('#dash-lf-kpis');
-  if (!el) return;
-  const lfAc       = DB.a('ac').filter(a => a.status === 'active' && !!a.isPbf).length;
-  const lfInvs     = DB.a('lf_invoices');
-  // Match the main dashboard's filter: outstanding = anything that isn't paid/draft/void.
-  const outstanding = lfInvs
-    .filter(i => !['paid','draft','void'].includes(i.status))
-    .reduce((s,i) => s + (i.total||0), 0);
-  const lfOverdue  = lfInvs.filter(i => !['paid','draft','void'].includes(i.status) && (i.dueDate||i.due) && (i.dueDate||i.due) < today()).length;
-  const pendingWix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
-
-  if (qs('#dash-kpi-lf-accounts'))    qs('#dash-kpi-lf-accounts').innerHTML    = kpiHtml('🪻 LF Accounts', lfAc, 'green');
-  if (qs('#dash-kpi-lf-outstanding')) qs('#dash-kpi-lf-outstanding').innerHTML = kpiHtml('LF Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray');
-  if (qs('#dash-kpi-lf-overdue'))     qs('#dash-kpi-lf-overdue').innerHTML     = kpiHtml('LF Overdue', lfOverdue, lfOverdue > 0 ? 'red' : 'gray');
-  if (qs('#dash-kpi-lf-wix'))         qs('#dash-kpi-lf-wix').innerHTML         = kpiHtml('Pending LF Deductions', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -18178,6 +17707,7 @@ function saveInvoiceSettings() {
     fromEmail:     get('inv-from-email')?.value   || 'lavender@pbfwholesale.com',
     fromAddress:   get('inv-from-address')?.value || '393 Pumpkin Hill Rd, Warner, NH 03278',
     terms:         parseInt(get('inv-terms')?.value)||30,
+    defaultCasePrice: (() => { const v = parseFloat(get('inv-default-case-price')?.value); return isNaN(v) ? (existing.defaultCasePrice != null ? existing.defaultCasePrice : 27.60) : v; })(),
     nextInvoiceNum: parseInt(get('set-next-inv-num')?.value)||existing.nextInvoiceNum||null,
     footerNotes:   get('inv-footer-notes')?.value||'',
     legalTerms:    get('inv-legal-terms') ? get('inv-legal-terms').value : (existing.legalTerms != null ? existing.legalTerms : DEFAULT_INVOICE_LEGAL_TERMS),
@@ -18197,6 +17727,7 @@ function loadInvoiceSettings() {
   set('inv-from-email',          s.fromEmail);
   set('inv-from-address',        s.fromAddress);
   set('inv-terms',               s.terms);
+  set('inv-default-case-price',  s.defaultCasePrice != null ? s.defaultCasePrice : 27.60);
   set('set-next-inv-num',        s.nextInvoiceNum);
   set('inv-footer-notes',        s.footerNotes);
   { const el = document.getElementById('inv-legal-terms');
@@ -18241,18 +17772,12 @@ async function testStripeConnection() {
   }
 }
 
-function saveApiSettings() {
-  toast('AI key is now managed via Firebase secrets — run: firebase functions:secrets:set ANTHROPIC_API_KEY', 5000);
-}
-
 function loadApiSettings() {
   const adminCard = document.getElementById('integrations-admin-only');
   const lockedCard = document.getElementById('integrations-locked');
   if (_isAdmin()) {
     if (adminCard) adminCard.style.display = '';
     if (lockedCard) lockedCard.style.display = 'none';
-    const el = document.getElementById('set-anthropic-key');
-    if (el) el.placeholder = 'Managed via Firebase secrets';
   } else {
     if (adminCard) adminCard.style.display = 'none';
     if (lockedCard) lockedCard.style.display = '';
@@ -18438,6 +17963,9 @@ async function _saveInvCore(id, isNew) {
     source:       existing?.source || 'manual',
     fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };
+  // Born-paid invoices never carried a paid date, so they silently dropped
+  // out of the year-end export's per-year filter. Stamp at save.
+  if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
 
   if (_isNew) {
     // M3: write the invoice doc AND its inventory deductions in ONE atomicUpdate

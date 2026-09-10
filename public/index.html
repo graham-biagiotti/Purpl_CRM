@@ -220,22 +220,9 @@
       </div>
 
       <!-- Row 2: Secondary KPIs (smaller, muted) -->
-      <div class="card-grid kpi-secondary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px" id="dash-prospect-kpis">
+      <div class="card-grid kpi-secondary" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px" id="dash-prospect-kpis">
         <div id="dash-kpi-pr-total"></div>
         <div id="dash-kpi-pr-due"></div>
-        <div id="dash-kpi-purpl-ac" style="display:none"></div>
-        <div id="dash-kpi-lf-ac" style="display:none"></div>
-        <div id="dash-kpi-wix" style="display:none"></div>
-        <div id="dash-kpi-pr-purpl" style="display:none"></div>
-        <div id="dash-kpi-pr-lf" style="display:none"></div>
-      </div>
-
-      <!-- Legacy KPI targets (kept for JS compatibility) -->
-      <div style="display:none">
-        <div id="dash-kpi-revenue"></div><div id="dash-kpi-accounts"></div>
-        <div id="dash-kpi-pipeline"></div><div id="dash-kpi-alerts"></div>
-        <div id="dash-kpi-lf-accounts"></div><div id="dash-kpi-lf-outstanding"></div>
-        <div id="dash-kpi-lf-overdue"></div><div id="dash-kpi-lf-wix"></div>
       </div>
 
       <!-- Row 2+3: Two-column layout — left 60% / right 40% -->
@@ -251,14 +238,7 @@
           </div>
           <div class="card">
             <div class="section-hdr">
-              <h2>🔄 Reorder Predictions</h2>
-              <small style="color:var(--muted);font-size:12px">Due in next 14 days</small>
-            </div>
-            <div id="dash-reorder"></div>
-          </div>
-          <div class="card">
-            <div class="section-hdr">
-              <h2>📅 Follow-ups <span id="dash-followup-badge" style="display:none;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
+              <h2>📅 Follow-ups <span id="dash-followup-badge" style="display:none;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
               <small style="color:var(--muted);font-size:12px">Next 14 days</small>
             </div>
             <div id="dash-followups"></div>
@@ -285,36 +265,11 @@
             </div>
             <div id="dash-activity"></div>
           </div>
-          <div class="card" id="dash-cadence-card" style="display:none">
-            <div class="section-hdr">
-              <h2>⚠️ Action Required</h2>
-            </div>
-            <div id="dash-cadence-overdue"></div>
-          </div>
         </div>
       </div>
 
-      <!-- Row 3b: Distributor KPIs -->
+      <!-- Row 3b: Distributor KPIs (hidden until a distributor exists) -->
       <div class="card-grid grid-4" id="dash-dist-kpis" style="margin-bottom:20px"></div>
-
-      <!-- Row 4: Revenue Projections -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="section-hdr">
-          <h2>Revenue Projections</h2>
-          <small style="color:var(--muted);font-size:12px">Based on order cadence per account</small>
-        </div>
-        <div class="card-grid grid-4" id="dash-projections" style="margin-bottom:16px"></div>
-        <div id="dash-projection-notes" style="font-size:12px;color:var(--muted)"></div>
-      </div>
-
-      <!-- Row 5: Production Planning -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="section-hdr">
-          <h2>Production Planning</h2>
-          <button class="btn xs" onclick="nav('production')" style="margin-left:auto">Open Production</button>
-        </div>
-        <div id="dash-prod-plan"></div>
-      </div>
 
     </div>
 
@@ -1394,10 +1349,15 @@
               <label>From address</label>
               <input id="inv-from-address" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
             </div>
-            <div class="form-row col2">
+            <div class="form-row col3">
               <div class="form-group" style="margin-bottom:12px">
                 <label>Default terms (days)</label>
                 <input type="number" id="inv-terms" value="30" min="0">
+              </div>
+              <div class="form-group" style="margin-bottom:12px">
+                <label>Default case price ($)</label>
+                <input type="number" id="inv-default-case-price" step="0.01" min="0" placeholder="27.60">
+                <div style="font-size:11px;color:var(--muted);margin-top:3px">Prefills purpl invoice lines when the account has no direct price. Always editable per line.</div>
               </div>
               <div class="form-group" style="margin-bottom:12px">
                 <label>Next invoice #</label>
@@ -1660,15 +1620,6 @@
           <button class="btn primary" onclick="saveShipStationSettings()">Save ShipStation Settings</button>
           <button class="btn sm" onclick="testShipStationConnection()" style="margin-left:8px">⚡ Test Connection</button>
           <div id="shipstation-test-result" style="font-size:12px;margin-top:8px"></div>
-        </div>
-        <div class="card" style="max-width:600px" id="integrations-admin-only">
-          <div class="section-hdr"><h2>AI — Anthropic</h2></div>
-          <div class="form-group" style="max-width:480px;margin-bottom:16px">
-            <label>Anthropic API Key</label>
-            <input type="password" id="set-anthropic-key" placeholder="sk-ant-..." autocomplete="off">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Required for AI draft generation. Admin only — not visible to other users.</div>
-          </div>
-          <button class="btn primary" onclick="saveApiSettings()">Save Integrations</button>
         </div>
         <div class="card" style="max-width:600px;display:none" id="integrations-locked">
           <div style="padding:20px;text-align:center;color:var(--muted);font-size:14px">🔒 Integration settings are restricted to administrators.</div>
