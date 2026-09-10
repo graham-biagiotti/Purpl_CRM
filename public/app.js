@@ -9468,19 +9468,6 @@ function _renderDelLfInputs() {
     </div>`).join('');
 }
 
-function addAccountToRun(accountId) {
-  nav('orders-delivery');
-  switchODTab('route-builder');
-  setTimeout(() => {
-    const sel = qs('#del-account-sel');
-    if (sel) {
-      sel.value = accountId;
-      prefillStop(accountId);
-    }
-    qs('#del-stop-name')?.scrollIntoView({behavior:'smooth', block:'center'});
-  }, 120);
-}
-
 function setDeliveryFulfillFilter(mode) {
   _deliveryFulfillFilter = mode;
   ['direct','all','dist'].forEach(m=>{
@@ -9861,25 +9848,31 @@ function removeStop(i) {
   const run = DB.obj('today_run', {date:today(), stops:[]});
   const stop = run.stops[i];
   if (stop && stop.done) {
+    // Scope strictly to THIS stop's own order (stop.ordId, stamped at
+    // mark-done; account+date fallback only for stops completed before ordId
+    // linking existed). The old sweep matched by account+date and deleted ALL
+    // of the account's same-day delivery invoices — including sent/paid ones
+    // from an earlier run.
     const acId = stop.accountId || _findAccount(null, stop.name)?.id;
-    if (acId) {
-      DB.atomicUpdate(cache => {
-        const ord = (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===today());
-        if (ord) {
-          cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
-          const deletedInvIds = (cache['retail_invoices']||[])
-            .filter(inv => inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
-            .map(inv => inv.id);
-          cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv =>
-            !(inv.source === 'delivery_run' && inv.accountId === acId && inv.date === today())
-          );
-          if (deletedInvIds.length) {
-            const rm = new Set(deletedInvIds);
-            cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && rm.has(e.invoiceId)));
-          }
-        }
-      });
-    }
+    DB.atomicUpdate(cache => {
+      const ord = stop.ordId
+        ? (cache['orders']||[]).find(o => o.id === stop.ordId)
+        : (acId ? (cache['orders']||[]).find(o => o.source==='run' && o.accountId===acId && o.created===today()) : null);
+      if (!ord) return;
+      const mine = inv => inv.source === 'delivery_run' &&
+        (inv.orderId ? inv.orderId === ord.id : (inv.accountId === (acId || ord.accountId) && inv.date === today()));
+      const invs = (cache['retail_invoices']||[]).filter(mine);
+      // An invoice that left the building is a real sale: if any linked
+      // invoice is sent/paid, keep the order AND the invoice untouched —
+      // removing the route entry must never erase billing records.
+      if (invs.some(inv => (inv.status || 'draft') !== 'draft')) return;
+      cache['orders'] = (cache['orders']||[]).filter(o => o.id !== ord.id);
+      if (invs.length) {
+        const rm = new Set(invs.map(inv => inv.id));
+        cache['retail_invoices'] = (cache['retail_invoices']||[]).filter(inv => !rm.has(inv.id));
+        cache['iv'] = (cache['iv']||[]).filter(e => !(e.type === 'out' && rm.has(e.invoiceId)));
+      }
+    });
   }
   run.stops = run.stops.filter((_,idx)=>idx!==i);
   DB.setObj('today_run', run);
