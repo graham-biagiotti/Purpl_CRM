@@ -2451,10 +2451,10 @@ exports.submitSamplingRequest = onCall(
     // sampler is told only if a date was actually on her calendar.
     if (data.cancelOpen) {
       if (!open) return { success: true, nothingOpen: true };
-      const ref0 = admin.firestore().collection('sampling_requests').doc(open.id);
+      const ref0 = admin.firestore().collection('sampling_requests').doc(open._id);
       await ref0.update({ status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'store' });
       for (const dd of new Set([open.date1, open.confirmedDate, open.altDate].filter(Boolean))) {
-        await _samplingFreeDay(dd, open.id);
+        await _samplingFreeDay(dd, open._id);
       }
       const cfg0 = await _samplingConfig();
       if (cfg0.samplerEmail && ['confirmed', 'proposed_alt'].includes(open.status)) {

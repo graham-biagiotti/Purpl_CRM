@@ -272,7 +272,7 @@ function spRenderCal() {
 var _spReschedInFlight = false;
 function spReschedule() {
   if (_spReschedInFlight) return;
-  if (!confirm('Cancel this demo day so you can pick a new one? Our sampler will be notified.')) return;
+  if (!confirm('Cancel this demo day so you can pick a new one? If a date was already booked, our sampler will be told.')) return;
   _spReschedInFlight = true;
   var b = document.getElementById('sp-resched');
   b.disabled = true; b.textContent = 'One sec…';

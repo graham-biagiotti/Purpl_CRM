@@ -18969,7 +18969,7 @@ function _samplingCard(r) {
   // left behind, deduct what she poured. Stamp-guarded against doubles.
   if (r.report && r.report.casesBackstock > 0) {
     btns.push(r.backstockHandledAt
-      ? `<button class="btn xs" disabled>✓ Backstock invoiced (${r.report.casesBackstock} cs)</button>`
+      ? `<button class="btn xs" onclick="samplingUnstampBackstock('${r.id}')" title="Cancelled the invoice? Tap to undo this checkmark">✓ Backstock invoiced (${r.report.casesBackstock} cs) · undo</button>`
       : `<button class="btn xs primary" onclick="samplingInvoiceBackstock('${r.id}')">💵 Invoice backstock (${r.report.casesBackstock} cs)</button>`);
   }
   if (r.report && r.report.casesUsed > 0) {
@@ -19208,11 +19208,32 @@ function samplingInvoiceBackstock(id) {
   toast('Enter ' + r.report.casesBackstock + ' case(s) — the note carries the demo context', 6000);
 }
 
+// The invoice-backstock stamp is written BEFORE the modal — if Graham
+// cancels the modal, the ✓ would lie. This undoes it (verifier-flagged).
+function samplingUnstampBackstock(id) {
+  const r = _samplingReqs.find(x => x.id === id);
+  if (!r || !r.backstockHandledAt) return;
+  if (!confirm('Undo "backstock invoiced"? Only do this if you cancelled the invoice without sending it.')) return;
+  firebase.firestore().collection('sampling_requests').doc(id)
+    .update({ backstockHandledAt: firebase.firestore.FieldValue.delete(), backstockHandledBy: firebase.firestore.FieldValue.delete() })
+    .catch(() => {});
+  delete r.backstockHandledAt;
+  _renderSamplingList();
+}
+
 // "Deduct demo stock": the cases she opened for sampling come out of the
-// warehouse pool as a tagged ledger entry. Stamp-guarded.
+// warehouse pool as a tagged ledger entry. Stamp-guarded, plus a ledger
+// pre-check so a stale second device can't double-deduct (verifier-flagged).
 function samplingLogUsage(id) {
   const r = _samplingReqs.find(x => x.id === id);
   if (!r || !r.report || !(r.report.casesUsed > 0) || r.usageLoggedAt) return;
+  if (DB.a('iv').some(e => e.samplingId === id)) {
+    r.usageLoggedAt = new Date().toISOString();
+    firebase.firestore().collection('sampling_requests').doc(id).update({ usageLoggedAt: r.usageLoggedAt }).catch(() => {});
+    _renderSamplingList();
+    toast('Demo stock was already deducted for this demo');
+    return;
+  }
   DB.push('iv', {
     id: uid(), date: today(), sku: 'classic', type: 'out',
     qty: r.report.casesUsed * CANS_PER_CASE, pool: 'warehouse',
