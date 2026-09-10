@@ -3366,17 +3366,28 @@ function toggleAccountStar(id) {
 // notes/outreach entries — display only, never migrated or rewritten.
 function acNextFollowUp(a) {
   if (a?.nextFollowUp) return { date: a.nextFollowUp, what: a.nextFollowUpNote || '' };
-  // Dashboard "done" sets nextFollowUp:null + stamps clearedAt — the
-  // fallback must not resurrect an older note's date past that point.
+  // Dashboard "done" sets nextFollowUp:null + stamps clearedAt. The
+  // fallback gate compares the ENTRY'S CREATION date to clearedAt (not the
+  // follow-up date — verifier-caught: gating on the follow-up date let
+  // "Done" on a future-dated item resurrect it in the same render). Only
+  // entries logged AFTER the clear count.
   const cleared = a?.nextFollowUpClearedAt || '';
-  let best = null;
+  const isIso = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+  const cands = [];
   (a?.notes || []).forEach(n => {
-    if (n?.nextDate && n.nextDate > cleared && (!best || n.nextDate > best.date)) best = { date: n.nextDate, what: n.nextAction || '' };
+    if (n?.nextDate && isIso(n.nextDate) && (!cleared || (n.date || '') > cleared)) cands.push({ date: n.nextDate, what: n.nextAction || '' });
   });
   (a?.outreach || []).forEach(o => {
-    if (o?.nextFollowUp && o.nextFollowUp > cleared && (!best || o.nextFollowUp > best.date)) best = { date: o.nextFollowUp, what: o.nextSteps || '' };
+    if (o?.nextFollowUp && isIso(o.nextFollowUp) && (!cleared || (o.date || '') > cleared)) cands.push({ date: o.nextFollowUp, what: o.nextSteps || '' });
   });
-  return best;
+  if (!cands.length) return null;
+  // Soonest PENDING commitment wins (matches the old MED-8 rule — newest-
+  // wins hid a sooner legacy follow-up, verifier-caught); if everything is
+  // past due, surface the most recent one as overdue.
+  const t = today();
+  const future = cands.filter(c => c.date >= t).sort((x, y) => x.date < y.date ? -1 : 1);
+  if (future.length) return future[0];
+  return cands.sort((x, y) => x.date < y.date ? 1 : -1)[0];
 }
 
 let _acIdxOrders = null, _acIdxInv = null;
@@ -6698,8 +6709,12 @@ function quickNote(id) {
   const next = prompt('Next action (leave blank to skip):') || '';
   const nextDate = next ? prompt('Next action date (YYYY-MM-DD):') || '' : '';
   const note = {id:uid(), date:today(), text:text.trim(), author:'you', nextAction:next.trim(), nextDate};
+  // prompt() gives free text — only a real ISO date may reach the canonical
+  // field (verifier-caught: garbage like "next week" string-compares above
+  // every real date and becomes a phantom permanent follow-up).
+  const _validNfu = /^\d{4}-\d{2}-\d{2}$/.test(nextDate);
   DB.update('ac', id, a=>({...a, lastContacted: today(), notes:[...(a.notes||[]),note],
-    ...(nextDate ? { nextFollowUp: nextDate, nextFollowUpNote: next.trim() } : {})}));
+    ...(_validNfu ? { nextFollowUp: nextDate, nextFollowUpNote: next.trim() } : {})}));
   renderAccounts();
   toast('Note saved');
 }
