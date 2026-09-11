@@ -2754,6 +2754,55 @@ function renderProjectionsPage() {
   if (bList) bList.innerHTML = building.length ? building.map(b =>
     `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;background:#f3f4f6;border-radius:12px;cursor:pointer" onclick="openAccount('${b.a.id}')">${escHtml(b.a.name)}${b.lastDate ? ' · ' + fmtD(b.lastDate) : ' · no orders'}</span>`).join('') : '<span>None — every active account has a projection.</span>';
 
+  // ── Revenue projection — 30/60/90 + quarters out ───────
+  // Same engine, walked forward: every ON-PACE account keeps ordering at its
+  // own measured gap and basket. Lapsed + building-history accounts
+  // contribute $0 (the old tab projected dead accounts forever, then dressed
+  // the total in ×0.75/×1.25 "scenarios"). An overdue expected order counts
+  // as landing tomorrow — it's due, not lost.
+  {
+    const nowMs = new Date(today() + 'T12:00:00').getTime();
+    const horizonMs = nowMs + 365 * 864e5;
+    const _qKey = iso => iso.slice(0, 4) + ' Q' + (Math.floor((parseInt(iso.slice(5, 7), 10) - 1) / 3) + 1);
+    let p30 = 0, p60 = 0, p90 = 0;
+    const qDollars = new Map(), qAccounts = new Map();
+    rows.filter(r => !r.lapsed).forEach(r => {
+      let next = new Date(r.lastDate + 'T12:00:00').getTime() + r.avgGap * 864e5;
+      if (next <= nowMs) next = nowMs + 864e5; // overdue → lands now, then resumes its gap
+      let guard = 0;
+      while (next <= horizonMs && guard++ < 400) {
+        const days = Math.round((next - nowMs) / 864e5);
+        if (days <= 30) p30 += r.avgValue;
+        if (days <= 60) p60 += r.avgValue;
+        if (days <= 90) p90 += r.avgValue;
+        const k = _qKey(new Date(next).toISOString().slice(0, 10));
+        qDollars.set(k, (qDollars.get(k) || 0) + r.avgValue);
+        if (!qAccounts.has(k)) qAccounts.set(k, new Set());
+        qAccounts.get(k).add(r.a.id);
+        next += r.avgGap * 864e5;
+      }
+    });
+    const projCards = qs('#radar-proj-cards');
+    if (projCards) projCards.innerHTML = `
+      <div>${kpiHtml('Next 30 days', fmtC(p30), 'green')}</div>
+      <div>${kpiHtml('Next 60 days', fmtC(p60), 'blue')}</div>
+      <div>${kpiHtml('Next 90 days', fmtC(p90), 'purple')}</div>`;
+    const qBody = qs('#radar-proj-quarters');
+    if (qBody) {
+      const qKeys = [...qDollars.keys()].sort();
+      qBody.innerHTML = qKeys.length ? qKeys.map((k, i) => `
+        <tr>
+          <td><strong>${escHtml(k)}</strong>${i === 0 ? ' <small style="color:var(--muted)">(rest of quarter)</small>' : ''}</td>
+          <td>${fmtC(qDollars.get(k) || 0)}</td>
+          <td style="color:var(--muted)">${(qAccounts.get(k) || new Set()).size} accounts</td>
+        </tr>`).join('') : '<tr><td colspan="3" class="empty">No on-pace accounts to project yet.</td></tr>';
+    }
+    const pn = qs('#radar-proj-notes');
+    if (pn) pn.textContent = `Basis: ${rows.filter(r => !r.lapsed).length} on-pace accounts (${winLabel}), each at its own gap and average basket. `
+      + `Lapsed (${rows.filter(r => r.lapsed).length}) and building-history (${building.length}) accounts contribute $0 — win them back and these numbers rise. `
+      + `Farther quarters compound small cadence changes: treat them as direction, not gospel.`;
+  }
+
   // ── Demand vs stock, next 30 days ──────────────────────
   // Cases per purpl SKU from invoice LINE ITEMS. Universe here INCLUDES
   // combined children (parents carry no line items) and EXCLUDES parents —
