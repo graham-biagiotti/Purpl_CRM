@@ -128,7 +128,7 @@
       </a>
       <a data-page="projections" class="sb-more">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        Projections
+        Reorder Radar
       </a>
       <a data-page="reports" class="sb-more">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -857,72 +857,45 @@
     <!-- ═══════ DELIVERY ═══════ -->
     <!-- ═══════ PROJECTIONS ═══════ -->
     <div class="page" id="page-projections">
-      <!-- Revenue Scenarios -->
+      <!-- Who orders next -->
       <div class="card" style="margin-bottom:16px">
         <div class="section-hdr">
-          <h2>Revenue Scenarios</h2>
+          <h2>Who Orders Next</h2>
           <div style="display:flex;gap:8px;align-items:center">
-            <label style="font-size:12px;color:var(--muted)">Velocity from</label>
+            <label style="font-size:12px;color:var(--muted)">History window</label>
             <select id="proj-velocity-source" class="input" style="width:160px;padding:4px 8px;font-size:13px">
+              <option value="180" selected>Last 180 days</option>
               <option value="90">Last 90 days</option>
-              <option value="60">Last 60 days</option>
-              <option value="30">Last 30 days</option>
+              <option value="365">Last year</option>
               <option value="all">All history</option>
             </select>
           </div>
         </div>
-        <div class="card-grid grid-3" id="proj-scenario-cards" style="margin-bottom:16px"></div>
+        <div id="radar-note" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
         <div class="tbl-wrap">
-          <table id="proj-scenario-table">
-            <thead><tr><th>Scenario</th><th>30 Days</th><th>60 Days</th><th>90 Days</th><th>Basis</th></tr></thead>
-            <tbody id="proj-scenario-body"></tbody>
+          <table>
+            <thead><tr><th>Account</th><th>Evidence</th><th>Avg gap</th><th>Avg order</th><th>Last order</th><th>Expected</th><th>Status</th></tr></thead>
+            <tbody id="radar-body"></tbody>
           </table>
         </div>
-        <div id="proj-notes" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+        <details style="margin-top:10px">
+          <summary style="font-size:12px;color:var(--muted);cursor:pointer" id="radar-building-summary"></summary>
+          <div id="radar-building-list" style="font-size:13px;padding:8px 4px"></div>
+        </details>
       </div>
-      <!-- SKU Demand Forecast -->
-      <div class="card-grid grid-2" style="margin-bottom:16px">
-        <div class="card">
-          <div class="section-hdr"><h2>SKU Demand Forecast</h2></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>SKU</th><th>Weekly Vel.</th><th>30d Units</th><th>60d Units</th><th>90d Units</th></tr></thead>
-              <tbody id="proj-sku-body"></tbody>
-            </table>
-          </div>
+      <!-- Demand vs stock -->
+      <div class="card">
+        <div class="section-hdr">
+          <h2>Next 30 Days — Demand vs Stock</h2>
+          <small style="color:var(--muted);font-size:12px">purpl only · from invoice line items · LF stock lives on Wix</small>
         </div>
-        <div class="card">
-          <div class="section-hdr"><h2>Production Planning</h2></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>SKU</th><th>Stock</th><th>30d Need</th><th>Gap</th><th>Days Supply</th></tr></thead>
-              <tbody id="proj-prod-body"></tbody>
-            </table>
-          </div>
-          <div style="font-size:12px;color:var(--muted);margin-top:8px;padding:0 4px" id="proj-prod-notes"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>SKU</th><th>Pace</th><th>30d need</th><th>30d need (cans)</th><th>On hand</th><th>Gap</th><th>Days supply</th></tr></thead>
+            <tbody id="radar-sku-body"></tbody>
+          </table>
         </div>
-      </div>
-      <!-- Account Velocity + Distributor Demand -->
-      <div class="card-grid grid-2">
-        <div class="card">
-          <div class="section-hdr"><h2>Account Velocity Sources</h2></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>Account</th><th>Freq (days)</th><th>Avg Order</th><th>Next Due</th><th>Weekly Units</th></tr></thead>
-              <tbody id="proj-acct-body"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card">
-          <div class="section-hdr"><h2>Distributor Demand</h2></div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>Distributor</th><th>Avg PO ($)</th><th>Avg Freq (days)</th><th>30d Proj.</th><th>Next Est.</th></tr></thead>
-              <tbody id="proj-dist-body"></tbody>
-            </table>
-          </div>
-          <div id="proj-dist-notes" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
-        </div>
+        <div id="radar-sku-notes" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>
     </div>
 

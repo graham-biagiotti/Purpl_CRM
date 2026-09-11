@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v223';
+const APP_VERSION = 'v224';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -307,7 +307,7 @@ function nav(page) {
   const titles = {
     dashboard:'Dashboard', accounts:'Accounts', distributors:'Distributors',
     prospects:'Prospects', inventory:'Inventory', orders:'Orders',
-    production:'Production', delivery:'Today\'s Run', projections:'Projections',
+    production:'Production', delivery:'Today\'s Run', projections:'Reorder Radar',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
     'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails',
     sampling:'Sampling', 'purchase-orders':'Purchase Orders', 'field-log':'Field Log'
@@ -2657,192 +2657,160 @@ function sortInv(key) {
 
 
 // ══════════════════════════════════════════════════════════
-//  PROJECTIONS PAGE (Phase 5)
+//  REORDER RADAR (replaces Projections)
 // ══════════════════════════════════════════════════════════
-function renderProjectionsPage() {
-  // Read velocity window setting from dropdown
-  const windowDays = parseInt(qs('#proj-velocity-source')?.value || '90') || 90;
-  const {proj30, proj60, proj90, accountsWithData, velocities} = calcProjectionsWindow(windowDays);
+// ONE invoice-based cadence engine, shared by this page and the account-card
+// Velocity metric. The old projections stack read the legacy `orders`
+// collection, which the invoice flows never write — most real sales were
+// invisible to it (and the ×0.75/1.0/1.25 scenario cards were arithmetic
+// theater on top of that). Order events now come from the actual invoices.
 
-  // ── Revenue Scenarios ──────────────────────────────────
-  const scenarios = [
-    {label:'Conservative', pct:0.75, color:'amber'},
-    {label:'Expected',     pct:1.00, color:'blue'},
-    {label:'Optimistic',   pct:1.25, color:'green'},
-  ];
-  const cards = qs('#proj-scenario-cards');
-  if (cards) {
-    cards.innerHTML = scenarios.map(sc=>`
-      <div>${kpiHtml(sc.label+' 90d', fmtC(proj90*sc.pct), sc.color)}</div>`).join('');
-  }
-  const tbody = qs('#proj-scenario-body');
-  if (tbody) {
-    tbody.innerHTML = scenarios.map(sc=>`
-      <tr>
-        <td><strong>${sc.label}</strong></td>
-        <td>${fmtC(proj30*sc.pct)}</td>
-        <td>${fmtC(proj60*sc.pct)}</td>
-        <td>${fmtC(proj90*sc.pct)}</td>
-        <td style="color:var(--muted);font-size:12px">${Math.round(sc.pct*100)}% of expected velocity</td>
-      </tr>`).join('');
-  }
-  const notes = qs('#proj-notes');
-  if (notes) notes.textContent = `Based on ${accountsWithData} account${accountsWithData!==1?'s':''} with 2+ orders, using last ${windowDays==='all'?'all':windowDays} days of history.`;
-
-  // ── SKU Demand Forecast ────────────────────────────────
-  const weeklyBySku = Object.fromEntries(SKUS.map(s=>[s.id,0]));
-  velocities.forEach(v=>{ SKUS.forEach(s=>{ weeklyBySku[s.id] += (v.weeklyUnits[s.id]||0); }); });
-
-  function stockFor(skuId) { return _onHand(skuId, null); }
-
-  const skuTbody = qs('#proj-sku-body');
-  if (skuTbody) {
-    skuTbody.innerHTML = SKUS.map(s=>{
-      const wk = Math.round(weeklyBySku[s.id]*10)/10;
-      const d30u = Math.round(wk*(30/7));
-      const d60u = Math.round(wk*(60/7));
-      const d90u = Math.round(wk*(90/7));
-      return `<tr>
-        <td>${skuBadge(s.id)}</td>
-        <td>${wk}/wk</td>
-        <td>${fmt(d30u)}</td>
-        <td>${fmt(d60u)}</td>
-        <td>${fmt(d90u)}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // ── Production Planning ────────────────────────────────
-  const prodTbody = qs('#proj-prod-body');
-  if (prodTbody) {
-    let prodNotes = [];
-    prodTbody.innerHTML = SKUS.map(s=>{
-      const wk    = Math.round(weeklyBySku[s.id]*10)/10;
-      const stock = stockFor(s.id);
-      const d30u  = Math.round(wk*(30/7));
-      const gap   = (d30u * CANS_PER_CASE) - stock;
-      const daysSupply = wk > 0 ? Math.round(stock/((wk * CANS_PER_CASE)/7)) : null;
-      const gapCls = gap > 0 ? 'color:var(--red);font-weight:600' : 'color:var(--green)';
-      if (gap > 0) prodNotes.push(`${s.label}: need ${fmt(gap)} more units for 30d demand`);
-      return `<tr>
-        <td>${skuBadge(s.id)}</td>
-        <td>${fmt(stock)}</td>
-        <td>${fmt(d30u)}</td>
-        <td style="${gapCls}">${gap > 0 ? '+'+fmt(gap)+' short' : 'Covered'}</td>
-        <td>${daysSupply !== null ? daysSupply+'d' : '—'}</td>
-      </tr>`;
-    }).join('');
-    const pn = qs('#proj-prod-notes');
-    if (pn) pn.textContent = prodNotes.length ? prodNotes.join(' · ') : 'Current stock covers 30-day demand for all SKUs.';
-  }
-
-  // ── Account Velocity Table ─────────────────────────────
-  const acctTbody = qs('#proj-acct-body');
-  if (acctTbody) {
-    const sorted = [...velocities].sort((a,b)=>(b.avgOrderValue||0)-(a.avgOrderValue||0));
-    acctTbody.innerHTML = sorted.length ? sorted.map(v=>{
-      const totalWk = Math.round(SKUS.reduce((s,sk)=>s+(v.weeklyUnits[sk.id]||0),0)*10)/10;
-      const nextCls = v.nextProjected && v.nextProjected < today() ? 'color:var(--red)' : 'color:var(--blue)';
-      return `<tr onclick="openAccount('${v.account.id}')" style="cursor:pointer">
-        <td><strong>${v.account.name}</strong><small style="display:block;color:var(--muted)">${v.account.territory||''}</small></td>
-        <td>${v.avgDays ? v.avgDays+'d' : '—'}</td>
-        <td>${v.avgOrderValue ? fmtC(v.avgOrderValue) : '—'}</td>
-        <td>${v.nextProjected ? `<span style="${nextCls}">${fmtD(v.nextProjected)}</span>` : '—'}</td>
-        <td>${totalWk}/wk</td>
-      </tr>`;
-    }).join('') : '<tr><td colspan="5" class="empty">No active accounts with order history</td></tr>';
-  }
-
-  // ── Distributor Demand ─────────────────────────────────
-  const distTbody = qs('#proj-dist-body');
-  if (distTbody) {
-    const dists  = DB.a('dist_profiles').filter(d=>d.status==='active');
-    const allPOs = DB.a('dist_pos');
-    const now    = Date.now();
-
-    distTbody.innerHTML = dists.length ? dists.map(d=>{
-      const pos = allPOs.filter(p=>p.distId===d.id).sort((a,b)=>a.dateReceived>b.dateReceived?1:-1);
-      if (!pos.length) return `<tr><td onclick="openDistributor('${d.id}')" style="cursor:pointer"><strong>${d.name}</strong></td><td colspan="4" style="color:var(--muted)">No PO history</td></tr>`;
-
-      const avgVal = pos.reduce((s,p)=>s+(p.totalValue||0),0)/pos.length;
-      let avgFreq = null, nextEst = null;
-      if (pos.length >= 2) {
-        const intervals = [];
-        for (let i=1;i<pos.length;i++) {
-          const diff = (new Date(pos[i].dateReceived+'T12:00:00')-new Date(pos[i-1].dateReceived+'T12:00:00'))/864e5;
-          if (diff>0) intervals.push(diff);
-        }
-        if (intervals.length) {
-          avgFreq = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
-          const lastMs = new Date(pos[pos.length-1].dateReceived+'T12:00:00').getTime();
-          nextEst = new Date(lastMs + avgFreq*864e5).toISOString().slice(0,10);
-        }
-      }
-      const proj30dist = avgFreq ? Math.round(30/avgFreq)*avgVal : (avgVal||0);
-      const nextCls    = nextEst && nextEst < today() ? 'color:var(--red)' : 'color:var(--blue)';
-      return `<tr onclick="openDistributor('${d.id}')" style="cursor:pointer">
-        <td><strong>${d.name}</strong></td>
-        <td>${fmtC(avgVal)}</td>
-        <td>${avgFreq ? avgFreq+'d' : '—'}</td>
-        <td>${fmtC(proj30dist)}</td>
-        <td>${nextEst ? `<span style="${nextCls}">${fmtD(nextEst)}</span>` : '—'}</td>
-      </tr>`;
-    }).join('') : '<tr><td colspan="5" class="empty">No active distributors</td></tr>';
-
-    const dn = qs('#proj-dist-notes');
-    if (dn) dn.textContent = dists.length ? `${dists.length} active distributor${dists.length!==1?'s':''} · 30-day projections based on PO frequency.` : '';
-  }
+function _invEventDate(inv) {
+  return String(inv.date || inv.issued || inv.dateIssued || (inv.createdAt || '').slice(0, 10) || '').slice(0, 10);
 }
 
-// Variant of calcProjections that accepts a custom day window
-function calcProjectionsWindow(windowDays) {
-  const allOrders = DB.a('orders').filter(o=>o.status!=='cancelled');
-  const accounts  = DB.a('ac').filter(a=>a.status==='active');
-  const now = Date.now();
-  const d30 = now+30*864e5, d60 = now+60*864e5, d90 = now+90*864e5;
-  const win = windowDays==='all' ? Infinity : (parseInt(windowDays)||90);
-
-  let proj30=0, proj60=0, proj90=0, accountsWithData=0;
-  const velocities = [];
-
-  accounts.forEach(ac=>{
-    const acOrds = allOrders.filter(o=>o.accountId===ac.id).sort((a,b)=>a.dueDate>b.dueDate?1:-1);
-    const windowOrds = win===Infinity ? acOrds : acOrds.filter(o=>daysAgo(o.dueDate)<=win);
-
-    const totalUnits = Object.fromEntries(SKUS.map(s=>[s.id,0]));
-    windowOrds.forEach(o=>(o.items||[]).forEach(i=>{ totalUnits[i.sku]=(totalUnits[i.sku]||0)+(parseFloat(i.qty)||0); })); // M8: guard NaN
-
-    const periodDays = Math.max(7, Math.min(win===Infinity?90:win, acOrds.length>0 ? Math.max(1, daysAgo(acOrds[0].dueDate)) : 90));
-    const weeklyUnits = Object.fromEntries(SKUS.map(s=>[s.id, Math.round((totalUnits[s.id]||0)/(periodDays/7)*10)/10]));
-
-    let avgDays=null, nextProjected=null, avgOrderValue=0;
-    if (acOrds.length >= 2) {
-      const intervals = [];
-      for (let i=1;i<acOrds.length;i++) {
-        const diff = (new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
-        if (diff>0) intervals.push(diff);
-      }
-      if (intervals.length) {
-        avgDays       = Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
-        avgOrderValue = acOrds.reduce((s,o)=>s+calcOrderValue(o),0)/acOrds.length;
-        accountsWithData++;
-        const lastMs  = new Date(acOrds[acOrds.length-1].dueDate+'T12:00:00').getTime();
-        let next = lastMs + avgDays*864e5;
-        while (next <= d90) {
-          if (next > now) {
-            if (next<=d30) proj30+=avgOrderValue;
-            if (next<=d60) proj60+=avgOrderValue;
-            proj90+=avgOrderValue;
-            if (!nextProjected) nextProjected = new Date(next).toISOString().slice(0,10);
-          }
-          next += avgDays*864e5;
-        }
-      }
-    }
-    velocities.push({account:ac, avgDays, avgOrderValue, nextProjected, weeklyUnits, ordCount:acOrds.length});
+// invList: ONE account's invoices with combined children already excluded
+// (so a dual-brand order counts once, at the parent's grandTotal incl.
+// shipping). winDays: number or Infinity. Same-day invoices collapse into a
+// single order EVENT — the dual-brand portal used to double the order count
+// and halve the basket size.
+function _acCadence(invList, winDays) {
+  const events = new Map(); // ISO day -> $ that day
+  (invList || []).forEach(inv => {
+    if (['void', 'draft'].includes(inv.status)) return;
+    if (inv._brand === 'dist' || inv._col === 'dist_invoices' || inv.distId) return; // dist POs aren't store reorders
+    const d = _invEventDate(inv);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    const ago = daysAgo(d);
+    if (ago < 0) return; // future-dated: not history yet
+    if (winDays !== Infinity && ago > winDays) return;
+    events.set(d, (events.get(d) || 0) + (_invAmt(inv) || 0));
   });
+  const days = [...events.keys()].sort();
+  if (days.length < 2) return { events: days.length, lastDate: days[days.length - 1] || null };
+  const first = days[0], last = days[days.length - 1];
+  const span = daysAgo(first) - daysAgo(last);
+  if (span <= 0) return { events: days.length, lastDate: last };
+  const avgGap = Math.max(1, Math.round(span / (days.length - 1)));
+  const avgValue = [...events.values()].reduce((s, v) => s + v, 0) / days.length;
+  const sinceLast = daysAgo(last);
+  const expected = new Date(new Date(last + 'T12:00:00').getTime() + avgGap * 864e5).toISOString().slice(0, 10);
+  return {
+    events: days.length, avgGap, avgValue, lastDate: last, sinceLast, expected,
+    dueIn: avgGap - sinceLast, // negative = overdue by that many days
+    // Quiet for 2× its usual gap (min 45d): stop projecting it forever —
+    // the old math kept dead accounts "ordering" into every horizon.
+    lapsed: sinceLast > Math.max(2 * avgGap, 45),
+  };
+}
 
-  return {proj30, proj60, proj90, accountsWithData, velocities};
+function renderProjectionsPage() {
+  const winSel = qs('#proj-velocity-source')?.value || '180';
+  const winDays = winSel === 'all' ? Infinity : (parseInt(winSel) || 180);
+  const winLabel = winSel === 'all' ? 'all history' : 'last ' + winSel + ' days';
+
+  // ── Who orders next ────────────────────────────────────
+  const byAc = new Map();
+  _allInvoices({ excludeChildren: true }).forEach(inv => {
+    if (!inv.accountId) return;
+    const arr = byAc.get(inv.accountId);
+    if (arr) arr.push(inv); else byAc.set(inv.accountId, [inv]);
+  });
+  const rows = [], building = [];
+  DB.a('ac').filter(a => a.status === 'active').forEach(a => {
+    const c = _acCadence(byAc.get(a.id) || [], winDays);
+    if (!c.avgGap) building.push({ a, events: c.events, lastDate: c.lastDate });
+    else rows.push({ a, ...c });
+  });
+  rows.sort((x, y) => ((x.lapsed ? 1 : 0) - (y.lapsed ? 1 : 0)) || (x.dueIn - y.dueIn) || ((x.a.name || '') < (y.a.name || '') ? -1 : 1));
+
+  const note = qs('#radar-note');
+  if (note) note.textContent = `Order events from real invoices (${winLabel}); an account needs 2+ order days to get a projection — no made-up multipliers.`;
+
+  const body = qs('#radar-body');
+  if (body) {
+    body.innerHTML = rows.length ? rows.map(r => {
+      const st = r.lapsed
+        ? `<span class="badge gray">Lapsed · ${r.sinceLast}d quiet</span>`
+        : r.dueIn <= 0
+          ? `<span class="badge red">Due now${r.dueIn < 0 ? ' · ' + (-r.dueIn) + 'd over' : ''}</span>`
+          : r.dueIn <= 7
+            ? `<span class="badge amber">This week</span>`
+            : `<span class="badge gray">On pace</span>`;
+      return `<tr onclick="openAccount('${r.a.id}')" style="cursor:pointer${r.lapsed ? ';opacity:.65' : ''}">
+        <td><strong>${escHtml(r.a.name)}</strong><small style="display:block;color:var(--muted)">${escHtml(r.a.territory || '')}</small></td>
+        <td style="color:var(--muted)">${r.events} orders / ${winSel === 'all' ? 'all time' : winSel + 'd'}</td>
+        <td>${r.avgGap}d</td>
+        <td>${fmtC(r.avgValue)}</td>
+        <td>${fmtD(r.lastDate)} <small style="color:var(--muted)">(${r.sinceLast}d)</small></td>
+        <td>${r.lapsed ? '—' : fmtD(r.expected)}</td>
+        <td>${st}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="empty">No accounts with 2+ invoiced orders in this window yet.</td></tr>';
+  }
+
+  const bSum = qs('#radar-building-summary'), bList = qs('#radar-building-list');
+  if (bSum) bSum.textContent = `${building.length} account${building.length !== 1 ? 's' : ''} building history (under 2 orders in window) — never given a fake projection`;
+  if (bList) bList.innerHTML = building.length ? building.map(b =>
+    `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;background:#f3f4f6;border-radius:12px;cursor:pointer" onclick="openAccount('${b.a.id}')">${escHtml(b.a.name)}${b.lastDate ? ' · ' + fmtD(b.lastDate) : ' · no orders'}</span>`).join('') : '<span>None — every active account has a projection.</span>';
+
+  // ── Demand vs stock, next 30 days ──────────────────────
+  // Cases per purpl SKU from invoice LINE ITEMS. Universe here INCLUDES
+  // combined children (parents carry no line items) and EXCLUDES parents —
+  // each case counted exactly once. LF stock lives on Wix; purpl only.
+  const casesBySku = Object.fromEntries(SKUS.map(s => [s.id, 0]));
+  const capDays = winDays === Infinity ? 365 : winDays;
+  let earliestEver = null, legacySkipped = 0;
+  _allPurplInvoices().forEach(inv => {
+    if (['void', 'draft'].includes(inv.status)) return;
+    const d = _invEventDate(inv);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    const ago = daysAgo(d);
+    if (ago < 0) return;
+    // Track the business's FULL invoice history start (outside the window
+    // too) — it anchors the denominator below.
+    if (!earliestEver || d < earliestEver) earliestEver = d;
+    if (ago > capDays) return;
+    if (!inv.lineItems || !inv.lineItems.length) { if ((parseFloat(inv.cases) || 0) > 0) legacySkipped++; return; }
+    inv.lineItems.forEach(li => {
+      if (casesBySku[li.skuId] === undefined) return; // pseudo-lines + LF skus stay out
+      casesBySku[li.skuId] += parseFloat(li.cases) || 0;
+    });
+  });
+  // Denominator = the full observed period (window, or business age if
+  // younger). The OLD math divided a lone recent order by a 7-day floor —
+  // one 10-case first order 3 days ago "projected" 43 cases of monthly
+  // demand. A sale that happened once in 180 observed days is 1/180ths of
+  // daily pace, not 1/3rd.
+  const denom = Math.max(7, Math.min(capDays, earliestEver ? daysAgo(earliestEver) : capDays));
+
+  const skuBody = qs('#radar-sku-body');
+  const skuNotes = [];
+  if (skuBody) {
+    skuBody.innerHTML = SKUS.map(s => {
+      const weeklyCases = casesBySku[s.id] / denom * 7;
+      const need30Cases = Math.round(weeklyCases * (30 / 7));
+      const need30Cans = need30Cases * CANS_PER_CASE;
+      const haveCans = _onHand(s.id, null);
+      const gapCans = need30Cans - haveCans;
+      const daysSupply = weeklyCases > 0 ? Math.round(haveCans / (weeklyCases * CANS_PER_CASE / 7)) : null;
+      if (gapCans > 0) skuNotes.push(`${s.label}: short ${fmt(gapCans)} cans (${Math.ceil(gapCans / CANS_PER_CASE)} cases) for 30d`);
+      return `<tr>
+        <td>${skuBadge(s.id)}</td>
+        <td>${Math.round(weeklyCases * 10) / 10} cs/wk</td>
+        <td>${fmt(need30Cases)} cs</td>
+        <td>${fmt(need30Cans)} cans</td>
+        <td>${fmt(haveCans)} cans</td>
+        <td style="${gapCans > 0 ? 'color:var(--red);font-weight:600' : 'color:var(--green)'}">${gapCans > 0 ? 'Short ' + fmt(gapCans) + ' cans' : 'Covered'}</td>
+        <td>${daysSupply !== null ? daysSupply + 'd' : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+  const sn = qs('#radar-sku-notes');
+  if (sn) sn.textContent =
+    (skuNotes.length ? skuNotes.join(' · ') : 'Current stock covers 30-day demand for every SKU.')
+    + ` · Demand from ${denom}d of invoice history.`
+    + (legacySkipped ? ` · ${legacySkipped} legacy invoice${legacySkipped !== 1 ? 's' : ''} without line detail excluded from the flavor split.` : '');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2954,7 +2922,7 @@ function acNextFollowUp(a) {
   return cands.sort((x, y) => x.date < y.date ? 1 : -1)[0];
 }
 
-let _acIdxOrders = null, _acIdxInv = null;
+let _acIdxInv = null;
 // Latest invoice date for an account — invoices are the real business record;
 // a.lastOrder is only stamped by a few paths (delivery runs, convert) and sat
 // stale/"Never" for accounts billed any other way.
@@ -2985,24 +2953,15 @@ function _acCardHTML(a, muted) {
     ? `<span class="ac-metric-val${daysAgo(lastContact)>=30?' red':''}">${fmtD(lastContact)} (${daysAgo(lastContact)}d)</span>`
     : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
 
-  const acOrds = (_acIdxOrders ? (_acIdxOrders.get(a.id) || [])
-                               : DB.a('orders').filter(o=>o.accountId===a.id&&o.status!=='cancelled'))
-    .slice().sort((x,y)=>x.dueDate>y.dueDate?1:-1);
-  let velocityHtml = `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
-  if (acOrds.length>=2) {
-    const intervals=[];
-    for (let i=1;i<acOrds.length;i++){
-      const d=(new Date(acOrds[i].dueDate+'T12:00:00')-new Date(acOrds[i-1].dueDate+'T12:00:00'))/864e5;
-      if(d>0) intervals.push(d);
-    }
-    if (intervals.length) {
-      const avg=Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length);
-      velocityHtml=`<span class="ac-metric-val">Every ${avg}d</span>`;
-    }
-  }
-
   const acInvs = _acIdxInv ? (_acIdxInv.get(a.id) || [])
                            : _allInvoices({accountId: a.id, excludeChildren: true});
+  // Velocity from INVOICES via the shared radar engine — the old card metric
+  // read the legacy orders collection, so it said "—" next to a "Last
+  // Invoice: 4d ago" on the same card for any invoice-billed account.
+  const _cad = _acCadence(acInvs, Infinity);
+  const velocityHtml = _cad.avgGap
+    ? `<span class="ac-metric-val">Every ${_cad.avgGap}d</span>`
+    : `<span class="ac-metric-val" style="color:var(--muted)">—</span>`;
   const outstandingAmt = acInvs
     .filter(x => !['paid','draft','void'].includes(x.status))
     .reduce((s, x) => s + _invAmt(x), 0);
@@ -3118,17 +3077,10 @@ function renderAccounts() {
   else if (fulfillFilter.startsWith('closedby:')) list = list.filter(a=>a.closedBy === fulfillFilter.slice(9)); // bookkeeping tag, no pricing coupling
   else if (fulfillFilter) list = list.filter(a=>a.fulfilledBy===fulfillFilter);
 
-  // perf: index orders & invoices by account ONCE (was re-scanned/rebuilt per
-  // card → O(accounts × (orders + all invoices)); ~100 accounts made this slow).
+  // perf: index invoices by account ONCE (was re-scanned/rebuilt per card).
   // Built BEFORE the sort so "Last Invoice" sorting uses the SAME computed
   // date the cards display — sorting by the stale a.lastOrder field while
   // showing the invoice-derived date is what made the list look shuffled.
-  _acIdxOrders = new Map();
-  DB.a('orders').forEach(o => {
-    if (o.status === 'cancelled') return;
-    const arr = _acIdxOrders.get(o.accountId);
-    if (arr) arr.push(o); else _acIdxOrders.set(o.accountId, [o]);
-  });
   _acIdxInv = new Map();
   _allInvoices({ excludeChildren: true }).forEach(inv => {
     const arr = _acIdxInv.get(inv.accountId);
