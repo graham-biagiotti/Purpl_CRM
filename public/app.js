@@ -19301,11 +19301,14 @@ function flCreateProspectPlace(key) {
   // every entry needed a manual Mark-reviewed tap.
   const _now = new Date().toISOString();
   const _who = _currentUserName();
+  let _stampErr = false;
   g.entries.forEach(l => {
     const upd = l.reviewed
       ? { prospectId: p.id }
       : { prospectId: p.id, reviewed: true, reviewedAt: _now, reviewedBy: _who };
-    firebase.firestore().collection('field_logs').doc(l.id).update(upd).catch(() => {});
+    firebase.firestore().collection('field_logs').doc(l.id).update(upd).catch(() => {
+      if (!_stampErr) { _stampErr = true; toast('Prospect created, but some entry stamps failed to save — reload and check the tile', 6000); }
+    });
     Object.assign(l, upd);
   });
   toast('Prospect created from ' + g.entries.length + ' entr' + (g.entries.length === 1 ? 'y' : 'ies') + ' — tile filed under Transferred ✓');
@@ -19320,8 +19323,11 @@ function flMarkAllReviewed(key) {
   if (!targets.length) return;
   const _now = new Date().toISOString();
   const _who = _currentUserName();
+  let _stampErr = false;
   targets.forEach(l => {
-    firebase.firestore().collection('field_logs').doc(l.id).update({ reviewed: true, reviewedAt: _now, reviewedBy: _who }).catch(() => {});
+    firebase.firestore().collection('field_logs').doc(l.id).update({ reviewed: true, reviewedAt: _now, reviewedBy: _who }).catch(() => {
+      if (!_stampErr) { _stampErr = true; toast('Some review stamps failed to save — reload and check the tile', 6000); }
+    });
     l.reviewed = true; l.reviewedAt = _now; l.reviewedBy = _who;
   });
   toast('Marked ' + targets.length + ' entr' + (targets.length === 1 ? 'y' : 'ies') + ' reviewed ✓');
