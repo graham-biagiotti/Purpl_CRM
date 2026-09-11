@@ -1117,71 +1117,7 @@
         </div>
       </div>
 
-      <!-- Phase 2: Zapier Webhook -->
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-hdr">
-          <h2>🟡 Zapier Webhook <span class="badge amber" style="font-size:11px;margin-left:8px">Ready to Activate</span></h2>
-        </div>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:16px">Automatically push new Local Line orders to purpl CRM via Zapier — no manual exports needed.</p>
-        <div class="card-grid grid-2">
-          <div>
-            <div class="section-hdr" style="margin-bottom:8px"><h4>Setup Instructions</h4></div>
-            <ol style="font-size:13px;color:var(--text);padding-left:18px;margin:0;line-height:2">
-              <li>Create a new Zap in <a href="https://zapier.com" target="_blank" style="color:var(--brand-purple)">Zapier</a></li>
-              <li><strong>Trigger:</strong> Local Line → New Order</li>
-              <li><strong>Action:</strong> Webhooks by Zapier → POST</li>
-              <li>Paste your webhook URL below into the Zapier URL field</li>
-              <li>Map fields: order_id, buyer_name, products, total, date</li>
-              <li>Test and activate the Zap</li>
-            </ol>
-          </div>
-          <div>
-            <div class="section-hdr" style="margin-bottom:8px"><h4>Your Webhook URL</h4></div>
-            <div style="background:var(--brand-purple-bg);border-radius:6px;padding:12px;margin-bottom:12px">
-              <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Firebase Cloud Function endpoint</div>
-              <div id="zapier-webhook-url" style="font-family:monospace;font-size:12px;word-break:break-all;color:var(--brand-purple)">
-                Not configured — deploy the webhook Cloud Function first
-              </div>
-            </div>
-            <div style="font-size:12px;color:var(--muted);background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px">
-              💡 To activate: deploy <code>functions/webhook.js</code> to Firebase Functions, then paste the URL here. The function is already scaffolded in your repo.
-            </div>
-            <div style="margin-top:10px;display:flex;gap:8px">
-              <input type="text" id="zapier-url-input" class="input" placeholder="Paste your Cloud Function URL" style="flex:1;font-size:12px">
-              <button class="btn primary" onclick="saveWebhookUrl()" style="font-size:12px">Save</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Phase 3: Direct API -->
-      <div class="card">
-        <div class="section-hdr">
-          <h2>⚪ Local Line Direct API <span class="badge gray" style="font-size:11px;margin-left:8px">Coming Soon</span></h2>
-        </div>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Real-time two-way sync with Local Line via their API. Orders, inventory, and pricing will sync automatically.</p>
-        <div class="card-grid grid-3" style="opacity:0.6">
-          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
-            <div style="font-size:24px;margin-bottom:8px">🔄</div>
-            <div style="font-weight:600;font-size:13px">Auto-sync Orders</div>
-            <div style="font-size:12px;color:var(--muted)">New orders appear instantly</div>
-          </div>
-          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
-            <div style="font-size:24px;margin-bottom:8px">📦</div>
-            <div style="font-weight:600;font-size:13px">Inventory Push</div>
-            <div style="font-size:12px;color:var(--muted)">Update Local Line stock from CRM</div>
-          </div>
-          <div style="background:var(--brand-purple-bg);border-radius:8px;padding:16px;text-align:center">
-            <div style="font-size:24px;margin-bottom:8px">💰</div>
-            <div style="font-weight:600;font-size:13px">Price Sync</div>
-            <div style="font-size:12px;color:var(--muted)">Keep pricing consistent</div>
-          </div>
-        </div>
-        <div style="margin-top:16px;text-align:center">
-          <div style="font-size:13px;color:var(--muted)">
-            <strong>To request early access to the Direct API integration, contact your account manager.</strong><br>
-            API key field will appear here once activated.
-          </div>
+    </div>
         </div>
       </div>
     </div>
@@ -1206,97 +1142,46 @@
 
       <!-- Settings tab bar -->
       <div style="display:flex;gap:2px;margin-bottom:20px;border-bottom:2px solid var(--border);overflow-x:auto;flex-shrink:0">
-        <button class="tab active" data-stab="business">Business Info</button>
-        <button class="tab" data-stab="invoicing">Invoicing</button>
-        <button class="tab" data-stab="email">Email</button>
+        <button class="tab active" data-stab="business">Warehouse &amp; Delivery</button>
+        <button class="tab" data-stab="invoicing">Invoicing &amp; Payments</button>
+        <button class="tab" data-stab="portal">Portal &amp; Site</button>
         <button class="tab" data-stab="inventory">Inventory &amp; Production</button>
         <button class="tab" data-stab="integrations">Integrations</button>
         <button class="tab" data-stab="team">Team</button>
         <button class="tab" data-stab="audit">Audit Log</button>
       </div>
 
-      <!-- Tab 1: Business Info -->
+      <!-- Tab 1: Warehouse & Delivery -->
       <div id="stab-business" class="stab-pane">
-        <div class="card-grid grid-2" style="margin-bottom:16px">
-          <div class="card">
-            <div class="section-hdr"><h2>Farm / Business</h2></div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Company name</label>
-              <input id="set-company" placeholder="Pumpkin Blossom Farm LLC">
-            </div>
-            <div class="form-group"><label>Warehouse partner email (🏭 push sends the invoice here)</label>
-              <input id="set-warehouse-email" type="email" placeholder="tim@millenialmovingsolutions.com">
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Address</label>
-              <textarea id="set-address" rows="2" placeholder="393 Pumpkin Hill Rd&#10;Warner, NH 03278" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
-            </div>
-            <div class="form-row col2" style="margin-bottom:12px">
-              <div class="form-group">
-                <label>Warehouse delivery radius (miles)</label>
-                <input id="set-warehouse-radius" type="number" min="0" placeholder="e.g. 100">
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">Shown on Territory Map as your direct delivery zone</div>
-              </div>
-              <div class="form-group">
-                <label>Warehouse coordinates</label>
-                <div style="display:flex;gap:6px">
-                  <input id="set-warehouse-lat" type="number" step="any" placeholder="Lat" style="flex:1">
-                  <input id="set-warehouse-lng" type="number" step="any" placeholder="Lng" style="flex:1">
-                </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">Enter manually — right-click your spot in Google Maps to copy lat/lng</div>
-              </div>
-            </div>
-            <div class="form-row col2">
-              <div class="form-group" style="margin-bottom:12px">
-                <label>Phone</label>
-                <input id="set-phone" type="tel" placeholder="603-748-3038">
-              </div>
-              <div class="form-group" style="margin-bottom:12px">
-                <label>EIN / Tax ID</label>
-                <input id="set-ein" placeholder="XX-XXXXXXX">
-              </div>
-            </div>
-            <div class="form-row col2">
-              <div class="form-group" style="margin-bottom:12px">
-                <label>Billing Email</label>
-                <div class="highlight-box" style="padding:8px 10px;font-size:13px">lavender@pbfwholesale.com</div>
-              </div>
-              <div class="form-group" style="margin-bottom:12px">
-                <label>Website</label>
-                <input id="set-website" placeholder="https://drinkpurpl.com">
-              </div>
-            </div>
-            <button class="btn primary" onclick="saveBusinessSettings()">Save Business Info</button>
+        <div class="card" style="max-width:640px">
+          <div class="section-hdr"><h2>Warehouse &amp; Delivery</h2></div>
+          <div class="form-group" style="margin-bottom:12px"><label>Warehouse partner email (🏭 push sends the invoice here)</label>
+            <input id="set-warehouse-email" type="email" placeholder="tim@millenialmovingsolutions.com">
           </div>
-          <div class="card">
-            <div class="section-hdr"><h2>Territory Defaults</h2></div>
-            <div class="form-group" style="margin-bottom:10px">
-              <label>Default state / region</label>
-              <input id="set-default-state" placeholder="NH">
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Business / warehouse address (Territory Map pin)</label>
+            <textarea id="set-address" rows="2" placeholder="393 Pumpkin Hill Rd&#10;Warner, NH 03278" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <div class="form-row col2" style="margin-bottom:12px">
+            <div class="form-group">
+              <label>Warehouse delivery radius (miles)</label>
+              <input id="set-warehouse-radius" type="number" min="0" placeholder="e.g. 100">
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Shown on Territory Map as your direct delivery zone</div>
             </div>
-            <div class="form-group" style="margin-bottom:10px">
-              <label>Default account type</label>
-              <select id="set-default-account-type">
-                <option value="Grocery">Grocery</option>
-                <option value="Gym">Gym</option>
-                <option value="Café">Café</option>
-                <option value="Restaurant">Restaurant</option>
-                <option value="Spa / Wellness">Spa / Wellness</option>
-                <option value="Specialty / Gift">Specialty / Gift</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div class="form-group" style="margin-bottom:16px">
-              <label>Default payment terms (days)</label>
-              <input id="set-default-terms" type="number" placeholder="30" min="0">
+            <div class="form-group">
+              <label>Warehouse coordinates</label>
+              <div style="display:flex;gap:6px">
+                <input id="set-warehouse-lat" type="number" step="any" placeholder="Lat" style="flex:1">
+                <input id="set-warehouse-lng" type="number" step="any" placeholder="Lng" style="flex:1">
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">Enter manually — right-click your spot in Google Maps to copy lat/lng</div>
             </div>
           </div>
-        </div>
-        <div class="card">
-          <div class="section-hdr"><h2>Team Access</h2></div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">All team members share the same workspace. Users who have signed in are listed below.</div>
-          <div id="set-users-list"><div style="font-size:13px;color:var(--muted)">User tracking available after multiple sign-ins.</div></div>
-          <div style="font-size:12px;color:var(--muted);margin-top:10px">To add a new user: have them visit the app and sign in with their Google account or email.</div>
+          <div class="form-group" style="margin-bottom:16px;max-width:240px">
+            <label>Default payment terms (days)</label>
+            <input id="set-default-terms" type="number" placeholder="30" min="0">
+          </div>
+          <button class="btn primary" onclick="saveBusinessSettings()">Save</button>
         </div>
       </div>
 
@@ -1372,6 +1257,10 @@
         <div style="margin-bottom:16px">
           <button class="btn primary" onclick="saveInvoiceSettings()">Save Invoicing Settings</button>
         </div>
+      </div>
+
+      <!-- Tab: Portal & Site -->
+      <div id="stab-portal" class="stab-pane" style="display:none">
         <!-- Where to Find Us extra locations -->
         <div class="card" style="margin-bottom:16px">
           <div class="section-hdr">
@@ -1454,26 +1343,6 @@
         </div>
       </div>
 
-      <!-- Tab 3: Email -->
-      <div id="stab-email" class="stab-pane" style="display:none">
-        <div class="card" style="max-width:600px;margin-bottom:16px">
-          <div class="section-hdr"><h2>Email Configuration</h2></div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Default From Address</label>
-            <div class="highlight-box" style="padding:8px 10px;font-size:13px">lavender@pbfwholesale.com <span style="font-size:11px;color:var(--muted)">(contact dev to change)</span></div>
-          </div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Reply-To Address</label>
-            <div class="highlight-box" style="padding:8px 10px;font-size:13px">graham@pumpkinblossomfarm.com <span style="font-size:11px;color:var(--muted)">(contact dev to change)</span></div>
-          </div>
-          <div class="form-group" style="margin-bottom:16px">
-            <label>Email Signature / Footer</label>
-            <textarea id="set-email-sig" rows="4" placeholder="Graham Biagiotti&#10;Pumpkin Blossom Farm LLC&#10;603-748-3038" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>
-          </div>
-          <button class="btn primary" onclick="saveEmailSettings()">Save Email Settings</button>
-        </div>
-      </div>
-
       <!-- Tab 4: Inventory & Production -->
       <div id="stab-inventory" class="stab-pane" style="display:none">
         <div class="card-grid grid-2" style="margin-bottom:16px">
@@ -1483,15 +1352,6 @@
               <label>Low Stock Alert Threshold (cans)</label>
               <input id="set-low-inv-threshold" type="number" placeholder="500" min="0" step="1">
               <div style="font-size:11px;color:var(--muted);margin-top:3px">Alert appears on dashboard when on-hand cans fall below this. Default: 500.</div>
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Default Production Run Size (cans)</label>
-              <input id="set-prod-run-size" type="number" placeholder="2400" min="0" step="1">
-            </div>
-            <div class="form-group" style="margin-bottom:12px">
-              <label>Production Lead Time (days)</label>
-              <input id="set-lead-time" type="number" placeholder="14" min="1" max="365">
-              <div style="font-size:11px;color:var(--muted);margin-top:3px">Used by production planning projections.</div>
             </div>
             <div class="form-row col2">
               <div class="form-group" style="margin-bottom:12px">
@@ -1580,10 +1440,6 @@
             <label>Store ID</label>
             <input id="set-shipstation-store" type="number" placeholder="e.g. 123456">
             <div style="font-size:11px;color:var(--muted);margin-top:3px">Settings → Selling Channels in ShipStation. Leave blank to use default store.</div>
-          </div>
-          <div class="form-group" style="margin-bottom:12px">
-            <label>Ship-from address</label>
-            <input id="set-shipstation-from" placeholder="393 Pumpkin Hill Rd, Warner, NH 03278">
           </div>
           <button class="btn primary" onclick="saveShipStationSettings()">Save ShipStation Settings</button>
           <button class="btn sm" onclick="testShipStationConnection()" style="margin-left:8px">⚡ Test Connection</button>

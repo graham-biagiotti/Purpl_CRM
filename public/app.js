@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v225';
+const APP_VERSION = 'v226';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -508,15 +508,13 @@ function _stickyError(msg) {
 // ── ShipStation integration ────────────────────────────────
 function saveShipStationSettings() {
   const storeId = document.getElementById('set-shipstation-store')?.value || '';
-  const fromAddr = document.getElementById('set-shipstation-from')?.value || '';
-  DB.setObj('shipstation_settings', { ...DB.obj('shipstation_settings', {}), storeId, fromAddress: fromAddr });
+  DB.setObj('shipstation_settings', { ...DB.obj('shipstation_settings', {}), storeId });
   toast('ShipStation settings saved ✓');
 }
 function loadShipStationSettings() {
   const s2 = DB.obj('shipstation_settings', {});
   const set = (id, val) => { const el=document.getElementById(id); if(el&&val!=null) el.value=val; };
   set('set-shipstation-store', s2.storeId);
-  set('set-shipstation-from', s2.fromAddress);
 }
 
 async function testShipStationConnection() {
@@ -10855,12 +10853,6 @@ function exportLfReportCSV(section) {
 //  INTEGRATIONS — Phase 8: Local Line
 // ══════════════════════════════════════════════════════════
 function renderIntegrations() {
-  // Load webhook URL from settings if saved
-  const settings = DB.obj('settings', {});
-  const urlInput = qs('#zapier-url-input');
-  if (urlInput && settings.zapierWebhookUrl) urlInput.value = settings.zapierWebhookUrl;
-  const urlDisplay = qs('#zapier-webhook-url');
-  if (urlDisplay && settings.zapierWebhookUrl) urlDisplay.textContent = settings.zapierWebhookUrl;
   _renderLLImportHistory();
   _renderWebhookHealth();
 }
@@ -10908,15 +10900,6 @@ async function _renderWebhookHealth() {
   el.innerHTML = `<div class="section-hdr"><h2>🔌 Webhook Health</h2><small style="color:var(--muted)">Last inbound call from each service</small></div>${rows.join('')}`;
 }
 
-function saveWebhookUrl() {
-  const url = qs('#zapier-url-input')?.value?.trim();
-  if (!url) { toast('Paste a URL first'); return; }
-  const settings = DB.obj('settings',{});
-  DB.setObj('settings', {...settings, zapierWebhookUrl: url});
-  const display = qs('#zapier-webhook-url');
-  if (display) display.textContent = url;
-  toast('Webhook URL saved');
-}
 
 // ── Local Line CSV Import (Phase 8.1) ─────────────────────
 // Expected Local Line CSV columns (flexible auto-detect):
@@ -11277,26 +11260,15 @@ function renderSettings() {
   const c = DB.obj('costs', {cogs:{},overhead_monthly:1200,target_margin:.6});
 
   // Tab 1: Business Info
-  if(qs('#set-company'))              qs('#set-company').value              = s.company||'';
   if(qs('#set-warehouse-email'))      qs('#set-warehouse-email').value      = s.warehouseEmail||'';
   if(qs('#set-address'))              qs('#set-address').value              = s.address||'';
   if(qs('#set-warehouse-radius'))    qs('#set-warehouse-radius').value    = s.warehouseRadiusMiles||'';
   if(qs('#set-warehouse-lat'))       qs('#set-warehouse-lat').value       = s.warehouseLat||'';
   if(qs('#set-warehouse-lng'))       qs('#set-warehouse-lng').value       = s.warehouseLng||'';
-  if(qs('#set-phone'))                qs('#set-phone').value                = s.phone||'';
-  if(qs('#set-website'))              qs('#set-website').value              = s.website||'';
-  if(qs('#set-ein'))                  qs('#set-ein').value                  = s.ein||'';
-  if(qs('#set-default-state'))        qs('#set-default-state').value        = s.default_state||'';
-  if(qs('#set-default-account-type')) qs('#set-default-account-type').value = s.default_account_type||'Grocery';
   if(qs('#set-default-terms'))        qs('#set-default-terms').value        = s.default_payment_terms||30;
-
-  // Tab 3: Email
-  if(qs('#set-email-sig'))            qs('#set-email-sig').value            = s.emailSignature||'';
 
   // Tab 4: Inventory & Production
   if(qs('#set-low-inv-threshold'))    qs('#set-low-inv-threshold').value    = s.lowStockThreshold||500;
-  if(qs('#set-prod-run-size'))        qs('#set-prod-run-size').value        = s.defaultProdRunSize||'';
-  if(qs('#set-lead-time'))            qs('#set-lead-time').value            = s.production_lead_time||14;
   if(qs('#set-mpg'))                  qs('#set-mpg').value                  = s.mpg||25;
   if(qs('#set-gas-price'))            qs('#set-gas-price').value            = s.gasPrice||3.50;
   if(qs('#set-cans-per-case'))        qs('#set-cans-per-case').textContent  = CANS_PER_CASE;
@@ -11327,19 +11299,6 @@ function renderSettings() {
   const nemBtn = qs('#nem-import-card');
   if (nemBtn) nemBtn.style.display = s.nem_show_2026_imported ? 'none' : '';
 
-  // User list (read-only)
-  const usersEl = qs('#set-users-list');
-  if (usersEl && s.known_users?.length) {
-    usersEl.innerHTML = `<div class="tbl-wrap"><table>
-      <thead><tr><th>Email / Name</th><th>Last Seen</th><th>Provider</th></tr></thead>
-      <tbody>${s.known_users.map(u=>`<tr>
-        <td>${u.email||u.displayName||u.uid}</td>
-        <td>${u.lastSeen?fmtD(u.lastSeen):'—'}</td>
-        <td><span class="badge gray">${u.provider||'email'}</span></td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
-  }
-
   // LF SKU catalog
   renderLfSkuSettings();
 
@@ -11353,6 +11312,7 @@ function renderSettings() {
       if (pane) pane.style.display = '';
       if (btn.dataset.stab === 'audit') renderAuditLog();
       if (btn.dataset.stab === 'team') renderTeamTab();
+      if (btn.dataset.stab === 'portal') { renderPortalSettings(); renderStockistLocations(); }
     };
   });
 }
@@ -11380,10 +11340,6 @@ function renderTeamTab() {
   }).catch(() => { list.innerHTML = '<div class="empty">Could not load team members</div>'; });
 }
 
-function toggleUserRole(uid, currentRole) {
-  // Legacy two-role toggle — kept for any stale markup; new UI uses setUserRole.
-  setUserRole(uid, currentRole === 'admin' ? 'employee' : 'admin', currentRole);
-}
 
 function setUserRole(uid, newRole, currentRole) {
   if (!_requireAdmin('change user roles')) return;
@@ -11431,73 +11387,18 @@ function _updateVarietyTotal() {
   el.innerHTML = `Total: <strong style="color:${ok?'var(--green)':'var(--red)'}">${total} / ${CANS_PER_CASE} cans</strong>${ok?' ✓':' (must equal '+CANS_PER_CASE+')'}`;
 }
 
-function saveSettings() {
-  if (!_requireAdmin('change settings')) return;
-  auditLog('update', 'settings', 'settings', 'Settings changed');
-  // Variety pack recipe validation
-  const recipe = {};
-  let recipeTotal = 0;
-  SKUS.filter(sk=>sk.id!=='variety').forEach(sk=>{
-    const v = parseInt(qs('#variety-recipe-'+sk.id)?.value)||0;
-    recipe[sk.id] = v;
-    recipeTotal += v;
-  });
-  if (recipeTotal > 0 && recipeTotal !== CANS_PER_CASE) {
-    toast(`Variety recipe must total ${CANS_PER_CASE} cans (currently ${recipeTotal})`);
-    return;
-  }
-
-  const s = {
-    company:               qs('#set-company')?.value?.trim()||'',
-    warehouseEmail:        qs('#set-warehouse-email')?.value?.trim()||'',
-    payment_terms:         parseInt(qs('#set-default-terms')?.value)||DB.obj('settings',{}).payment_terms||30,
-    production_lead_time:  parseInt(qs('#set-lead-time')?.value)||14,
-    default_state:         qs('#set-default-state')?.value?.trim()||'',
-    default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
-    default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
-    variety_recipe:        recipeTotal === CANS_PER_CASE ? recipe : (DB.obj('settings',{}).variety_recipe||{}),
-    lowStockThreshold:       parseInt(qs('#set-low-inv-threshold')?.value)||500,
-    mpg:                   parseFloat(qs('#set-mpg')?.value)||25,
-    gasPrice:              parseFloat(qs('#set-gas-price')?.value)||3.50,
-    // Preserve existing fields (known_users etc.)
-    ...Object.fromEntries(
-      Object.entries(DB.obj('settings',{})).filter(([k])=>!['company','payment_terms','production_lead_time','default_state','default_account_type','default_payment_terms','variety_recipe','lowStockThreshold','mpg','gasPrice'].includes(k))
-    ),
-  };
-  DB.setObj('settings', s);
-
-  // MED-5: only persist a COGS a user actually entered. Coercing blank to 2.15
-  // baked a placeholder in as if it were real, so "unknown cost" became
-  // indistinguishable from an entered $2.15. Omit blank/invalid SKUs.
-  const cogs = {};
-  SKUS.forEach(sk=>{ const v = parseFloat(qs('#cost-'+sk.id)?.value); if (!isNaN(v) && v > 0) cogs[sk.id] = v; });
-  const c = {
-    cogs,
-    overhead_monthly: parseFloat(qs('#cost-overhead')?.value)||1200,
-    target_margin:    (parseFloat(qs('#cost-target-margin')?.value)||60)/100,
-  };
-  DB.setObj('costs', c);
-  toast('Settings saved');
-}
-
 function saveBusinessSettings() {
   const existing = DB.obj('settings', {});
   DB.setObj('settings', {
     ...existing,
-    company:               qs('#set-company')?.value?.trim()||'',
     warehouseEmail:        qs('#set-warehouse-email')?.value?.trim()||'',
     address:               qs('#set-address')?.value?.trim()||'',
-    phone:                 qs('#set-phone')?.value?.trim()||'',
-    website:               qs('#set-website')?.value?.trim()||'',
-    ein:                   qs('#set-ein')?.value?.trim()||'',
-    default_state:         qs('#set-default-state')?.value?.trim()||'',
-    default_account_type:  qs('#set-default-account-type')?.value||'Grocery',
     default_payment_terms: parseInt(qs('#set-default-terms')?.value)||30,
     warehouseRadiusMiles:  parseFloat(qs('#set-warehouse-radius')?.value)||0,
     warehouseLat:          parseFloat(qs('#set-warehouse-lat')?.value)||null,
     warehouseLng:          parseFloat(qs('#set-warehouse-lng')?.value)||null,
   });
-  toast('Business info saved ✓');
+  toast('Warehouse & delivery settings saved ✓');
 }
 
 function saveInventorySettings() {
@@ -11515,8 +11416,6 @@ function saveInventorySettings() {
   DB.setObj('settings', {
     ...existing,
     lowStockThreshold:    parseInt(qs('#set-low-inv-threshold')?.value)||500,
-    defaultProdRunSize:   parseInt(qs('#set-prod-run-size')?.value)||0,
-    production_lead_time: parseInt(qs('#set-lead-time')?.value)||14,
     mpg:                  parseFloat(qs('#set-mpg')?.value)||25,
     gasPrice:             parseFloat(qs('#set-gas-price')?.value)||3.50,
     variety_recipe:       recipeTotal === CANS_PER_CASE ? recipe : (existing.variety_recipe||{}),
@@ -11534,11 +11433,6 @@ function saveInventorySettings() {
   toast('Inventory & production settings saved ✓');
 }
 
-function saveEmailSettings() {
-  const existing = DB.obj('settings', {});
-  DB.setObj('settings', { ...existing, emailSignature: qs('#set-email-sig')?.value||'' });
-  toast('Email settings saved ✓');
-}
 
 
 // ══════════════════════════════════════════════════════════
@@ -14834,10 +14728,6 @@ window.onAppReady = function() {
   if (addStopBtn) addStopBtn.addEventListener('click', addStop);
   const clearRouteBtn = qs('#clear-route-btn');
   if (clearRouteBtn) clearRouteBtn.addEventListener('click', clearRoute);
-
-  // Wire settings
-  const saveSetBtn = qs('#save-settings-btn');
-  if (saveSetBtn) saveSetBtn.addEventListener('click', saveSettings);
 
   // Wire order filter
   document.querySelectorAll('#orders-filter .tab').forEach(t=>{
@@ -19171,15 +19061,14 @@ function renderFieldLog() {
     <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <select id="fl-filter" onchange="_renderFieldLogList()" style="padding:8px;font-size:13px">
         <option value="open">Needs review</option>
-        <option value="all">All entries</option>
+        <option value="all">All active</option>
+        <option value="transferred">Transferred</option>
       </select>
       <input id="fl-search" placeholder="Search store, rep, notes…" oninput="_renderFieldLogList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
     </div>
     <div style="font-size:12px;color:var(--muted);margin:-6px 2px 12px;line-height:1.5">
-      One tile per place — all of the rep's stops there together. He works his places
-      (logs from purpl-crm.web.app/field); when a store closes, <strong>Create prospect</strong> on its tile
-      carries everything over. Otherwise: read the entries, push the good stuff into the
-      prospect (notes / contact), <strong>Mark reviewed</strong>.
+      One tile per place. <strong>Create prospect</strong> carries everything over, marks the
+      entries reviewed, and files the tile under <strong>Transferred</strong>.
     </div>
     <div id="fl-list"></div>
   `;
@@ -19221,15 +19110,26 @@ function _renderFieldLogList() {
   if (!el) return;
   const mode = qs('#fl-filter')?.value || 'open';
   const q = (qs('#fl-search')?.value || '').toLowerCase().trim();
-  let list = _flLogs;
-  if (mode === 'open') list = list.filter(l => !l.reviewed);
-  if (q) list = list.filter(l =>
-    ((l.storeName || '') + ' ' + (l.repName || '') + ' ' + (l.notes || '') + ' ' + (l.contactName || '')).toLowerCase().includes(q));
-  if (!list.length) {
-    el.innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">${mode === 'open' ? 'Nothing waiting for review.' : 'No entries.'}</div>`;
+  // Filter at the PLACE level so a tile always carries its full history —
+  // the old entry-level filter made a half-reviewed tile look half-empty.
+  let groups = _flGroups(_flLogs);
+  if (q) groups = groups.filter(g => g.entries.some(l =>
+    ((l.storeName || '') + ' ' + (l.repName || '') + ' ' + (l.notes || '') + ' ' + (l.contactName || '')).toLowerCase().includes(q)));
+  const isTransferred = g => !!g.prospectId;
+  // "Needs review" surfaces ANY tile with unreviewed entries — including a
+  // transferred place the rep visited again (new info must never hide in the
+  // Transferred archive).
+  if (mode === 'open') groups = groups.filter(g => g.unreviewed > 0);
+  else if (mode === 'all') groups = groups.filter(g => !isTransferred(g));
+  else if (mode === 'transferred') groups = groups.filter(isTransferred);
+  if (!groups.length) {
+    const msg = mode === 'open' ? 'Nothing waiting for review.'
+      : mode === 'transferred' ? 'No transferred places yet — Create prospect on a tile files it here.'
+      : 'No entries.';
+    el.innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:13px">${msg}</div>`;
     return;
   }
-  el.innerHTML = _flGroups(list).map(_flTileHTML).join('');
+  el.innerHTML = groups.map(_flTileHTML).join('');
   // SECURITY: ids/keys travel ONLY in data-attributes (escHtml-safe in pure
   // attribute context) and dispatch through ONE delegated handler — never
   // inlined into onclick. A field-role login can create a log with an
@@ -19252,6 +19152,7 @@ function _renderFieldLogList() {
         const l = _flLogs.find(x => x.id === id);
         if (l && l.prospectId) openProspect(l.prospectId);
       } else if (act === 'createProspectPlace') flCreateProspectPlace(btn.getAttribute('data-fl-key') || '');
+      else if (act === 'markAllReviewed') flMarkAllReviewed(btn.getAttribute('data-fl-key') || '');
       else if (act === 'addHistory') flAddHistory(id);
       else if (act === 'addProspectNote') flAddProspectNote(id);
       else if (act === 'saveContact') flSaveContact(id);
@@ -19275,13 +19176,24 @@ function _flTileHTML(g) {
       ? `<button class="btn xs" data-fl-act="openMadeProspect" data-fl-id="${escHtml((g.entries.find(x => x.prospectId) || {}).id || '')}">✓ Prospect — open</button>`
       : `<button class="btn xs primary" data-fl-act="createProspectPlace" data-fl-key="${escHtml(g.key)}">Create prospect (all ${g.entries.length})</button>`);
   }
-  return `<div class="card" style="padding:0;margin-bottom:12px;overflow:hidden">
+  if (g.unreviewed > 1) btns.push(`<button class="btn xs" data-fl-act="markAllReviewed" data-fl-key="${escHtml(g.key)}">Mark all ${g.unreviewed} reviewed</button>`);
+  const transferred = !!g.prospectId;
+  // Unreviewed entries stay expanded; reviewed history collapses behind a
+  // native <details> so a six-visit place is no longer a wall.
+  const unrev = g.entries.filter(x => !x.reviewed);
+  const rev = g.entries.filter(x => x.reviewed);
+  const revBlock = rev.length ? `<details style="padding:0 16px 10px${unrev.length ? '' : ';padding-top:4px'}">
+      <summary style="cursor:pointer;font-size:12px;color:var(--muted);padding:8px 0">${rev.length} ${unrev.length ? 'reviewed ' : ''}entr${rev.length === 1 ? 'y' : 'ies'} — show history</summary>
+      ${rev.map(l => _flEntryHTML(l, g)).join('')}
+    </details>` : '';
+  return `<div class="card" style="padding:0;margin-bottom:12px;overflow:hidden${transferred ? ';opacity:.85' : ''}">
     <div style="padding:12px 16px;background:var(--bg-alt,#f9fafb);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
       <div style="min-width:0">
         <span style="font-weight:700;font-size:14.5px">${escHtml(g.name)}</span>
         ${g.isProspect ? _flChip('PROSPECT', 'blue') : ''}
         ${g.isAccount ? _flChip('ACCOUNT', 'green') : ''}
-        ${g.isNew ? _flChip('NEW PLACE', 'purple') : ''}
+        ${g.isNew && !transferred ? _flChip('NEW PLACE', 'purple') : ''}
+        ${transferred ? _flChip('→ PROSPECT', 'green') : ''}
         ${g.unreviewed ? `<span class="badge red" style="font-size:11px">${g.unreviewed} to review</span>` : ''}
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px">
           ${[info('storeTown'), info('storeType'), info('storeAddress')].filter(Boolean).map(escHtml).join(' · ') || '&nbsp;'}
@@ -19293,12 +19205,18 @@ function _flTileHTML(g) {
         ${btns.join('')}
       </div>
     </div>
-    <div style="padding:2px 16px 10px">${g.entries.map(_flEntryHTML).join('')}</div>
+    ${unrev.length ? `<div style="padding:2px 16px 10px">${unrev.map(l => _flEntryHTML(l, g)).join('')}</div>` : ''}
+    ${revBlock}
   </div>`;
 }
 
-function _flEntryHTML(l) {
-  const pr = l.prospectRefId ? DB.a('pr').find(x => x.id === l.prospectRefId) : null;
+function _flEntryHTML(l, g) {
+  // The group's made-prospect link (g.prospectId) lets entries logged AFTER a
+  // transfer still push into that prospect — the old renderer offered them no
+  // button at all.
+  const madePrId = l.prospectId || (g && g.prospectId) || null;
+  const pr = l.prospectRefId ? DB.a('pr').find(x => x.id === l.prospectRefId)
+    : (madePrId ? DB.a('pr').find(x => x.id === madePrId) : null);
   const a = l.accountId ? DB.a('ac').find(x => x.id === l.accountId) : null;
   const when = l.createdAt ? new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   const hasContact = l.contactName || l.contactRole || l.contactPhone || l.contactEmail;
@@ -19378,11 +19296,35 @@ function flCreateProspectPlace(key) {
   const parts = (g.entries.find(x => x.storeAddrParts) || {}).storeAddrParts;
   if (parts && typeof parts === 'object') p.addrParts = parts;
   DB.push('pr', p);
+  // Close the loop: folding an entry's content into the prospect IS the
+  // review. Without this stamp the tile stayed in "Needs review" forever and
+  // every entry needed a manual Mark-reviewed tap.
+  const _now = new Date().toISOString();
+  const _who = _currentUserName();
   g.entries.forEach(l => {
-    firebase.firestore().collection('field_logs').doc(l.id).update({ prospectId: p.id }).catch(() => {});
-    l.prospectId = p.id;
+    const upd = l.reviewed
+      ? { prospectId: p.id }
+      : { prospectId: p.id, reviewed: true, reviewedAt: _now, reviewedBy: _who };
+    firebase.firestore().collection('field_logs').doc(l.id).update(upd).catch(() => {});
+    Object.assign(l, upd);
   });
-  toast('Prospect created from ' + g.entries.length + ' entr' + (g.entries.length === 1 ? 'y' : 'ies') + ' ✓');
+  toast('Prospect created from ' + g.entries.length + ' entr' + (g.entries.length === 1 ? 'y' : 'ies') + ' — tile filed under Transferred ✓');
+  _renderFieldLogList();
+}
+
+// Tile-level review: everything on the place at once.
+function flMarkAllReviewed(key) {
+  const g = _flGroups(_flLogs).find(x => x.key === key);
+  if (!g) return;
+  const targets = g.entries.filter(l => !l.reviewed);
+  if (!targets.length) return;
+  const _now = new Date().toISOString();
+  const _who = _currentUserName();
+  targets.forEach(l => {
+    firebase.firestore().collection('field_logs').doc(l.id).update({ reviewed: true, reviewedAt: _now, reviewedBy: _who }).catch(() => {});
+    l.reviewed = true; l.reviewedAt = _now; l.reviewedBy = _who;
+  });
+  toast('Marked ' + targets.length + ' entr' + (targets.length === 1 ? 'y' : 'ies') + ' reviewed ✓');
   _renderFieldLogList();
 }
 
@@ -19412,8 +19354,14 @@ function flAddHistory(id) {
 
 function flAddProspectNote(id) {
   const l = _flLogs.find(x => x.id === id);
-  if (!l || !l.prospectRefId || l.historyAppliedAt) return;
-  const p = DB.a('pr').find(x => x.id === l.prospectRefId);
+  if (!l || l.historyAppliedAt) return;
+  // Target: the rep-picked prospect, else the prospect this place was
+  // TRANSFERRED into (entry stamp, else group stamp) — so visits logged after
+  // a transfer can still be pushed in.
+  const targetId = l.prospectRefId || l.prospectId
+    || (_flGroups(_flLogs).find(g => g.key === _flPlaceKey(l)) || {}).prospectId || null;
+  if (!targetId) return;
+  const p = DB.a('pr').find(x => x.id === targetId);
   if (!p) { toast('Prospect not found — it may have been deleted or won', 5000); return; }
   const d = (l.createdAt || '').slice(0, 10) || today();
   const text = [
@@ -19423,13 +19371,16 @@ function flAddProspectNote(id) {
     _flExtrasText(l),
   ].filter(Boolean).join('\n');
   const note = { id: uid(), date: d, text, author: l.repName || 'field rep' };
-  DB.update('pr', l.prospectRefId, x => ({
+  DB.update('pr', targetId, x => ({
     ...x,
     lastContacted: (x.lastContacted || '') > d ? x.lastContacted : d,
     notes: [...(x.notes || []), note],
     ...(l.followUpDate ? { nextAction: 'Follow up (field visit)', nextDate: l.followUpDate } : {}),
   }));
-  firebase.firestore().collection('field_logs').doc(id).update({ historyAppliedAt: new Date().toISOString() }).catch(() => {});
+  const stamp = { historyAppliedAt: new Date().toISOString() };
+  if (!l.prospectRefId && !l.prospectId) stamp.prospectId = targetId; // future pushes resolve directly
+  firebase.firestore().collection('field_logs').doc(id).update(stamp).catch(() => {});
+  Object.assign(l, stamp);
   toast('Added to prospect notes ✓');
 }
 
@@ -19457,35 +19408,6 @@ function flSaveContact(id) {
   });
   firebase.firestore().collection('field_logs').doc(id).update({ contactSavedAt: new Date().toISOString() }).catch(() => {});
   toast('Contact saved to account ✓');
-}
-
-function flCreateProspect(id) {
-  const l = _flLogs.find(x => x.id === id);
-  if (!l || !l.newPlace || l.prospectId) return;
-  const d = (l.createdAt || '').slice(0, 10) || today();
-  const noteText = [l.notes, _flExtrasText(l)].filter(Boolean).join('\n');
-  const p = {
-    id: uid(),
-    name: l.storeName || 'Unnamed store',
-    contact: l.contactName || '',
-    phone: l.contactPhone || '',
-    email: l.contactEmail || '',
-    type: l.storeType || '', status: 'contacted',
-    territory: l.storeTown || '', source: 'Field visit — ' + (l.repName || 'rep'),
-    notes: noteText ? [{ id: uid(), date: d, text: noteText, author: l.repName || 'field rep' }] : [],
-    lastContacted: d,
-    nextAction: l.followUpDate ? 'Follow up (' + (_FL_OUTCOME[l.outcome] || '') + ')' : '',
-    nextDate: l.followUpDate || '',
-  };
-  // Structured place data from the field page's address autocomplete —
-  // stored on the prospect the same way accounts carry address/addrParts.
-  if (l.storeAddress) p.address = l.storeAddress;
-  if (l.storeAddrParts && typeof l.storeAddrParts === 'object') p.addrParts = l.storeAddrParts;
-  // Keep the town note only when there's no structured address to carry it.
-  if (l.storeTown && !l.storeAddress) p.notes.unshift({ id: uid(), date: d, text: 'Location: ' + l.storeTown, author: l.repName || 'field rep' });
-  DB.push('pr', p);
-  firebase.firestore().collection('field_logs').doc(id).update({ prospectId: p.id }).catch(() => {});
-  toast('Prospect created ✓');
 }
 
 function flMarkReviewed(id) {
