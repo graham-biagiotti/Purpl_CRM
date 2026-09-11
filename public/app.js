@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v224';
+const APP_VERSION = 'v225';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1817,11 +1817,6 @@ function dashFilterFulfill(val) {
 
 // Price an order. Items qty is in CASES.
 // Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
-function calcOrderValue(o) {
-  const ac2 = DB.a('ac').find(a=>a.id===o.accountId);
-  return (o.items||[]).reduce((s,i) => s + _calcPricePerCase(ac2) * i.qty, 0);
-}
-
 // ── Needs Attention (30+ days no contact) ────────────────
 function renderAttention() {
   const items = [];
@@ -2790,11 +2785,12 @@ function renderProjectionsPage() {
     const qBody = qs('#radar-proj-quarters');
     if (qBody) {
       const qKeys = [...qDollars.keys()].sort();
-      qBody.innerHTML = qKeys.length ? qKeys.map((k, i) => `
+      const _curQ = _qKey(today());
+      qBody.innerHTML = qKeys.length ? qKeys.map(k => `
         <tr>
-          <td><strong>${escHtml(k)}</strong>${i === 0 ? ' <small style="color:var(--muted)">(rest of quarter)</small>' : ''}</td>
+          <td><strong>${escHtml(k)}</strong>${k === _curQ ? ' <small style="color:var(--muted)">(rest of quarter)</small>' : ''}</td>
           <td>${fmtC(qDollars.get(k) || 0)}</td>
-          <td style="color:var(--muted)">${(qAccounts.get(k) || new Set()).size} accounts</td>
+          <td style="color:var(--muted)">${(qAccounts.get(k) || new Set()).size} account${(qAccounts.get(k) || new Set()).size !== 1 ? 's' : ''}</td>
         </tr>`).join('') : '<tr><td colspan="3" class="empty">No on-pace accounts to project yet.</td></tr>';
     }
     const pn = qs('#radar-proj-notes');
@@ -10037,51 +10033,8 @@ function renderReports() {
   _reportType = tabs?.querySelector('.tab.active')?.dataset.rep || 'revenue';
   renderReportContent();
   renderSavedReports();
-  renderTopAccountsReport();
   renderGoingColdReport();
   renderMomReport();
-  renderSkuPerformanceReport();
-}
-
-// ── Top 10 Accounts by Volume ─────────────────────────────
-function renderTopAccountsReport() {
-  const tb = qs('#rep-top-accounts-tbody');
-  if (!tb) return;
-
-  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
-  const accounts = DB.a('ac');
-
-  const byAc = {};
-  orders.forEach(o => {
-    if (!o.accountId) return;
-    if (!byAc[o.accountId]) byAc[o.accountId] = { cases: 0, revenue: 0, lastOrder: '' };
-    const e = byAc[o.accountId];
-    (o.items || []).forEach(i => { e.cases += (i.qty || 0); });
-    e.revenue  += calcOrderValue(o);
-    if (!e.lastOrder || (o.created || o.date || '') > e.lastOrder) e.lastOrder = o.created || o.date || '';
-  });
-
-  const rows = Object.entries(byAc)
-    .map(([id, d]) => {
-      const ac = accounts.find(a => a.id === id);
-      return { name: ac?.name || '(deleted)', territory: ac?.territory || '', ...d };
-    })
-    .sort((a, b) => b.cases - a.cases)
-    .slice(0, 10);
-
-  if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="6" class="empty">No order data yet</td></tr>';
-    return;
-  }
-
-  tb.innerHTML = rows.map((r, i) => `<tr>
-    <td>${i + 1}</td>
-    <td>${escHtml(r.name)}<br><small style="color:var(--muted)">${escHtml(r.territory)}</small></td>
-    <td>${fmt(r.cases * CANS_PER_CASE)}</td>
-    <td>${fmt(r.cases)}</td>
-    <td>${fmtC(r.revenue)}</td>
-    <td>${r.lastOrder ? fmtD(r.lastOrder) : '—'}</td>
-  </tr>`).join('');
 }
 
 // ── Accounts Going Cold ───────────────────────────────────
@@ -10095,21 +10048,27 @@ function renderGoingColdReport() {
     { days: 45, label: '45+ days', bg: '#fefce8', color: '#d97706', cls: 'amber' },
   ];
 
-  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
+  // Last order from INVOICES (the old version read the legacy orders
+  // collection, so invoice-billed accounts showed falsely cold or not at all).
   const accounts = DB.a('ac').filter(a => a.status === 'active');
+  const byAcInv = new Map();
+  _allInvoices({ excludeChildren: true }).forEach(inv => {
+    if (!inv.accountId || ['void','draft'].includes(inv.status) || inv._brand === 'dist' || inv.distId) return;
+    const d = _invEventDate(inv);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || daysAgo(d) < 0) return;
+    if (d > (byAcInv.get(inv.accountId) || '')) byAcInv.set(inv.accountId, d);
+  });
 
   const rows = [];
   accounts.forEach(ac => {
-    const acOrds = orders.filter(o => o.accountId === ac.id);
-    if (!acOrds.length) return;
-
-    const lastOrd   = acOrds.reduce((best, o) => (!best || (o.dueDate || '') > (best.dueDate || '') ? o : best), null);
-    const daysSince = lastOrd ? daysAgo(lastOrd.dueDate) : 999;
+    const last = byAcInv.get(ac.id);
+    if (!last) return; // never invoiced — "pending", not "going cold"
+    const daysSince = daysAgo(last);
     if (daysSince < 45) return;
 
     const tier        = TIERS.find(t => daysSince >= t.days) || TIERS[TIERS.length - 1];
     const outstanding = _allInvoices({accountId: ac.id, excludeChildren: true}).filter(i => i.status !== 'paid' && i.status !== 'void' && i.status !== 'draft').reduce((s, i) => s + _invAmt(i), 0);
-    rows.push({ name: ac.name, lastOrder: lastOrd?.created || lastOrd?.date || '', daysSince, outstanding, tier });
+    rows.push({ name: ac.name, lastOrder: last, daysSince, outstanding, tier });
   });
 
   rows.sort((a, b) => b.daysSince - a.daysSince);
@@ -10133,7 +10092,6 @@ function renderMomReport() {
   const tb = qs('#rep-mom-tbody');
   if (!tb) return;
 
-  const orders = DB.a('orders').filter(o => o.status !== 'cancelled');
   const months = [];
   const now    = new Date();
 
@@ -10145,15 +10103,15 @@ function renderMomReport() {
     months.push({ key, label, orderCount: 0, cases: 0, revenue: 0 });
   }
 
-  orders.forEach(o => {
-    const dateStr = o.dueDate || o.created || '';
-    if (!dateStr) return;
-    const key = dateStr.slice(0, 7);
-    const m   = months.find(x => x.key === key);
+  // Real invoiced dollars per month (was: legacy orders × today's price).
+  _allPurplInvoices().forEach(x => {
+    if (['void','draft'].includes(x.status)) return;
+    const key = _invEventDate(x).slice(0, 7);
+    const m   = months.find(mm => mm.key === key);
     if (!m) return;
     m.orderCount++;
-    (o.items || []).forEach(i => { m.cases += (i.qty || 0); });
-    m.revenue += calcOrderValue(o);
+    m.cases   += _invCasesOf(x);
+    m.revenue += _invAmt(x);
   });
 
   // Best / Worst month by cases (exclude months with 0 cases)
@@ -10186,86 +10144,10 @@ function renderMomReport() {
   </tr>`).join('');
 }
 
-// ── SKU Performance ───────────────────────────────────────
-function renderSkuPerformanceReport() {
-  const el = qs('#rep-sku-perf-body');
-  if (!el) return;
-
-  const orders   = DB.a('orders').filter(o => o.status !== 'cancelled');
-  const accounts = DB.a('ac');
-
-  // Cases per SKU, plus top 3 accounts per SKU
-  const skuTotals = {}; // { skuId: { cases, acMap: { accountId: cases } } }
-  SKUS.forEach(sk => { skuTotals[sk.id] = { cases: 0, acMap: {} }; });
-
-  orders.forEach(o => {
-    (o.items || []).forEach(i => {
-      const entry = skuTotals[i.sku];
-      if (!entry) return;
-      entry.cases += (i.qty || 0);
-      entry.acMap[o.accountId] = (entry.acMap[o.accountId] || 0) + (i.qty || 0);
-    });
-  });
-
-  const totalCases = SKUS.reduce((s, sk) => s + skuTotals[sk.id].cases, 0);
-
-  if (!totalCases) {
-    el.innerHTML = '<div class="empty">No order data yet</div>';
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Cases Moved</th>
-            <th>% of Volume</th>
-            <th>Top 3 Accounts</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${SKUS.map(sk => {
-            const d    = skuTotals[sk.id];
-            const pct  = totalCases > 0 ? (d.cases / totalCases * 100).toFixed(1) : '0.0';
-            const top3 = Object.entries(d.acMap)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 3)
-              .map(([id, qty]) => {
-                const ac = accounts.find(a => a.id === id);
-                return `${escHtml(ac?.name || '(deleted)')} (${fmt(qty)})`;
-              })
-              .join(', ') || '—';
-
-            return `<tr>
-              <td>${skuBadge(sk.id)}</td>
-              <td>${fmt(d.cases)}</td>
-              <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;background:#f3f4f6;border-radius:4px;height:14px;min-width:80px">
-                    <div style="background:var(--purpl);height:100%;width:${pct}%;border-radius:4px;opacity:0.7"></div>
-                  </div>
-                  <span style="font-size:12px;min-width:36px">${pct}%</span>
-                </div>
-              </td>
-              <td style="font-size:12px;color:var(--muted)">${top3}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-
 function _repDateRange() {
   const from = qs('#rep-date-from')?.value || new Date(Date.now()-90*864e5).toISOString().slice(0,10);
   const to   = qs('#rep-date-to')?.value   || today();
   return {from, to};
-}
-
-function _repFilterOrders(orders) {
-  const {from, to} = _repDateRange();
-  return orders.filter(o=>o.status!=='cancelled'&&o.dueDate>=from&&o.dueDate<=to);
 }
 
 // ── Audit Log Page ───────────────────────────────────────
@@ -10330,6 +10212,7 @@ function _drawChart(type, labels, datasets, title) {
 }
 
 function renderReportContent() {
+  _reportData = null; // a tab that sets no table must not let CSV export the previous tab's rows
   if (qs('#rep-extra')) qs('#rep-extra').innerHTML = '';
   const handlers = {
     revenue:     repRevenue,
@@ -10337,10 +10220,7 @@ function renderReportContent() {
     sku_perf:    repSkuPerf,
     inventory:   repInventory,
     distributor: repDistributor,
-    profit:      repProfit,
-    win_loss:    repWinLoss,
     returns:     repReturns,
-    delivery:    repDelivery,
   };
   (handlers[_reportType]||repRevenue)();
 }
@@ -10353,12 +10233,13 @@ function repReturns() {
 
   const totalCans   = all.reduce((s,r)=>s+(r.cans||0), 0);
   const totalCredit = all.reduce((s,r)=>s+(r.creditIssued?r.creditAmount||0:0), 0);
-  _setKPIs(all.length, totalCans+' cans', fmtC(totalCredit), '—');
+  _setKPIs(all.length, totalCans+' cans', fmtC(totalCredit), '—', ['Returns','Cans Returned','Credit Issued','—']);
 
   const byAc = {};
   all.forEach(r=>{ byAc[r.accountName||'Unknown']=(byAc[r.accountName||'Unknown']||0)+(r.cans||0); });
   const acRows = Object.entries(byAc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>[escHtml(n), c+' cans']);
   _setTable(['Account','Cans Returned'], acRows, 'Returns by Account');
+  _reportData = {headers:['Account','Cans Returned'], rows: acRows};
 
   const byReason = {};
   all.forEach(r=>{ byReason[r.reason||'Other']=(byReason[r.reason||'Other']||0)+1; });
@@ -10382,176 +10263,127 @@ function repReturns() {
   }
 }
 
-// ── Delivery Cost Report ────────────────────────────────
-function repDelivery() {
-  const runs = DB.a('runs');
-  const totalMiles  = runs.reduce((s,r)=>s+(r.milesDriven||0), 0);
-  const totalFuel   = runs.reduce((s,r)=>s+(r.fuelCost||0), 0);
-  const totalCases  = runs.reduce((s,r)=>s+(r.totalCases||0), 0);
-  const avgCostCase = totalCases>0 ? '$'+(totalFuel/totalCases).toFixed(2) : '—';
-  _setKPIs(fmt(totalMiles)+' mi', fmtC(totalFuel), avgCostCase, runs.length+' runs');
-  const rows = runs.slice().sort((a,b)=>b.date>a.date?1:-1).map(r=>[
-    fmtD(r.date),
-    fmt(r.totalCases||0)+' cs',
-    fmt(r.milesDriven||0)+' mi',
-    r.fuelCost?fmtC(r.fuelCost):'—',
-    r.costPerCase?'$'+parseFloat(r.costPerCase).toFixed(2):'—',
-  ]);
-  _setTable(['Date','Cases','Miles','Fuel Cost','Cost/Case'], rows, 'Delivery Run History');
+// ── Shared: purpl invoices in the report date range ────────
+// The report engine used to read the legacy `orders` collection and price it
+// by today's account price — a parallel ESTIMATE ledger blind to every
+// direct-invoiced sale. All rebuilt tabs read real invoices: retail + legacy
+// iv (combined CHILDREN included — they carry the purpl line items; parents
+// live in combined_invoices and are structurally absent, so nothing double
+// counts), void/draft excluded.
+function _repPurplInvsInRange() {
+  const {from, to} = _repDateRange();
+  return _allPurplInvoices().filter(x => {
+    if (['void','draft'].includes(x.status)) return false;
+    const d = _invEventDate(x);
+    return d >= from && d <= to;
+  });
 }
-
-// ── Win/Loss Report ─────────────────────────────────────────
-function repWinLoss() {
-  const allPr = DB.a('pr');
-  const won   = allPr.filter(p=>p.status==='won');
-  const lost  = allPr.filter(p=>p.status==='lost');
-  const total = won.length + lost.length;
-  const winRatePct = total > 0 ? ((won.length/total)*100).toFixed(1) : '—';
-
-  _setKPIs(
-    won.length,
-    lost.length,
-    winRatePct + (winRatePct !== '—' ? '%' : ''),
-    total + ' evaluated'
-  );
-
-  const reasons = {};
-  lost.forEach(p=>{ const r = p.lostReason||'Unknown'; reasons[r]=(reasons[r]||0)+1; });
-  const sorted = Object.entries(reasons).sort((a,b)=>b[1]-a[1]);
-
-  const thead = qs('#rep-table-head');
-  const tbody = qs('#rep-table-body');
-  const tt = qs('#rep-table-title'); if (tt) tt.textContent = 'Loss Reasons';
-  if (thead) thead.innerHTML = '<tr><th>Reason</th><th>Count</th></tr>';
-  if (tbody) tbody.innerHTML = sorted.length
-    ? sorted.map(([r,c])=>`<tr><td>${escHtml(r)}</td><td>${c}</td></tr>`).join('')
-    : '<tr><td colspan="2" class="empty">No lost prospects yet</td></tr>';
-
-  const extraEl = qs('#rep-extra');
-  if (extraEl && won.length) {
-    extraEl.innerHTML = `<div class="card"><div style="font-weight:600;margin-bottom:8px">Converted Prospects (${won.length})</div><div style="font-size:13px;color:var(--muted)">${won.map(p=>escHtml(p.name)).join(', ')}</div></div>`;
-  }
-
-  if (sorted.length) {
-    _drawChart('bar',
-      sorted.map(([r])=>r),
-      [{label:'Count', data:sorted.map(([,c])=>c), backgroundColor:'rgba(220,38,38,0.7)', borderRadius:4}],
-      'Loss Reasons'
-    );
-  } else {
-    const ct = qs('#rep-chart-title'); if (ct) ct.textContent = 'Win/Loss';
-  }
+// Product cases on an invoice (pseudo-lines out); legacy invoices without
+// lineItems fall back to their stored total cases.
+function _invCasesOf(inv) {
+  const li = (inv.lineItems || []).filter(l => l.skuId !== '__shipping__' && l.skuId !== '__discount__' && l.skuId !== '__misc__');
+  if (li.length) return li.reduce((s, l) => s + (parseFloat(l.cases) || 0), 0);
+  return parseFloat(inv.cases) || 0;
 }
 
 // ── Revenue & Sales ────────────────────────────────────────
 function repRevenue() {
-  const orders = _repFilterOrders(DB.a('orders'));
-  const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || _margin();
-  const markup = 1 / Math.max(0.01, 1 - margin);
+  const invs  = _repPurplInvsInRange();
+  const costs = DB.obj('costs', {cogs:{}});
 
+  const totalRev   = invs.reduce((s,x)=>s+_invAmt(x),0);
+  const totalCases = invs.reduce((s,x)=>s+_invCasesOf(x),0);
+
+  // By month (chart) — real invoiced dollars
+  const byMonth = new Map();
+  invs.forEach(x => { const k = _invEventDate(x).slice(0,7); byMonth.set(k, (byMonth.get(k)||0) + _invAmt(x)); });
+  const mKeys = [...byMonth.keys()].sort();
+  _drawChart('bar',
+    mKeys,
+    [{label:'Invoiced', data:mKeys.map(k=>+(byMonth.get(k)||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
+    'Revenue by Month (invoiced)'
+  );
+
+  // By SKU from line items — flavor dollars; the "Other" row carries
+  // shipping/misc/discounts/legacy so the table reconciles to the KPI.
   const bySkuRev={}, bySkuCases={};
   SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
-  // H5: index accounts once (was DB.a('ac').find per order = O(orders×accounts)).
-  const acById = new Map(DB.a('ac').map(a=>[a.id,a]));
-  orders.forEach(o=>{
-    const ac2 = acById.get(o.accountId);
-    // MED-4: route through the canonical pricer so the pricePerCaseCustom
-    // fallback leg is included — inline versions omitted it, making reports
-    // disagree with invoices for custom-priced accounts.
-    const acPrc = _calcPricePerCase(ac2);
-    (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      const qty = parseFloat(i.qty)||0; // M8: guard NaN from malformed items
-      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * qty;
-      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + qty;
-    });
-  });
+  let skuRevSum = 0;
+  invs.forEach(x => (x.lineItems||[]).forEach(li => {
+    if (bySkuRev[li.skuId] === undefined) return;
+    const lt = parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0;
+    bySkuRev[li.skuId] += lt; skuRevSum += lt;
+    bySkuCases[li.skuId] += parseFloat(li.cases) || 0;
+  }));
+  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*((bySkuCases[sk.id]||0)*CANS_PER_CASE),0);
+  const skuGP = skuRevSum - totalCogs;
 
-  const totalRev   = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
-  const totalCases = Object.values(bySkuCases).reduce((a,b)=>a+b,0);
-  // COGS is per-can; total COGS = cans = cases × CANS_PER_CASE
-  const totalCogs  = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*((bySkuCases[sk.id]||0)*CANS_PER_CASE),0);
-  const totalGP    = totalRev - totalCogs;
-
-  _setKPIs(fmtC(totalRev), fmt(totalCases)+' cases', fmtC(totalGP), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
-
-  _drawChart('bar',
-    SKUS.map(s=>s.label),
-    [{label:'Revenue', data:SKUS.map(s=>+(bySkuRev[s.id]||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.75)', borderRadius:4}],
-    'Revenue by SKU'
-  );
+  _setKPIs(fmtC(totalRev), fmt(totalCases)+' cases', fmtC(skuGP), skuRevSum>0?fmt((skuGP/skuRevSum)*100,1)+'%':'—',
+    ['Invoiced Revenue','Cases','Gross Profit (product)','Product Margin']);
 
   const rows = SKUS.map(s=>{
     const rev=bySkuRev[s.id]||0, cases=bySkuCases[s.id]||0;
-    const cogs=(costs.cogs[s.id]||2.15)*cases*CANS_PER_CASE; // COGS in cans
+    const cogs=(costs.cogs[s.id]||2.15)*cases*CANS_PER_CASE;
     const gp=rev-cogs, margin=rev>0?gp/rev:0;
     return [s.label, fmt(cases)+' cs', fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
   });
-  _setTable(['SKU','Cases','Revenue','COGS','Gross Profit','Margin'], rows, 'Revenue by SKU');
+  const other = Math.round((totalRev - skuRevSum)*100)/100;
+  if (Math.abs(other) >= 0.01) rows.push(['Shipping · misc · discounts · legacy', '—', fmtC(other), '—', '—', '—']);
+  _setTable(['SKU','Cases','Revenue','COGS','Gross Profit','Margin'], rows, 'Revenue by SKU (invoiced)');
   _reportData = {headers:['SKU','Cases','Revenue','COGS','Gross Profit','Margin'], rows};
 }
 
 // ── Account Performance ────────────────────────────────────
 function repAccounts() {
-  const orders = _repFilterOrders(DB.a('orders'));
-  const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || _margin();
-  const markup = 1 / Math.max(0.01, 1 - margin);
-  const acMap  = {};
-  const acById = new Map(DB.a('ac').map(a=>[a.id,a])); // H5: index once
-  DB.a('ac').filter(a=>a.status==='active').forEach(a=>{ acMap[a.id]={name:a.name, rev:0, qty:0, orderCount:0}; });
-
-  orders.forEach(o=>{
-    if (!acMap[o.accountId]) return;
-    const ac2 = acById.get(o.accountId);
-    // MED-4: route through the canonical pricer so the pricePerCaseCustom
-    // fallback leg is included — inline versions omitted it, making reports
-    // disagree with invoices for custom-priced accounts.
-    const acPrc = _calcPricePerCase(ac2);
-    acMap[o.accountId].orderCount++;
-    (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      const qty = parseFloat(i.qty)||0; // M8: guard NaN
-      acMap[o.accountId].rev += pricePerCase * qty;
-      acMap[o.accountId].qty += qty; // cases
-    });
+  const invs = _repPurplInvsInRange();
+  const acLookup = Object.fromEntries(DB.a('ac').map(a=>[a.id, a.name]));
+  // Every invoice counts — the old version silently dropped sales from
+  // inactive/archived accounts, so the KPI total lied low.
+  const map = new Map();
+  invs.forEach(x=>{
+    const id = x.accountId || '—';
+    if (!map.has(id)) map.set(id, { name: x.accountName || acLookup[id] || '(inactive/deleted)', rev:0, cases:0, days:new Set() });
+    const e = map.get(id);
+    e.rev += _invAmt(x);
+    e.cases += _invCasesOf(x);
+    e.days.add(_invEventDate(x));
   });
-
-  const sorted = Object.values(acMap).sort((a,b)=>b.rev-a.rev);
+  const sorted = [...map.values()].map(e=>({name:e.name, rev:e.rev, cases:e.cases, orders:e.days.size})).sort((a,b)=>b.rev-a.rev);
   const totalRev = sorted.reduce((s,a)=>s+a.rev,0);
 
-  _setKPIs(fmtC(totalRev), sorted.filter(a=>a.orderCount>0).length+' accounts', fmt(sorted.reduce((s,a)=>s+a.qty,0))+' units', sorted.reduce((s,a)=>s+a.orderCount,0)+' orders');
+  _setKPIs(fmtC(totalRev), sorted.length+' accounts', fmt(sorted.reduce((s,a)=>s+a.cases,0))+' cases', sorted.reduce((s,a)=>s+a.orders,0)+' order days',
+    ['Invoiced Revenue','Accounts w/ Sales','Cases','Order Days']);
 
-  const colors=['#4B2082','#7B5CA7','#A78BD4','#D4BEF0','#EDE4F5','#805074818841'];
   _drawChart('doughnut',
     sorted.slice(0,8).map(a=>a.name),
     [{data:sorted.slice(0,8).map(a=>+a.rev.toFixed(2)), backgroundColor:sorted.slice(0,8).map((_,i)=>`hsl(${270+i*18},60%,${40+i*5}%)`)}],
-    'Revenue by Account'
+    'Revenue by Account (invoiced)'
   );
 
-  const rows = sorted.map(a=>[a.name, fmt(a.orderCount), fmt(a.qty), fmtC(a.rev), totalRev>0?fmt((a.rev/totalRev)*100,1)+'%':'—']);
-  _setTable(['Account','Orders','Units','Revenue','% of Total'], rows, 'Account Performance');
-  _reportData = {headers:['Account','Orders','Units','Revenue','% of Total'], rows};
+  const rows = sorted.map(a=>[a.name, fmt(a.orders), fmt(a.cases)+' cs', fmtC(a.rev), totalRev>0?fmt((a.rev/totalRev)*100,1)+'%':'—']);
+  _setTable(['Account','Order Days','Cases','Revenue','% of Total'], rows, 'Account Performance (invoiced)');
+  _reportData = {headers:['Account','Order Days','Cases','Revenue','% of Total'], rows};
 }
 
 // ── SKU Performance ────────────────────────────────────────
 function repSkuPerf() {
-  const orders = _repFilterOrders(DB.a('orders'));
+  const invs = _repPurplInvsInRange();
   const acLookup = Object.fromEntries(DB.a('ac').map(a => [a.id, a.name]));
+  const _skuIds = new Set(SKUS.map(s => s.id));
   const acMap = {}; // { accountId: { name, [sku]: cases, total } }
 
-  orders.forEach(o => {
-    if (!acMap[o.accountId]) {
-      acMap[o.accountId] = { name: acLookup[o.accountId] || 'Unknown' };
-      SKUS.forEach(sk => { acMap[o.accountId][sk.id] = 0; });
-      acMap[o.accountId].total = 0;
-    }
-    (o.items||[]).forEach(i => {
-      if (acMap[o.accountId][i.sku] !== undefined) {
-        acMap[o.accountId][i.sku] += i.qty;
-        acMap[o.accountId].total += i.qty;
+  invs.forEach(x => {
+    (x.lineItems||[]).forEach(li => {
+      if (!_skuIds.has(li.skuId)) return; // pseudo-lines + LF out
+      const id = x.accountId || '—';
+      if (!acMap[id]) {
+        acMap[id] = { name: x.accountName || acLookup[id] || '(inactive/deleted)' };
+        SKUS.forEach(sk => { acMap[id][sk.id] = 0; });
+        acMap[id].total = 0;
       }
+      const cs = parseFloat(li.cases) || 0;
+      acMap[id][li.skuId] += cs;
+      acMap[id].total += cs;
     });
   });
 
@@ -10567,7 +10399,8 @@ function repSkuPerf() {
     fmt(totalAllCases) + ' cases',
     bestSku.label + ' (' + fmt(skuTotals[bestSku.id]||0) + ' cs)',
     topAc ? topAc.name : '—',
-    rows.length + ' accounts'
+    rows.length + ' accounts',
+    ['Total Cases','Top Flavor','Top Account','Accounts']
   );
 
   _drawChart('bar',
@@ -10608,7 +10441,7 @@ function repInventory() {
   const totalOH = SKUS.reduce((s,sk)=> s + _onHand(sk.id, null), 0);
   const totalVal= SKUS.reduce((s,sk)=> s + _onHand(sk.id, null) * (costs.cogs[sk.id]||2.15), 0);
 
-  _setKPIs(fmt(totalOH)+' units', fmtC(totalVal), rows.filter(r=>r[5]==='Low').length+' low', rows.filter(r=>r[5]==='Critical').length+' critical');
+  _setKPIs(fmt(totalOH)+' cans', fmtC(totalVal), rows.filter(r=>r[5]==='Low').length+' low', rows.filter(r=>r[5]==='Critical').length+' critical', ['On Hand (cans)','Stock Value','Low SKUs','Critical SKUs']);
 
   _drawChart('bar',
     SKUS.map(s=>s.label),
@@ -10642,7 +10475,7 @@ function repDistributor() {
   const totalPOs = rows.reduce((s,r)=>s+parseInt(r[2])||0,0);
   const totalOut = allInv.filter(i=>!['paid','draft','void'].includes(i.status)).reduce((s,i)=>s+(i.total||0),0);
 
-  _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.totalValue||0),0)), fmtC(totalOut)+' outstanding');
+  _setKPIs(dists.filter(d=>d.status==='active').length+' active', totalPOs+' POs', fmtC(allPOs.reduce((s,p)=>s+(p.totalValue||0),0)), fmtC(totalOut), ['Distributors','POs (range)','PO Value (all time)','Outstanding']);
 
   _drawChart('bar',
     dists.map(d=>d.name),
@@ -10711,64 +10544,20 @@ function repDistributor() {
     </div>`;
 }
 
-// ── Gross Profit ───────────────────────────────────────────
-function repProfit() {
-  const orders = _repFilterOrders(DB.a('orders'));
-  const costs  = DB.obj('costs', {cogs:{}});
-  const margin = costs.target_margin || _margin();
-  const markup = 1 / Math.max(0.01, 1 - margin);
-
-  const bySkuRev={}, bySkuCases={};
-  SKUS.forEach(s=>{bySkuRev[s.id]=0;bySkuCases[s.id]=0;});
-  const acById = new Map(DB.a('ac').map(a=>[a.id,a])); // H5: index once
-  orders.forEach(o=>{
-    const ac2 = acById.get(o.accountId);
-    // MED-4: route through the canonical pricer so the pricePerCaseCustom
-    // fallback leg is included — inline versions omitted it, making reports
-    // disagree with invoices for custom-priced accounts.
-    const acPrc = _calcPricePerCase(ac2);
-    (o.items||[]).forEach(i=>{
-      const pricePerCase = acPrc || PURPL_DIRECT_PER_CASE;
-      const qty = parseFloat(i.qty)||0; // M8: guard NaN
-      bySkuRev[i.sku]   = (bySkuRev[i.sku]||0)   + pricePerCase * qty;
-      bySkuCases[i.sku] = (bySkuCases[i.sku]||0) + qty;
-    });
-  });
-
-  const rows = SKUS.map(s=>{
-    const rev=bySkuRev[s.id]||0, cases=bySkuCases[s.id]||0;
-    // COGS per can × cans = COGS per case × cases
-    const cogs=(costs.cogs[s.id]||2.15)*cases*CANS_PER_CASE;
-    const gp=rev-cogs, margin=rev>0?gp/rev:0;
-    return [s.label, fmt(cases)+' cs', fmtC(rev), fmtC(cogs), fmtC(gp), fmt(margin*100,1)+'%'];
-  });
-
-  const totalRev  = Object.values(bySkuRev).reduce((a,b)=>a+b,0);
-  const totalCogs = SKUS.reduce((s,sk)=>s+(costs.cogs[sk.id]||2.15)*((bySkuCases[sk.id]||0)*CANS_PER_CASE),0);
-  const totalGP   = totalRev-totalCogs;
-  const overhead  = costs.overhead_monthly||1200;
-
-  _setKPIs(fmtC(totalRev), fmtC(totalGP), fmtC(totalGP-overhead), totalRev>0?fmt((totalGP/totalRev)*100,1)+'%':'—');
-
-  _drawChart('bar',
-    SKUS.map(s=>s.label),
-    [
-      {label:'Revenue', data:SKUS.map(s=>+(bySkuRev[s.id]||0).toFixed(2)), backgroundColor:'rgba(75,32,130,0.5)', borderRadius:4},
-      {label:'Gross Profit', data:SKUS.map(s=>{ const qty=bySkuCases[s.id]||0; return +((bySkuRev[s.id]||0)-(costs.cogs[s.id]||2.15)*qty*CANS_PER_CASE).toFixed(2); }), backgroundColor:'rgba(0,180,100,0.7)', borderRadius:4},
-    ],
-    'Revenue vs Gross Profit by SKU'
-  );
-
-  _setTable(['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows, 'Gross Profit by SKU');
-  _reportData = {headers:['SKU','Units','Revenue','COGS','Gross Profit','Margin'], rows};
-}
-
 // ── Helpers ────────────────────────────────────────────────
-function _setKPIs(rev, qty, gp, margin) {
-  if(qs('#rep-total-rev')) qs('#rep-total-rev').textContent = rev;
-  if(qs('#rep-total-qty')) qs('#rep-total-qty').textContent = qty;
-  if(qs('#rep-total-gp'))  qs('#rep-total-gp').textContent  = gp;
-  if(qs('#rep-margin'))    qs('#rep-margin').textContent    = margin;
+function _setKPIs(rev, qty, gp, margin, labels) {
+  // labels: optional [4] — the static "Total Revenue / Units Sold / ..." captions
+  // lied on every non-revenue tab (Returns showed a count under "Total Revenue").
+  const put = (id, val, lbl) => {
+    const el = qs(id);
+    if (!el) return;
+    el.textContent = val;
+    if (lbl) { const l = el.parentElement?.querySelector('.label'); if (l) l.textContent = lbl; }
+  };
+  put('#rep-total-rev', rev,    labels?.[0]);
+  put('#rep-total-qty', qty,    labels?.[1]);
+  put('#rep-total-gp',  gp,     labels?.[2]);
+  put('#rep-margin',    margin, labels?.[3]);
 }
 
 function _setTable(headers, rows, title) {
@@ -10783,7 +10572,7 @@ function _setTable(headers, rows, title) {
 
 // ── Export CSV ─────────────────────────────────────────────
 function exportReportCSV() {
-  if (!_reportData) return;
+  if (!_reportData) { toast('This report has no exportable table'); return; }
   const {from, to} = _repDateRange();
   const lines = [_reportData.headers.join(','), ..._reportData.rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(','))];
   const blob  = new Blob([lines.join('\n')], {type:'text/csv'});
@@ -10872,7 +10661,7 @@ function renderSavedReports() {
   }
   el.innerHTML = saved.map(r=>`
     <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-purple-soft);border-radius:6px;padding:6px 10px;font-size:13px">
-      <span style="cursor:pointer" onclick="loadSavedReport('${r.id}')"><strong>${r.name}</strong> <span style="color:var(--muted)">${r.type} · ${r.from} to ${r.to}</span></span>
+      <span style="cursor:pointer" onclick="loadSavedReport('${r.id}')"><strong>${escHtml(r.name)}</strong> <span style="color:var(--muted)">${escHtml(r.type)} · ${escHtml(r.from)} to ${escHtml(r.to)}</span></span>
       <span style="cursor:pointer;color:var(--muted);margin-left:4px" onclick="deleteSavedReport('${r.id}')">✕</span>
     </div>`).join('');
 }
@@ -10883,9 +10672,12 @@ function loadSavedReport(id) {
   const fromEl = qs('#rep-date-from'), toEl = qs('#rep-date-to');
   if (fromEl) fromEl.value = r.from;
   if (toEl)   toEl.value   = r.to;
-  _reportType = r.type;
+  // Bookmarks saved for retired tabs (profit/win_loss/delivery) fall back to
+  // Revenue — otherwise the CSV filename claims a tab that no longer exists.
+  const _validTypes = ['revenue','accounts','sku_perf','inventory','distributor','returns'];
+  _reportType = _validTypes.includes(r.type) ? r.type : 'revenue';
   const tabs = qs('#rep-type-tabs');
-  tabs?.querySelectorAll('.tab').forEach(t=>{ t.classList.toggle('active', t.dataset.rep===r.type); });
+  tabs?.querySelectorAll('.tab').forEach(t=>{ t.classList.toggle('active', t.dataset.rep===_reportType); });
   renderReportContent();
 }
 
@@ -10917,9 +10709,12 @@ function renderLfReports() {
   // void + draft are not receivables — they inflated Outstanding
   const outstanding = invs.filter(i => !['paid','void','draft'].includes(i.status || 'draft'));
 
-  // KPIs
-  const totalRev = paid.reduce((s,i)=>s+(i.total||0),0);
-  const totalUnits = paid.reduce((s,i)=>s+(i.lineItems||[]).reduce((ss,l)=>ss+(l.cases||0),0),0);
+  // KPIs — Revenue = everything billed in the period (non-void/draft);
+  // Collected = the paid slice of it. The two used to be the SAME expression,
+  // so "Invoices Collected" never said anything "Total LF Revenue" didn't.
+  const billed = invs.filter(i => !['void','draft'].includes(i.status || 'draft'));
+  const totalRev = billed.reduce((s,i)=>s+(i.total||0),0);
+  const totalUnits = billed.reduce((s,i)=>s+(i.lineItems||[]).filter(l=>!['__shipping__','__discount__','__misc__'].includes(l.skuId)).reduce((ss,l)=>ss+(l.cases||0),0),0);
   const collected = paid.reduce((s,i)=>s+(i.total||0),0);
   const outstandingAmt = outstanding.reduce((s,i)=>s+(i.total||0),0);
   if (qs('#lf-rep-revenue'))     qs('#lf-rep-revenue').textContent     = fmtC(totalRev);
@@ -10927,10 +10722,11 @@ function renderLfReports() {
   if (qs('#lf-rep-collected'))   qs('#lf-rep-collected').textContent   = fmtC(collected);
   if (qs('#lf-rep-outstanding')) qs('#lf-rep-outstanding').textContent = fmtC(outstandingAmt);
 
-  // Revenue by SKU (from paid invoices)
+  // Revenue by SKU (from paid invoices; pseudo-lines are money, not flavors)
   const skuMap = {};
   paid.forEach(inv=>{
     (inv.lineItems||[]).forEach(l=>{
+      if (['__shipping__','__discount__','__misc__'].includes(l.skuId)) return;
       const key = l.skuName;
       if (!skuMap[key]) skuMap[key] = {cases:0, rev:0, variants:{}};
       if (l.hasVariants && l.variantLines?.length) {
