@@ -10237,7 +10237,7 @@ function repReturns() {
 
   const byAc = {};
   all.forEach(r=>{ byAc[r.accountName||'Unknown']=(byAc[r.accountName||'Unknown']||0)+(r.cans||0); });
-  const acRows = Object.entries(byAc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>[escHtml(n), c+' cans']);
+  const acRows = Object.entries(byAc).sort((a,b)=>b[1]-a[1]).map(([n,c])=>[n, c+' cans']); // raw — _setTable escapes
   _setTable(['Account','Cans Returned'], acRows, 'Returns by Account');
   _reportData = {headers:['Account','Cans Returned'], rows: acRows};
 
@@ -10564,9 +10564,12 @@ function _setTable(headers, rows, title) {
   const tt = qs('#rep-table-title');
   if (tt) tt.textContent = title;
   const th = qs('#rep-table-head');
-  if (th) th.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  if (th) th.innerHTML = '<tr>'+headers.map(h=>`<th>${escHtml(h)}</th>`).join('')+'</tr>';
   const tb = qs('#rep-table-body');
-  if (tb) tb.innerHTML = rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('') ||
+  // escHtml EVERY cell — account names in these rows come from invoice
+  // accountName snapshots, and callers must pass raw text (never pre-escape,
+  // or CSV export ships HTML entities).
+  if (tb) tb.innerHTML = rows.map(r=>`<tr>${r.map(c=>`<td>${escHtml(c)}</td>`).join('')}</tr>`).join('') ||
     `<tr><td colspan="${headers.length}" class="empty">No data in selected range</td></tr>`;
 }
 
