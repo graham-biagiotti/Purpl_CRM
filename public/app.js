@@ -13127,7 +13127,7 @@ async function saveNewCombinedInvoice() {
       const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
       // Parent-level discount survives an items edit, re-clamped so the new,
       // possibly smaller order can never go negative.
-      const _disc = Math.min(_combDiscOf(p), pTotal + lTotal + editShip);
+      const _disc = Math.min(_combDiscOf(p), Math.max(0, pTotal + lTotal + editShip)); // base floored: a child whose own discount lines exceed products must not store a negative parent discount
       cache.combined_invoices[ci] = {
         ...p, ...shared,
         purplSubtotal: pTotal, lfSubtotal: lTotal,
