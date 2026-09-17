@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v226';
+const APP_VERSION = 'v227';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -10614,11 +10614,14 @@ function exportYearEnd() {
     const acName = x.accountName || acLookup[x.accountId] || '—';
     rows.push([pd, x.number, 'purpl', acName, parseFloat(x.purplSubtotal||0).toFixed(2), 'Combined - purpl']);
     rows.push([pd, x.number, 'LF',    acName, parseFloat(x.lfSubtotal||0).toFixed(2),    'Combined - LF']);
-    // grandTotal = purplSub + lfSub + shipping — without this row the export
-    // ran short of what the customer actually paid by every combined
-    // shipping charge.
-    const _ship = Math.round(((parseFloat(x.grandTotal)||0) - (parseFloat(x.purplSubtotal)||0) - (parseFloat(x.lfSubtotal)||0)) * 100) / 100;
+    // grandTotal = purplSub + lfSub + shipping − discount. Shipping is derived
+    // by adding the discount BACK first (otherwise a discount masquerades as
+    // reduced shipping), and the discount gets its own negative row so the
+    // invoice's rows still sum to what the customer actually paid.
+    const _disc = _combDiscOf(x);
+    const _ship = Math.round(((parseFloat(x.grandTotal)||0) - (parseFloat(x.purplSubtotal)||0) - (parseFloat(x.lfSubtotal)||0) + _disc) * 100) / 100;
     if (_ship > 0.004) rows.push([pd, x.number, '—', acName, _ship.toFixed(2), 'Combined - shipping']);
+    if (_disc > 0.004) rows.push([pd, x.number, '—', acName, (-_disc).toFixed(2), 'Combined - discount']);
   });
 
   // DM-1 FIX: distributor invoices were missing from tax export
@@ -12572,8 +12575,13 @@ function _syncCombinedParentForChild(childId) {
     if (newPSub != null && newLSub != null) {
       // Shipping lives only on the parent's grandTotal (webhook adds it there,
       // child subtotals unchanged) — preserve that delta through the recompute.
-      const extra = Math.max(0, (parseFloat(cur.grandTotal) || 0) - ((parseFloat(cur.purplSubtotal) || 0) + (parseFloat(cur.lfSubtotal) || 0)));
-      cur = { ...cur, purplSubtotal: newPSub, lfSubtotal: newLSub, grandTotal: newPSub + newLSub + extra };
+      // The stored discount is added BACK before deriving the shipping delta
+      // (grand = subs + ship − disc), then re-subtracted — without this, the
+      // max(0,…) floor silently ate the discount on every child edit.
+      const _disc = _combDiscOf(cur);
+      const extra = Math.max(0, (parseFloat(cur.grandTotal) || 0) - ((parseFloat(cur.purplSubtotal) || 0) + (parseFloat(cur.lfSubtotal) || 0)) + _disc);
+      const _eff = Math.min(_disc, newPSub + newLSub + extra); // never a negative total
+      cur = { ...cur, purplSubtotal: newPSub, lfSubtotal: newLSub, combinedDiscount: _eff, grandTotal: Math.round((newPSub + newLSub + extra - _eff) * 100) / 100 };
       cache.combined_invoices[ci] = cur;
     }
     if (bothPaid && cur.status !== 'paid') {
@@ -12831,7 +12839,11 @@ function editCombinedInvoice(combinedId) {
   // still can't be placed ABORTS the edit — saving would silently drop it.
   _ncivRenderSkuRows();
   const unmatched = [];
-  (purplChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__' && (l.cases||l.qty)).forEach(l => {
+  // Pseudo-lines (__shipping__/__misc__/__discount__) have no SKU row to land
+  // in — they used to fall into `unmatched` and ABORT the edit for any child
+  // carrying a misc item. They're skipped here and CARRIED through the save.
+  const _pseudo = ['__shipping__', '__misc__', '__discount__'];
+  (purplChild?.lineItems||[]).filter(l=>!_pseudo.includes(l.skuId) && (l.cases||l.qty)).forEach(l => {
     const cEl = document.querySelector(`.nciv-p-cases[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
     const pEl = document.querySelector(`.nciv-p-ppc[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
     if (!cEl) { unmatched.push(l.sku || l.skuName || l.skuId || 'purpl item'); return; }
@@ -12846,7 +12858,7 @@ function editCombinedInvoice(combinedId) {
     const byName = key && lfSkusAll.find(s => (s.name||'').trim().toLowerCase() === key);
     return byName ? document.querySelector(`#nciv-lf-skus .nciv-lf-row[data-sku="${CSS.escape(byName.id)}"]`) : null;
   };
-  (lfChild?.lineItems||[]).filter(l=>l.skuId!=='__shipping__' && (l.cases||l.qty||l.units)).forEach(l => {
+  (lfChild?.lineItems||[]).filter(l=>!_pseudo.includes(l.skuId) && (l.cases||l.qty||l.units)).forEach(l => {
     const rowEl = _lfRowFor(l);
     if (!rowEl) { unmatched.push(l.skuName || l.skuId || 'LF item'); return; }
     const pEl = rowEl.querySelector('.nciv-lf-ppc');
@@ -13099,14 +13111,28 @@ async function saveNewCombinedInvoice() {
         pi >= 0 ? cache[pcCol][pi].status : 'draft',
         li >= 0 ? cache.lf_invoices[li].status : 'draft'].map(s => s || 'draft');
       if (stNow.some(s => s !== 'draft')) { abortReason = 'the invoice is no longer a draft (status changed while editing)'; return; }
-      if (pi >= 0) cache[pcCol][pi] = { ...cache[pcCol][pi], ...shared, lineItems: purplLines, total: purplSub, amount: purplSub };
-      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: lfLines, total: lfSub };
+      // CARRY each child's misc/discount pseudo-lines: the SKU-row editor
+      // rebuilds product lines only, and replacing lineItems wholesale used
+      // to silently drop a child's misc item. Their dollars stay inside the
+      // child total (that's where they've always lived).
+      const _lv = l => parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0;
+      const _extrasOf = (c) => ((c && c.lineItems) || []).filter(l => l.skuId === '__misc__' || l.skuId === '__discount__');
+      const pExtras = pi >= 0 ? _extrasOf(cache[pcCol][pi]) : [];
+      const lExtras = li >= 0 ? _extrasOf(cache.lf_invoices[li]) : [];
+      const pTotal = Math.round((purplSub + pExtras.reduce((s,l)=>s+_lv(l),0)) * 100) / 100;
+      const lTotal = Math.round((lfSub    + lExtras.reduce((s,l)=>s+_lv(l),0)) * 100) / 100;
+      if (pi >= 0) cache[pcCol][pi] = { ...cache[pcCol][pi], ...shared, lineItems: [...purplLines, ...pExtras], total: pTotal, amount: pTotal };
+      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: [...lfLines, ...lExtras], total: lTotal };
       const p = cache.combined_invoices[ci];
       const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
+      // Parent-level discount survives an items edit, re-clamped so the new,
+      // possibly smaller order can never go negative.
+      const _disc = Math.min(_combDiscOf(p), pTotal + lTotal + editShip);
       cache.combined_invoices[ci] = {
         ...p, ...shared,
-        purplSubtotal: purplSub, lfSubtotal: lfSub,
-        grandTotal: Math.round((purplSub + lfSub + editShip) * 100) / 100,
+        purplSubtotal: pTotal, lfSubtotal: lTotal,
+        combinedDiscount: _disc,
+        grandTotal: Math.round((pTotal + lTotal + editShip - _disc) * 100) / 100,
         shippingByOrder: editShip > 0 ? { manual: editShip } : {},
         lineItems: editShip > 0 ? [...rest, { skuId:'__shipping__', skuName:'Shipping', description:'Shipping', qty:1, cases:0, unitPrice:editShip, lineTotal:editShip, total:editShip }] : rest,
       };
@@ -13303,15 +13329,40 @@ function _readMiscRows(prefix) {
     .map(x => ({ skuId: '__misc__', skuName: x.desc, description: x.desc, qty: 1, cases: 0, unitPrice: x.amt, lineTotal: x.amt, total: x.amt }));
 }
 
-function _normShippingLines(inv) {
+// The parent-level combined discount, clamped to ≥ 0 (missing field = no discount).
+function _combDiscOf(rec) { return Math.max(0, parseFloat(rec?.combinedDiscount) || 0); }
+
+function _normShippingLines(inv, kinds) {
   // Extras block under the product sections: shipping, discount AND misc
   // lines (discounts store a NEGATIVE total and render as "−$X").
-  return (inv.lineItems || []).filter(li => li.skuId === '__shipping__' || li.skuId === '__discount__' || li.skuId === '__misc__').map(li => ({
+  // `kinds` narrows which pseudo-lines to emit — combined docs pull only a
+  // child's __shipping__ here, because its misc/discount dollars are inside
+  // the displayed brand subtotal and render inline in that section instead
+  // (they used to show in BOTH places, so the rows didn't sum to the total).
+  const want = kinds || ['__shipping__', '__discount__', '__misc__'];
+  return (inv.lineItems || []).filter(li => want.includes(li.skuId)).map(li => ({
     name: li.description || li.skuName || (li.skuId === '__discount__' ? 'Discount' : (li.skuId === '__misc__' ? 'Misc item' : 'Shipping')),
     sub: li.carrier ? 'via ' + li.carrier : '',
     qty: '', price: '',
     total: parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : li.pricePerCase)) || 0,
   }));
+}
+
+// A combined child's misc/discount lines rendered INSIDE its brand section —
+// their dollars are part of that child's total (= the displayed subtotal), so
+// this is the only placement where the section's rows sum to its subtotal.
+function _childExtrasInline(inv) {
+  return ((inv && inv.lineItems) || []).filter(li => li.skuId === '__misc__' || li.skuId === '__discount__').map(li => ({
+    name: li.description || li.skuName || (li.skuId === '__discount__' ? 'Discount' : 'Misc item'),
+    sub: '', qty: '—', price: '',
+    total: parseFloat(li.lineTotal != null ? li.lineTotal : li.total) || 0,
+  }));
+}
+
+// The parent-level combined discount as a document line (empty when none).
+function _combDiscLine(rec) {
+  const d = _combDiscOf(rec);
+  return d > 0 ? [{ name: 'Discount', sub: '', qty: '', price: '', total: -d }] : [];
 }
 
 function _normPurplLines(inv) {
@@ -13375,7 +13426,7 @@ function buildInvoiceDocHTML(o) {
     <td style="${cell}">${escHtml(r.name)}${r.sub ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${escHtml(r.sub)}</div>` : ''}</td>
     <td style="${cell};text-align:right;white-space:nowrap">${escHtml(String(r.qty))}</td>
     <td style="${cell};text-align:right;white-space:nowrap">${escHtml(r.price)}</td>
-    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap">$${(r.total || 0).toFixed(2)}</td>
+    <td style="${cell};text-align:right;font-weight:600;white-space:nowrap">${(r.total || 0) < 0 ? '−$' + Math.abs(r.total).toFixed(2) : '$' + (r.total || 0).toFixed(2)}</td>
   </tr>`;
 
   const sectionLabel = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1a1a2e';
@@ -13541,9 +13592,9 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     terms: _invTermsLabel(rec),
     deliveryDate: rec.deliveryDate || purplInv.deliveryDate || lfInv.deliveryDate || '',
     tracking: rec.trackingNumber || purplInv.trackingNumber || lfInv.trackingNumber || '',
-    purplLines: _normPurplLines(purplInv),
-    lfLines: _normLfLines(lfInv),
-    shippingLines: [..._normShippingLines(rec), ..._normShippingLines(purplInv), ..._normShippingLines(lfInv)],
+    purplLines: [..._normPurplLines(purplInv), ..._childExtrasInline(purplInv)],
+    lfLines: [..._normLfLines(lfInv), ..._childExtrasInline(lfInv)],
+    shippingLines: [..._normShippingLines(rec), ..._normShippingLines(purplInv, ['__shipping__']), ..._normShippingLines(lfInv, ['__shipping__']), ..._combDiscLine(rec)],
     purplSubtotal: rec.purplSubtotal,
     lfSubtotal: rec.lfSubtotal,
     grandTotal: rec.grandTotal,
@@ -13670,12 +13721,13 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     terms: inv.paymentTerms ? _invTermsLabel(inv) : 'Net ' + (s.terms || 30),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
-    purplLines: purplChild ? _normPurplLines(purplChild) : [],
-    lfLines:    lfChild ? _normLfLines(lfChild) : [],
+    purplLines: purplChild ? [..._normPurplLines(purplChild), ..._childExtrasInline(purplChild)] : [],
+    lfLines:    lfChild ? [..._normLfLines(lfChild), ..._childExtrasInline(lfChild)] : [],
     shippingLines: [
       ..._normShippingLines(inv),
-      ...(purplChild ? _normShippingLines(purplChild) : []),
-      ...(lfChild ? _normShippingLines(lfChild) : []),
+      ...(purplChild ? _normShippingLines(purplChild, ['__shipping__']) : []),
+      ...(lfChild ? _normShippingLines(lfChild, ['__shipping__']) : []),
+      ..._combDiscLine(inv),
     ],
     grandTotal: inv.grandTotal != null ? inv.grandTotal : ((purplChild?.total || 0) + (lfChild?.total || 0)),
     notes: inv.notes || '',
@@ -13988,9 +14040,14 @@ async function openCombinedInvoicePreview(combinedId) {
   const _ds = qs('#civ-edit-delivery'); if (_ds?.parentElement) _ds.parentElement.style.display = '';
   const _fs = qs('#civ-edit-fulfillment'); if (_fs?.parentElement) _fs.parentElement.style.display = '';
   const _tr = qs('#civ-edit-terms'); if (_tr?.parentElement) _tr.parentElement.style.display = '';
-  // Single-brand-only feature: hide the discount field on combined previews
-  // (the combined grandTotal recompute sites don't know about discounts yet).
-  const _dr = qs('#civ-edit-discount'); if (_dr?.parentElement) _dr.parentElement.style.display = 'none';
+  // Combined discount: parent-level field, prefilled from the stored value.
+  // Every recompute site (sync, items editor, ShipStation webhook, year-end
+  // export) is discount-aware now, so the field is live for combined too.
+  const _dr = qs('#civ-edit-discount');
+  if (_dr?.parentElement) {
+    _dr.parentElement.style.display = '';
+    _dr.value = _combDiscOf(rec) || '';
+  }
   // Older combined invoices were created without a number — backfill one,
   // since Stripe link generation requires it.
   if (!rec.number && !rec.invoiceNumber) {
@@ -14112,6 +14169,7 @@ async function openCombinedInvoicePreview(combinedId) {
     const newFulfillment = qs('#civ-edit-fulfillment')?.value || 'warehouse';
     const patch = { date: newDate, dueDate: newDue, paymentTerms: newTerms, notes: newNotes, deliveryMethod: newDelivery, fulfillmentSource: newFulfillment };
     const shipRaw = qs('#civ-edit-shipping')?.value ?? '';
+    const discRaw = qs('#civ-edit-discount')?.value ?? '';
     const _lineVal = li => parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases)||0) * (parseFloat(li.pricePerCase)||0))))) || 0;
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
@@ -14124,8 +14182,9 @@ async function openCombinedInvoicePreview(combinedId) {
       // (webhook matches by invoice number and can hit a child). A typed value
       // (incl. 0) becomes ONE canonical line on the parent: child __shipping__
       // lines are removed, child totals recomputed from their product lines,
-      // subtotals refreshed, grandTotal = products + shipping. Blank = leave
-      // everything exactly as it is.
+      // subtotals refreshed, grandTotal = products + shipping − discount.
+      // Blank = leave shipping exactly as it is.
+      const _shipOfC = r => ((r && r.lineItems) || []).filter(l=>l.skuId==='__shipping__').reduce((s,l)=>s+_lineVal(l),0);
       if (ci >= 0 && shipRaw !== '') {
         const shipVal = Math.max(0, parseFloat(shipRaw) || 0);
         let purplSub = null, lfSub = null;
@@ -14145,6 +14204,10 @@ async function openCombinedInvoicePreview(combinedId) {
         const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
         const finalPurpl = purplSub != null ? purplSub : (parseFloat(p.purplSubtotal)||0);
         const finalLf    = lfSub    != null ? lfSub    : (parseFloat(p.lfSubtotal)||0);
+        // Discount: typed value (incl. 0) wins; blank keeps the stored one.
+        // Clamped so the total can never go below zero.
+        const _typedDisc = discRaw !== '' ? Math.max(0, parseFloat(discRaw) || 0) : _combDiscOf(p);
+        const _disc = Math.min(_typedDisc, finalPurpl + finalLf + shipVal);
         cache.combined_invoices[ci] = {
           ...p,
           shippingByOrder: shipVal > 0 ? { manual: shipVal } : {},
@@ -14153,7 +14216,24 @@ async function openCombinedInvoicePreview(combinedId) {
             : rest,
           purplSubtotal: finalPurpl,
           lfSubtotal: finalLf,
-          grandTotal: Math.round((finalPurpl + finalLf + shipVal) * 100) / 100,
+          combinedDiscount: _disc,
+          grandTotal: Math.round((finalPurpl + finalLf + shipVal - _disc) * 100) / 100,
+        };
+      } else if (ci >= 0 && discRaw !== '') {
+        // Discount typed with shipping left blank: touch NOTHING about where
+        // shipping lives — read the true family shipping (parent + children)
+        // and recompute the parent total around the new discount only.
+        const p = cache.combined_invoices[ci];
+        const familyShip = Math.round((_shipOfC(p)
+          + (ri >= 0 ? _shipOfC(cache.retail_invoices[ri]) : 0)
+          + (li >= 0 ? _shipOfC(cache.lf_invoices[li]) : 0)) * 100) / 100;
+        const pSub = parseFloat(p.purplSubtotal) || 0;
+        const lSub = parseFloat(p.lfSubtotal) || 0;
+        const _disc = Math.min(Math.max(0, parseFloat(discRaw) || 0), pSub + lSub + familyShip);
+        cache.combined_invoices[ci] = {
+          ...p,
+          combinedDiscount: _disc,
+          grandTotal: Math.round((pSub + lSub + familyShip - _disc) * 100) / 100,
         };
       }
     });

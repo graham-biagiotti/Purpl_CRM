@@ -2045,13 +2045,18 @@ exports.shipStationWebhook = onRequest(
                   const lfSub = subOf(lc) != null ? subOf(lc) : (parseFloat(p.lfSubtotal) || 0);
                   const parentNonShip = (p.lineItems || []).filter(li => li.skuId !== '__shipping__');
 
+                  // Parent-level discount (client-managed) survives the
+                  // shipping recompute; clamped so a big discount on a
+                  // now-smaller order can never push the total negative.
+                  const combDisc = Math.min(Math.max(0, parseFloat(p.combinedDiscount) || 0), purplSub + lfSub + familyShip);
                   // Parent (the money) writes FIRST; child strips after - a
                   // failure between them leaves shipping counted, never lost.
                   await parentRef.update({
                     shippingByOrder: map,
                     purplSubtotal: purplSub,
                     lfSubtotal: lfSub,
-                    grandTotal: r2(purplSub + lfSub + familyShip),
+                    ...(combDisc !== (parseFloat(p.combinedDiscount) || 0) ? { combinedDiscount: combDisc } : {}),
+                    grandTotal: r2(purplSub + lfSub + familyShip - combDisc),
                     lineItems: familyShip > 0
                       ? [...parentNonShip, { skuId: '__shipping__', skuName: 'Shipping', sku: 'Shipping', description: carrierStr ? ('Shipping via ' + carrierStr) : 'Shipping', cases: 1, qty: 1, units: 1, pricePerCase: familyShip, unitPrice: familyShip, lineTotal: familyShip, total: familyShip }]
                       : parentNonShip,
