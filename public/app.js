@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v227';
+const APP_VERSION = 'v228';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13158,8 +13158,12 @@ async function saveNewCombinedInvoice() {
   // genuinely typed number is honored verbatim.
   const _typedComb = (userNum && userNum !== qs('#nciv-number')?.dataset?.prefill) ? userNum : null;
   const combNum  = _typedComb || await getNextInvoiceNumber('combined');
-  const purplNum = await getNextInvoiceNumber('purpl');
-  const lfNum    = await getNextInvoiceNumber('lf');
+  // Children ride the parent's number as sub-numbers (-P / -L) instead of
+  // pulling their own from the shared sequence. A combined invoice used to
+  // consume THREE numbers — parent plus two hidden children — which read as
+  // "skipped 3" in the visible invoice list. One combined order = one number.
+  const purplNum = combNum + '-P';
+  const lfNum    = combNum + '-L';
   const purplId  = uid();
   const lfId     = uid();
   const combId   = uid();
@@ -14074,9 +14078,10 @@ async function openCombinedInvoicePreview(combinedId) {
     if (trackEntry.clicked) statusHtml += ` <span class="badge blue" style="margin-left:4px;font-size:10px" title="Clicked ${fmtD(trackEntry.clickedAt)}">🔗 Clicked</span>`;
     if (!trackEntry.opened && !trackEntry.clicked && rec.status === 'sent') statusHtml += ` <span style="margin-left:6px;font-size:11px;color:var(--muted)">Not yet opened</span>`;
   }
-  // Show child numbers: a combined invoice claims THREE numbers from the one
-  // shared sequence (purpl child, LF child, parent) — without this the two
-  // hidden child numbers read as gaps in the invoice list.
+  // Show child numbers. New combined invoices give children -P / -L
+  // sub-numbers of the parent (one sequence pull per order); LEGACY families
+  // claimed three real numbers, so surfacing them here still explains the
+  // old gaps in the list.
   const _pcNum = DB.a('retail_invoices').find(x => x.id === rec.purplInvoiceId)?.number;
   const _lcNum = DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId)?.number;
   const childNums = (_pcNum || _lcNum)
@@ -16413,9 +16418,11 @@ async function confirmPortalOrder() {
     let purplNum, lfNum, combNum, purplInvId, lfInvId, combId;
     let singleInvNum, singleInvId;
     if (isDual) {
-      purplNum = await getNextInvoiceNumber('purpl');
-      lfNum    = await getNextInvoiceNumber('lf');
+      // ONE sequence pull per combined order — children ride the parent's
+      // number as -P / -L sub-numbers (see saveNewCombinedInvoice).
       combNum  = await getNextInvoiceNumber('combined');
+      purplNum = combNum + '-P';
+      lfNum    = combNum + '-L';
       purplInvId = uid();
       lfInvId    = uid();
       combId     = uid();
