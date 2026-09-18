@@ -236,7 +236,7 @@
           </div>
           <div class="card">
             <div class="section-hdr">
-              <h2>📅 Follow-ups <span id="dash-followup-badge" style="display:none;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
+              <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>Follow-ups <span id="dash-followup-badge" style="display:none;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle"></span></h2>
               <small style="color:var(--muted);font-size:12px">Next 14 days</small>
             </div>
             <div id="dash-followups"></div>
@@ -253,13 +253,13 @@
           </div>
           <div class="card">
             <div class="section-hdr">
-              <h2>💵 Recent Payments</h2>
+              <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v10M15 9.5c0-1-1.3-1.7-3-1.7s-3 .7-3 1.7 1 1.5 3 2 3 1 3 2-1.3 1.7-3 1.7-3-.7-3-1.7"></path></svg>Recent Payments</h2>
             </div>
             <div id="dash-payments"></div>
           </div>
           <div class="card">
             <div class="section-hdr">
-              <h2>🕘 Recent Activity</h2>
+              <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path></svg>Recent Activity</h2>
             </div>
             <div id="dash-activity"></div>
           </div>
@@ -309,7 +309,6 @@
         <button class="btn" id="ac-sort-dir" onclick="toggleAcSortDir()" title="Flip sort direction">⇅</button>
         <div class="spacer"></div>
         <span id="ac-count" style="font-size:13px;color:var(--muted)"></span>
-        <button class="btn" id="ac-compact-btn" onclick="toggleAcCompact()" title="Toggle compact view">Compact</button>
         <button class="btn" onclick="openPasteAccountModal()">📋 Paste</button>
         <button class="btn primary" onclick="editAccount(uid())">+ Add Account</button>
       </div>
@@ -2736,8 +2735,8 @@
     </div>
     <div class="form-row col2" style="margin-top:-8px">
       <div class="form-group"><label>Tracking #</label><input id="iv-tracking" placeholder="Auto-fills if shipped"></div>
-      <div class="form-group"><label>Shipping charge ($)</label><input id="iv-shipping" type="number" min="0" step="0.01" placeholder="0.00 = none"></div>
-      <div class="form-group"><label>Discount ($ off)</label><input id="iv-discount" type="number" min="0" step="0.01" placeholder="0.00 = none"></div>
+      <div class="form-group"><label>Shipping charge ($)</label><input id="iv-shipping" type="number" min="0" step="0.01" placeholder="0.00 = none" oninput="_ivCalcTotal()"></div>
+      <div class="form-group"><label>Discount ($ off)</label><input id="iv-discount" type="number" min="0" step="0.01" placeholder="0.00 = none" oninput="_ivCalcTotal()"></div>
       <div class="form-group"></div>
     </div>
     <div class="form-group"><label>Misc items <span style="text-transform:none;font-weight:400;color:var(--muted)">(one-offs — description + amount, no cases)</span></label>
@@ -2748,12 +2747,18 @@
     <div style="margin-bottom:14px">
       <label style="font-size:12px;font-weight:600;color:var(--fg);display:block;margin-bottom:8px">Line Items</label>
       <div id="iv-line-items"></div>
-      <div style="text-align:right;font-weight:700;font-size:15px;padding-top:8px;border-top:1px solid var(--border);margin-top:4px">
-        Total: <span id="iv-total">$0.00</span>
-      </div>
     </div>
     <div class="form-group" style="margin-bottom:16px"><label>Notes</label>
       <textarea id="iv-notes" rows="2" style="width:100%;resize:vertical;box-sizing:border-box" placeholder="Optional notes…"></textarea>
+    </div>
+    <!-- Sticky live totals — always visible while editing, no scrolling to
+         find out what the invoice adds up to -->
+    <div class="iv-totals-bar" id="iv-totals-bar">
+      <span class="ivt"><span class="ivt-l">Products</span> <span id="ivt-products">$0.00</span></span>
+      <span class="ivt" id="ivt-ship-wrap"><span class="ivt-l">Shipping</span> <span id="ivt-ship">$0.00</span></span>
+      <span class="ivt" id="ivt-misc-wrap"><span class="ivt-l">Misc</span> <span id="ivt-misc">$0.00</span></span>
+      <span class="ivt" id="ivt-disc-wrap"><span class="ivt-l">Discount</span> <span id="ivt-disc" style="color:var(--red)">−$0.00</span></span>
+      <span class="ivt ivt-total"><span class="ivt-l">Total</span> <span id="iv-total">$0.00</span></span>
     </div>
     <div class="modal-footer">
       <button class="btn red" id="iv-delete-btn" style="display:none;margin-right:auto">Delete</button>
@@ -3039,6 +3044,19 @@
 </div>
 
 <!-- TOAST -->
+<!-- Styled confirm/prompt dialog (replaces window.confirm/prompt) -->
+<div class="overlay" id="modal-dlg" style="z-index:400">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-hdr" style="margin-bottom:10px"><h2 id="dlg-title">Please confirm</h2></div>
+    <div id="dlg-body" style="font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap"></div>
+    <div id="dlg-input-wrap" style="margin-top:12px;display:none"></div>
+    <div class="modal-footer">
+      <button class="btn" id="dlg-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="dlg-ok" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- Invoice suggestion banner (non-blocking) -->

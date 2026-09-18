@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v229';
+const APP_VERSION = 'v230';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -218,16 +218,119 @@ function _isAdmin() {
   return window._userRole === 'admin';
 }
 
-function toast(msg, dur=3000) {
+function toast(msg, dur=3000, actionLabel, actionFn) {
   const el = document.getElementById('toast');
   if (!el) return;
   el.textContent = msg;
+  if (actionLabel && typeof actionFn === 'function') {
+    const btn = document.createElement('button');
+    btn.textContent = actionLabel;
+    btn.style.cssText = 'margin-left:12px;background:none;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;pointer-events:auto';
+    btn.onclick = () => { el.classList.remove('show'); try { actionFn(); } catch (e) { console.error(e); } };
+    el.appendChild(btn);
+    el.style.pointerEvents = 'auto';
+  } else {
+    el.style.pointerEvents = 'none';
+  }
   el.classList.add('show');
   clearTimeout(el._t);
   el._t = setTimeout(() => el.classList.remove('show'), dur);
 }
 
-function confirm2(msg) { return window.confirm(msg); }
+// ══════════════════════════════════════════════════════════
+//  STYLED DIALOGS — replace every native browser confirm()/prompt()
+// ══════════════════════════════════════════════════════════
+// confirmDlg/promptDlg are ASYNC (Promise). The old sync confirm2() is GONE
+// on purpose: a missed caller throws a loud ReferenceError instead of
+// silently skipping its confirmation. promptDlg keeps prompt()'s contract:
+// resolves the string on OK (may be ''), null on Cancel/Esc.
+let _dlgResolve = null;
+function _dlgClose(result) {
+  const ov = document.getElementById('modal-dlg');
+  if (ov) ov.classList.remove('open');
+  const r = _dlgResolve; _dlgResolve = null;
+  if (r) r(result);
+}
+function _dlgOpen(o) {
+  return new Promise(resolve => {
+    if (_dlgResolve) _dlgClose(o.cancelValue); // never stack: cancel the earlier one
+    _dlgResolve = resolve;
+    const t = qs('#dlg-title'), b = qs('#dlg-body'), iw = qs('#dlg-input-wrap');
+    if (t) t.textContent = o.title || 'Please confirm';
+    if (b) { b.textContent = o.body || ''; b.style.display = o.body ? '' : 'none'; }
+    if (iw) { iw.innerHTML = o.inputHTML || ''; iw.style.display = o.inputHTML ? '' : 'none'; }
+    const ok = qs('#dlg-ok'), cancel = qs('#dlg-cancel');
+    if (ok) {
+      ok.textContent = o.okLabel || 'OK';
+      ok.className = 'btn ' + (o.danger ? 'red' : 'primary');
+      ok.onclick = () => _dlgClose(o.readValue ? o.readValue() : true);
+    }
+    if (cancel) {
+      cancel.textContent = o.cancelLabel || 'Cancel';
+      cancel.onclick = () => _dlgClose(o.cancelValue);
+    }
+    document.getElementById('modal-dlg')?.classList.add('open');
+    setTimeout(() => { (iw?.querySelector('input,textarea,select') || ok)?.focus(); }, 30);
+  });
+}
+function confirmDlg(msg, opts) {
+  const o = opts || {};
+  // Destructive wording gets the red button automatically.
+  const danger = o.danger != null ? o.danger : /delete|void|remove|clear|discard|cannot be undone|decline/i.test(msg || '');
+  return _dlgOpen({ title: o.title || 'Please confirm', body: msg, danger,
+    okLabel: o.okLabel || (danger ? 'Yes, do it' : 'OK'), cancelValue: false });
+}
+function promptDlg(label, opts) {
+  const o = opts || {};
+  const type = o.type || 'text';
+  const esc = v => escHtml(String(v == null ? '' : v));
+  const field = type === 'textarea'
+    ? `<textarea id="dlg-field" rows="4" style="width:100%">${esc(o.initial)}</textarea>`
+    : type === 'select'
+      ? `<select id="dlg-field" style="width:100%">${(o.options || []).map(op => `<option value="${esc(op.value)}">${esc(op.label)}</option>`).join('')}</select>`
+      : `<input id="dlg-field" type="${type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}" value="${esc(o.initial)}" style="width:100%">`;
+  return _dlgOpen({
+    title: o.title || label, body: o.title ? label : (o.body || ''),
+    okLabel: o.okLabel || 'Save',
+    inputHTML: `<div class="form-group"><label>${esc(o.title ? label : (o.label || ''))}</label>${field}</div>`,
+    readValue: () => { const el = document.getElementById('dlg-field'); return el ? el.value : null; },
+    cancelValue: null,
+  });
+}
+// Multi-field variant: fields = [{id,label,type,initial,options,placeholder}];
+// resolves {id:value,…} on OK, null on Cancel.
+function formDlg(title, fields, opts) {
+  const o = opts || {};
+  const esc = v => escHtml(String(v == null ? '' : v));
+  const inputHTML = fields.map(f => {
+    const fid = 'dlgf-' + f.id;
+    const el = f.type === 'textarea'
+      ? `<textarea id="${fid}" rows="${f.rows || 3}" placeholder="${esc(f.placeholder)}" style="width:100%">${esc(f.initial)}</textarea>`
+      : f.type === 'select'
+        ? `<select id="${fid}" style="width:100%">${(f.options || []).map(op => `<option value="${esc(op.value)}">${esc(op.label)}</option>`).join('')}</select>`
+        : `<input id="${fid}" type="${f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}" value="${esc(f.initial)}" placeholder="${esc(f.placeholder)}" style="width:100%">`;
+    return `<div class="form-group" style="margin-bottom:10px"><label>${esc(f.label)}</label>${el}</div>`;
+  }).join('');
+  return _dlgOpen({
+    title, body: o.body || '', okLabel: o.okLabel || 'Save', inputHTML,
+    readValue: () => Object.fromEntries(fields.map(f => [f.id, document.getElementById('dlgf-' + f.id)?.value ?? ''])),
+    cancelValue: null,
+  });
+}
+// Dialog keys: Enter confirms (except in a textarea), Esc cancels the dialog
+// first, else closes the topmost open modal.
+document.addEventListener('keydown', e => {
+  const dlgOpen = document.getElementById('modal-dlg')?.classList.contains('open');
+  if (e.key === 'Escape') {
+    if (dlgOpen) { e.preventDefault(); document.getElementById('dlg-cancel')?.click(); return; }
+    const open = [...document.querySelectorAll('.overlay.open')].pop();
+    if (open && typeof closeModal === 'function') { e.preventDefault(); closeModal(open.id); }
+    return;
+  }
+  if (dlgOpen && e.key === 'Enter' && e.target?.tagName !== 'TEXTAREA') {
+    e.preventDefault(); document.getElementById('dlg-ok')?.click();
+  }
+});
 
 function generateSecureToken(prefix) {
   const bytes = new Uint8Array(24);
@@ -282,7 +385,6 @@ let currentPage = 'dashboard';
 let _currentDistId = null;  // tracks which distributor detail is open
 // ── Accounts view state ──────────────────────────────────
 let _acBrandFilter = '';   // '' | 'purpl' | 'lf' | 'both'
-let _acCompact = false;
 let _distGroupExpanded = new Set(); // distIds explicitly expanded; empty = all collapsed
 
 function toggleDistGroup(distId) {
@@ -1730,8 +1832,8 @@ function _flushNoteSave() {
   if (savedEl) { savedEl.style.opacity = '1'; setTimeout(() => { savedEl.style.opacity = '0'; }, 1200); }
 }
 
-function addNoteSection() {
-  const name = prompt('Section name:');
+async function addNoteSection() {
+  const name = await promptDlg('Section name', { title: 'New notes section', okLabel: 'Add' });
   if (!name || !name.trim()) return;
   const settings = DB.obj('settings', {});
   const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
@@ -1743,23 +1845,23 @@ function addNoteSection() {
   _renderNoteContent(updated);
 }
 
-function renameNoteSection(id) {
+async function renameNoteSection(id) {
   const settings = DB.obj('settings', {});
   const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
   const sec = sections.find(s => s.id === id);
   if (!sec) return;
-  const newName = prompt('Rename section:', sec.name);
+  const newName = await promptDlg('Section name', { title: 'Rename section', initial: sec.name });
   if (!newName || !newName.trim() || newName.trim() === sec.name) return;
   const updated = sections.map(s => s.id === id ? { ...s, name: newName.trim() } : s);
   DB.setObj('settings', { ...settings, noteSections: updated });
   _renderNoteSidebar(updated);
 }
 
-function deleteNoteSection(id) {
+async function deleteNoteSection(id) {
   const settings = DB.obj('settings', {});
   const sections = settings.noteSections || _NOTE_DEFAULTS.map(s => ({ ...s }));
   if (sections.length <= 1) { toast('Cannot delete the last section'); return; }
-  if (!confirm('Delete this section and its content?')) return;
+  if (!(await confirmDlg('Delete this section and its content?'))) return;
   const updated = sections.filter(s => s.id !== id);
   if (_noteActiveSectionId === id) _noteActiveSectionId = updated[0].id;
   DB.setObj('settings', { ...settings, noteSections: updated });
@@ -2137,7 +2239,7 @@ function renderInvoiceReminders() {
 
   el.innerHTML = `
     <div class="section-hdr">
-      <h2>💌 Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle">${queue.length}</span></h2>
+      <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 7l10 7 10-7"></path></svg>Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle">${queue.length}</span></h2>
       <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue</small>
     </div>
     <div id="dash-inv-reminders-list">
@@ -2624,14 +2726,26 @@ function _ivRowCalc(skuId) {
 function _ivCalcTotal() {
   const container = qs('#iv-line-items');
   if (!container) return;
-  let total = 0;
+  let products = 0;
   container.querySelectorAll('[data-sku-id]').forEach(row => {
     const cases = parseInt(row.querySelector('.iv-cases')?.value || 0);
     const ppc   = parseFloat(row.querySelector('.iv-ppc')?.value || 0);
-    total += cases * ppc;
+    products += cases * ppc;
   });
-  const el = qs('#iv-total');
-  if (el) el.textContent = fmtC(total);
+  // Sticky totals bar: same components + same discount clamp as the save
+  // path, so what the bar shows is what saving produces.
+  const ship = Math.max(0, parseFloat(qs('#iv-shipping')?.value) || 0);
+  let misc = 0;
+  document.querySelectorAll('#iv-misc-rows .misc-row .misc-amt').forEach(el => { misc += Math.max(0, parseFloat(el.value) || 0); });
+  const discRaw = Math.max(0, parseFloat(qs('#iv-discount')?.value) || 0);
+  const disc = Math.min(discRaw, products + ship + misc);
+  const set = (id, v) => { const el = qs(id); if (el) el.textContent = v; };
+  const show = (id, on) => { const el = qs(id); if (el) el.style.display = on ? '' : 'none'; };
+  set('#ivt-products', fmtC(products));
+  set('#ivt-ship', fmtC(ship));     show('#ivt-ship-wrap', ship > 0);
+  set('#ivt-misc', fmtC(misc));     show('#ivt-misc-wrap', misc > 0);
+  set('#ivt-disc', '−' + fmtC(disc)); show('#ivt-disc-wrap', disc > 0);
+  set('#iv-total', fmtC(products + ship + misc - disc));
 }
 
 // Legacy alias called from old oninput handlers
@@ -2649,10 +2763,10 @@ function markRetailInvPaid(id) {
   toast('Marked as paid');
 }
 
-function deleteRetailInv(id) {
+async function deleteRetailInv(id) {
   if (!DB._firestoreReady) return;
   if (!_requireAdmin('delete invoices')) return;
-  if (!confirm2('Delete this invoice?')) return;
+  if (!(await confirmDlg('Delete this invoice?'))) return;
   const inv = DB.a('retail_invoices').find(x => x.id === id);
   auditLog('delete', 'retail_invoice', id, inv?.invoiceNumber || inv?.number || id);
   deleteInvoiceWithCleanup(id);
@@ -2941,14 +3055,6 @@ function setAcBrandFilter(val) {
   renderAccounts();
 }
 
-function toggleAcCompact() {
-  _acCompact = !_acCompact;
-  const cards = qs('#ac-cards');
-  if (cards) cards.classList.toggle('ac-compact', _acCompact);
-  const btn = qs('#ac-compact-btn');
-  if (btn) btn.classList.toggle('active', _acCompact);
-}
-
 function toggleAccountStar(id) {
   const a = DB.a('ac').find(x=>x.id===id);
   if (!a) return;
@@ -3003,6 +3109,83 @@ function _acLastInvoiceDate(a) {
   });
   return last || a.lastOrder || null;
 }
+// ── Two-line list rows (default view; tap to expand to the full card) ──
+// Per Graham: "not too skinny" — the row keeps the next follow-up AND the
+// latest note visible, plus the three money metrics.
+let _acExpanded = new Set();
+let _prExpanded = new Set();
+function toggleAcExpand(id) {
+  if (_acExpanded.has(id)) _acExpanded.delete(id); else _acExpanded.add(id);
+  renderAccounts();
+}
+function togglePrExpand(id) {
+  if (_prExpanded.has(id)) _prExpanded.delete(id); else _prExpanded.add(id);
+  renderProspects();
+}
+function _acRowHTML(a, muted) {
+  const isPending = a.status === 'pending';
+  const _lastInv = _acLastInvoiceDate(a);
+  const lastContact = acLastContacted(a);
+  const needsAttn = !muted && !isPending && (daysAgo(_lastInv) >= 30 || daysAgo(lastContact) >= 30);
+  const acInvs = _acIdxInv ? (_acIdxInv.get(a.id) || []) : _allInvoices({ accountId: a.id, excludeChildren: true });
+  const _cad = _acCadence(acInvs, Infinity);
+  const outstandingAmt = acInvs.filter(x => !['paid', 'draft', 'void'].includes(x.status)).reduce((s, x) => s + _invAmt(x), 0);
+  const _nf = acNextFollowUp(a);
+  const lastNote = _latestByDate(a.notes);
+  let fuChip = '';
+  if (_nf?.date) {
+    const od = _nf.date < today(), td = _nf.date === today();
+    fuChip = `<span class="badge ${od ? 'red' : td ? 'amber' : 'blue'}" style="font-size:11px;flex-shrink:0">${od ? 'Overdue — ' : td ? 'Today — ' : ''}${fmtD(_nf.date)}${_nf.what ? ' · ' + escHtml(_nf.what.slice(0, 44)) : ''}</span>`;
+  }
+  return `<div class="ac-row${needsAttn ? ' needs-attention' : ''}${muted ? ' ac-dist-served' : ''}" onclick="toggleAcExpand('${a.id}')">
+    <div class="ac-row-l1">
+      <button class="ac-star${a.starred ? ' active' : ''}" onclick="event.stopPropagation();toggleAccountStar('${a.id}')" title="${a.starred ? 'Unpin' : 'Pin to top'}">${a.starred ? '★' : '☆'}</button>
+      <span class="ac-row-name">${escHtml(a.name)}</span>
+      ${a.isPbf ? `<span class="badge green" style="font-size:10px">LF</span>` : ''}
+      ${statusBadge(AC_STATUS, a.status)}
+      ${needsAttn ? `<span class="badge amber" style="font-size:10px">Needs attention</span>` : ''}
+      <span class="ac-row-metrics">
+        <span><span class="ac-metric-label">Last inv</span> ${_lastInv ? fmtD(_lastInv) + ' <span class="ac-row-dim">(' + daysAgo(_lastInv) + 'd)</span>' : (isPending ? '—' : '<span style="color:var(--red)">Never</span>')}</span>
+        <span><span class="ac-metric-label">Velocity</span> ${_cad.avgGap ? 'Every ' + _cad.avgGap + 'd' : '—'}</span>
+        <span><span class="ac-metric-label">Owes</span> <span style="color:${outstandingAmt > 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${outstandingAmt > 0 ? fmtC(outstandingAmt) : 'Clear'}</span></span>
+      </span>
+    </div>
+    <div class="ac-row-l2">
+      ${fuChip}
+      ${lastNote?.text ? `<span class="ac-row-note">${escHtml(lastNote.text.slice(0, 96))}${lastNote.text.length > 96 ? '…' : ''}</span>` : '<span class="ac-row-note" style="opacity:.5">No notes yet</span>'}
+    </div>
+  </div>`;
+}
+function _acRender(a, muted) { return _acExpanded.has(a.id) ? _acCardHTML(a, muted) : _acRowHTML(a, muted); }
+
+function _prRowHTML(p) {
+  const lastNote = _latestByDate(p.notes);
+  const lastOutreach = _latestByDate(p.outreach);
+  const _plc = p.lastContacted || p.lastContact || lastOutreach?.date || null;
+  let fuChip = '';
+  if (p.nextDate) {
+    const od = p.nextDate < today(), td = p.nextDate === today();
+    fuChip = `<span class="badge ${od ? 'red' : td ? 'amber' : 'blue'}" style="font-size:11px;flex-shrink:0">${od ? 'Overdue — ' : td ? 'Today — ' : ''}${fmtD(p.nextDate)}${p.nextAction ? ' · ' + escHtml(String(p.nextAction).slice(0, 44)) : ''}</span>`;
+  } else if (p.nextAction) {
+    fuChip = `<span class="badge blue" style="font-size:11px;flex-shrink:0">${escHtml(String(p.nextAction).slice(0, 50))}</span>`;
+  }
+  return `<div class="ac-row pr-row stage-${p.status || 'lead'}${p.status === 'lost' ? ' pr-row-lost' : ''}" onclick="togglePrExpand('${p.id}')">
+    <div class="ac-row-l1">
+      <span class="ac-row-name">${escHtml(p.name)}</span>
+      ${p.isPbf ? `<span class="badge green" style="font-size:10px">LF</span>` : ''}
+      ${statusBadge(PR_STATUS, p.status)}
+      <span class="ac-row-metrics">
+        <span><span class="ac-metric-label">Territory</span> ${escHtml(p.territory || '—')}</span>
+        <span><span class="ac-metric-label">Contacted</span> ${_plc ? fmtD(_plc) + ' <span class="ac-row-dim">(' + daysAgo(_plc) + 'd)</span>' : '—'}</span>
+      </span>
+    </div>
+    <div class="ac-row-l2">
+      ${fuChip}
+      ${lastNote?.text ? `<span class="ac-row-note">${escHtml(lastNote.text.slice(0, 96))}${lastNote.text.length > 96 ? '…' : ''}</span>` : (lastOutreach ? `<span class="ac-row-note">${escHtml((lastOutreach.type || '') + ' · ')}${fmtD(lastOutreach.date)}</span>` : '<span class="ac-row-note" style="opacity:.5">No notes yet</span>')}
+    </div>
+  </div>`;
+}
+
 function _acCardHTML(a, muted) {
   const lastContact  = acLastContacted(a);
   // Pending accounts are leads who haven't placed a first order yet — don't
@@ -3101,7 +3284,8 @@ function _acCardHTML(a, muted) {
       <button class="btn sm" onclick="quickNote('${a.id}')">Note</button>
       <button class="btn sm" onclick="logOutreach('${a.id}')">Log Follow-Up</button>
       <button class="btn sm" onclick="editAccount('${a.id}')">Edit</button>
-      <button class="btn sm" onclick="generateOrderLink('${a.id}')">🔗 Copy Link</button>
+      <button class="btn sm" onclick="generateOrderLink('${a.id}')">Copy Link</button>
+      <button class="btn sm" onclick="toggleAcExpand('${a.id}')">− Collapse</button>
       ${_isAdmin()?`<button class="btn sm" style="color:#dc2626" onclick="event.stopPropagation();deleteAccount('${a.id}')">Delete</button>`:''}
     </div>
   </div>`;
@@ -3197,7 +3381,6 @@ function renderAccounts() {
 
   if (!list.length) {
     el.innerHTML = '<div class="empty">No accounts match your filters. Click "+ Add Account" to get started.</div>';
-    el.classList.toggle('ac-compact', _acCompact);
     return;
   }
 
@@ -3222,7 +3405,7 @@ function renderAccounts() {
         <h3>Direct Accounts</h3>
         <span class="ac-group-count">${directList.length}</span>
       </div>
-      <div class="ac-group-cards">${directList.map(a=>_acCardHTML(a,false)).join('')}</div>
+      <div class="ac-group-cards">${directList.map(a=>_acRender(a,false)).join('')}</div>
     </div>`);
   }
 
@@ -3242,13 +3425,12 @@ function renderAccounts() {
         ${doorCount?`<span class="badge amber" style="font-size:10px">${fmt(doorCount)} doors</span>`:''}
       </div>
       <div class="ac-group-cards"${isExpanded?'':' style="display:none"'}>
-        ${accounts.map(a=>_acCardHTML(a,true)).join('')}
+        ${accounts.map(a=>_acRender(a,true)).join('')}
       </div>
     </div>`);
   });
 
   el.innerHTML = parts.join('');
-  el.classList.toggle('ac-compact', _acCompact);
 }
 
 function toggleAcLocs(id) {
@@ -3625,7 +3807,7 @@ function openEmailMailto() {
   window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
 }
 
-function sendEmailViaResend() {
+async function sendEmailViaResend() {
   if (!_currentEmailPreview) return;
   const t   = _currentEmailPreview.template;
   const to  = _currentEmailPreview.toEmail || '';
@@ -3635,7 +3817,7 @@ function sendEmailViaResend() {
   // Same opt-out gate as the Emails page — this path had none, so an
   // unsubscribed account could be emailed from the Cadence tab with no warning.
   const _optAc = DB.a('ac').find(x => x.id === _currentEmailPreview.accountId);
-  if (_optAc?.emailOptOut && !confirm2(`${_optAc.name} has unsubscribed from emails. Send anyway?`)) return;
+  if (_optAc?.emailOptOut && !(await confirmDlg(`${_optAc.name} has unsubscribed from emails. Send anyway?`))) return;
   const from = 'lavender@pbfwholesale.com';
   const btn = document.querySelector('#modal-email-preview .btn.primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -3689,8 +3871,8 @@ function renderMacSamplesTab(accountId) {
   const btn = qs('#mac-tab-log-sample-btn');
   if (btn) btn.onclick = () => openLogSampleModal('ac', accountId);
   const shipSampleBtn = qs('#mac-tab-ship-sample-btn');
-  if (shipSampleBtn) shipSampleBtn.onclick = () => {
-    if (confirm2('Push a 3-can sample box to ShipStation for ' + (a.name || 'this account') + '?')) pushSampleToShipStation(accountId);
+  if (shipSampleBtn) shipSampleBtn.onclick = async () => {
+    if (await confirmDlg('Push a 3-can sample box to ShipStation for ' + (a.name || 'this account') + '?')) pushSampleToShipStation(accountId);
   };
 
   const samples = (a.samples || []).slice().sort((x, y) => (x.date > y.date ? -1 : 1));
@@ -4491,7 +4673,7 @@ async function emailsPageSendEmail() {
   const toEmails = _getEmailsRecipients(account);
   const toEmail = toEmails[0] || '';
   if (!toEmail) { toast('No recipient email on file'); return; }
-  if (account.emailOptOut && !confirm2(`${account.name} has unsubscribed from emails. Send anyway?`)) return;
+  if (account.emailOptOut && !(await confirmDlg(`${account.name} has unsubscribed from emails. Send anyway?`))) return;
 
   const btn = document.getElementById('emails-page-send-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -5158,7 +5340,7 @@ async function meTemplateSend() {
   let confirmMsg = `Send "${tplId}" to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`;
   if (noEmailCount) confirmMsg += `\n\n⚠️ ${noEmailCount} have no email address — they will be skipped.`;
   if (newLinkCount) confirmMsg += `\n\n🔗 ${newLinkCount} will get a brand-new personalized order link (generated now).`;
-  if (!confirm2(confirmMsg)) return;
+  if (!(await confirmDlg(confirmMsg))) return;
 
   _meTemplateInFlight = true;
   const statusEl = qs('#me-template-status');
@@ -5663,7 +5845,7 @@ async function saveAccount(id, isNew) {
   const name = qs('#eac-name')?.value?.trim();
   if (!name) { toast('Account name required'); return; }
   const dupe = DB.a('ac').find(a => a.id !== id && (a.name||'').toLowerCase().trim() === name.toLowerCase());
-  if (dupe && !confirm2(`An account named "${dupe.name}" already exists. Create anyway?`)) return;
+  if (dupe && !(await confirmDlg(`An account named "${dupe.name}" already exists. Create anyway?`))) return;
   const skus = [...document.querySelectorAll('#eac-skus input:checked')].map(x=>x.value);
   const par = {};
   skus.forEach(s=>{par[s]=parseInt(qs('#par-'+s)?.value)||24;});
@@ -5807,9 +5989,9 @@ async function saveAccount(id, isNew) {
   toast(isNew?'Account added':'Account updated');
 }
 
-function deleteAccount(id) {
+async function deleteAccount(id) {
   if (!_requireAdmin('delete accounts')) return;
-  if (!confirm2('Delete this account? This cannot be undone.')) return;
+  if (!(await confirmDlg('Delete this account? This cannot be undone.'))) return;
   const acName = DB.a('ac').find(x=>x.id===id)?.name || id;
   DB.atomicUpdate(cache => {
     cache['ac']                = (cache['ac']               ||[]).filter(r=>r.id!==id);
@@ -5933,6 +6115,7 @@ function renderProspects() {
           ? `<span style="color:var(--blue);font-style:italic">${p.nextFollowUpLabel}</span>`
           : '<span style="color:var(--muted)">—</span>');
 
+    if (!_prExpanded.has(p.id)) return _prRowHTML(p);
     return `<div class="pr-card stage-${p.status||'lead'}" ${p.status==='lost'?'style="opacity:0.75;background:#f9fafb;border-color:#d1d5db"':''}>
 
       <div class="pr-card-hdr">
@@ -5968,17 +6151,18 @@ function renderProspects() {
         <button class="btn sm primary" onclick="openProspect('${p.id}')">View</button>
         <button class="btn sm" onclick="logProspectOutreach('${p.id}')">📞 Log</button>
         <button class="btn sm" onclick="editProspect('${p.id}')">Edit</button>
-        <button class="btn sm green" onclick="if(confirm2('Convert to account?'))convertProspect('${p.id}')">→ Convert</button>
+        <button class="btn sm green" onclick="(async()=>{ if (await confirmDlg('Convert to account?')) convertProspect('${p.id}'); })()">→ Convert</button>
         <button class="btn xs" onclick="openLogSampleModal('pr','${p.id}')">🧪 Sample</button>
         ${p.status==='lost'
           ?`<button class="btn sm green" onclick="reactivateProspect('${p.id}')">↩ Reactivate</button>`
           :`<button class="btn sm red" onclick="markProspectLost('${p.id}')">✕</button>`}
+        <button class="btn sm" onclick="togglePrExpand('${p.id}')">− Collapse</button>
       </div>
     </div>`;
   }).join('')||'<div class="empty">No prospects yet. Click "+ Add Prospect" to get started.</div>';
 }
 
-function openProspect(id) {
+async function openProspect(id) {
   const p = DB.a('pr').find(x=>x.id===id);
   if (!p) return;
   const m = document.getElementById('modal-prospect');
@@ -6057,7 +6241,7 @@ function openProspect(id) {
 
   qs('#mpr-edit-btn').onclick = () => { closeModal('modal-prospect'); editProspect(id); };
   qs('#mpr-add-note-btn').onclick = () => addProspectNote(id);
-  qs('#mpr-convert-btn').onclick = () => { if(confirm2('Convert to active account?')) convertProspect(id); };
+  qs('#mpr-convert-btn').onclick = async () => { if(await confirmDlg('Convert to active account?')) convertProspect(id); };
 
   // Tab switching
   document.querySelectorAll('#modal-prospect .tab').forEach(t=>{
@@ -6284,11 +6468,14 @@ async function saveProspect(id, isNew) {
 }
 
 // ── Quick actions from card buttons ──────────────────────
-function quickNote(id) {
-  const text = prompt('Note:');
-  if (!text?.trim()) return;
-  const next = prompt('Next action (leave blank to skip):') || '';
-  const nextDate = next ? prompt('Next action date (YYYY-MM-DD):') || '' : '';
+async function quickNote(id) {
+  const v = await formDlg('Quick note', [
+    { id: 'text', label: 'Note', type: 'textarea', rows: 4 },
+    { id: 'next', label: 'Next action (optional)', type: 'text', placeholder: 'e.g. call about reorder' },
+    { id: 'nextDate', label: 'Follow-up date (optional)', type: 'date' },
+  ], { okLabel: 'Save note' });
+  if (!v || !v.text?.trim()) return;
+  const text = v.text, next = v.next || '', nextDate = v.next ? (v.nextDate || '') : '';
   const note = {id:uid(), date:today(), text:text.trim(), author:'you', nextAction:next.trim(), nextDate};
   // prompt() gives free text — only a real ISO date may reach the canonical
   // field (verifier-caught: garbage like "next week" string-compares above
@@ -6708,10 +6895,10 @@ function confirmMarkLost() {
   toast('Marked as lost');
 }
 
-function _deleteProspectPermanent() {
+async function _deleteProspectPermanent() {
   if (!_markLostId) return;
   if (!_requireAdmin('delete prospects')) return;
-  if (!confirm2('Permanently delete this prospect? This cannot be undone.')) return;
+  if (!(await confirmDlg('Permanently delete this prospect? This cannot be undone.'))) return;
   const prospectId = _markLostId;
   const prospectName = DB.a('pr').find(p => p.id === prospectId)?.name || prospectId;
   auditLog('delete', 'prospect', prospectId, prospectName);
@@ -6724,8 +6911,8 @@ function _deleteProspectPermanent() {
   toast('Prospect deleted');
 }
 
-function reactivateProspect(id) {
-  if (!confirm2('Reactivate this prospect?')) return;
+async function reactivateProspect(id) {
+  if (!(await confirmDlg('Reactivate this prospect?'))) return;
   DB.update('pr', id, p => ({ ...p, status: 'lead', lostAt: '', lostReason: '', lostNotes: '' }));
   renderProspects();
   toast('Prospect reactivated');
@@ -7171,8 +7358,8 @@ function _saveDistContact(distId, idx) {
   if (_currentDistId) { renderDistTab('overview', _currentDistId); }
 }
 
-function _deleteDistContact(distId, idx) {
-  if (!confirm2('Remove this contact?')) return;
+async function _deleteDistContact(distId, idx) {
+  if (!(await confirmDlg('Remove this contact?'))) return;
   DB.update('dist_profiles', distId, d=>{
     const contacts = (d.contacts||[]).filter((_,i)=>i!==idx);
     return {...d, contacts};
@@ -7297,11 +7484,17 @@ function saveDistVelocityEntry(distId) {
 }
 
 function deleteDistVelocityEntry(distId, entryId) {
-  if (!confirm2('Remove this velocity entry?')) return;
+  const d0 = DB.a('dist_profiles').find(x => x.id === distId);
+  const rec = (d0?.velocityReports || []).find(r => r.id === entryId);
   DB.update('dist_profiles', distId, d=>({
     ...d, velocityReports: (d.velocityReports||[]).filter(r=>r.id!==entryId)
   }));
   if (_currentDistId===distId) renderDistTab('velocity', distId);
+  if (rec) toast('Velocity entry removed', 8000, 'Undo', () => {
+    DB.update('dist_profiles', distId, d => ({ ...d, velocityReports: [...(d.velocityReports || []), rec] }));
+    if (_currentDistId===distId) renderDistTab('velocity', distId);
+    toast('Restored');
+  });
 }
 
 function _parseDistVelocityCSV(distId, inputEl) {
@@ -7806,9 +7999,9 @@ async function saveDistributor(id, isNew) {
   toast(isNew?'Distributor added':'Distributor updated');
 }
 
-function deleteDistributor(id) {
+async function deleteDistributor(id) {
   if (!_requireAdmin('delete distributors')) return;
-  if (!confirm2('Delete this distributor? This will also remove all associated reps, pricing, POs, and invoices.')) return;
+  if (!(await confirmDlg('Delete this distributor? This will also remove all associated reps, pricing, POs, and invoices.'))) return;
   const distName = DB.a('dist_profiles').find(x => x.id === id)?.name || id;
   auditLog('delete', 'distributor', id, distName);
   DB.atomicUpdate(cache => {
@@ -7871,8 +8064,8 @@ function saveDistRep(repId, distId, isNew) {
   toast(isNew?'Rep added':'Rep updated');
 }
 
-function deleteDistRep(repId, distId) {
-  if (!confirm2('Remove this rep?')) return;
+async function deleteDistRep(repId, distId) {
+  if (!(await confirmDlg('Remove this rep?'))) return;
   DB.remove('dist_reps', repId);
   closeModal('modal-add-rep');
   if (_currentDistId) openDistributor(_currentDistId);
@@ -7967,7 +8160,7 @@ function cycleDistPOStatus(poId, distId) {
   toast('PO status updated');
 }
 
-function deleteDistPO(poId, distId) {
+async function deleteDistPO(poId, distId) {
   const po = DB.a('dist_pos').find(x => x.id === poId);
   // Shipment POs wrote warehouse deductions keyed ref:shipId — deleting the PO
   // without reversing them left the ledger permanently short (delete+re-log
@@ -7978,7 +8171,7 @@ function deleteDistPO(poId, distId) {
     : (po && po.isShipment
         ? 'Delete this shipment PO? NOTE: it predates deduction linking — its inventory deductions cannot be auto-reversed; adjust stock manually if you re-log it.'
         : 'Delete this PO?');
-  if (!confirm2(msg)) return;
+  if (!(await confirmDlg(msg))) return;
   DB.atomicUpdate(cache => {
     cache.dist_pos = (cache.dist_pos||[]).filter(x => x.id !== poId);
     if (canReverse) {
@@ -7992,14 +8185,13 @@ function deleteDistPO(poId, distId) {
 }
 
 // ── Invoices ──────────────────────────────────────────────
-function pickDistForInvoice() {
+async function pickDistForInvoice() {
   const dists = DB.a('dist_profiles').filter(d => d.status === 'active');
   if (!dists.length) { toast('No active distributors'); return; }
   if (dists.length === 1) { addDistInvoice(dists[0].id); return; }
-  const names = dists.map((d, i) => `${i + 1}. ${d.name}`).join('\n');
-  const pick = prompt('Select distributor:\n' + names);
-  const idx = parseInt(pick) - 1;
-  if (idx >= 0 && idx < dists.length) addDistInvoice(dists[idx].id);
+  const pick = await promptDlg('Distributor', { title: 'New distributor invoice', type: 'select',
+    options: dists.map(d => ({ value: d.id, label: d.name })), okLabel: 'Continue' });
+  if (pick) addDistInvoice(pick);
 }
 function addDistInvoice(distId) { _openDistInvModal(distId); }
 function addDistInvoiceInModal(distId) { closeModal('modal-distributor'); _openDistInvModal(distId); }
@@ -8119,7 +8311,7 @@ async function saveDistInvoice(existingId) {
   }).filter(i => i.cases > 0);
   if (!items.length) { toast('Enter at least one SKU quantity'); return; }
   // A $0 line means no dist_pricing row exists — say so instead of silently billing $0.
-  if (_unpriced.length && !confirm2(`No distributor price set for: ${_unpriced.join(', ')} — those lines will bill at $0. Save anyway? (Set prices in the distributor Pricing tab.)`)) return;
+  if (_unpriced.length && !(await confirmDlg(`No distributor price set for: ${_unpriced.join(', ')} — those lines will bill at $0. Save anyway? (Set prices in the distributor Pricing tab.)`))) return;
 
   const total = items.reduce((s, i) => s + i.cases * i.pricePerCase, 0);
   const dist = DB.a('dist_profiles').find(x => x.id === distId);
@@ -8162,9 +8354,9 @@ function markDistInvoicePaid(invId, distId) {
   toast('Marked as paid');
 }
 
-function deleteDistInvoice(invId) {
+async function deleteDistInvoice(invId) {
   if (!_requireAdmin('delete invoices')) return;
-  if (!confirm2('Delete this invoice?')) return;
+  if (!(await confirmDlg('Delete this invoice?'))) return;
   const inv = DB.a('dist_invoices').find(x => x.id === invId);
   auditLog('delete', 'dist_invoice', invId, inv?.invoiceNumber || invId);
   DB.atomicUpdate(cache => {
@@ -8217,8 +8409,8 @@ function saveDistChain(chainId, distId, isNew) {
   toast(isNew?'Store group added':'Store group updated');
 }
 
-function deleteDistChain(chainId, distId) {
-  if (!confirm2('Remove this chain?')) return;
+async function deleteDistChain(chainId, distId) {
+  if (!(await confirmDlg('Remove this chain?'))) return;
   DB.remove('dist_chains', chainId);
   closeModal('modal-add-chain');
   if (_currentDistId) openDistributor(_currentDistId);
@@ -8538,9 +8730,9 @@ function receiveFinishedPacks() {
   toast('Finished packs logged');
 }
 
-function delLooseCan(id, form) {
+async function delLooseCan(id, form) {
   if (!DB._firestoreReady) return;
-  if (!confirm2('Remove this receipt?')) return;
+  if (!(await confirmDlg('Remove this receipt?'))) return;
   if (form==='Loose Cans') DB.remove('loose_cans', id);
   else DB.remove('iv', id);
   _invReceive();
@@ -8617,9 +8809,9 @@ function saveRepackJob() {
   toast('Repack job saved');
 }
 
-function deleteRepackJob(id) {
+async function deleteRepackJob(id) {
   if (!_requireAdmin('delete repack jobs')) return;
-  if (!confirm2('Delete this repack job? Its finished-pack inventory entry will be reversed. (Consumed loose cans are not restored.)')) return;
+  if (!(await confirmDlg('Delete this repack job? Its finished-pack inventory entry will be reversed. (Consumed loose cans are not restored.)'))) return;
   auditLog('delete', 'repack_job', id, '');
   DB.atomicUpdate(cache => {
     cache['repack_jobs'] = (cache['repack_jobs']||[]).filter(x => x.id !== id);
@@ -8689,11 +8881,16 @@ function savePallet(palletId, isNew) {
   toast(isNew?'Pallet created':'Pallet updated');
 }
 
-function shipPallet(palletId) {
+async function shipPallet(palletId) {
   const p = DB.a('pallets').find(x=>x.id===palletId);
   if (!p || p.status === 'shipped') { toast('Already shipped'); return; }
-  const dest = prompt('Ship to (distributor / account):') || '';
-  const shipDate = prompt('Ship date (YYYY-MM-DD):', today()) || today();
+  const v = await formDlg('Ship pallet', [
+    { id: 'dest', label: 'Ship to (distributor / account)', type: 'text' },
+    { id: 'shipDate', label: 'Ship date', type: 'date', initial: today() },
+  ], { okLabel: 'Mark shipped' });
+  if (!v) return;
+  const dest = v.dest || '';
+  const shipDate = v.shipDate || today();
   DB.update('pallets', palletId, p=>({...p, status:'shipped', shipTo:dest||p.shipTo, shipDate}));
   // Pallet contents are entered in CASES; the iv ledger is in cans
   Object.entries(p?.contents||{}).forEach(([sku,cases])=>{
@@ -8703,9 +8900,9 @@ function shipPallet(palletId) {
   toast('Pallet marked as shipped');
 }
 
-function deletePallet(palletId) {
+async function deletePallet(palletId) {
   if (!_requireAdmin('delete pallets')) return;
-  if (!confirm2('Delete this pallet record? Inventory deductions from shipping it will be reversed.')) return;
+  if (!(await confirmDlg('Delete this pallet record? Inventory deductions from shipping it will be reversed.'))) return;
   const p = DB.a('pallets').find(x => x.id === palletId);
   auditLog('delete', 'pallet', palletId, p?.label || palletId);
   DB.atomicUpdate(cache => {
@@ -8765,8 +8962,8 @@ function saveSupply(isNew) {
   toast(isNew?'Supply added':'Supply updated');
 }
 
-function deleteSupply(id) {
-  if (!confirm2('Remove this supply item?')) return;
+async function deleteSupply(id) {
+  if (!(await confirmDlg('Remove this supply item?'))) return;
   DB.remove('pack_supply', id);
   _invSupplies();
   toast('Supply removed');
@@ -8887,13 +9084,19 @@ function toggleReturnCredit() {
   if (row) row.style.display = qs('#ret-credit-issued')?.checked ? '' : 'none';
 }
 
-function invAdjust(sku, type) {
+async function invAdjust(sku, type) {
   if (!DB._firestoreReady) return;
-  const skuVal = sku || prompt('SKU (classic/blueberry/peach/variety):');
+  const fields = [];
+  if (!sku) fields.push({ id: 'sku', label: 'SKU', type: 'select', options: SKUS.map(k => ({ value: k.id, label: k.label })) });
+  fields.push({ id: 'qty', label: `Cans to ${type==='in'?'receive':'use'}`, type: 'number' });
+  fields.push({ id: 'note', label: 'Note (optional)', type: 'text' });
+  const v = await formDlg(type === 'in' ? 'Receive inventory' : 'Use inventory', fields, { okLabel: type === 'in' ? 'Receive' : 'Deduct' });
+  if (!v) return;
+  const skuVal = sku || v.sku;
   if (!skuVal || !SKU_MAP[skuVal]) { if(skuVal) toast('Unknown SKU'); return; }
-  const qty = parseInt(prompt(`Enter quantity to ${type==='in'?'receive':'use'} for ${SKU_MAP[skuVal]?.label}:`));
+  const qty = parseInt(v.qty);
   if (!qty || qty <= 0) return;
-  const note = prompt('Note (optional):') || '';
+  const note = v.note || '';
   const pool = qs('#inv-adj-pool')?.value || 'warehouse';
   DB.push('iv', {id:uid(), date:today(), sku:skuVal, type, qty, pool, note});
   _invSummary();
@@ -8901,10 +9104,11 @@ function invAdjust(sku, type) {
 }
 
 function delInvEntry(id) {
-  if (!confirm2('Remove this entry?')) return;
+  const rec = DB.a('iv').find(x => x.id === id);
+  if (!rec) return;
   DB.remove('iv', id);
   _invLog();
-  toast('Entry removed');
+  toast('Entry removed', 8000, 'Undo', () => { DB.push('iv', rec); _invLog(); toast('Restored'); });
 }
 
 // ── Pool Transfers ────────────────────────────────────────
@@ -9142,7 +9346,7 @@ function createOrder({accountId, dueDate, notes='', items, source='manual', stat
   return ord;
 }
 
-function saveNewOrder() {
+async function saveNewOrder() {
   const accountId = qs('#nord-account')?.value;
   const dueDate   = qs('#nord-due')?.value || today();
   const notes     = qs('#nord-notes')?.value?.trim()||'';
@@ -9164,7 +9368,7 @@ function saveNewOrder() {
   toast('Order created');
 
   // Offer to create invoice immediately
-  if (ord && confirm2('Create an invoice for this order now?')) {
+  if (ord && await confirmDlg('Create an invoice for this order now?')) {
     setInvStatus(ord.id, 'invoiced');
     toast('Marked as invoiced');
   }
@@ -9201,8 +9405,8 @@ function openOrderDetail(id) {
     }
   }
 
-  qs('#mod-delete-btn').onclick = ()=>{
-    if (!confirm2('Delete this order?')) return;
+  qs('#mod-delete-btn').onclick = async ()=>{
+    if (!(await confirmDlg('Delete this order?'))) return;
     const ordAcName = DB.a('ac').find(x=>x.id===o.accountId)?.name || o.accountId;
     DB.a('iv').filter(e=>e.ordId===id).forEach(e=>DB.remove('iv',e.id));
     DB.remove('orders', id);
@@ -9221,8 +9425,8 @@ function openOrderDetail(id) {
   const modStatusBtn = qs('#mod-status-btn');
   if (modStatusBtn) modStatusBtn.onclick = ()=>{ cycleOrderStatus(id); openOrderDetail(id); };
   const modReschedBtn = qs('#mod-reschedule-btn');
-  if (modReschedBtn) modReschedBtn.onclick = ()=>{
-    const newDate = prompt('New due date (YYYY-MM-DD):', o.dueDate);
+  if (modReschedBtn) modReschedBtn.onclick = async ()=>{
+    const newDate = await promptDlg('New due date', { title: 'Reschedule order', type: 'date', initial: o.dueDate, okLabel: 'Reschedule' });
     if (!newDate || newDate===o.dueDate) return;
     DB.update('orders', id, x=>({...x, dueDate:newDate}));
     openOrderDetail(id);
@@ -9387,16 +9591,16 @@ function saveTodayRun() {
   toast('Production run logged & inventory updated');
 }
 
-function delShipment(id) {
-  if (!confirm2('Remove this shipment?')) return;
+async function delShipment(id) {
+  if (!(await confirmDlg('Remove this shipment?'))) return;
   DB.remove('shipments', id);
   renderProduction();
   toast('Removed');
 }
 
-function delProdHist(id) {
+async function delProdHist(id) {
   if (!_requireAdmin('delete production records')) return;
-  if (!confirm2('Remove this production record?')) return;
+  if (!(await confirmDlg('Remove this production record?'))) return;
   auditLog('delete', 'prod_hist', id, '');
   // Remove linked inventory entries (by prodId; fallback: match by date+qty for legacy records)
   const rec = DB.a('prod_hist').find(p=>p.id===id);
@@ -9899,8 +10103,8 @@ function removeStop(i) {
   renderDelivery();
 }
 
-function clearRoute() {
-  if (!confirm2('Clear today\'s route?')) return;
+async function clearRoute() {
+  if (!(await confirmDlg('Clear today\'s route?'))) return;
   const run = DB.obj('today_run', {stops:[]});
   // DATA-LOSS FIX: this used to DELETE the completed stops' orders, their
   // retail invoices (source 'delivery_run' — regardless of status, even sent
@@ -10670,9 +10874,9 @@ function exportYearEnd() {
 }
 
 // ── Save Report ────────────────────────────────────────────
-function saveReport() {
+async function saveReport() {
   const {from, to} = _repDateRange();
-  const name = prompt(`Name this report (${_reportType}, ${from} → ${to}):`);
+  const name = await promptDlg(`Report name (${_reportType}, ${from} → ${to})`, { title: 'Save report', okLabel: 'Save' });
   if (!name?.trim()) return;
   const rec = { id: uid(), name: name.trim(), type: _reportType, from, to, savedAt: today() };
   DB.push('saved_reports', rec);
@@ -10711,8 +10915,10 @@ function loadSavedReport(id) {
 }
 
 function deleteSavedReport(id) {
+  const rec = DB.a('saved_reports').find(x => x.id === id);
   DB.remove('saved_reports', id);
   renderSavedReports();
+  if (rec) toast('Saved report removed', 8000, 'Undo', () => { DB.push('saved_reports', rec); renderSavedReports(); toast('Restored'); });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11210,9 +11416,15 @@ function toggleStockistLocation(id) {
 }
 
 function deleteStockistLocation(id) {
-  if (!confirm2('Delete this location from Where to Find Us?')) return;
+  const rec = DB.a('stockist_locations').find(x => x.id === id);
+  if (!rec) return;
   DB.atomicUpdate(c => { c.stockist_locations = (c.stockist_locations || []).filter(x => x.id !== id); });
   renderStockistLocations();
+  toast('Location removed', 8000, 'Undo', () => {
+    DB.atomicUpdate(c => { c.stockist_locations = [...(c.stockist_locations || []), rec]; });
+    renderStockistLocations();
+    toast('Restored');
+  });
 }
 
 // One-click unpark: a failed geocode parks the record permanently (one
@@ -11253,11 +11465,11 @@ function retryMissingPins() {
 // One-click seed: every ACTIVE/PENDING account gets listed with evidence-based
 // brand tags. Idempotent — accounts that already have a stockistListed value
 // (true OR explicitly unticked then saved) keep their setting.
-function seedStockistsFromAccounts() {
+async function seedStockistsFromAccounts() {
   const candidates = DB.a('ac').filter(a =>
     a.status !== 'inactive' && a.stockistListed == null && (a.address || (a.locs || []).length));
   if (!candidates.length) { toast('Nothing to seed — all accounts already have a listing setting'); return; }
-  if (!confirm2(`List ${candidates.length} account(s) on Where to Find Us with brand tags from their invoice history? You can untick any account afterwards.`)) return;
+  if (!(await confirmDlg(`List ${candidates.length} account(s) on Where to Find Us with brand tags from their invoice history? You can untick any account afterwards.`))) return;
   DB.atomicUpdate(c => {
     c.ac = (c.ac || []).map(a => {
       if (a.status === 'inactive' || a.stockistListed != null || !(a.address || (a.locs || []).length)) return a;
@@ -11369,11 +11581,11 @@ function renderTeamTab() {
 }
 
 
-function setUserRole(uid, newRole, currentRole) {
+async function setUserRole(uid, newRole, currentRole) {
   if (!_requireAdmin('change user roles')) return;
   if (!['admin', 'employee', 'field'].includes(newRole)) return;
   if (newRole === currentRole) return;
-  if (!confirm2(`Change this user to ${newRole}?`)) { renderTeamTab(); return; }
+  if (!(await confirmDlg(`Change this user to ${newRole}?`))) { renderTeamTab(); return; }
   firebase.firestore().collection('users').doc(uid).update({ role: newRole })
     .then(() => { toast(`Role changed to ${newRole}`); renderTeamTab(); })
     .catch(e => { toast('Failed: ' + e.message); renderTeamTab(); });
@@ -11525,12 +11737,15 @@ function setupFilters() {
         if (box) box.style.display = 'none';
       }
     });
-    // "/" focuses search from anywhere (unless already typing somewhere)
+    // "/" (outside inputs) or Ctrl/Cmd+K (anywhere) focuses search
     document.addEventListener('keydown', (ev) => {
-      if (ev.key === '/' && !ev.ctrlKey && !ev.metaKey &&
-          !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) {
+      const slash = ev.key === '/' && !ev.ctrlKey && !ev.metaKey &&
+          !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
+      const ctrlK = ev.key.toLowerCase() === 'k' && (ev.ctrlKey || ev.metaKey);
+      if (slash || ctrlK) {
         ev.preventDefault();
         gs.focus();
+        gs.select();
       }
     });
   }
@@ -11634,9 +11849,9 @@ function restoreMyData() {
 // ══════════════════════════════════════════════════════════
 //  TRADE SHOW IMPORT (one-time, 2026 spring show)
 // ══════════════════════════════════════════════════════════
-function importTradeShowProspects() {
+async function importTradeShowProspects() {
   if (!DB._firestoreReady) { toast('⚠️ Database not ready yet — please wait a moment and try again.'); return; }
-  if (!confirm('Import 34 trade show prospects? Duplicates will be skipped.')) return;
+  if (!(await confirmDlg('Import 34 trade show prospects? Duplicates will be skipped.'))) return;
 
   const TODAY = today();
   const mk = () => uid();
@@ -11682,7 +11897,7 @@ function importTradeShowProspects() {
   const skipped  = RECORDS.length - toImport.length;
 
   if (toImport.length === 0) {
-    alert(`All ${RECORDS.length} records already exist — nothing imported.`);
+    toast(`All ${RECORDS.length} records already exist — nothing imported.`, 6000);
     return;
   }
 
@@ -11717,15 +11932,15 @@ function importTradeShowProspects() {
 
   renderSettings();
   renderProspects();
-  alert(`✓ ${toImport.length} prospects imported, ${skipped} skipped (duplicates).`);
+  toast(`✓ ${toImport.length} prospects imported, ${skipped} skipped (duplicates).`, 6000);
 }
 
 // ══════════════════════════════════════════════════════════
 //  NEM SHOW ACCOUNTS IMPORT (one-time, March 2026 NEM show)
 // ══════════════════════════════════════════════════════════
-function importNEMShowAccounts() {
+async function importNEMShowAccounts() {
   if (!DB._firestoreReady) { toast('⚠️ Database not ready yet — please wait a moment and try again.'); return; }
-  if (!confirm('Import 18 NEM show accounts? Duplicates will be skipped.')) return;
+  if (!(await confirmDlg('Import 18 NEM show accounts? Duplicates will be skipped.'))) return;
 
   const mk = () => uid();
   const SHOW_DATE = '2026-03-17';
@@ -11756,7 +11971,7 @@ function importNEMShowAccounts() {
   const skipped  = RECORDS.length - toImport.length;
 
   if (toImport.length === 0) {
-    alert(`All ${RECORDS.length} records already exist — nothing imported.`);
+    toast(`All ${RECORDS.length} records already exist — nothing imported.`, 6000);
     return;
   }
 
@@ -11791,7 +12006,7 @@ function importNEMShowAccounts() {
 
   renderSettings();
   renderAccounts();
-  alert(`✓ ${toImport.length} accounts imported, ${skipped} skipped (duplicates).`);
+  toast(`✓ ${toImport.length} accounts imported, ${skipped} skipped (duplicates).`, 6000);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11911,8 +12126,8 @@ function saveLfVariantRow(skuId, variantId) {
   toast('Variant saved ✓');
 }
 
-function deleteLfVariant(skuId, variantId) {
-  if (!confirm2('Delete this variant?')) return;
+async function deleteLfVariant(skuId, variantId) {
+  if (!(await confirmDlg('Delete this variant?'))) return;
   DB.update('lf_skus', skuId, s => ({...s, variants: (s.variants||[]).filter(v => v.id !== variantId)}));
   renderLfSkuSettings();
   const panel = qs(`#lf-var-panel-${skuId}`);
@@ -12481,9 +12696,9 @@ function _saveLfInvoiceCore(id, isNew) {
   return { rec, deduction };
 }
 
-function deleteLfInvoice(id) {
+async function deleteLfInvoice(id) {
   if (!_requireAdmin('delete invoices')) return;
-  if (!confirm2('Delete this LF invoice? This cannot be undone.')) return;
+  if (!(await confirmDlg('Delete this LF invoice? This cannot be undone.'))) return;
   const invNum = DB.a('lf_invoices').find(x => x.id === id)?.number || id;
   auditLog('delete', 'lf_invoice', id, invNum);
   deleteInvoiceWithCleanup(id);
@@ -12619,9 +12834,9 @@ function _syncCombinedParentForChild(childId) {
 
 // ── Invoice numbering ─────────────────────────────────────
 
-function deleteCombinedInvoice(combinedId) {
+async function deleteCombinedInvoice(combinedId) {
   if (!_requireAdmin('delete invoices')) return;
-  if (!confirm('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions and reset linked portal orders so you can re-confirm.')) return;
+  if (!(await confirmDlg('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions and reset linked portal orders so you can re-confirm.'))) return;
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
   auditLog('delete', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId);
@@ -13339,8 +13554,8 @@ function _miscLinesOf(inv) { return (inv?.lineItems || []).filter(l => l.skuId =
 function _miscRowHTML(desc, amt) {
   return `<div class="misc-row" style="display:flex;gap:6px;margin-top:6px;align-items:center">
     <input class="misc-desc" placeholder="Description (e.g. Glassware)" value="${escHtml(String(desc == null ? '' : desc))}" style="flex:2">
-    <input class="misc-amt" type="number" step="0.01" min="0" placeholder="0.00" value="${escHtml(String(amt == null ? '' : amt))}" style="flex:1;max-width:110px">
-    <button type="button" class="btn xs" onclick="this.closest('.misc-row').remove()">✕</button>
+    <input class="misc-amt" type="number" step="0.01" min="0" placeholder="0.00" value="${escHtml(String(amt == null ? '' : amt))}" style="flex:1;max-width:110px" oninput="if(this.closest('#iv-misc-rows'))_ivCalcTotal()">
+    <button type="button" class="btn xs" onclick="const _iv=this.closest('#iv-misc-rows');this.closest('.misc-row').remove();if(_iv)_ivCalcTotal()">✕</button>
   </div>`;
 }
 function _renderMiscRows(prefix, lines) {
@@ -13905,7 +14120,7 @@ async function openInvoicePreview(type, id) {
     else { shipBtn.disabled = false; shipBtn.textContent = '📦 Push to ShipStation'; }
   };
   if (whBtn) whBtn.onclick = async () => {
-    if (rec.warehousePushedAt && !confirm('This invoice was already sent to the warehouse. Send an UPDATED copy?')) return;
+    if (rec.warehousePushedAt && !(await confirmDlg('This invoice was already sent to the warehouse. Send an UPDATED copy?'))) return;
     whBtn.disabled = true; await pushToWarehouse(id, col); openInvoicePreview(type, id);
   };
 
@@ -14022,8 +14237,8 @@ async function openInvoicePreview(type, id) {
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) {
     voidBtn.style.display = (st === 'void') ? 'none' : '';
-    voidBtn.onclick = () => {
-      if (!confirm2('Void this invoice?')) return;
+    voidBtn.onclick = async () => {
+      if (!(await confirmDlg('Void this invoice?'))) return;
       DB.atomicUpdate(cache => {
         const arr = cache[col] || [];
         const i2 = arr.findIndex(x => x.id === id);
@@ -14181,7 +14396,7 @@ async function openCombinedInvoicePreview(combinedId) {
     }
   };
   if (whBtn) whBtn.onclick = async () => {
-    if (rec.warehousePushedAt && !confirm('This invoice was already sent to the warehouse. Send an UPDATED copy?')) return;
+    if (rec.warehousePushedAt && !(await confirmDlg('This invoice was already sent to the warehouse. Send an UPDATED copy?'))) return;
     whBtn.disabled = true;
     await pushToWarehouse(combinedId, 'combined_invoices');
     openCombinedInvoicePreview(combinedId);
@@ -14369,9 +14584,9 @@ async function openCombinedInvoicePreview(combinedId) {
   };
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) voidBtn.style.display = _isAdmin() ? '' : 'none';
-  if (voidBtn) voidBtn.onclick = () => {
+  if (voidBtn) voidBtn.onclick = async () => {
     if (!_requireAdmin('void invoices')) return;
-    if (!confirm('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.')) return;
+    if (!(await confirmDlg('Void this invoice? This marks it canceled and reverses any inventory deduction. Cannot be undone.'))) return;
     auditLog('void', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId);
     const wasDeducted = DB.a('iv').some(x => (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId) && x.type === 'out');
     DB.atomicUpdate(cache => {
@@ -15585,7 +15800,7 @@ async function _approveSampleRequest(portalOrderId) {
 }
 
 async function _declineSampleRequest(portalOrderId) {
-  if (!confirm2('Decline this sample request?')) return;
+  if (!(await confirmDlg('Decline this sample request?'))) return;
   const order = PortalDB.getOrders().find(o => o.id === portalOrderId);
   if (!order) return;
   for (const id of _sampleSiblingIds(order)) {
@@ -16005,12 +16220,12 @@ function createLfInvoiceFromPortal(portalOrderId) {
     .catch(e => toast('Error: '+e.message));
 }
 
-function linkPortalLfToAccount(portalOrderId) {
+async function linkPortalLfToAccount(portalOrderId) {
   const accounts = DB.a('ac').filter(a=>a.status==='active');
-  const sel = accounts.map(a=>`${a.id}|${a.name}`).join('\n');
-  const chosen = window.prompt('Enter account name to link:\n\n'+accounts.map(a=>a.name).join('\n'));
-  if (!chosen) return;
-  const ac = accounts.find(a=>a.name.toLowerCase()===chosen.toLowerCase().trim());
+  const pick = await promptDlg('Account', { title: 'Link to account', type: 'select',
+    options: accounts.map(a => ({ value: a.id, label: a.name })), okLabel: 'Link' });
+  if (!pick) return;
+  const ac = accounts.find(a => a.id === pick);
   if (!ac) { toast('Account not found'); return; }
   firebase.firestore().collection('portal_orders').doc(portalOrderId)
     .update({ accountId: ac.id, accountName: ac.name })
@@ -16018,8 +16233,8 @@ function linkPortalLfToAccount(portalOrderId) {
     .catch(e => toast('Error: '+e.message));
 }
 
-function discardLfPortalOrder(portalOrderId) {
-  if (!confirm2('Mark this LF submission as discarded?')) return;
+async function discardLfPortalOrder(portalOrderId) {
+  if (!(await confirmDlg('Mark this LF submission as discarded?'))) return;
   firebase.firestore().collection('portal_orders').doc(portalOrderId)
     .update({ status: 'discarded' })
     .then(() => { toast('Discarded'); _renderPoLf(); })
@@ -16146,7 +16361,7 @@ async function createProspectFromPoId(id) {
 }
 
 async function declinePortalOrder(id) {
-  if (!confirm('Mark this submission as declined?')) return;
+  if (!(await confirmDlg('Mark this submission as declined?'))) return;
   // Decline BOTH halves of a dual-brand submission — declining only the
   // clicked doc left the paired other-brand doc status 'new' forever (it is
   // grouped into the same row, so it was invisible but kept the nav badge lit).
@@ -16161,7 +16376,7 @@ async function declinePortalOrder(id) {
 
 async function deletePortalOrder(orderId) {
   if (!_requireAdmin('delete portal orders')) return;
-  if (!confirm('Delete this submission? Cannot be undone.')) return;
+  if (!(await confirmDlg('Delete this submission? Cannot be undone.'))) return;
   try {
     // Find the paired order (same account, within 60s, different brand) and delete both
     const order = PortalDB.getOrders().find(o => o.id === orderId);
@@ -16616,8 +16831,8 @@ async function confirmPortalOrder() {
 
     // If prospect — prompt to convert
     if (d.isProspect && d.accountId) {
-      setTimeout(() => {
-        if (confirm(d.accountName + ' is a prospect. Convert to active account now?')) {
+      setTimeout(async () => {
+        if (await confirmDlg(d.accountName + ' is a prospect. Convert to active account now?')) {
           convertProspect(d.accountId);
         }
       }, 500);
@@ -16989,7 +17204,7 @@ async function pushToWarehouse(invoiceId, collection) {
     return;
   }
   if ((inv.status || 'draft') === 'paid' &&
-      !confirm('This invoice is already PAID. Send it to the warehouse for fulfillment anyway?')) {
+      !(await confirmDlg('This invoice is already PAID. Send it to the warehouse for fulfillment anyway?'))) {
     return;
   }
   const acName = inv.accountName || inv.distName || DB.a('ac').find(a => a.id === inv.accountId)?.name
@@ -17481,9 +17696,9 @@ function markInvoiceSent(id) {
   toast('Marked as sent ✓');
 }
 
-function deleteInvoice(id) {
+async function deleteInvoice(id) {
   if (!_requireAdmin('delete invoices')) return;
-  if (!confirm('Delete this invoice?')) return;
+  if (!(await confirmDlg('Delete this invoice?'))) return;
   const inv = findInvoice(id);
   auditLog('delete', 'invoice', id, inv?.number || inv?.invoiceNumber || id);
   deleteInvoiceWithCleanup(id);
@@ -17787,8 +18002,8 @@ async function _saveInvCore(id, isNew) {
   return rec;
 }
 
-function deleteInvRecord(id) {
-  if (!confirm2('Delete this invoice?')) return;
+async function deleteInvRecord(id) {
+  if (!(await confirmDlg('Delete this invoice?'))) return;
   const inv = findInvoice(id);
   const invNum = inv?.invoiceNumber || inv?.number || id;
   deleteInvoiceWithCleanup(id);
@@ -18063,7 +18278,7 @@ function _updatePortalOrdersBadge(count) {
 
 async function approveApplication(docId, app) {
   if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
-  if (!confirm2(`Approve ${app.businessName || 'this application'} and create an account?`)) return;
+  if (!(await confirmDlg(`Approve ${app.businessName || 'this application'} and create an account?`))) return;
 
   const acId    = uid();
   const token   = generateSecureToken(acId);
@@ -18157,7 +18372,7 @@ async function approveApplication(docId, app) {
 
 async function rejectApplication(docId, app) {
   if (!app) { try { const d = await firebase.firestore().collection('portal_inquiries').doc(docId).get(); app = d.exists ? d.data() : {}; } catch(e) { toast('Could not load application'); return; } }
-  if (!confirm2(`Reject application from ${app.businessName || 'this applicant'}?`)) return;
+  if (!(await confirmDlg(`Reject application from ${app.businessName || 'this applicant'}?`))) return;
 
   let emailResult = null;
   let emailSentAt = null;
@@ -18548,7 +18763,7 @@ function samplingCopyCalLink() {
   if (!k) { toast('Save the sampling setup first'); return; }
   const url = 'https://pbfwholesale.com/sampling-action?a=cal&k=' + encodeURIComponent(k);
   navigator.clipboard.writeText(url).then(() => toast('Calendar link copied ✓ — text it to her'))
-    .catch(() => prompt('Copy the calendar link:', url));
+    .catch(async () => { await promptDlg('Copy the calendar link', { initial: url, okLabel: 'Done' }); });
 }
 
 async function samplingCopyLink() {
@@ -18558,7 +18773,7 @@ async function samplingCopyLink() {
     const token = await _ensurePortalToken(acId);
     const link = 'https://pbfwholesale.com/sampling?t=' + token;
     try { await navigator.clipboard.writeText(link); toast('Booking link copied ✓'); }
-    catch (e) { prompt('Copy this link:', link); }
+    catch (e) { await promptDlg('Copy this link', { initial: link, okLabel: 'Done' }); }
   } catch (e) {
     console.error(e);
     toast('Could not generate the link');
@@ -18578,7 +18793,7 @@ async function samplingResend(id) {
 async function samplingCancel(id) {
   const r = _samplingReqs.find(x => x.id === id);
   if (!r) return;
-  if (!confirm2(`Cancel this demo request for ${r.accountName || 'this store'}?` + (['confirmed', 'proposed_alt'].includes(r.status) ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store never knew a date existed so it gets no email.'))) return;
+  if (!(await confirmDlg(`Cancel this demo request for ${r.accountName || 'this store'}?` + (['confirmed', 'proposed_alt'].includes(r.status) ? ' The store and the sampler will be emailed.' : ' The sampler will be emailed; the store never knew a date existed so it gets no email.')))) return;
   try {
     const resp = await firebase.functions().httpsCallable('samplingAdmin')({ action: 'cancel', requestId: id });
     toast(resp?.data?.already ? 'Already ' + resp.data.already + ' — nothing to cancel' : 'Cancelled');
@@ -18607,10 +18822,10 @@ function samplingInvoiceBackstock(id) {
 
 // The invoice-backstock stamp is written BEFORE the modal — if Graham
 // cancels the modal, the ✓ would lie. This undoes it (verifier-flagged).
-function samplingUnstampBackstock(id) {
+async function samplingUnstampBackstock(id) {
   const r = _samplingReqs.find(x => x.id === id);
   if (!r || !r.backstockHandledAt) return;
-  if (!confirm('Undo "backstock invoiced"? Only do this if you cancelled the invoice without sending it.')) return;
+  if (!(await confirmDlg('Undo "backstock invoiced"? Only do this if you cancelled the invoice without sending it.'))) return;
   firebase.firestore().collection('sampling_requests').doc(id)
     .update({ backstockHandledAt: firebase.firestore.FieldValue.delete(), backstockHandledBy: firebase.firestore.FieldValue.delete() })
     .catch(() => {});
@@ -18648,7 +18863,7 @@ function samplingLogUsage(id) {
 async function samplingComplete(id) {
   const r = _samplingReqs.find(x => x.id === id);
   if (!r) return;
-  const outcome = prompt('How did it go? (cases sold, restock taken, worth repeating…)', r.outcome || '');
+  const outcome = await promptDlg('How did it go? (cases sold, restock taken, worth repeating…)', { title: 'Demo outcome', type: 'textarea', initial: r.outcome || '', okLabel: 'Mark completed' });
   if (outcome === null) return;
   try {
     // Fresh read first: the prompt() can sit open while someone cancels from
@@ -18965,7 +19180,7 @@ async function poToggleSent(id) {
 async function poDelete(id) {
   const p = _poDocs.find(x => x.id === id);
   if (!p) return;
-  if (!confirm('Delete ' + (p.number || 'this PO') + '? This cannot be undone.')) return;
+  if (!(await confirmDlg('Delete ' + (p.number || 'this PO') + '? This cannot be undone.'))) return;
   try {
     await firebase.firestore().collection('purchase_orders').doc(id).delete();
     _poDocs = _poDocs.filter(x => x.id !== id);
@@ -19535,9 +19750,9 @@ function flMarkReviewed(id) {
     .catch(e => toast('Failed: ' + (e.message || ''), 4000));
 }
 
-function flDelete(id) {
+async function flDelete(id) {
   const l = _flLogs.find(x => x.id === id);
-  if (!confirm('Delete this field log entry' + (l ? ' for ' + (l.storeName || '') : '') + '? This cannot be undone.')) return;
+  if (!(await confirmDlg('Delete this field log entry' + (l ? ' for ' + (l.storeName || '') : '') + '? This cannot be undone.'))) return;
   firebase.firestore().collection('field_logs').doc(id).delete()
     .then(() => toast('Deleted'))
     .catch(e => toast('Delete failed: ' + (e.message || ''), 4000));

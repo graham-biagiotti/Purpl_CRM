@@ -352,8 +352,6 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .pr-card-nextsteps-tap{cursor:pointer;transition:background .12s}
 .pr-card-nextsteps-tap:hover{background:#dbeafe}
 .ac-card-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px}
-.btn.run{background:var(--brand-purple);color:#fff;border-color:var(--brand-purple)}
-.btn.run:hover{background:var(--brand-purple-hover)}
 
 /* ── Territory Map ──────────────────────────────────────── */
 .map-controls-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
@@ -397,25 +395,6 @@ body{font-size:15px;line-height:1.5}
 .kpi.amber{background:linear-gradient(135deg,#fffbeb,#fef3c7);border-color:#fcd34d}
 .kpi.blue{background:linear-gradient(135deg,#eff6ff,#dbeafe);border-color:#93c5fd}
 .kpi.gray{background:#f9fafb}
-
-/* ── Dashboard Welcome Header ───────────────────────────── */
-.dash-welcome{
-  background:linear-gradient(135deg,var(--brand-purple),#6a3a9e);
-  border-radius:12px;
-  padding:20px 24px;
-  margin-bottom:20px;
-  color:#fff;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  box-shadow:0 4px 20px rgba(75,32,130,.3);
-}
-.dash-welcome-left .dw-date{font-size:12px;opacity:.7;margin-bottom:4px;letter-spacing:.03em}
-.dash-welcome-left .dw-greeting{font-family:var(--font-brand);font-size:22px;font-weight:700;line-height:1.2}
-.dash-welcome-right{text-align:right;flex-shrink:0}
-.dash-welcome-right .dw-summary{font-size:13px;opacity:.85;line-height:1.8}
-.dash-welcome-right .dw-summary strong{color:#e2ccff;font-weight:600}
 
 /* ── Sidebar nav enhanced (styles consolidated into main sidebar block above) ── */
 
@@ -584,8 +563,6 @@ th{padding:11px 14px}
   }
 
   /* Welcome header stack */
-  .dash-welcome{flex-direction:column;gap:12px}
-  .dash-welcome-right{text-align:left;width:100%}
 
   /* Account actions always visible on mobile */
   .ac-card-actions{opacity:1!important}
@@ -1037,3 +1014,48 @@ body.dark [style*="background:var(--surface)"]{background:var(--surface)!importa
 /* ── Unified invoices toolbar ───────────────────────────── */
 .inv-toolbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--card)}
 .inv-toolbar select,.inv-toolbar input[type="search"]{width:auto}
+
+/* ══════════════════════════════════════════════════════════
+   UI REFRESH (U1–U3)
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Two-line account/prospect rows (default list view) ── */
+.ac-row{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:8px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.ac-row:hover{border-color:var(--purple-border);box-shadow:0 2px 8px rgba(123,79,160,.08)}
+.ac-row.needs-attention{border-bottom:3px solid var(--amber)}
+.ac-row.ac-dist-served{opacity:.85}
+.ac-row.pr-row-lost{opacity:.7;background:#f9fafb}
+.ac-row-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ac-row-name{font-size:14.5px;font-weight:700}
+.ac-row-metrics{margin-left:auto;display:flex;gap:18px;align-items:baseline;font-size:12.5px;white-space:nowrap}
+.ac-row-metrics .ac-metric-label{margin-bottom:0;margin-right:4px}
+.ac-row-dim{color:var(--muted);font-size:11px}
+.ac-row-l2{display:flex;align-items:center;gap:10px;margin-top:6px;min-width:0}
+.ac-row-note{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+/* ── Sticky filter bars on the big lists ── */
+#page-accounts .page-filter-bar,#page-prospects .page-filter-bar{position:sticky;top:56px;z-index:40;background:var(--bg);padding-top:10px;padding-bottom:10px;margin-top:-10px}
+
+/* ── Invoice modal: sticky live totals bar ── */
+.iv-totals-bar{position:sticky;bottom:0;background:#fff;border-top:2px solid var(--text);display:flex;gap:22px;align-items:baseline;justify-content:flex-end;padding:10px 2px 6px;flex-wrap:wrap;z-index:5}
+.iv-totals-bar .ivt{font-size:13px;white-space:nowrap}
+.iv-totals-bar .ivt-l{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:4px}
+.iv-totals-bar .ivt-total{font-size:17px;font-weight:700}
+
+/* ── Skin: flat KPI tiles — the number carries the color, not the tile ── */
+.kpi.purple,.kpi.green,.kpi.red,.kpi.amber,.kpi.blue,.kpi.gray{background:#fff;border-color:#e9d5ff}
+
+/* ── Skin: lined-up money everywhere ── */
+td{font-variant-numeric:tabular-nums}
+.kpi .num,.ac-row-metrics,.ac-card-metrics{font-variant-numeric:tabular-nums}
+
+/* ── Dialog polish ── */
+#modal-dlg .modal{box-shadow:0 25px 60px rgba(0,0,0,.3)}
+#modal-dlg #dlg-body:empty{display:none}
+
+/* ── Print: radar + reports pages come out clean ── */
+@media print{
+  #page-projections .card,#page-reports .card{box-shadow:none;border:1px solid #ddd;page-break-inside:avoid}
+  #page-projections select,#page-projections details,#page-reports .tab-bar,#page-reports input,#page-reports select,#page-reports button{display:none!important}
+  .ac-row,.iv-totals-bar{box-shadow:none}
+}
