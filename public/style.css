@@ -74,6 +74,9 @@ a:hover{color:var(--brand-purple-hover)}
 .sb-logo{padding:20px 16px 18px;border-bottom:1px solid rgba(255,255,255,0.07)}
 .sb-logo-row{display:flex;align-items:center;gap:11px}
 .sb-logo-img{width:38px;height:38px;flex-shrink:0;border-radius:50%;background:rgba(255,255,255,0.92);padding:3px;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+/* The real white purpl logo, full size — the sidebar used to cram the 180px
+   FAVICON into a 38px circle, which is why it looked tiny and wrong. */
+.sb-logo-main{display:block;height:52px;width:auto;max-width:186px;object-fit:contain;object-position:left center}
 .sb-tagline{font-size:9px;color:#6b5f8a;letter-spacing:.08em;text-transform:uppercase;margin-top:3px;font-weight:500}
 
 /* Brand lockup in sidebar (legacy) */

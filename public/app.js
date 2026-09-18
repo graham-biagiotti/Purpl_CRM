@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v228';
+const APP_VERSION = 'v229';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2190,57 +2190,82 @@ async function sendInvoiceReminder(invId, collection) {
 }
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
+  // Same design language as the invoice document (buildInvoiceDocHTML): white
+  // card, dark ink, the sprig + LF logo row, an Amount-Due band over a 2px
+  // rule, and the SAME payment block (Pay Online + ACH + mail-a-check) —
+  // the old reminder was a different-looking gradient email with only a
+  // Pay button and no check/ACH instructions.
   const ac = DB.a('ac').find(x => x.id === inv.accountId) || {};
   const amount = collection === 'lf_invoices' ? (inv.total || 0) : (parseFloat(inv.grandTotal != null ? inv.grandTotal : (inv.amount != null ? inv.amount : inv.total)) || 0); // combined parents carry grandTotal only — omitting it emailed "Amount Due $0.00"
-  const invSettings = DB.obj('invoice_settings') || {};
   const _remDue = inv.dueDate || inv.due;
   const dueLabel = _remDue ? new Date(_remDue+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'Net 30';
-  const isLf = collection === 'lf_invoices';
-  const accentColor = isLf ? '#4a7c59' : '#6B4F9A';
-  const accentLight = isLf ? '#dcfce7' : '#ede4f5';
-  const headerGrad = isLf
-    ? 'background:linear-gradient(135deg,#3d6b4d 0%,#5a8c69 100%)'
-    : 'background:#6B4F9A;background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%)';
   const contacts = ac.contacts || [];
   const primary = contacts.find(c => c.isPrimary) || contacts[0] || {};
   const contactName = primary.name || ac.contact || 'there';
+  const pill = isOverdue
+    ? `<span style="display:inline-block;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:0.08em">OVERDUE</span>`
+    : `<span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:0.08em">DUE SOON</span>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reminder ${escHtml(inv.number || '')}</title></head>
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:Inter,Arial,sans-serif;color:#1a1a2e">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
 <tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="${headerGrad};padding:32px 40px">
-    <table width="100%"><tr>
-      <td>
-        <table cellpadding="0" cellspacing="0"><tr>
-          <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
-          <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-          <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block"></td>
-        </tr></table>
-        <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
+<table width="680" cellpadding="0" cellspacing="0" style="max-width:680px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px">
+
+  <tr><td style="padding:36px 48px 20px">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:middle">
+        <table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="vertical-align:middle;padding-right:18px">
+              <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="140" style="display:block;height:auto">
+            </td>
+            <td style="vertical-align:middle;padding:0 4px">
+              <div style="width:1px;height:44px;background:#d1d5db"></div>
+            </td>
+            <td style="vertical-align:middle;padding-left:18px">
+              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="52" height="52" style="display:block">
+            </td>
+          </tr>
+        </table>
       </td>
-      <td align="right"><div style="color:#fff;font-size:22px;font-weight:700">${isOverdue ? 'Payment Overdue' : 'Invoice Due Soon'}</div></td>
+      <td align="right" style="vertical-align:middle">
+        <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">REMINDER</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;letter-spacing:0.03em">${escHtml(inv.number || '')}</div>
+        <div style="margin-top:6px">${pill}</div>
+      </td>
     </tr></table>
   </td></tr>
-  <tr><td style="background:${accentColor};height:4px"></td></tr>
-  <tr><td style="padding:28px 40px">
-    <p style="font-size:15px;color:#1a1a2e;margin:0 0 16px">Hi ${escHtml(contactName)},</p>
-    <p style="font-size:15px;color:#1a1a2e;margin:0 0 16px">
+
+  <tr><td style="padding:8px 48px 8px">
+    <p style="font-size:15px;color:#1a1a2e;margin:0 0 14px">Hi ${escHtml(contactName)},</p>
+    <p style="font-size:14px;color:#374151;margin:0 0 6px;line-height:1.6">
       ${isOverdue
-        ? `This is a friendly reminder that invoice <strong>${escHtml(inv.number||'')}</strong> for <strong>${escHtml(ac.name||'')}</strong> was due on <strong>${dueLabel}</strong> and remains unpaid.`
+        ? `A friendly reminder that invoice <strong>${escHtml(inv.number||'')}</strong> for <strong>${escHtml(ac.name||'')}</strong> was due on <strong>${dueLabel}</strong> and remains unpaid.`
         : `Invoice <strong>${escHtml(inv.number||'')}</strong> for <strong>${escHtml(ac.name||'')}</strong> is due on <strong>${dueLabel}</strong> — just a heads up!`}
     </p>
-    <div style="background:${accentLight};border-radius:8px;padding:20px 24px;margin:20px 0;text-align:center">
-      <div style="font-size:13px;color:#6b7280;margin-bottom:4px">Amount Due</div>
-      <div style="font-size:30px;font-weight:700;color:${accentColor}">$${parseFloat(amount).toFixed(2)}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
-    </div>
-    ${inv._payLink ? `<div style="margin:20px 0;text-align:center"><a href="${escHtml(inv._payLink)}" style="display:inline-block;background:${accentColor};color:#fff;padding:12px 32px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:500">Pay Now →</a></div>` : ''}
-    <p style="font-size:14px;color:#374151;margin:16px 0 0">Questions? Reply to this email or call 603-748-3038.</p>
-    <p style="font-size:14px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
   </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280;border-top:1px solid #e5e7eb">
+
+  <tr><td style="padding:8px 48px 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1a2e">
+      <tr>
+        <td style="padding-top:16px;font-size:14px;font-weight:600;color:#1a1a2e;text-transform:uppercase;letter-spacing:0.05em">Amount Due</td>
+        <td style="padding-top:16px;text-align:right;font-size:26px;font-weight:700;color:#1a1a2e;white-space:nowrap">$${parseFloat(amount).toFixed(2)}</td>
+      </tr>
+    </table>
+    <div style="font-size:11px;color:#6b7280;margin-top:6px;text-align:right">Invoice ${escHtml(inv.number||'')} · Due ${dueLabel}</div>
+  </td></tr>
+
+  <tr><td style="padding:0 48px 24px">
+    ${_buildPaymentHTML(inv._payLink || null)}
+  </td></tr>
+
+  <tr><td style="padding:0 48px 28px">
+    <p style="font-size:13px;color:#374151;margin:0">Questions? Just reply to this email or call 603-748-3038.</p>
+    <p style="font-size:13px;color:#374151;margin:8px 0 0">Thank you,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
+  </td></tr>
+
+  <tr><td class="doc-footer" style="background:#f9fafb;padding:16px 48px;text-align:center;font-size:11px;color:#6b7280;border-top:1px solid #e5e7eb;border-radius:0 0 6px 6px">
     Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
     lavender@pbfwholesale.com · 603-748-3038
   </td></tr>
