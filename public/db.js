@@ -6,6 +6,11 @@
 //  • On startup, all collections are loaded into _cache
 //  • Reads are instant (synchronous from cache)
 //  • Writes update cache immediately, persist via debounce
+//  • M1: saves write ONLY docs marked dirty (_dirtyIds), never the whole
+//    cache — a save can't clobber docs another user changed meanwhile
+//  • M3: config saves write only the changed keys (top-level merge)
+//  • M4: remote snapshots deferred while blocked are re-fetched and applied
+//    when the block lifts (_drainDeferred), never dropped
 //  • Real-time listeners on each collection for multi-user
 //  • API is identical to single-doc version (DB.a, DB.push, etc.)
 // ═══════════════════════════════════════════════════════
@@ -217,11 +222,15 @@ const DB = {
         if (!remoteChanges.length) return;
 
         if (this._dirty || this._atomicInProgress || (this._saveDirtyKeys && this._saveDirtyKeys.has(key))) {
+          // M4: remember WHICH collection changed and re-fetch it when the
+          // block lifts (drain), instead of dropping the change.
+          this._deferredRemote.add(key);
           this._pendingRemoteChanges = true;
           if (this._dirty) this._showRemoteChangeWarning();
         } else {
           try {
             this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+            this._deferredRemote.delete(key); // full-state snapshot healed it
           } catch(mapErr) {
             console.error(`[db] Corrupt snapshot for ${key}, keeping cache:`, mapErr);
           }
@@ -246,20 +255,13 @@ const DB = {
       const _configKeyDirty = this._saveDirtyKeys &&
         [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys.has(k));
       if (this._dirty || this._atomicInProgress || _configKeyDirty) {
+        this._deferredRemote.add('__config__'); // M4: re-fetched on drain
         this._pendingRemoteChanges = true;
         this._showRemoteChangeWarning();
       } else {
         const data = snap.data();
-        CONFIG_ARRAY_KEYS.forEach(k => {
-          if (data.hasOwnProperty(k)) {
-            this._cache[k] = Array.isArray(data[k]) ? data[k] : (this._cache[k] || []);
-          }
-        });
-        OBJ_KEYS.forEach(k => {
-          if (data.hasOwnProperty(k)) {
-            this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
-          }
-        });
+        this._applyConfigData(data);
+        this._deferredRemote.delete('__config__');
         this._scheduleRefresh(); // H4: debounced
       }
     }, err => {
@@ -276,6 +278,61 @@ const DB = {
     if (!window.refreshCurrentPage) return;
     clearTimeout(this._refreshTimer);
     this._refreshTimer = setTimeout(() => { try { window.refreshCurrentPage(); } catch(_) {} }, 120);
+  },
+
+  // Merge a config-doc payload into the cache, skipping keys that have a
+  // local edit awaiting save (their own save + echo will reconcile them).
+  _applyConfigData(data) {
+    if (!data) return;
+    CONFIG_ARRAY_KEYS.forEach(k => {
+      if (data.hasOwnProperty(k) && !(this._saveDirtyKeys && this._saveDirtyKeys.has(k))) {
+        this._cache[k] = Array.isArray(data[k]) ? data[k] : (this._cache[k] || []);
+      }
+    });
+    OBJ_KEYS.forEach(k => {
+      if (data.hasOwnProperty(k) && !(this._saveDirtyKeys && this._saveDirtyKeys.has(k))) {
+        this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
+      }
+    });
+  },
+
+  // M4: apply remote changes that arrived while we were blocked. Each deferred
+  // key is re-FETCHED fresh rather than replayed from the stale stored event —
+  // a fresh read is latency-compensated (it reflects our own pending writes on
+  // top of server state), so it can never roll back a local edit. Keys still
+  // blocked stay queued and re-drain when their save completes.
+  _drainDeferred() {
+    if (!this._deferredRemote || this._deferredRemote.size === 0) return;
+    if (this._dirty || this._atomicInProgress) return;
+    if (!this._db || !this._firestoreReady) return;
+    const { getDoc } = window.FirestoreAPI;
+    [...this._deferredRemote].forEach(key => {
+      if (key === '__config__') {
+        const cfgDirty = [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys && this._saveDirtyKeys.has(k));
+        if (cfgDirty) return; // re-drained when the config save completes
+        this._deferredRemote.delete(key);
+        getDoc(this._configRef()).then(snap => {
+          if (!snap || !snap.exists) return;
+          if (this._dirty || this._atomicInProgress) { this._deferredRemote.add('__config__'); return; }
+          this._applyConfigData(snap.data());
+          if (this._deferredRemote.size === 0) this._pendingRemoteChanges = false;
+          this._scheduleRefresh();
+        }).catch(() => { this._deferredRemote.add('__config__'); });
+      } else if (COLLECTION_KEYS.includes(key)) {
+        if (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) return; // mid-save
+        this._deferredRemote.delete(key);
+        this._collRef(key).get().then(snap => {
+          if (this._dirty || this._atomicInProgress || (this._saveDirtyKeys && this._saveDirtyKeys.has(key))) {
+            this._deferredRemote.add(key); return;
+          }
+          this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+          if (this._deferredRemote.size === 0) this._pendingRemoteChanges = false;
+          this._scheduleRefresh();
+        }).catch(() => { this._deferredRemote.add(key); });
+      } else {
+        this._deferredRemote.delete(key); // unknown key — drop
+      }
+    });
   },
 
   // ── Migration from single-doc to multi-collection ──
@@ -341,6 +398,31 @@ const DB = {
 
   _saveDirtyKeys: new Set(),
 
+  // M1: per-doc dirty tracking. A collection save writes ONLY these ids, never
+  // the whole cache — rewriting every cached doc meant any save could clobber
+  // docs another user changed while our copy was stale. _dirtyDeletes queues
+  // deletions whose immediate _deleteDoc failed so the batch retries them
+  // (previously a failed delete fell back to a save path that never deletes).
+  _dirtyIds: {},
+  _dirtyDeletes: {},
+  _markDocDirty(key, id) {
+    if (!id) return;
+    (this._dirtyIds[key] || (this._dirtyIds[key] = new Set())).add(id);
+    if (this._dirtyDeletes[key]) this._dirtyDeletes[key].delete(id);
+  },
+  _markDocDeleted(key, id) {
+    if (!id) return;
+    (this._dirtyDeletes[key] || (this._dirtyDeletes[key] = new Set())).add(id);
+    if (this._dirtyIds[key]) this._dirtyIds[key].delete(id);
+  },
+
+  // M4: collection keys (plus '__config__') whose remote snapshots arrived
+  // while we were blocked (edit modal open, atomic update, in-flight save).
+  // Drained — re-fetched and applied — when the block lifts, instead of being
+  // dropped like before (a drop left the cache stale until some unrelated
+  // future event, and a save in that gap wrote the stale copy back).
+  _deferredRemote: new Set(),
+
   _scheduleSave(key) {
     this._saveDirtyKeys.add(key);
     if (this._saveTimers[key]) clearTimeout(this._saveTimers[key]);
@@ -367,8 +449,13 @@ const DB = {
           // and bloated the blob past the localStorage quota (M14). An item
           // the user actually touched this session has a fresh _updatedAt;
           // anything older has long since saved (or surfaced a failure toast).
+          // M1: additionally require the id to still be DIRTY (unconfirmed) —
+          // a confirmed write needs no recovery and must not be a replay
+          // candidate.
+          const _ids = this._dirtyIds[key];
           recovery.collections[key] = (this._cache[key] || []).filter(it =>
-            it && it._updatedAt && (ts - new Date(it._updatedAt).getTime() <= RECOVERY_WINDOW_MS));
+            it && it.id && _ids && _ids.has(it.id) &&
+            it._updatedAt && (ts - new Date(it._updatedAt).getTime() <= RECOVERY_WINDOW_MS));
         } else if (CONFIG_ARRAY_KEYS.includes(key) || OBJ_KEYS.includes(key)) {
           recovery.config[key] = this._cache[key];
         }
@@ -408,13 +495,16 @@ const DB = {
         this._saveTimers[key] = null;
       }
       if (COLLECTION_KEYS.includes(key)) {
+        // M1: fire the unconfirmed docs only, not the whole cache.
+        const ids = this._dirtyIds[key];
         (this._cache[key] || []).forEach(item => {
-          if (item?.id) this._writeDoc(key, item);
+          if (item?.id && ids && ids.has(item.id)) this._writeDoc(key, item);
         });
       }
     });
-    // Config is a single doc — flush it directly
-    if (this._saveDirtyKeys.size > 0) this._saveConfig();
+    // Config is a single doc — flush only the dirty config keys directly
+    const cfgDirty = [...this._saveDirtyKeys].filter(k => CONFIG_ARRAY_KEYS.includes(k) || OBJ_KEYS.includes(k));
+    if (cfgDirty.length) this._saveConfig(cfgDirty);
     this._saveDirtyKeys.clear();
   },
 
@@ -437,6 +527,7 @@ const DB = {
       return;
     }
     let restored = 0;
+    const restoredCfgKeys = [];
     const recoveryTs = recovery.ts || 0;
     // H2: require the local copy to beat the server by a margin so trivial
     // client-clock skew between devices can't flip "newer" and clobber a
@@ -478,10 +569,12 @@ const DB = {
       const curEmpty = cur === null || cur === undefined ||
         (Array.isArray(cur) && cur.length === 0) ||
         (typeof cur === 'object' && !Array.isArray(cur) && Object.keys(cur).length === 0);
-      if (curEmpty && val != null) { this._cache[key] = val; restored++; }
+      if (curEmpty && val != null) { this._cache[key] = val; restored++; restoredCfgKeys.push(key); }
     });
     if (restored > 0) {
-      this._saveConfig();
+      // M3: collection re-asserts were written doc-by-doc above; only the
+      // restored CONFIG keys need a config write (and only those keys).
+      if (restoredCfgKeys.length) this._saveConfig(restoredCfgKeys);
       if (window.toast) toast('Recovered ' + restored + ' unsaved change' + (restored > 1 ? 's' : '') + ' from your last session.');
       if (window.refreshCurrentPage) window.refreshCurrentPage();
     }
@@ -495,42 +588,90 @@ const DB = {
     if (COLLECTION_KEYS.includes(key)) {
       this._saveCollection(key);
     } else if (CONFIG_ARRAY_KEYS.includes(key) || OBJ_KEYS.includes(key)) {
-      this._saveConfig();
+      // M3: coalesce every config key currently awaiting save into this one
+      // write (each key debounces on its own timer; one setDoc covers them all).
+      const cfgKeys = [key];
+      [...this._saveDirtyKeys].forEach(k => {
+        if (CONFIG_ARRAY_KEYS.includes(k) || OBJ_KEYS.includes(k)) {
+          cfgKeys.push(k);
+          this._saveDirtyKeys.delete(k);
+          if (this._saveTimers[k]) { clearTimeout(this._saveTimers[k]); this._saveTimers[k] = null; }
+        }
+      });
+      this._saveConfig(cfgKeys);
     }
   },
 
   _saveCollection(key) {
-    const items = this._cache[key] || [];
-    const batch = this._db.batch();
-    const colRef = this._collRef(key);
-
-    // C1: this path NEVER deletes. It only creates/updates the docs currently
-    // in cache. Deletions are propagated explicitly via _deleteDoc (from
-    // remove() and atomicUpdate's before/after diff) — inferring deletion from
-    // "server has an id my cache lacks" is unsafe because the cache is stale
-    // during in-flight saves and could wipe another user's new docs.
+    // M1: write ONLY docs marked dirty (created/updated and not yet confirmed),
+    // never the whole cache. C1 still holds: deletion is never inferred from
+    // cache-absence — only ids explicitly queued in _dirtyDeletes are deleted.
+    // Dirty ids are DRAINED up front (re-added on transient failure) so an
+    // edit made while this batch is in flight re-marks its id and is picked up
+    // by its own scheduled save instead of being wiped by our success handler.
     // For append-only collections we still read existing ids so we only CREATE
     // new docs (re-setting an existing one is an UPDATE the rules reject).
     const appendOnly = APPEND_ONLY_KEYS.includes(key);
+    const dirtySet = this._dirtyIds[key];
+    const delSet = this._dirtyDeletes[key];
+    const wantIds = dirtySet ? [...dirtySet] : [];
+    const delIds = (!appendOnly && delSet) ? [...delSet] : [];
+    if (!wantIds.length && !delIds.length) {
+      // Everything already confirmed by immediate writes — nothing to batch,
+      // but anything deferred while this key counted as "mid-save" must still
+      // be drained (gap found by the emulator suite: a remote change arriving
+      // in the immediate-write window stayed queued until the next modal close).
+      this._updateSyncUI('synced');
+      this._drainDeferred();
+      return;
+    }
+    wantIds.forEach(id => dirtySet.delete(id));
+    delIds.forEach(id => delSet.delete(id));
+    const colRef = this._collRef(key);
+
     const guard = appendOnly
       ? colRef.get().then(snap => new Set(snap.docs.map(d => d.id)))
       : Promise.resolve(null);
     guard.then(existingIds => {
-      items.forEach(item => {
-        if (!item.id) return;
-        if (appendOnly && existingIds.has(item.id)) return;
-        batch.set(colRef.doc(item.id), item, { merge: true });
+      // Read values at commit-build time so the freshest cache copy is written.
+      const byId = new Map((this._cache[key] || []).map(x => x?.id ? [x.id, x] : null).filter(Boolean));
+      const ops = [];
+      wantIds.forEach(id => {
+        const item = byId.get(id);
+        if (!item) return; // removed from cache since marked — delete path owns it
+        if (appendOnly && existingIds.has(id)) return;
+        ops.push({ del: false, id, item });
       });
-      return batch.commit();
+      delIds.forEach(id => ops.push({ del: true, id }));
+      // Firestore batches cap at 500 ops — chunk large imports.
+      let p = Promise.resolve();
+      for (let i = 0; i < ops.length; i += 400) {
+        const slice = ops.slice(i, i + 400);
+        p = p.then(() => {
+          const batch = this._db.batch();
+          slice.forEach(op => op.del
+            ? batch.delete(colRef.doc(op.id))
+            : batch.set(colRef.doc(op.id), op.item, { merge: true }));
+          return batch.commit();
+        });
+      }
+      return p;
     }).then(() => {
       this._saveRetries = {};
       this._updateSyncUI('synced');
+      this._drainDeferred();
     }).catch(e => {
       console.error(`[db] Save error for ${key}:`, e);
       this._updateSyncUI('error');
       // Permanent failures (rules/permission) should not retry endlessly
       const code = e?.code || '';
       const permanent = ['permission-denied','not-found','invalid-argument','failed-precondition','already-exists','resource-exhausted','unimplemented'].includes(code);
+      if (!permanent) {
+        // Transient — re-queue exactly what this batch attempted so the retry
+        // (and the unload recovery snapshot) still carry it.
+        wantIds.forEach(id => this._markDocDirty(key, id));
+        delIds.forEach(id => this._markDocDeleted(key, id));
+      }
       if (permanent) {
         if (window.toast) toast('⚠️ Save rejected by server: ' + (e.message || code) + '. Changes NOT saved.', 10000);
         return;
@@ -549,14 +690,25 @@ const DB = {
     });
   },
 
-  _saveConfig() {
+  _saveConfig(keys) {
+    // M3: write ONLY the named config keys (top-level merge), not the whole
+    // config blob. Writing all keys on every save meant two users editing
+    // DIFFERENT settings raced whole-doc last-writer-wins — the loser's key
+    // silently reverted. No keys named (legacy path) = write everything.
     const { setDoc } = window.FirestoreAPI;
+    const ALL_CFG = [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS];
+    const list = (Array.isArray(keys) && keys.length)
+      ? [...new Set(keys)].filter(k => ALL_CFG.includes(k))
+      : ALL_CFG;
     const payload = { _dbVersion: 2 };
-    CONFIG_ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+    list.forEach(k => {
+      payload[k] = CONFIG_ARRAY_KEYS.includes(k)
+        ? (this._cache[k] || [])
+        : ((this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+    });
 
     setDoc(this._configRef(), payload, { merge: true })
-      .then(() => { this._configRetries = 0; this._updateSyncUI('synced'); })
+      .then(() => { this._configRetries = 0; this._updateSyncUI('synced'); this._drainDeferred(); })
       .catch(e => {
         console.error('[db] Config save error:', e);
         this._updateSyncUI('error');
@@ -573,9 +725,10 @@ const DB = {
         this._configRetries = retries;
         if (retries <= 3) {
           if (window.toast) toast('⚠️ Settings save failed — retrying…');
-          setTimeout(() => this._saveConfig(), 2000 * retries);
+          setTimeout(() => this._saveConfig(list), 2000 * retries);
         } else {
-          [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].forEach(k => this._saveDirtyKeys.add(k));
+          // M3: re-queue only the keys THIS save carried, not every config key.
+          list.forEach(k => this._saveDirtyKeys.add(k));
           if (window.toast) toast('⚠️ Settings save failed after 3 retries — cached locally, will sync when reconnected.', 10000);
         }
       });
@@ -594,15 +747,14 @@ const DB = {
   markDirty() { this._dirty = true; },
   markClean() {
     this._dirty = false;
-    // Do NOT reload here. _loadFromCollections() REPLACES the whole cache from
-    // the server; if a just-made local write hasn't committed yet, that reload
-    // wipes it (this is how a confirmed portal order lost its invoice — twice).
-    // It's also unnecessary: the per-collection snapshot listeners reconcile the
-    // cache on their own once writes are server-confirmed, and apply any
-    // remote change that was deferred while we were dirty at the same time.
-    // The user can still force a hard refresh via "Load Changes" (applyPendingRemote).
-    this._pendingRemoteChanges = false;
+    // M4: drain (apply) any remote changes deferred while the modal was open,
+    // instead of dropping them. Still NO blanket _loadFromCollections() here —
+    // a whole-cache reload over in-flight writes is how a confirmed portal
+    // order lost its invoice, twice. _drainDeferred re-fetches ONLY the
+    // deferred keys, and a fresh read is latency-compensated, so our own
+    // uncommitted writes survive the apply.
     this._dismissRemoteWarning();
+    this._drainDeferred();
   },
 
   applyPendingRemote() {
@@ -640,36 +792,54 @@ const DB = {
   _writeDoc(key, item) {
     if (!this._db || !this._firestoreReady || !item?.id) return;
     this._collRef(key).doc(item.id).set(item, { merge: true })
-      .then(() => this._updateSyncUI('synced'))
+      .then(() => {
+        // Confirmed — the debounced batch no longer needs to carry this doc.
+        // (A later edit re-marks the id synchronously before its own write.)
+        if (this._dirtyIds[key]) this._dirtyIds[key].delete(item.id);
+        this._updateSyncUI('synced');
+        this._drainDeferred();
+      })
       .catch(e => {
         console.warn(`[db] Immediate write failed for ${key}/${item.id}:`, e);
         this._updateSyncUI('error');
-        // Re-queue for debounced batch save as fallback
-        this._saveDirtyKeys.add(key);
+        // Re-queue THIS doc for the debounced batch save as fallback
+        this._markDocDirty(key, item.id);
         this._scheduleSave(key);
       });
   },
   _deleteDoc(key, id) {
     if (!this._db || !this._firestoreReady || !id) return;
     this._collRef(key).doc(id).delete()
-      .then(() => this._updateSyncUI('synced'))
+      .then(() => {
+        if (this._dirtyDeletes[key]) this._dirtyDeletes[key].delete(id);
+        this._updateSyncUI('synced');
+        this._drainDeferred();
+      })
       .catch(e => {
         console.warn(`[db] Immediate delete failed for ${key}/${id}:`, e);
         this._updateSyncUI('error');
-        this._saveDirtyKeys.add(key);
+        // M1: queue the DELETE itself for the batch retry (the old fallback
+        // re-scheduled a save, but the save path never deletes — the delete
+        // was silently lost).
+        this._markDocDeleted(key, id);
         this._scheduleSave(key);
       });
   },
 
   // ── Public API ──
   get(k) { return this._cache[k] || []; },
-  set(k, v) { this._cache[k] = v; this._save(k); },
+  set(k, v) {
+    // M1: whole-array set on a collection (first-run seed only) marks every
+    // item dirty so the targeted save writes them all.
+    if (COLLECTION_KEYS.includes(k) && Array.isArray(v)) v.forEach(it => this._markDocDirty(k, it?.id));
+    this._cache[k] = v; this._save(k);
+  },
   obj(k, def = {}) { return this._cache[k] || def; },
   setObj(k, v) { this._cache[k] = v; this._save(k); },
   a(k) { return this.get(k); },
   _stamp(item) { if (item && typeof item === 'object') item._updatedAt = new Date().toISOString(); return item; },
   push(k, v) {
-    if (COLLECTION_KEYS.includes(k)) this._stamp(v);
+    if (COLLECTION_KEYS.includes(k)) { this._stamp(v); this._markDocDirty(k, v?.id); }
     const a = this.a(k); a.push(v); this._cache[k] = a; this._save(k);
     if (COLLECTION_KEYS.includes(k) && v?.id) this._writeDoc(k, v);
   },
@@ -680,11 +850,14 @@ const DB = {
       console.warn(`[db] update: ${k}/${id} not found (may have been deleted)`);
       return false;
     }
-    a[i] = this._stamp(fn(a[i])); this._cache[k] = a; this._save(k);
+    a[i] = this._stamp(fn(a[i])); this._cache[k] = a;
+    if (COLLECTION_KEYS.includes(k)) this._markDocDirty(k, id);
+    this._save(k);
     if (COLLECTION_KEYS.includes(k)) this._writeDoc(k, a[i]);
     return true;
   },
   remove(k, id) {
+    if (COLLECTION_KEYS.includes(k)) this._markDocDeleted(k, id);
     this._cache[k] = this.a(k).filter(x => x.id !== id); this._save(k);
     if (COLLECTION_KEYS.includes(k)) this._deleteDoc(k, id);
   },
@@ -692,62 +865,83 @@ const DB = {
   atomicUpdate(fn) {
     // Block snapshots during atomic update to prevent the 50ms race
     this._atomicInProgress = true;
-    const allKeys = [...ARRAY_KEYS, ...OBJ_KEYS];
+    let changedCols, changedCfg;
     try {
+      // M2: snapshot pre-state so we write ONLY what the mutator changed.
+      // Previously every atomicUpdate re-stamped _updatedAt on EVERY row of
+      // EVERY collection and flushed them all — a full-database rewrite per
+      // atomic action (the widest stale-clobber window in the app), and it
+      // falsified _updatedAt as an "edited recently" signal, which the unload
+      // recovery snapshot depends on.
       const before = {};
-      COLLECTION_KEYS.forEach(k => { before[k] = new Set((this._cache[k]||[]).map(x => x?.id).filter(Boolean)); });
+      COLLECTION_KEYS.forEach(k => {
+        const m = new Map();
+        (this._cache[k] || []).forEach(x => { if (x && typeof x === 'object' && x.id) m.set(x.id, JSON.stringify(x)); });
+        before[k] = m;
+      });
+      const CFG_KEYS = [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS];
+      const cfgBefore = {};
+      CFG_KEYS.forEach(k => { cfgBefore[k] = JSON.stringify(this._cache[k] ?? null); });
+
       fn(this._cache);
+
       const now = new Date().toISOString();
+      changedCols = [];
       COLLECTION_KEYS.forEach(k => {
         const appendOnly = APPEND_ONLY_KEYS.includes(k);
+        const prev = before[k];
         const after = new Set();
-        (this._cache[k]||[]).forEach(item => {
-          if (item && typeof item === 'object') {
-            // L5: don't re-stamp append-only rows (they're immutable; the
-            // server skips re-writing them, so a new _updatedAt is pure drift).
+        let touched = false;
+        (this._cache[k] || []).forEach(item => {
+          if (!item || typeof item !== 'object' || !item.id) return;
+          after.add(item.id);
+          const prevJson = prev.get(item.id);
+          if (prevJson === undefined || prevJson !== JSON.stringify(item)) {
+            // L5: append-only rows are immutable — never re-stamp them.
             if (!appendOnly) item._updatedAt = now;
-            if (item.id) {
-              after.add(item.id);
-              if (!before[k].has(item.id)) this._writeDoc(k, item);
-            }
+            this._markDocDirty(k, item.id);
+            touched = true;
           }
         });
-        // C1: propagate deletions EXPLICITLY. Previously _saveCollection inferred
-        // deletions from "server has a doc my cache doesn't" — but the cache is
-        // intentionally stale during a save/atomicUpdate (snapshot deferral), so
-        // that diff could delete another user's just-created docs. Diff the
-        // before/after id sets here instead. Append-only collections never delete.
+        // C1: propagate deletions EXPLICITLY via the before/after id diff —
+        // never inferred from cache-absence. Append-only collections never
+        // delete. Queued in _dirtyDeletes so the batch below carries them
+        // (and retries them on transient failure).
         if (!appendOnly) {
-          before[k].forEach(id => { if (!after.has(id)) this._deleteDoc(k, id); });
+          prev.forEach((_, id) => { if (!after.has(id)) { this._markDocDeleted(k, id); touched = true; } });
         }
+        if (touched) changedCols.push(k);
       });
-      allKeys.forEach(k => this._scheduleSave(k));
+      changedCfg = CFG_KEYS.filter(k => JSON.stringify(this._cache[k] ?? null) !== cfgBefore[k]);
+      // Mark keys dirty NOW so a tab-close inside the 50ms flush window still
+      // captures them (the unload flush + recovery blob read _saveDirtyKeys).
+      [...changedCols, ...changedCfg].forEach(k => this._saveDirtyKeys.add(k));
+      if (changedCols.length || changedCfg.length) this._updateSyncUI('syncing');
     } catch (e) {
       // A throwing mutator must NOT leave _atomicInProgress stuck — that would
       // permanently jam snapshot sync for the session. Clear it and rethrow.
       this._atomicInProgress = false;
       throw e;
     }
-    // Flush immediately for atomicity. finally guarantees the flag clears even
-    // if a _saveCollection/_saveConfig throws synchronously.
+    // Flush immediately for atomicity — but ONLY the keys that changed.
+    // finally guarantees the flag clears even if a save throws synchronously.
     setTimeout(() => {
       try {
-        allKeys.forEach(k => {
+        [...changedCols, ...changedCfg].forEach(k => {
           if (this._saveTimers[k]) {
             clearTimeout(this._saveTimers[k]);
             this._saveTimers[k] = null;
           }
+          // M13: direct flushes bypass _doSave (which normally clears
+          // _saveDirtyKeys) — a stuck dirty key jams snapshot deferral forever.
+          // A failed save re-queues its own work via its retry path.
+          if (this._saveDirtyKeys) this._saveDirtyKeys.delete(k);
         });
-        COLLECTION_KEYS.forEach(k => this._saveCollection(k));
-        this._saveConfig();
-        // M13: these direct flushes bypass _doSave (which is what normally
-        // clears _saveDirtyKeys). Without this, every key touched by an
-        // atomicUpdate stays "dirty" forever — jamming the config snapshot
-        // listener, which then defers ALL remote config changes indefinitely.
-        // A failed save re-adds its own key via its retry path.
-        allKeys.forEach(k => this._saveDirtyKeys && this._saveDirtyKeys.delete(k));
+        changedCols.forEach(k => this._saveCollection(k));
+        if (changedCfg.length) this._saveConfig(changedCfg);
       } finally {
         this._atomicInProgress = false;
+        this._drainDeferred(); // M4: apply anything deferred during the update
       }
     }, 50);
   },
