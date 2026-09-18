@@ -245,6 +245,7 @@ function toast(msg, dur=3000, actionLabel, actionFn) {
 // silently skipping its confirmation. promptDlg keeps prompt()'s contract:
 // resolves the string on OK (may be ''), null on Cancel/Esc.
 let _dlgResolve = null;
+let _dlgCancelValue = false; // the CURRENT dialog's cancel result (false / null)
 function _dlgClose(result) {
   const ov = document.getElementById('modal-dlg');
   if (ov) ov.classList.remove('open');
@@ -253,8 +254,17 @@ function _dlgClose(result) {
 }
 function _dlgOpen(o) {
   return new Promise(resolve => {
-    if (_dlgResolve) _dlgClose(o.cancelValue); // never stack: cancel the earlier one
+    if (_dlgResolve) _dlgClose(_dlgCancelValue); // never stack: cancel the earlier one WITH ITS OWN cancel value
     _dlgResolve = resolve;
+    _dlgCancelValue = o.cancelValue;
+    // Backdrop click = Cancel, never a silent close (the generic overlay
+    // wiring would remove the class without resolving, freezing the awaiting
+    // flow — gate-caught).
+    const _ov = document.getElementById('modal-dlg');
+    if (_ov && !_ov._dlgWired) {
+      _ov._dlgWired = true;
+      _ov.addEventListener('click', e => { if (e.target === _ov) document.getElementById('dlg-cancel')?.click(); });
+    }
     const t = qs('#dlg-title'), b = qs('#dlg-body'), iw = qs('#dlg-input-wrap');
     if (t) t.textContent = o.title || 'Please confirm';
     if (b) { b.textContent = o.body || ''; b.style.display = o.body ? '' : 'none'; }
@@ -328,6 +338,10 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (dlgOpen && e.key === 'Enter' && e.target?.tagName !== 'TEXTAREA') {
+    // Enter activates the FOCUSED button. The first version always clicked
+    // OK — so Enter on the Cancel button EXECUTED the destructive action
+    // (gate-caught: a keyboard "No" performing "Yes").
+    if (e.target === document.getElementById('dlg-cancel')) return; // native activation = Cancel
     e.preventDefault(); document.getElementById('dlg-ok')?.click();
   }
 });
@@ -2736,7 +2750,12 @@ function _ivCalcTotal() {
   // path, so what the bar shows is what saving produces.
   const ship = Math.max(0, parseFloat(qs('#iv-shipping')?.value) || 0);
   let misc = 0;
-  document.querySelectorAll('#iv-misc-rows .misc-row .misc-amt').forEach(el => { misc += Math.max(0, parseFloat(el.value) || 0); });
+  // Same rule as _readMiscRows: a row with an amount but NO description is
+  // dropped at save, so the bar must not count it either.
+  document.querySelectorAll('#iv-misc-rows .misc-row').forEach(row => {
+    if (!(row.querySelector('.misc-desc')?.value || '').trim()) return;
+    misc += Math.max(0, parseFloat(row.querySelector('.misc-amt')?.value) || 0);
+  });
   const discRaw = Math.max(0, parseFloat(qs('#iv-discount')?.value) || 0);
   const disc = Math.min(discRaw, products + ship + misc);
   const set = (id, v) => { const el = qs(id); if (el) el.textContent = v; };
@@ -11690,13 +11709,18 @@ function openModal(id) {
   }
 }
 function closeModal(id) {
+  // The shared dialog must NEVER be closed without resolving its promise
+  // (a silent class-strip froze the awaiting flow — gate-caught). Closing
+  // it always routes through the Cancel button.
+  if (id === 'modal-dlg') { document.getElementById('dlg-cancel')?.click(); return; }
   DB.markClean();
   if (id) {
     const m = document.getElementById(id);
     if (m) m.classList.remove('open');
     return;
   }
-  document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('open'));
+  if (document.getElementById('modal-dlg')?.classList.contains('open')) document.getElementById('dlg-cancel')?.click();
+  document.querySelectorAll('.overlay').forEach(o=>{ if (o.id !== 'modal-dlg') o.classList.remove('open'); });
 }
 
 function qs(sel) { return document.querySelector(sel); }
@@ -11737,8 +11761,11 @@ function setupFilters() {
         if (box) box.style.display = 'none';
       }
     });
-    // "/" (outside inputs) or Ctrl/Cmd+K (anywhere) focuses search
+    // "/" (outside inputs) or Ctrl/Cmd+K (anywhere) focuses search — but
+    // never while a confirm/prompt dialog is up (focusing search behind the
+    // overlay made the next Enter click the dialog's OK — gate-caught).
     document.addEventListener('keydown', (ev) => {
+      if (document.getElementById('modal-dlg')?.classList.contains('open')) return;
       const slash = ev.key === '/' && !ev.ctrlKey && !ev.metaKey &&
           !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
       const ctrlK = ev.key.toLowerCase() === 'k' && (ev.ctrlKey || ev.metaKey);
