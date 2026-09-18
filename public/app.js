@@ -9896,6 +9896,10 @@ function toggleStop(i) {
         cache['lf_wix_deductions'] = [...(cache['lf_wix_deductions']||[]), newWixDeduction];
       }
     });
+    // Gate: `run` is the LIVE cache object mutated ABOVE (done/ordId/
+    // wixDeductionId), so atomicUpdate's pre-state diff can't see the change —
+    // persist it explicitly or the stop reverts on reload and gets re-invoiced.
+    DB.setObj('today_run', run);
 
     // Show Wix pull reminder if this stop had LF items
     if (newWixDeduction) {
@@ -9942,6 +9946,10 @@ function toggleStop(i) {
         cache['lf_wix_deductions'] = (cache['lf_wix_deductions']||[]).filter(d => !(d.id === stopWixId && !d.confirmed));
       }
     });
+    // Gate: same as mark-done — the un-done flag and cleared ordId live on the
+    // pre-mutated object; without this the stop shows done again after reload
+    // and a second un-toggle falls back to the unsafe account+date sweep.
+    DB.setObj('today_run', run);
     toast('Stop unmarked — order, invoice & inventory reversed');
   } else {
     DB.setObj('today_run', run);
