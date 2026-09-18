@@ -342,14 +342,18 @@ const DB = {
           this._scheduleRefresh();
         }).catch(() => { this._deferredRemote.add('__config__'); });
       } else if (COLLECTION_KEYS.includes(key)) {
-        // mid-save or unconfirmed docs pending → re-drained when they settle
+        // mid-save, unconfirmed docs, or pending deletes → re-drained when
+        // they settle (a fetch before a queued delete lands would transiently
+        // resurrect the removed row in the cache).
         if ((this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
-            (this._dirtyIds[key] && this._dirtyIds[key].size)) return;
+            (this._dirtyIds[key] && this._dirtyIds[key].size) ||
+            (this._dirtyDeletes[key] && this._dirtyDeletes[key].size)) return;
         this._deferredRemote.delete(key);
         this._collRef(key).get().then(snap => {
           if (this._dirty || this._atomicInProgress ||
               (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
-              (this._dirtyIds[key] && this._dirtyIds[key].size)) {
+              (this._dirtyIds[key] && this._dirtyIds[key].size) ||
+              (this._dirtyDeletes[key] && this._dirtyDeletes[key].size)) {
             this._deferredRemote.add(key); return;
           }
           this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
