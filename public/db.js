@@ -218,6 +218,13 @@ const DB = {
     COLLECTION_KEYS.forEach(key => {
       const unsub = this._collRef(key).onSnapshot(snap => {
         if (!this._firestoreReady) return;
+        // Fuzz fix: ALWAYS remember the latest delivered snapshot — including
+        // local-echo events — so a drain applies the newest ordered view
+        // (latency-compensated, includes our own pending writes) instead of
+        // re-fetching. A re-fetch whose server response predated a write that
+        // acked before it resolved could deliver a PRE-write view and regress
+        // the cache with nothing left to heal it.
+        this._deferredSnaps[key] = snap;
         // Only process remote changes (not local echoes)
         const remoteChanges = snap.docChanges().filter(c => !c.doc.metadata.hasPendingWrites);
         const hasLocalChanges = snap.docChanges().some(c => c.doc.metadata.hasPendingWrites);
@@ -236,7 +243,8 @@ const DB = {
         // the retry would write the server's own values back).
         if (this._dirty || this._atomicInProgress ||
             (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
-            (this._dirtyIds[key] && this._dirtyIds[key].size)) {
+            (this._dirtyIds[key] && this._dirtyIds[key].size) ||
+            (this._inflightCols[key] > 0)) {
           // M4: remember WHICH collection changed and re-fetch it when the
           // block lifts (drain), instead of dropping the change.
           this._deferredRemote.add(key);
@@ -260,6 +268,7 @@ const DB = {
     // Listen to config document
     const configUnsub = onSnapshot(this._configRef(), snap => {
       if (!this._firestoreReady) return;
+      this._deferredSnaps['__config__'] = snap; // fuzz fix: latest ordered view
       if (snap.metadata.hasPendingWrites) {
         // Gate advisory: a remote config change merged into our own pending-
         // write echo would otherwise vanish (the ack can be metadata-only).
@@ -273,8 +282,8 @@ const DB = {
       // snapshot must NOT overwrite local config that's edited-but-unflushed.
       // Config keys (CONFIG_ARRAY_KEYS + OBJ_KEYS) live in _saveDirtyKeys while
       // a debounced save is pending, and atomicUpdate also flushes config.
-      const _configKeyDirty = this._saveDirtyKeys &&
-        [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys.has(k));
+      const _configKeyDirty = this._inflightCfg > 0 || (this._saveDirtyKeys &&
+        [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys.has(k)));
       if (this._dirty || this._atomicInProgress || _configKeyDirty) {
         this._deferredRemote.add('__config__'); // M4: re-fetched on drain
         this._pendingRemoteChanges = true;
@@ -320,10 +329,13 @@ const DB = {
   },
 
   // M4: apply remote changes that arrived while we were blocked. Each deferred
-  // key is re-FETCHED fresh rather than replayed from the stale stored event —
-  // a fresh read is latency-compensated (it reflects our own pending writes on
-  // top of server state), so it can never roll back a local edit. Keys still
-  // blocked stay queued and re-drain when their save completes.
+  // key is applied from the LATEST snapshot the listener delivered (stored on
+  // every event, so it is ordered and latency-compensated — it reflects our
+  // own pending writes and can never regress behind them; the fuzz suite
+  // caught a re-fetch doing exactly that when a server response predated a
+  // write that acked before it resolved). A fresh fetch remains only as the
+  // fallback when no snapshot has been delivered yet. Keys still blocked stay
+  // queued and re-drain when their save completes.
   _drainDeferred() {
     if (!this._deferredRemote || this._deferredRemote.size === 0) return;
     if (this._dirty || this._atomicInProgress) return;
@@ -331,9 +343,17 @@ const DB = {
     const { getDoc } = window.FirestoreAPI;
     [...this._deferredRemote].forEach(key => {
       if (key === '__config__') {
-        const cfgDirty = [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys && this._saveDirtyKeys.has(k));
+        const cfgDirty = this._inflightCfg > 0 ||
+          [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys && this._saveDirtyKeys.has(k));
         if (cfgDirty) return; // re-drained when the config save completes
         this._deferredRemote.delete(key);
+        const stored = this._deferredSnaps['__config__'];
+        if (stored) {
+          if (stored.exists) this._applyConfigData(stored.data());
+          if (this._deferredRemote.size === 0) this._pendingRemoteChanges = false;
+          this._scheduleRefresh();
+          return;
+        }
         getDoc(this._configRef()).then(snap => {
           if (!snap || !snap.exists) return;
           if (this._dirty || this._atomicInProgress) { this._deferredRemote.add('__config__'); return; }
@@ -343,12 +363,24 @@ const DB = {
         }).catch(() => { this._deferredRemote.add('__config__'); });
       } else if (COLLECTION_KEYS.includes(key)) {
         // mid-save, unconfirmed docs, or pending deletes → re-drained when
-        // they settle (a fetch before a queued delete lands would transiently
+        // they settle (applying before a queued delete lands would transiently
         // resurrect the removed row in the cache).
         if ((this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
             (this._dirtyIds[key] && this._dirtyIds[key].size) ||
-            (this._dirtyDeletes[key] && this._dirtyDeletes[key].size)) return;
+            (this._dirtyDeletes[key] && this._dirtyDeletes[key].size) ||
+            (this._inflightCols[key] > 0)) return;
         this._deferredRemote.delete(key);
+        const stored = this._deferredSnaps[key];
+        if (stored) {
+          try {
+            this._cache[key] = stored.docs.map(d => ({ ...d.data(), id: d.id }));
+          } catch(mapErr) {
+            console.error(`[db] Corrupt stored snapshot for ${key}, keeping cache:`, mapErr);
+          }
+          if (this._deferredRemote.size === 0) this._pendingRemoteChanges = false;
+          this._scheduleRefresh();
+          return;
+        }
         this._collRef(key).get().then(snap => {
           if (this._dirty || this._atomicInProgress ||
               (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
@@ -436,6 +468,15 @@ const DB = {
   // (previously a failed delete fell back to a save path that never deletes).
   _dirtyIds: {},
   _dirtyDeletes: {},
+  // Fuzz fix: issued-but-unconfirmed batch/config writes. _saveCollection
+  // drains _dirtyIds at ISSUE time, so between issue and server ack the dirty
+  // guards read clear while the latest stored snapshot may still predate the
+  // write — a drain in that window regressed the cache (and, via the config
+  // shadow diff, could re-persist a stale config value). These counters keep
+  // the key guarded from mark to CONFIRM; the confirm handlers drain, and by
+  // then the write's own echo is the stored snapshot.
+  _inflightCols: {},
+  _inflightCfg: 0,
   _markDocDirty(key, id) {
     if (!id) return;
     (this._dirtyIds[key] || (this._dirtyIds[key] = new Set())).add(id);
@@ -462,10 +503,16 @@ const DB = {
 
   // M4: collection keys (plus '__config__') whose remote snapshots arrived
   // while we were blocked (edit modal open, atomic update, in-flight save).
-  // Drained — re-fetched and applied — when the block lifts, instead of being
-  // dropped like before (a drop left the cache stale until some unrelated
-  // future event, and a save in that gap wrote the stale copy back).
+  // Drained — applied from the latest delivered snapshot — when the block
+  // lifts, instead of being dropped like before (a drop left the cache stale
+  // until some unrelated future event, and a save in that gap wrote the stale
+  // copy back).
   _deferredRemote: new Set(),
+  // Latest snapshot the listener delivered per key, stored on EVERY event
+  // (even skipped local echoes) so the drain always applies the newest
+  // ordered, latency-compensated view. Never a network call, never stale
+  // relative to our own writes.
+  _deferredSnaps: {},
 
   _scheduleSave(key) {
     this._saveDirtyKeys.add(key);
@@ -671,6 +718,7 @@ const DB = {
     }
     wantIds.forEach(id => dirtySet.delete(id));
     delIds.forEach(id => delSet.delete(id));
+    this._inflightCols[key] = (this._inflightCols[key] || 0) + 1;
     const colRef = this._collRef(key);
 
     // Gate advisory: capture the item references NOW — the append-only guard
@@ -703,10 +751,12 @@ const DB = {
       }
       return p;
     }).then(() => {
+      this._inflightCols[key] = Math.max(0, (this._inflightCols[key] || 1) - 1);
       this._saveRetries = {};
       this._updateSyncUI('synced');
       this._drainDeferred();
     }).catch(e => {
+      this._inflightCols[key] = Math.max(0, (this._inflightCols[key] || 1) - 1);
       console.error(`[db] Save error for ${key}:`, e);
       this._updateSyncUI('error');
       // Permanent failures (rules/permission) should not retry endlessly
@@ -753,13 +803,16 @@ const DB = {
         : ((this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
     });
 
+    this._inflightCfg++;
     setDoc(this._configRef(), payload, { merge: true })
       .then(() => {
+        this._inflightCfg = Math.max(0, this._inflightCfg - 1);
         // Persisted — advance the shadow to what this write carried.
         list.forEach(k => { this._cfgPersisted[k] = JSON.stringify(payload[k] ?? null); });
         this._configRetries = 0; this._updateSyncUI('synced'); this._drainDeferred();
       })
       .catch(e => {
+        this._inflightCfg = Math.max(0, this._inflightCfg - 1);
         console.error('[db] Config save error:', e);
         this._updateSyncUI('error');
         // LOW-1: classify like _saveCollection — never retry a permanent error
