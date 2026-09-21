@@ -77,7 +77,6 @@ a:hover{color:var(--brand-purple-hover)}
 /* The real white purpl logo, full size — the sidebar used to cram the 180px
    FAVICON into a 38px circle, which is why it looked tiny and wrong. */
 .sb-logo-main{display:block;height:52px;width:auto;max-width:186px;object-fit:contain;object-position:left center}
-.sb-tagline{font-size:9px;color:#6b5f8a;letter-spacing:.08em;text-transform:uppercase;margin-top:3px;font-weight:500}
 
 /* Brand lockup in sidebar (legacy) */
 .brand-lockup{display:flex;align-items:center;gap:10px}
@@ -718,7 +717,6 @@ td { padding: 9px 12px; font-size: 13px; }
 .section-hdr h2 { font-size: 14px; font-weight: 600; font-family: inherit; color: var(--text); }
 
 /* ── Sidebar wordmark + More nav section ─────────────────── */
-.sb-wordmark { font-size: 13.5px; letter-spacing: -0.01em; line-height: 1.25; }
 .sb-more { opacity: 0.7; font-size: 12.5px !important; }
 .sb-more:hover, .sb-more.active { opacity: 1 !important; }
 
@@ -1022,7 +1020,6 @@ body.dark [style*="background:var(--surface)"]{background:var(--surface)!importa
 /* ── Two-line account/prospect rows (default list view) ── */
 .ac-row{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:8px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
 .ac-row:hover{border-color:var(--purple-border);box-shadow:0 2px 8px rgba(123,79,160,.08)}
-.ac-row.needs-attention{border-bottom:3px solid var(--amber)}
 .ac-row.ac-dist-served{opacity:.85}
 .ac-row.pr-row-lost{opacity:.7;background:#f9fafb}
 .ac-row-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
