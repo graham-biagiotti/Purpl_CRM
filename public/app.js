@@ -17204,10 +17204,13 @@ function renderInvUnifiedList() {
   const q = (qs('#inv-search')?.value || '').toLowerCase().trim();
   const statusFilter = qs('#inv-status-filter')?.value || 'all';
 
-  const effStatus = x => {
+  // Gate (v235): classify with the SAME per-brand due chain each row displays
+  // (opts.due) — LF rows read due→dueDate there, so a drifted legacy row can't
+  // show a red Overdue badge next to a future due date, and the badge always
+  // agrees with the KPI tiles above.
+  const effStatus = (x, due) => {
     const st = x.status || 'draft';
     if (['paid','draft','void'].includes(st)) return st;
-    const due = x.dueDate || x.due || '';
     return (due && due < todayStr) ? 'overdue' : st;
   };
 
@@ -17219,7 +17222,7 @@ function renderInvUnifiedList() {
     issued: opts.issued || '',
     due: opts.due || '',
     amt: opts.amt,
-    st: effStatus(x),
+    st: effStatus(x, opts.due || ''),
     rawSt: x.status || 'draft',
     inv: x,
     edit: opts.edit, print: opts.print, paidFn: opts.paidFn,
