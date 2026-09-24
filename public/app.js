@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v233';
+const APP_VERSION = 'v234';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13051,6 +13051,8 @@ function openNewCombinedModal() {
   if (qs('#nciv-shipping')) qs('#nciv-shipping').value = '';
 
   _ncivRenderSkuRows();
+  _renderMiscRows('ncivp', []);
+  _renderMiscRows('ncivl', []);
   openModal('modal-new-combined');
 }
 
@@ -13113,10 +13115,15 @@ function editCombinedInvoice(combinedId) {
   // fallback), so rows are resolved by id first, then by name. Any line that
   // still can't be placed ABORTS the edit — saving would silently drop it.
   _ncivRenderSkuRows();
+  // Misc lines are now VISIBLE, editable rows in their brand's section —
+  // the save rebuilds them from these rows (no more invisible carry).
+  _renderMiscRows('ncivp', _miscLinesOf(purplChild));
+  _renderMiscRows('ncivl', _miscLinesOf(lfChild));
   const unmatched = [];
   // Pseudo-lines (__shipping__/__misc__/__discount__) have no SKU row to land
   // in — they used to fall into `unmatched` and ABORT the edit for any child
-  // carrying a misc item. They're skipped here and CARRIED through the save.
+  // carrying a misc item. Shipping/discount are skipped here and carried
+  // through the save; misc lands in the editable rows above.
   const _pseudo = ['__shipping__', '__misc__', '__discount__'];
   (purplChild?.lineItems||[]).filter(l=>!_pseudo.includes(l.skuId) && (l.cases||l.qty)).forEach(l => {
     const cEl = document.querySelector(`.nciv-p-cases[data-sku="${CSS.escape(String(l.skuId||''))}"]`);
@@ -13287,6 +13294,12 @@ function _ncivCalcTotals() {
     if (lineEl) lineEl.textContent = '$' + line.toFixed(2);
   });
 
+  // Misc rows count toward their section's subtotal — same validity rule as
+  // the save (description required, amount > 0), so the preview never shows
+  // money the save would drop.
+  purplSub += _miscSumOf('ncivp');
+  lfSub    += _miscSumOf('ncivl');
+
   document.getElementById('nciv-purpl-sub').textContent = '$' + purplSub.toFixed(2);
   document.getElementById('nciv-lf-sub').textContent = '$' + lfSub.toFixed(2);
   const _ncivShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
@@ -13346,7 +13359,13 @@ async function saveNewCombinedInvoice() {
     lfLines.push({ skuId, skuName: skuObj?.name || skuId, description: skuObj?.name || skuId, qty: cases, cases, units, caseSize, unitPrice, pricePerUnit: unitPrice, pricePerCase: caseSize * unitPrice, total: lineTotal, lineTotal, hasVariants: false });
   });
 
-  if (!purplLines.length && !lfLines.length) { _saveCombInFlight = false; toast('Add at least one case quantity'); return; }  // LOW-5
+  // Misc rows: the brand is the section the row lives in. Pushed into the
+  // line arrays BEFORE subtotals are computed, so child totals, parent
+  // subtotals, grand total and the discount clamp all include them.
+  purplLines.push(..._readMiscRows('ncivp'));
+  lfLines.push(..._readMiscRows('ncivl'));
+
+  if (!purplLines.length && !lfLines.length) { _saveCombInFlight = false; toast('Add at least one case quantity or misc item'); return; }  // LOW-5
 
   const account  = DB.a('ac').find(x => x.id === accountId) || {};
   const due      = qs('#nciv-due')?.value || '';
@@ -13358,8 +13377,11 @@ async function saveNewCombinedInvoice() {
   const fulfillmentSource = qs('#nciv-fulfillment')?.value || 'warehouse';
   const deliveryDate   = qs('#nciv-delivery-date')?.value || '';
   const trackingNumber = qs('#nciv-tracking')?.value?.trim() || '';
-  const purplSub = purplLines.reduce((s,l) => s + (l.total||0), 0);
-  const lfSub    = lfLines.reduce((s,l) => s + (l.total||0), 0);
+  // Wave-11 finding: round at the source — cent-fraction floats (18 + 10.01 =
+  // 28.009999999999998) were storable on child totals via the CREATE path
+  // (edit already rounded). Misc amounts made this likely instead of rare.
+  const purplSub = Math.round(purplLines.reduce((s,l) => s + (l.total||0), 0) * 100) / 100;
+  const lfSub    = Math.round(lfLines.reduce((s,l) => s + (l.total||0), 0) * 100) / 100;
 
   // ── EDIT MODE: update parent + children in place. No new invoice numbers,
   // no status change (locked in the modal), no inventory movement (drafts
@@ -13386,12 +13408,14 @@ async function saveNewCombinedInvoice() {
         pi >= 0 ? cache[pcCol][pi].status : 'draft',
         li >= 0 ? cache.lf_invoices[li].status : 'draft'].map(s => s || 'draft');
       if (stNow.some(s => s !== 'draft')) { abortReason = 'the invoice is no longer a draft (status changed while editing)'; return; }
-      // CARRY each child's misc/discount pseudo-lines: the SKU-row editor
-      // rebuilds product lines only, and replacing lineItems wholesale used
-      // to silently drop a child's misc item. Their dollars stay inside the
-      // child total (that's where they've always lived).
+      // CARRY each child's legacy __discount__ pseudo-lines only. Misc lines
+      // are NO LONGER blind-carried: they round-trip through the visible
+      // editable rows (loaded at open, rebuilt into purplLines/lfLines at
+      // save) — carrying them here too would DUPLICATE every misc item.
+      // Discount dollars stay inside the child total (where they've always
+      // lived on legacy v218-era children).
       const _lv = l => parseFloat(l.lineTotal != null ? l.lineTotal : l.total) || 0;
-      const _extrasOf = (c) => ((c && c.lineItems) || []).filter(l => l.skuId === '__misc__' || l.skuId === '__discount__');
+      const _extrasOf = (c) => ((c && c.lineItems) || []).filter(l => l.skuId === '__discount__');
       const pExtras = pi >= 0 ? _extrasOf(cache[pcCol][pi]) : [];
       const lExtras = li >= 0 ? _extrasOf(cache.lf_invoices[li]) : [];
       const pTotal = Math.round((purplSub + pExtras.reduce((s,l)=>s+_lv(l),0)) * 100) / 100;
@@ -13463,7 +13487,7 @@ async function saveNewCombinedInvoice() {
     accountId, accountName: account.name||'', status,
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
-    purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: purplSub + lfSub + shipVal,
+    purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: Math.round((purplSub + lfSub + shipVal) * 100) / 100,
     notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, source: 'manual',
     // shippingByOrder = the provenance map the ShipStation webhook maintains;
     // a user-entered amount is the authoritative 'manual' entry (a later real
@@ -13587,11 +13611,27 @@ function _discountOfInv(inv) {
 // in the extras block under the product sections.
 function _miscLinesOf(inv) { return (inv?.lineItems || []).filter(l => l.skuId === '__misc__'); }
 function _miscRowHTML(desc, amt) {
+  // _miscRecalc: refresh whichever modal's live total this row sits in
+  // (iv = standalone purpl, ncivp/ncivl = combined purpl/LF sections).
   return `<div class="misc-row" style="display:flex;gap:6px;margin-top:6px;align-items:center">
-    <input class="misc-desc" placeholder="Description (e.g. Glassware)" value="${escHtml(String(desc == null ? '' : desc))}" style="flex:2">
-    <input class="misc-amt" type="number" step="0.01" min="0" placeholder="0.00" value="${escHtml(String(amt == null ? '' : amt))}" style="flex:1;max-width:110px" oninput="if(this.closest('#iv-misc-rows'))_ivCalcTotal()">
-    <button type="button" class="btn xs" onclick="const _iv=this.closest('#iv-misc-rows');this.closest('.misc-row').remove();if(_iv)_ivCalcTotal()">✕</button>
+    <input class="misc-desc" placeholder="Description (e.g. Glassware)" value="${escHtml(String(desc == null ? '' : desc))}" style="flex:2" oninput="_miscRecalc(this)">
+    <input class="misc-amt" type="number" step="0.01" min="0" placeholder="0.00" value="${escHtml(String(amt == null ? '' : amt))}" style="flex:1;max-width:110px" oninput="_miscRecalc(this)">
+    <button type="button" class="btn xs" onclick="const _r=this.closest('.misc-row'),_p=_r.parentElement;_r.remove();_miscRecalc(_p)">✕</button>
   </div>`;
+}
+function _miscRecalc(el) {
+  if (!el) return;
+  if (el.closest && el.closest('#iv-misc-rows')) { _ivCalcTotal(); return; }
+  const inNciv = el.closest && (el.closest('#ncivp-misc-rows') || el.closest('#ncivl-misc-rows'));
+  // The remove button passes the rows CONTAINER (the row is already gone).
+  const isNcivBox = el.id === 'ncivp-misc-rows' || el.id === 'ncivl-misc-rows';
+  if (inNciv || isNcivBox) _ncivCalcTotals();
+  else if (el.id === 'iv-misc-rows') _ivCalcTotal();
+}
+// Sum of the valid (described, positive) misc rows in a container — the same
+// rows _readMiscRows would save, so the live total matches the saved total.
+function _miscSumOf(prefix) {
+  return _readMiscRows(prefix).reduce((s, l) => s + (l.total || 0), 0);
 }
 function _renderMiscRows(prefix, lines) {
   const box = qs('#' + prefix + '-misc-rows');
