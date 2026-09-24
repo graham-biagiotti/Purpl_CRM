@@ -12572,6 +12572,9 @@ function _lfInvCalcTotal() {
       total += cases * caseSize * unitPrice;
     }
   });
+  // Gate advisory (v234): the SAVED total includes misc rows, so the live
+  // total must too — it used to silently understate by the misc amount.
+  total += _miscSumOf('lfi');
   const el = qs('#lfi-total');
   if (el) el.textContent = fmtC(total);
 }
@@ -13627,6 +13630,7 @@ function _miscRecalc(el) {
   const isNcivBox = el.id === 'ncivp-misc-rows' || el.id === 'ncivl-misc-rows';
   if (inNciv || isNcivBox) _ncivCalcTotals();
   else if (el.id === 'iv-misc-rows') _ivCalcTotal();
+  else if ((el.closest && el.closest('#lfi-misc-rows')) || el.id === 'lfi-misc-rows') _lfInvCalcTotal();
 }
 // Sum of the valid (described, positive) misc rows in a container — the same
 // rows _readMiscRows would save, so the live total matches the saved total.
