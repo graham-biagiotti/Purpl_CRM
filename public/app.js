@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v234';
+const APP_VERSION = 'v235';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -10964,10 +10964,20 @@ function _lfRepCutoff() {
   return new Date(Date.now() - _lfRepPeriod * 864e5).toISOString().slice(0,10);
 }
 
+// v235 (audit finding 4): the report's PAID bucket — shared by the on-screen
+// tables/KPI and the CSV exports so they can never disagree. Dated by PAID
+// date (money received in the period), falling back to issue date for legacy
+// rows without a paid stamp; independent of the issue-date window that
+// defines Billed/Outstanding.
+function _lfRepPaid(cutoff) {
+  return DB.a('lf_invoices').filter(i => i.status === 'paid' &&
+    (!cutoff || ((i.paidDate || i.paidAt || i.issued || i.date || '').slice(0, 10) >= cutoff)));
+}
+
 function renderLfReports() {
   const cutoff = _lfRepCutoff();
   const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.issued || inv.date || inv.created || '') >= cutoff);
-  const paid = invs.filter(i => i.status === 'paid');
+  const paid = _lfRepPaid(cutoff);
   // void + draft are not receivables — they inflated Outstanding
   const outstanding = invs.filter(i => !['paid','void','draft'].includes(i.status || 'draft'));
 
@@ -11078,7 +11088,7 @@ function exportLfReportCSV(section) {
   let rows, headers, filename;
   const cutoff = _lfRepCutoff();
   const invs = DB.a('lf_invoices').filter(inv => !cutoff || (inv.issued || inv.date || inv.created || '') >= cutoff);
-  const paid = invs.filter(i => i.status === 'paid');
+  const paid = _lfRepPaid(cutoff);
 
   if (section === 'sku') {
     headers = ['SKU','Cases','Revenue'];
@@ -12212,8 +12222,16 @@ function renderLfInvoicesPage() {
   const todayStr = today();
 
   // KPIs — outstanding, overdue, pending Wix pulls
-  const overdueList = all.filter(i => i.status === 'overdue' || (i.status !== 'paid' && i.due && i.due < todayStr));
-  const outstanding = all.filter(i => i.status !== 'paid').reduce((s,i) => s + (i.total||0), 0);
+  // v235 (audit finding 3): voids and drafts are not receivables — they
+  // inflated Outstanding; and the overdue test now reads due→dueDate, so
+  // portal-confirmed LF invoices (which store dueDate) can show overdue here.
+  const _lfOpen = i => !['paid', 'void', 'draft'].includes(i.status || 'draft');
+  const overdueList = all.filter(i => {
+    if (!_lfOpen(i)) return false;
+    const d = i.due || i.dueDate || '';
+    return i.status === 'overdue' || (d && d < todayStr);
+  });
+  const outstanding = all.filter(_lfOpen).reduce((s,i) => s + (i.total||0), 0);
   const overdueAmt  = overdueList.reduce((s,i) => s + (i.total||0), 0);
   const pendingWix  = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
 
@@ -17082,6 +17100,46 @@ function editInv(id) {
 
 let _invTypeFilter = 'all';
 
+// ── Date-range filter (v235): scopes the unified list AND the KPI tiles ──
+let _invRange = { mode: 'all', from: '', to: '' };
+function _localDateISO(d) {
+  // Local calendar date — toISOString() is UTC and rolls past midnight ET
+  // (same trap the today() helper documents).
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function _invRangeBounds() {
+  const t = today();
+  switch (_invRange.mode) {
+    case '30': case '60': case '90': {
+      const d = new Date(); d.setDate(d.getDate() - parseInt(_invRange.mode, 10));
+      return { from: _localDateISO(d), to: null, label: 'last ' + _invRange.mode + ' days' };
+    }
+    case 'month': return { from: t.slice(0, 8) + '01', to: null, label: 'this month' };
+    case 'year':  return { from: t.slice(0, 4) + '-01-01', to: null, label: t.slice(0, 4) };
+    case 'custom': return { from: _invRange.from || null, to: _invRange.to || null,
+      label: (_invRange.from || '…') + ' → ' + (_invRange.to || 'today') };
+    default: return { from: null, to: null, label: 'all time' };
+  }
+}
+function setInvRange(mode) {
+  _invRange.mode = mode;
+  const custom = mode === 'custom';
+  const f = qs('#inv-range-from'), t = qs('#inv-range-to');
+  if (f) f.style.display = custom ? '' : 'none';
+  if (t) t.style.display = custom ? '' : 'none';
+  renderInvoicesPage();
+}
+function _invCustomChanged() {
+  _invRange.from = qs('#inv-range-from')?.value || '';
+  _invRange.to   = qs('#inv-range-to')?.value || '';
+  if (_invRange.mode === 'custom') renderInvoicesPage();
+}
+function _invRangeChipsSync() {
+  document.querySelectorAll('#inv-range-chips [data-range]').forEach(b => {
+    b.classList.toggle('active', b.dataset.range === _invRange.mode);
+  });
+}
+
 // Sort state for the unified invoice list. Display-only: sorting reorders the
 // already-built row array and persists nothing. Default = invoice number,
 // newest first (one global sequence across all types, so this matches
@@ -17193,6 +17251,10 @@ function renderInvUnifiedList() {
   }
 
   let list = rows;
+  // Date-range filter (v235): by issue date. Undated rows only show in
+  // "All time" — a window can't place an invoice that has no date.
+  const { from: _rf, to: _rt } = _invRangeBounds();
+  if (_rf || _rt) list = list.filter(r => r.issued && (!_rf || r.issued >= _rf) && (!_rt || r.issued <= _rt));
   if (statusFilter === 'open')             list = list.filter(r => !['paid','void'].includes(r.st));
   else if (statusFilter === 'warehouse')   list = list.filter(r => r.rawSt === 'draft' && r.inv.warehousePushedAt);
   else if (statusFilter !== 'all')         list = list.filter(r => r.st === statusFilter);
@@ -17342,54 +17404,51 @@ function renderInvKpis() {
   // This works because saveNewCombinedInvoice and confirmPortalOrder always
   // write child records to their respective collections alongside the combined.
   const todayStr = today();
-  const purplInvs = _allPurplInvoices();
-  const lfInvs    = DB.a('lf_invoices');
-  const distInvs  = DB.a('dist_invoices');
+  // v235 (audit finding 2): built on children-excluded rows with combined
+  // PARENTS at grandTotal, so combined shipping and discounts count exactly
+  // once — this tile now agrees with Reports' "Total Invoiced (All Brands)"
+  // by construction. Drafts stay included (Graham's ruling). _invAmt =
+  // grandTotal→amount→total covers every brand's field naming.
+  const invs = _allInvoices({ excludeChildren: true });
 
-  function purplStatus(inv) {
+  function effStatus(inv) {
     // void must short-circuit like paid/draft, or a voided invoice past its
     // due date evaluates to 'overdue' and re-enters the Outstanding/Overdue KPIs
-    if (inv.status === 'paid' || inv.status === 'draft' || inv.status === 'void') return inv.status;
-    const due = inv.due || inv.dueDate || '';
+    const st = inv.status || 'draft';
+    if (st === 'paid' || st === 'draft' || st === 'void') return st;
+    const due = inv.dueDate || inv.due || '';
     if (due && due < todayStr) return 'overdue';
-    return inv.status || 'draft';
+    return st;
   }
 
-  const now = new Date();
-  const fom = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  // Date-range scoping (v235): Invoiced/Outstanding/Overdue by EVENT date,
+  // Collected by PAID date. All-time keeps the familiar month-to-date tile.
+  const { from, to, label } = _invRangeBounds();
+  const windowed = !!(from || to);
+  const inRange = d => (!from || (d && d >= from)) && (!to || (d && d <= to));
+  const scoped = windowed ? invs.filter(x => inRange(_invEventDate(x))) : invs;
 
-  const _pAmt = x => parseFloat(x.amount||x.total||0);
-  // Dist invoices use draft/sent/paid/void (new) but may have legacy unpaid/overdue statuses
-  const _distOpen = x => !['paid','draft','void'].includes(x.status);
-  const totalInvoiced = purplInvs.filter(x => x.status !== 'void').reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => x.status !== 'void').reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => x.status !== 'void').reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const outstanding   = purplInvs.filter(x => !['paid','draft','void'].includes(purplStatus(x)))
-                          .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => !['paid','draft','void'].includes(x.status))
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(_distOpen)
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const overdue       = purplInvs.filter(x => purplStatus(x) === 'overdue')
-                          .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => { const d = x.due || x.dueDate || ''; return !['paid','draft','void'].includes(x.status) && d && d < todayStr; })
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => _distOpen(x) && x.dueDate && x.dueDate < todayStr)
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
-  const collected     = purplInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
-                          .reduce((s,x) => s + _pAmt(x), 0)
-                      + lfInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0)
-                      + distInvs.filter(x => x.status === 'paid' && (x.paidDate || x.paidAt || '').slice(0,10) >= fom)
-                          .reduce((s,x) => s + parseFloat(x.total||0), 0);
+  const fom = todayStr.slice(0, 8) + '01';
+  const cFrom = from || fom, cTo = to || null;
+  const paidD = x => (x.paidDate || x.paidAt || '').slice(0, 10);
+
+  const totalInvoiced = scoped.filter(x => (x.status || 'draft') !== 'void').reduce((s, x) => s + _invAmt(x), 0);
+  const outstanding   = scoped.filter(x => !['paid', 'draft', 'void'].includes(effStatus(x))).reduce((s, x) => s + _invAmt(x), 0);
+  const overdue       = scoped.filter(x => effStatus(x) === 'overdue').reduce((s, x) => s + _invAmt(x), 0);
+  const collected     = invs.filter(x => x.status === 'paid' && paidD(x) && paidD(x) >= cFrom && (!cTo || paidD(x) <= cTo))
+                          .reduce((s, x) => s + _invAmt(x), 0);
 
   const el = qs('#inv-page-kpis');
   if (!el) return;
+  const L = windowed
+    ? [`Invoiced (${label})`, `Outstanding (${label})`, `Overdue (${label})`, `Collected (${label})`]
+    : ['Total Invoiced', 'Outstanding', 'Overdue', 'Collected This Month'];
   el.innerHTML = `
-    <div>${kpiHtml('Total Invoiced', fmtC(totalInvoiced), 'blue')}</div>
-    <div>${kpiHtml('Outstanding', fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray')}</div>
-    <div>${kpiHtml('Overdue', fmtC(overdue), overdue > 0 ? 'red' : 'gray')}</div>
-    <div>${kpiHtml('Collected This Month', fmtC(collected), 'green')}</div>`;
+    <div>${kpiHtml(L[0], fmtC(totalInvoiced), 'blue')}</div>
+    <div>${kpiHtml(L[1], fmtC(outstanding), outstanding > 0 ? 'amber' : 'gray')}</div>
+    <div>${kpiHtml(L[2], fmtC(overdue), overdue > 0 ? 'red' : 'gray')}</div>
+    <div>${kpiHtml(L[3], fmtC(collected), 'green')}</div>`;
+  _invRangeChipsSync();
 }
 
 function renderInvColPurpl() {
