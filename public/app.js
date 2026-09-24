@@ -10970,8 +10970,10 @@ function _lfRepCutoff() {
 // rows without a paid stamp; independent of the issue-date window that
 // defines Billed/Outstanding.
 function _lfRepPaid(cutoff) {
+  // Fallback chain mirrors the Billed window's date fields (issued/date/
+  // created) so a legacy row can't be billable-in-window yet uncollectable.
   return DB.a('lf_invoices').filter(i => i.status === 'paid' &&
-    (!cutoff || ((i.paidDate || i.paidAt || i.issued || i.date || '').slice(0, 10) >= cutoff)));
+    (!cutoff || ((i.paidDate || i.paidAt || i.issued || i.date || i.created || '').slice(0, 10) >= cutoff)));
 }
 
 function renderLfReports() {
@@ -10981,9 +10983,10 @@ function renderLfReports() {
   // void + draft are not receivables — they inflated Outstanding
   const outstanding = invs.filter(i => !['paid','void','draft'].includes(i.status || 'draft'));
 
-  // KPIs — Revenue = everything billed in the period (non-void/draft);
-  // Collected = the paid slice of it. The two used to be the SAME expression,
-  // so "Invoices Collected" never said anything "Total LF Revenue" didn't.
+  // KPIs — Revenue = everything billed in the period (non-void/draft, by
+  // ISSUE date); Collected = money RECEIVED in the period (paid bucket above,
+  // by PAID date) — so Collected can legitimately exceed Billed when old
+  // invoices get paid inside the window.
   const billed = invs.filter(i => !['void','draft'].includes(i.status || 'draft'));
   const totalRev = billed.reduce((s,i)=>s+(i.total||0),0);
   const totalUnits = billed.reduce((s,i)=>s+(i.lineItems||[]).filter(l=>!['__shipping__','__discount__','__misc__'].includes(l.skuId)).reduce((ss,l)=>ss+(l.cases||0),0),0);
@@ -12245,11 +12248,14 @@ function renderLfInvoicesPage() {
   if (overdueCard) overdueCard.style.display = overdueList.length ? '' : 'none';
   if (overdueEl) {
     overdueEl.innerHTML = overdueList.map(inv => {
-      const days = daysAgo(inv.due||'');
+      // Gate (v235): read due→dueDate like the KPI above — dueDate-only
+      // portal rows used to render "Due — · 999d overdue" here.
+      const _d = inv.due || inv.dueDate || '';
+      const days = daysAgo(_d);
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
         <div>
           <div style="font-weight:600;font-size:13px">${escHtml(inv.accountName||'—')} · ${escHtml(inv.number||'—')}</div>
-          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(inv.due)} · ${days}d overdue</div>
+          <div style="font-size:11px;color:var(--muted)">Due ${fmtD(_d)} · ${days}d overdue</div>
         </div>
         <div style="display:flex;gap:4px;align-items:center">
           <span style="font-weight:700;color:var(--red);font-size:13px">${fmtC(inv.total||0)}</span>
@@ -12715,6 +12721,12 @@ function _saveLfInvoiceCore(id, isNew) {
     id: saveId, number, invoiceNumber: number,
     accountId, accountName: ac.name||'',
     issued, due, lineItems, total, status,
+    // Gate (v235): portal-born LF invoices carry legacy twins (date/dueDate/
+    // amount). This save wrote only the modal-native fields, leaving the twins
+    // frozen at portal-confirm values — unified readers preferring the twins
+    // then showed stale dollars/false overdue. Keep BOTH pairs in step (the
+    // combined-edit path already does).
+    date: issued, dueDate: due, amount: total,
     wixPulled:   existing?.wixPulled   || false,
     wixPulledAt: existing?.wixPulledAt || null,
     deliveryMethod:  qs('#lfi-delivery-method')?.value || 'deliver',
@@ -17411,12 +17423,29 @@ function renderInvKpis() {
   // grandTotal→amount→total covers every brand's field naming.
   const invs = _allInvoices({ excludeChildren: true });
 
+  // Gate (v235): LF rows carry legacy twins (date/dueDate/amount) that an LF
+  // modal edit historically left stale — prefer the modal-native fields
+  // (issued/due/total) for LF so already-drifted rows still read correctly.
+  const amtOf = x => x._col === 'lf_invoices' ? parseFloat(x.total || x.amount || 0) : _invAmt(x);
+  const evD   = x => x._col === 'lf_invoices'
+    ? String(x.issued || x.date || x.created || (x.createdAt || '').slice(0, 10) || '').slice(0, 10)
+    : _invEventDate(x);
+
+  // Gate advisory A: legacy combined parents (pre-M1-sync) can sit at 'sent'
+  // while BOTH children are paid — the family IS paid; infer it so old
+  // families never show as Outstanding/Overdue.
+  const _paidChild = new Set([...DB.a('retail_invoices'), ...DB.a('iv'), ...DB.a('lf_invoices')]
+    .filter(x => x.status === 'paid').map(x => x.id));
+  const _combFamilyPaid = x => x._brand === 'combined' && x.purplInvoiceId && x.lfInvoiceId &&
+    _paidChild.has(x.purplInvoiceId) && _paidChild.has(x.lfInvoiceId);
+
   function effStatus(inv) {
     // void must short-circuit like paid/draft, or a voided invoice past its
     // due date evaluates to 'overdue' and re-enters the Outstanding/Overdue KPIs
     const st = inv.status || 'draft';
     if (st === 'paid' || st === 'draft' || st === 'void') return st;
-    const due = inv.dueDate || inv.due || '';
+    if (_combFamilyPaid(inv)) return 'paid';
+    const due = inv._col === 'lf_invoices' ? (inv.due || inv.dueDate || '') : (inv.dueDate || inv.due || '');
     if (due && due < todayStr) return 'overdue';
     return st;
   }
@@ -17426,17 +17455,19 @@ function renderInvKpis() {
   const { from, to, label } = _invRangeBounds();
   const windowed = !!(from || to);
   const inRange = d => (!from || (d && d >= from)) && (!to || (d && d <= to));
-  const scoped = windowed ? invs.filter(x => inRange(_invEventDate(x))) : invs;
+  const scoped = windowed ? invs.filter(x => inRange(evD(x))) : invs;
 
   const fom = todayStr.slice(0, 8) + '01';
-  const cFrom = from || fom, cTo = to || null;
+  // Gate advisory C: a custom range with only a TO date means "collected
+  // through that date" — don't silently anchor it to the current month.
+  const cFrom = from || (to ? '' : fom), cTo = to || null;
   const paidD = x => (x.paidDate || x.paidAt || '').slice(0, 10);
 
-  const totalInvoiced = scoped.filter(x => (x.status || 'draft') !== 'void').reduce((s, x) => s + _invAmt(x), 0);
-  const outstanding   = scoped.filter(x => !['paid', 'draft', 'void'].includes(effStatus(x))).reduce((s, x) => s + _invAmt(x), 0);
-  const overdue       = scoped.filter(x => effStatus(x) === 'overdue').reduce((s, x) => s + _invAmt(x), 0);
-  const collected     = invs.filter(x => x.status === 'paid' && paidD(x) && paidD(x) >= cFrom && (!cTo || paidD(x) <= cTo))
-                          .reduce((s, x) => s + _invAmt(x), 0);
+  const totalInvoiced = scoped.filter(x => (x.status || 'draft') !== 'void').reduce((s, x) => s + amtOf(x), 0);
+  const outstanding   = scoped.filter(x => !['paid', 'draft', 'void'].includes(effStatus(x))).reduce((s, x) => s + amtOf(x), 0);
+  const overdue       = scoped.filter(x => effStatus(x) === 'overdue').reduce((s, x) => s + amtOf(x), 0);
+  const collected     = invs.filter(x => x.status === 'paid' && paidD(x) && (!cFrom || paidD(x) >= cFrom) && (!cTo || paidD(x) <= cTo))
+                          .reduce((s, x) => s + amtOf(x), 0);
 
   const el = qs('#inv-page-kpis');
   if (!el) return;
