@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v235';
+const APP_VERSION = 'v236';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -846,11 +846,11 @@ function _showShippedBanner(invoices, names) {
 // When the user sends a "readyToSend" invoice, clear the flag so the
 // banner doesn't reappear.
 function _clearReadyToSend(invoiceId, collection) {
-  DB.update(collection, invoiceId, x => {
-    const copy = { ...x };
-    delete copy.readyToSend;
-    return copy;
-  });
+  // BS1: write FALSE, never `delete` — every save is a merge-set, and a
+  // merge-set silently ignores deleted fields, so the server flag survived
+  // and two open tabs healed each other's cache in an infinite write loop
+  // (~3 writes/sec, emulator-proven). All readers are truthiness checks.
+  DB.update(collection, invoiceId, x => ({ ...x, readyToSend: false }));
 }
 
 function ivDeliveryMethodChange() {
@@ -11479,7 +11479,11 @@ function retryMissingPins() {
       c[k] = (c[k] || []).map(r => {
         let changed = false;
         let copy = r;
-        if (r.geocodeFailed) { copy = { ...copy }; delete copy.geocodeFailed; cleared++; changed = true; }
+        // BS1: top-level field deletes never reach the server through
+        // merge-sets — the park survived and the retry was a silent no-op.
+        // Write FALSE instead (the quota guard is a truthiness check).
+        // The nested locs[] deletes DO work (arrays replace wholesale).
+        if (r.geocodeFailed) { copy = { ...copy, geocodeFailed: false }; cleared++; changed = true; }
         // per-location parks inside accounts count too
         if (k === 'ac' && (r.locs || []).some(l => l.geocodeFailed)) {
           copy = changed ? copy : { ...copy };
@@ -17899,6 +17903,17 @@ function saveInvoiceSettings() {
     checkInstructions: get('inv-payment-instructions')?.value || get('inv-check-instructions')?.value||'',
   };
   DB.setObj('invoice_settings', s);
+  // BS1: routine config saves STRIP nextInvoiceNum (the allocation transaction
+  // owns it — echoing stale copies caused duplicate numbers with 2+ users).
+  // Changing it HERE is the one sanctioned manual override, so it gets a
+  // deliberate field-targeted write of its own.
+  const _typedNum = parseInt(get('set-next-inv-num')?.value) || null;
+  if (_typedNum && _typedNum !== existing.nextInvoiceNum) {
+    firebase.firestore().doc('workspace/main/config/main')
+      .set({ invoice_settings: { nextInvoiceNum: _typedNum } }, { merge: true })
+      .then(() => auditLog('update', 'settings', 'invoice_settings', 'Next invoice # manually set to ' + _typedNum))
+      .catch(e => toast('⚠️ Next invoice number NOT saved: ' + (e?.message || e), 8000));
+  }
   toast('Invoice settings saved ✓');
 }
 

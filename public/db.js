@@ -174,20 +174,30 @@ const DB = {
     // edit or reload. Fire once on reconnect.
     if (!this._onlineWired) {
       this._onlineWired = true;
-      window.addEventListener('online', () => {
+      // BS1: a key whose 3 transient retries were exhausted sat parked with
+      // no timer, deferring that collection's (or all config's) remote
+      // snapshots indefinitely — a silently frozen tab. The 'online' event
+      // was the only rescue, and server-side hiccups never fire it. Re-drive
+      // stuck keys on reconnect, on tab re-focus, and on a slow heartbeat.
+      // M11 still holds: reset backoff ONLY for the keys being re-driven.
+      const redrive = (announce) => {
         if (!this._firestoreReady) return;
-        const stuck = [...(this._saveDirtyKeys || [])];
-        if (stuck.length) {
-          // M11: reset backoff ONLY for the keys we're re-driving. The previous
-          // global `_saveRetries = {}` also wiped counters for keys still
-          // mid-backoff, which could trigger a retry storm on those.
-          stuck.forEach(k => {
-            if (this._saveRetries) delete this._saveRetries[k];
-            this._scheduleSave(k);
-          });
-          if (window.toast) toast('Reconnected — syncing your changes…');
-        }
-      });
+        const stuck = [...(this._saveDirtyKeys || [])].filter(k => !this._saveTimers[k]);
+        if (!stuck.length) return;
+        this._configRetries = 0;
+        stuck.forEach(k => {
+          if (this._saveRetries) delete this._saveRetries[k];
+          this._scheduleSave(k);
+        });
+        if (announce && window.toast) toast('Reconnected — syncing your changes…');
+      };
+      window.addEventListener('online', () => redrive(true));
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') redrive(false);
+        });
+      }
+      setInterval(() => redrive(false), 60000);
     }
 
     if (window.refreshCurrentPage) window.refreshCurrentPage();
@@ -317,13 +327,13 @@ const DB = {
     CONFIG_ARRAY_KEYS.forEach(k => {
       if (data.hasOwnProperty(k) && !(this._saveDirtyKeys && this._saveDirtyKeys.has(k))) {
         this._cache[k] = Array.isArray(data[k]) ? data[k] : (this._cache[k] || []);
-        this._cfgPersisted[k] = JSON.stringify(this._cache[k] ?? null);
+        this._cfgPersisted[k] = JSON.stringify(this._cfgValue(k) ?? null);
       }
     });
     OBJ_KEYS.forEach(k => {
       if (data.hasOwnProperty(k) && !(this._saveDirtyKeys && this._saveDirtyKeys.has(k))) {
         this._cache[k] = (data[k] !== undefined && data[k] !== null) ? data[k] : null;
-        this._cfgPersisted[k] = JSON.stringify(this._cache[k] ?? null);
+        this._cfgPersisted[k] = JSON.stringify(this._cfgValue(k) ?? null);
       }
     });
   },
@@ -488,6 +498,21 @@ const DB = {
     if (this._dirtyIds[key]) this._dirtyIds[key].delete(id);
   },
 
+  // BS1: nextInvoiceNum lives OUTSIDE the client save/diff domain — the
+  // allocation transaction (and one deliberate Settings override) are its
+  // only writers. Echoing a client's possibly-stale copy in routine config
+  // saves overwrote other users' allocations → duplicate invoice numbers.
+  // This normalizer strips it everywhere the config layer reads a value for
+  // saving, shadowing or diffing, so the deep merge always leaves the
+  // server's counter untouched and counter changes never mark the key dirty.
+  _cfgValue(k) {
+    const v = this._cache[k];
+    if (k === 'invoice_settings' && v && typeof v === 'object') {
+      const c = { ...v }; delete c.nextInvoiceNum; return c;
+    }
+    return v;
+  },
+
   // Gate fix (toggleStop): JSON of each config key's LAST-PERSISTED value.
   // atomicUpdate diffs the cache against THIS, not against the cache at entry —
   // a call site that mutated a live config object (DB.obj gives a reference)
@@ -497,7 +522,7 @@ const DB = {
   _cfgPersisted: {},
   _snapshotCfgPersisted() {
     [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].forEach(k => {
-      this._cfgPersisted[k] = JSON.stringify(this._cache[k] ?? null);
+      this._cfgPersisted[k] = JSON.stringify(this._cfgValue(k) ?? null);
     });
   },
 
@@ -798,9 +823,10 @@ const DB = {
       : ALL_CFG;
     const payload = { _dbVersion: 2 };
     list.forEach(k => {
+      const v = this._cfgValue(k); // BS1: counter stripped for invoice_settings
       payload[k] = CONFIG_ARRAY_KEYS.includes(k)
         ? (this._cache[k] || [])
-        : ((this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+        : ((v !== undefined && v !== null) ? v : null);
     });
 
     this._inflightCfg++;
@@ -991,7 +1017,7 @@ const DB = {
       CFG_KEYS.forEach(k => {
         cfgBefore[k] = (k in this._cfgPersisted)
           ? this._cfgPersisted[k]
-          : JSON.stringify(this._cache[k] ?? null);
+          : JSON.stringify(this._cfgValue(k) ?? null);
       });
 
       fn(this._cache);
@@ -1023,7 +1049,7 @@ const DB = {
         }
         if (touched) changedCols.push(k);
       });
-      changedCfg = CFG_KEYS.filter(k => JSON.stringify(this._cache[k] ?? null) !== cfgBefore[k]);
+      changedCfg = CFG_KEYS.filter(k => JSON.stringify(this._cfgValue(k) ?? null) !== cfgBefore[k]);
       // Mark keys dirty NOW so a tab-close inside the 50ms flush window still
       // captures them (the unload flush + recovery blob read _saveDirtyKeys).
       [...changedCols, ...changedCfg].forEach(k => this._saveDirtyKeys.add(k));
@@ -1122,7 +1148,7 @@ const DB = {
     const { setDoc } = window.FirestoreAPI;
     const payload = { _dbVersion: 2 };
     CONFIG_ARRAY_KEYS.forEach(k => payload[k] = this._cache[k] || []);
-    OBJ_KEYS.forEach(k => payload[k] = (this._cache[k] !== undefined && this._cache[k] !== null) ? this._cache[k] : null);
+    OBJ_KEYS.forEach(k => { const v = this._cfgValue(k); payload[k] = (v !== undefined && v !== null) ? v : null; }); // BS1: counter stripped via _cfgValue
     await setDoc(this._configRef(), payload, { merge: true });
     this._snapshotCfgPersisted();
   },
