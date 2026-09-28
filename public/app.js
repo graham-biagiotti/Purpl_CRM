@@ -17907,8 +17907,12 @@ function saveInvoiceSettings() {
   // owns it — echoing stale copies caused duplicate numbers with 2+ users).
   // Changing it HERE is the one sanctioned manual override, so it gets a
   // deliberate field-targeted write of its own.
-  const _typedNum = parseInt(get('set-next-inv-num')?.value) || null;
-  if (_typedNum && _typedNum !== existing.nextInvoiceNum) {
+  const _numEl = get('set-next-inv-num');
+  const _typedNum = parseInt(_numEl?.value) || null;
+  // Compare against the page-load PREFILL (not live cache): only a number the
+  // admin actually typed counts as a deliberate override.
+  const _prefillNum = parseInt(_numEl?.dataset?.prefill) || null;
+  if (_typedNum && _typedNum !== _prefillNum) {
     firebase.firestore().doc('workspace/main/config/main')
       .set({ invoice_settings: { nextInvoiceNum: _typedNum } }, { merge: true })
       .then(() => auditLog('update', 'settings', 'invoice_settings', 'Next invoice # manually set to ' + _typedNum))
@@ -17926,6 +17930,12 @@ function loadInvoiceSettings() {
   set('inv-terms',               s.terms);
   set('inv-default-case-price',  s.defaultCasePrice != null ? s.defaultCasePrice : 27.60);
   set('set-next-inv-num',        s.nextInvoiceNum);
+  // BS1 verify-fix: remember what the field was PREFILLED with — the save
+  // gate must compare against this, not live cache, or a Settings page left
+  // open across another user's allocation "deliberately" writes its stale
+  // prefill back when unrelated settings are saved.
+  { const el = document.getElementById('set-next-inv-num');
+    if (el) el.dataset.prefill = s.nextInvoiceNum != null ? String(s.nextInvoiceNum) : ''; }
   set('inv-footer-notes',        s.footerNotes);
   { const el = document.getElementById('inv-legal-terms');
     if (el) el.value = s.legalTerms != null ? s.legalTerms : DEFAULT_INVOICE_LEGAL_TERMS; }

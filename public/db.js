@@ -542,7 +542,11 @@ const DB = {
   _scheduleSave(key) {
     this._saveDirtyKeys.add(key);
     if (this._saveTimers[key]) clearTimeout(this._saveTimers[key]);
-    this._saveTimers[key] = setTimeout(() => this._doSave(key), 500);
+    // BS1 verify-fix: null the entry when the debounce FIRES — a fired timer
+    // id is truthy, so stale entries made every later-parked key look
+    // "scheduled" and the stuck-key redrive skipped exactly the keys it was
+    // built to rescue (emulator-proven).
+    this._saveTimers[key] = setTimeout(() => { this._saveTimers[key] = null; this._doSave(key); }, 500);
   },
 
   _recoveryKey() { return 'pcrm_recovery_' + (this._uid || 'anon'); },
