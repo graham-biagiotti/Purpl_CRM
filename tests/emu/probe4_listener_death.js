@@ -1,4 +1,7 @@
 // PROBE 4 — terminal listener death on a long-lived session.
+// HISTORICAL (pre-v238): this probe demonstrated the bug — verdict was
+// "LISTENERS PERMANENTLY DEAD". TS1 (v238) added per-stream resubscribe with
+// backoff; the permanent regression test is ts1-probe.js (hard pass/fail).
 // db.js onSnapshot error handlers only console.warn. If the backend returns a
 // NON-retryable error on Listen (permission-denied — e.g. expired/invalid auth
 // on a days-old tab), onError fires and the SDK permanently cancels that

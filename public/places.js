@@ -50,6 +50,12 @@
       s.defer   = true;
       s.onerror = () => {
         console.warn('purpl CRM: Google Places API failed to load. Check your API key and billing.');
+        // TS1: clear the cached promise so the NEXT load() call retries.
+        // Caching the failure wedged autocomplete for the tab's whole life
+        // after one flaky load (every caller re-invokes load() on render,
+        // so recovery is automatic once the network behaves).
+        _loading = null;
+        try { s.remove(); } catch (_) {}
         resolve(false);
       };
       document.head.appendChild(s);

@@ -70,6 +70,7 @@
 
 <div class="ribbon"></div>
 <div class="offline-bar" id="offline-bar">No signal — entries save on your phone and sync automatically.</div>
+<div class="offline-bar" id="pending-bar" style="background:#B45309"></div>
 
 <!-- ── Sign in ── -->
 <div id="v-auth" class="center" style="display:none">
@@ -182,8 +183,15 @@
   const auth = firebase.auth();
   const db = firebase.firestore();
   // Offline queue: entries written with no signal persist in IndexedDB and
-  // sync when coverage returns. Failure (another tab open) is non-fatal.
-  db.enablePersistence({ synchronizeTabs: false }).catch(() => {});
+  // sync when coverage returns. TS1: failure is non-fatal but no longer
+  // SILENT — a second open tab (browser tab + home-screen icon counts) or an
+  // unsupported browser leaves this instance with NO offline storage, so
+  // entries logged without signal die with the page. The rep must know.
+  let persistenceOk = true, persistFailCode = '';
+  db.enablePersistence({ synchronizeTabs: false }).catch((e) => {
+    persistenceOk = false; persistFailCode = (e && e.code) || '';
+    console.warn('[field] offline persistence unavailable:', persistFailCode);
+  });
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -245,21 +253,41 @@
   auth.onAuthStateChanged(async (user) => {
     if (!user) { if (logsUnsub) { logsUnsub(); logsUnsub = null; } show('v-auth'); return; }
     show('v-loading');
-    let role = null;
+    // TS1: the role gate must only sign out on a CONFIRMED negative. The old
+    // code treated a FAILED read (flaky signal, cold start in a dead zone)
+    // the same as "no role" and signed the rep out — and signing out flushes
+    // the offline queue unauthenticated, silently dropping every queued
+    // entry. Server rules enforce access regardless, so when the role can't
+    // be read (server, then cache) we let the session continue.
+    let role = null, roleKnown = false;
     try {
       const snap = await db.collection('users').doc(user.uid).get();
       role = snap.exists ? snap.data().role : null;
-    } catch (_) {}
-    if (!['field', 'employee', 'admin'].includes(role)) {
+      roleKnown = true;
+    } catch (_) {
+      try {
+        const snap = await db.collection('users').doc(user.uid).get({ source: 'cache' });
+        role = snap.exists ? snap.data().role : null;
+        roleKnown = true;
+      } catch (_) {}
+    }
+    if (roleKnown && !['field', 'employee', 'admin'].includes(role)) {
       await auth.signOut();
       show('v-auth');
       $('auth-msg').textContent = 'This login is not authorized for the Field Log — contact Graham.';
       return;
     }
+    if (!roleKnown) toast('Weak signal — couldn\'t verify your access, continuing anyway. Entries will sync normally.', 6000);
     me = user;
     myName = user.displayName || (user.email || '').split('@')[0];
     $('hdr-who').textContent = myName;
     show('v-app');
+    if (!persistenceOk && !window._persistWarned) {
+      window._persistWarned = true;
+      toast(persistFailCode === 'failed-precondition'
+        ? '⚠️ The Field Log is open somewhere else on this phone (tab or home-screen icon) — THIS one has no offline storage. Close the other copy, or keep this page open until entries sync.'
+        : '⚠️ Offline storage unavailable on this browser — entries logged without signal are only safe while this page stays open.', 10000);
+    }
     initForm();
     loadStores();
     listenMyLogs();
@@ -677,7 +705,10 @@
     db.collection('field_logs').doc(id).set({ ...entry, id })
       .then(() => toast(mode === 'place' ? "Place saved ✓ — it's in your list now." : 'Logged ✓'))
       .catch((e) => toast('⚠️ Log rejected: ' + (e.message || e.code) + ' — tell Graham.', 8000));
-    if (!navigator.onLine) toast('Saved on your phone — will sync when you have signal.', 5000);
+    // TS1: don't promise "will sync" when this instance has no offline queue.
+    if (!navigator.onLine) toast(persistenceOk
+      ? 'Saved on your phone — will sync when you have signal.'
+      : '⚠️ No signal and no offline storage — KEEP THIS PAGE OPEN until it syncs.', 6000);
     clearForm();
   }
   $('btn-submit').onclick = () => submitEntry('stop');
@@ -690,6 +721,7 @@
       .onSnapshot({ includeMetadataChanges: true }, (snap) => {
         myLogs = snap.docs.map((d) => ({ id: d.id, _pending: d.metadata.hasPendingWrites, ...d.data() }))
           .sort((a, b) => (a.createdAt || '') < (b.createdAt || '') ? 1 : -1);
+        renderPendingBar();
         // An open detail/edit card must not be rebuilt under the rep's
         // thumbs by a sync echo — lists refresh when it closes.
         if (openEntryId) { renderHits(); return; }
@@ -697,7 +729,14 @@
         renderStoreLast();
         renderFollowUps();
         renderHits(); // his own new places live in the picker list
-      }, () => {});
+      }, (err) => {
+        // TS1: a terminal listener error (expired auth on a days-old PWA,
+        // flipped rules) permanently cancels the stream — resubscribe, else
+        // the page shows stale entries forever with no hint.
+        console.warn('[field] log listener error:', err && err.code);
+        clearTimeout(window._logsResub);
+        window._logsResub = setTimeout(() => { if (me) listenMyLogs(); }, 15000);
+      });
   }
 
   // ── Follow-ups dashboard ──
@@ -801,10 +840,34 @@
   }
 
   // ── Online/offline bar ──
-  function syncBar() { $('offline-bar').style.display = navigator.onLine ? 'none' : 'block'; }
+  function syncBar() {
+    const bar = $('offline-bar');
+    bar.textContent = persistenceOk
+      ? 'No signal — entries save on your phone and sync automatically.'
+      : '⚠️ No signal — offline storage is OFF here. Keep this page open until you have signal, or entries may be lost.';
+    bar.style.display = navigator.onLine ? 'none' : 'block';
+  }
   window.addEventListener('online', syncBar);
   window.addEventListener('offline', syncBar);
   syncBar();
+
+  // ── Unsent-entry age bar ──
+  // TS1: queued-for-3-days used to look identical to queued-for-5-seconds —
+  // the only "syncing…" hint was a pill inside each entry row. Surface a bar
+  // when anything has been waiting > 10 minutes, with the oldest age, so a
+  // rep (and Graham, looking over her shoulder) can SEE a wedged upload.
+  function renderPendingBar() {
+    const bar = $('pending-bar');
+    if (!bar) return;
+    const pend = myLogs.filter((l) => l._pending && l.createdAt);
+    const oldest = pend.length ? Math.min(...pend.map((l) => new Date(l.createdAt).getTime() || Date.now())) : 0;
+    const ageMin = oldest ? Math.floor((Date.now() - oldest) / 60000) : 0;
+    if (!pend.length || ageMin < 10) { bar.style.display = 'none'; return; }
+    const ageTxt = ageMin >= 1440 ? Math.floor(ageMin / 1440) + 'd' : ageMin >= 60 ? Math.floor(ageMin / 60) + 'h' : ageMin + ' min';
+    bar.textContent = '⏳ ' + pend.length + (pend.length === 1 ? ' entry' : ' entries') + ' waiting to upload (oldest ' + ageTxt + ') — needs signal with this page open. Still stuck? Tell Graham.';
+    bar.style.display = 'block';
+  }
+  setInterval(renderPendingBar, 60000);
 })();
 </script>
 </body>

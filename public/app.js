@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v237';
+const APP_VERSION = 'v238';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -409,7 +409,16 @@ function toggleDistGroup(distId) {
 let _repBrand = 'purpl';   // 'purpl' | 'lf'
 let _lfRepPeriod = 30;     // days; 0 = all time
 function nav(page) {
-  document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+  // TS1: navigating used to strip modal classes WITHOUT DB.markClean() — the
+  // dirty flag (set by openModal on edit/add modals) stayed up, so remote
+  // snapshots were deferred until some unrelated modal was later closed: a
+  // silently-stale page. Same doctrine as closeModal, incl. routing the
+  // shared dialog through Cancel so its awaited promise always resolves.
+  document.querySelectorAll('.overlay.open').forEach(o => {
+    if (o.id === 'modal-dlg') { document.getElementById('dlg-cancel')?.click(); return; }
+    o.classList.remove('open');
+  });
+  if (window.DB) DB.markClean();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.sb-nav a').forEach(a => a.classList.remove('active'));
   const pg = document.getElementById('page-'+page);

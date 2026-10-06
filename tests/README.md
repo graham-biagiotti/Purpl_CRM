@@ -17,6 +17,7 @@ db.js and runs them against fixtures; structural scans are comment-aware.
 | wave12 | v235 date-range filters + KPI harmonization + LF fixes, gate regressions G1-G7 (LF twin fields, paid-family inference, range corners) | 40 |
 | wave13 | v236 BS1 sweep fixes: readyToSend heal, counter stripping (_cfgValue), stuck-key redrive, prefill-gated override | 18 |
 | wave14 | v237 follow-up Done/Change on cards + uncapped overdue, full lifecycle dynamics | 16 |
+| wave15 | v238 TS1 resilience: listener terminal-death resubscribe + "Live sync lost" surface, field-app hardening (role gate / persistence warning / unsent-age bar), places loader retry, nav() markClean | 52 |
 | reminder | dashboard invoice-reminder flow end to end: queue rules, send path, stamps, email HTML, failure fallback | 45 |
 
 LOST in the wipe (built in earlier sessions, sources unrecoverable):
@@ -38,13 +39,19 @@ node fuzz-tests.js [seed]          # 400-op randomized two-user fuzz, ownership 
 node probe1_offline_midsave.js     # transport-sweep probes (harness-transport.js)
 node probe2_kill_emulator.js
 node probe3_txn_transport.js
-node probe4_listener_death.js
+node probe4_listener_death.js      # historical: demonstrated the pre-TS1 bug
+node ts1-probe.js                  # TS1 regression: probe4 inverted into a HARD
+                                   # assertion (deny→allow cycle must recover).
+                                   # Restarts the emulator twice — run it LAST,
+                                   # then restart the emulator for other suites.
 ```
 harness.js = the full two-client harness (compat adapter over the modular SDK,
 loads the REAL public/db.js; override with env DB_SRC). harness-transport.js =
-the transport sweep's minimal variant used by probe1-4. First fuzz run after a
-cold emulator start can flake on the convergence window — re-run before
-believing a failure.
+the transport sweep's minimal variant used by probe1-4. The fuzz convergence
+assertion can flake on its settle window — mostly on the first run after a
+cold emulator start, occasionally later (verified environmental in the TS1
+wave: the same seed flaked identically against old and new db.js). Re-run
+before believing a failure; a REAL regression fails consistently.
 
 ## Doctrine
 Every wave: backtests green → adversarial gate agent → fixes → gate verify →

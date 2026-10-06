@@ -66,6 +66,19 @@ const DB = {
   _dirty: false,
   _pendingRemoteChanges: false,
   _unsubscribers: [],
+  // TS1: live-listener health. A Firestore listener that hits a TERMINAL
+  // error (permission-denied on a days-old tab whose auth token went bad,
+  // 'unavailable' after exhausted internal retries…) is permanently cancelled
+  // by the SDK — onError fires once and the stream never recovers on its own.
+  // Before this, the handler only console.warn'd: the tab kept rendering
+  // stale data forever while the sync dot said "Saved" (probe4-proven).
+  // Now each dead stream resubscribes itself with capped backoff, and the
+  // sync indicator says "Live sync lost" until every stream is healthy again.
+  _subs: {},            // per-key unsubscriber ('__config__' for the config doc)
+  _resubFns: {},        // per-key resubscribe fn (for the focus/heartbeat rescue)
+  _resubTimers: {},
+  _listenerRetries: {},
+  _deadListeners: new Set(),
   _initCount: 0,
   _initTarget: 0,
 
@@ -182,6 +195,9 @@ const DB = {
       // M11 still holds: reset backoff ONLY for the keys being re-driven.
       const redrive = (announce) => {
         if (!this._firestoreReady) return;
+        // TS1: also rescue dead listeners immediately — a user coming back to
+        // the tab (or the network coming back) shouldn't wait out the backoff.
+        this._resubDeadNow();
         const stuck = [...(this._saveDirtyKeys || [])].filter(k => !this._saveTimers[k]);
         if (!stuck.length) return;
         this._configRetries = 0;
@@ -219,14 +235,70 @@ const DB = {
 
   _subscribeAll() {
     // Clean up existing listeners
-    this._unsubscribers.forEach(fn => fn());
+    this._unsubscribers.forEach(fn => { try { fn(); } catch(_) {} });
     this._unsubscribers = [];
+    Object.values(this._subs).forEach(fn => { try { fn(); } catch(_) {} });
+    this._subs = {};
+    Object.values(this._resubTimers).forEach(t => clearTimeout(t));
+    this._resubTimers = {};
+    this._listenerRetries = {};
+    this._deadListeners = new Set();
 
-    const { onSnapshot } = window.FirestoreAPI;
+    // Each key subscribes through its own function so a terminally-errored
+    // stream can be torn down and resubscribed on its own, without touching
+    // the healthy ones.
+    COLLECTION_KEYS.forEach(key => this._subscribeKey(key));
+    this._subscribeConfig();
+  },
 
-    // Listen to each collection
-    COLLECTION_KEYS.forEach(key => {
-      const unsub = this._collRef(key).onSnapshot(snap => {
+  // TS1: a snapshot DELIVERY proves the stream is alive — reset its backoff
+  // and, if it was marked dead, clear it (the fresh resubscribe snapshot is a
+  // full ordered view, so the stale window heals in the same event).
+  _listenerAlive(key) {
+    this._listenerRetries[key] = 0;
+    if (this._deadListeners.delete(key) && this._deadListeners.size === 0) {
+      this._updateSyncUI(this._syncStatus);
+      if (window.toast) toast('Live sync restored ✓');
+    }
+  },
+
+  // TS1: terminal listener error — mark the stream dead (the sync indicator
+  // flips to "Live sync lost"), then resubscribe with capped exponential
+  // backoff. A still-broken backend just errors the new stream and lands
+  // back here; a healed one delivers a snapshot and _listenerAlive clears it.
+  _listenerDied(key, err) {
+    console.warn(`[db] Snapshot error on ${key}:`, err);
+    this._deadListeners.add(key);
+    this._updateSyncUI(this._syncStatus);
+    const n = this._listenerRetries[key] = (this._listenerRetries[key] || 0) + 1;
+    const delay = Math.min(60000, 2000 * Math.pow(2, Math.min(n - 1, 5)));
+    clearTimeout(this._resubTimers[key]);
+    this._resubTimers[key] = setTimeout(() => {
+      this._resubTimers[key] = null;
+      this._resubscribe(key);
+    }, delay);
+  },
+
+  _resubscribe(key) {
+    try { (this._subs[key] || (() => {}))(); } catch(_) {}
+    const fn = this._resubFns[key];
+    if (fn) fn();
+  },
+
+  // TS1: focus/online/heartbeat rescue — fire pending resubscribes NOW rather
+  // than waiting out the backoff (a rep re-opening the tab shouldn't stare at
+  // a stale view for up to a minute).
+  _resubDeadNow() {
+    [...this._deadListeners].forEach(key => {
+      if (this._resubTimers[key]) { clearTimeout(this._resubTimers[key]); this._resubTimers[key] = null; }
+      this._resubscribe(key);
+    });
+  },
+
+  _subscribeKey(key) {
+    this._resubFns[key] = () => this._subscribeKey(key);
+    const unsub = this._collRef(key).onSnapshot(snap => {
+        this._listenerAlive(key);
         if (!this._firestoreReady) return;
         // Fuzz fix: ALWAYS remember the latest delivered snapshot — including
         // local-echo events — so a drain applies the newest ordered view
@@ -270,13 +342,16 @@ const DB = {
           this._scheduleRefresh(); // H4: debounced
         }
       }, err => {
-        console.warn(`[db] Snapshot error on ${key}:`, err);
+        this._listenerDied(key, err);
       });
-      this._unsubscribers.push(unsub);
-    });
+    this._subs[key] = unsub;
+  },
 
-    // Listen to config document
+  _subscribeConfig() {
+    const { onSnapshot } = window.FirestoreAPI;
+    this._resubFns['__config__'] = () => this._subscribeConfig();
     const configUnsub = onSnapshot(this._configRef(), snap => {
+      this._listenerAlive('__config__');
       if (!this._firestoreReady) return;
       this._deferredSnaps['__config__'] = snap; // fuzz fix: latest ordered view
       if (snap.metadata.hasPendingWrites) {
@@ -305,9 +380,9 @@ const DB = {
         this._scheduleRefresh(); // H4: debounced
       }
     }, err => {
-      console.warn('[db] Config snapshot error:', err);
+      this._listenerDied('__config__', err);
     });
-    this._unsubscribers.push(configUnsub);
+    this._subs['__config__'] = configUnsub;
   },
 
   // H4: coalesce bursts of remote snapshots into ONE re-render. Each snapshot
@@ -872,6 +947,14 @@ const DB = {
     const dot = document.getElementById('sync-dot');
     const label = document.getElementById('sync-label');
     if (!dot || !label) return;
+    // TS1: a dead live-stream overrides the happy states — a tab whose feed
+    // died must never claim "Saved" as though its view were current. 'error'
+    // (a failed WRITE) still wins; it's the more urgent problem.
+    if (this._deadListeners && this._deadListeners.size && status !== 'error') {
+      dot.className = 'sync-dot stale';
+      label.textContent = 'Live sync lost — reconnecting…';
+      return;
+    }
     dot.className = 'sync-dot ' + status;
     label.textContent = status === 'synced' ? 'Saved' : status === 'syncing' ? 'Saving…' : 'Sync error';
   },

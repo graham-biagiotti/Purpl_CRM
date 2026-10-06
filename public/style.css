@@ -306,6 +306,7 @@ hr.light{border:none;border-top:1px solid var(--border);margin:14px 0}
 .sync-dot.synced{background:var(--green)}
 .sync-dot.syncing{background:var(--amber);animation:pulse 1s infinite}
 .sync-dot.error{background:var(--red)}
+.sync-dot.stale{background:var(--red);animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 /* MIGRATION BANNER */
