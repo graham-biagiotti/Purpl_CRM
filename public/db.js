@@ -243,6 +243,7 @@ const DB = {
     this._resubTimers = {};
     this._listenerRetries = {};
     this._deadListeners = new Set();
+    this._resubPending = {};
 
     // Each key subscribes through its own function so a terminally-errored
     // stream can be torn down and resubscribed on its own, without touching
@@ -251,10 +252,34 @@ const DB = {
     this._subscribeConfig();
   },
 
-  // TS1: a snapshot DELIVERY proves the stream is alive — reset its backoff
+  // Gate fix [2]: full listener teardown for sign-out. Without it, a
+  // signed-out tab's streams all die with permission-denied and the new
+  // resubscribe machinery (backoff timers + the 60s/visibility redrive)
+  // hammers denied Listen attempts forever from the login screen. Unsetting
+  // _firestoreReady also parks saves/redrives; the next sign-in's DB.init →
+  // _loadAll → _subscribeAll re-arms everything.
+  _teardownListeners() {
+    Object.values(this._subs).forEach(fn => { try { fn(); } catch(_) {} });
+    this._subs = {};
+    Object.values(this._resubTimers).forEach(t => clearTimeout(t));
+    this._resubTimers = {};
+    this._listenerRetries = {};
+    this._deadListeners = new Set();
+    this._resubPending = {};
+    this._firestoreReady = false;
+  },
+
+  // TS1: a SERVER snapshot proves the stream is alive — reset its backoff
   // and, if it was marked dead, clear it (the fresh resubscribe snapshot is a
   // full ordered view, so the stale window heals in the same event).
-  _listenerAlive(key) {
+  // Gate fix [1]: with IndexedDB persistence the SDK raises an initial
+  // FROM-CACHE snapshot on every (re)listen BEFORE the server answers.
+  // Healing on it reset the backoff to a permanent 2s resubscribe loop,
+  // flickered the dot back to "Saved" mid-outage, and toasted spurious
+  // "restored" — during the exact outage class TS1 exists for. Cache
+  // snapshots are ignored here; only the server's word heals.
+  _listenerAlive(key, fromCache) {
+    if (fromCache) return;
     this._listenerRetries[key] = 0;
     if (this._deadListeners.delete(key) && this._deadListeners.size === 0) {
       this._updateSyncUI(this._syncStatus);
@@ -281,6 +306,11 @@ const DB = {
 
   _resubscribe(key) {
     try { (this._subs[key] || (() => {}))(); } catch(_) {}
+    // Gate fix [4]: the fresh stream's first SERVER snapshot must replace the
+    // cache wholesale (see _subscribeKey) — when no local cache backs the
+    // query, a collection fully emptied while the stream was dead raises
+    // zero docChanges and the stale rows would otherwise outlive the outage.
+    (this._resubPending || (this._resubPending = {}))[key] = true;
     const fn = this._resubFns[key];
     if (fn) fn();
   },
@@ -298,7 +328,7 @@ const DB = {
   _subscribeKey(key) {
     this._resubFns[key] = () => this._subscribeKey(key);
     const unsub = this._collRef(key).onSnapshot(snap => {
-        this._listenerAlive(key);
+        this._listenerAlive(key, !!(snap.metadata && snap.metadata.fromCache));
         if (!this._firestoreReady) return;
         // Fuzz fix: ALWAYS remember the latest delivered snapshot — including
         // local-echo events — so a drain applies the newest ordered view
@@ -307,6 +337,34 @@ const DB = {
         // acked before it resolved could deliver a PRE-write view and regress
         // the cache with nothing left to heal it.
         this._deferredSnaps[key] = snap;
+        // Gate fix [4]: first SERVER snapshot after a resubscribe — apply it
+        // as a full replace once (guards permitting). An empty post-outage
+        // collection delivers no docChanges when nothing cached backs the
+        // query, so the normal change-driven path below would skip it.
+        if (this._resubPending && this._resubPending[key] && !(snap.metadata && snap.metadata.fromCache)) {
+          this._resubPending[key] = false;
+          const blocked = this._dirty || this._atomicInProgress ||
+            (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
+            (this._dirtyIds[key] && this._dirtyIds[key].size) ||
+            (this._dirtyDeletes[key] && this._dirtyDeletes[key].size) ||
+            (this._inflightCols[key] > 0) ||
+            snap.docChanges().some(c => c.doc.metadata.hasPendingWrites);
+          if (blocked) {
+            // The drain applies this stored snapshot (full replace) when the
+            // guards lift — same path every deferred remote change takes.
+            this._deferredRemote.add(key);
+            this._pendingRemoteChanges = true;
+            return;
+          }
+          try {
+            this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+            this._deferredRemote.delete(key);
+          } catch(mapErr) {
+            console.error(`[db] Corrupt resub snapshot for ${key}, keeping cache:`, mapErr);
+          }
+          this._scheduleRefresh();
+          return;
+        }
         // Only process remote changes (not local echoes)
         const remoteChanges = snap.docChanges().filter(c => !c.doc.metadata.hasPendingWrites);
         const hasLocalChanges = snap.docChanges().some(c => c.doc.metadata.hasPendingWrites);
@@ -351,7 +409,7 @@ const DB = {
     const { onSnapshot } = window.FirestoreAPI;
     this._resubFns['__config__'] = () => this._subscribeConfig();
     const configUnsub = onSnapshot(this._configRef(), snap => {
-      this._listenerAlive('__config__');
+      this._listenerAlive('__config__', !!(snap.metadata && snap.metadata.fromCache));
       if (!this._firestoreReady) return;
       this._deferredSnaps['__config__'] = snap; // fuzz fix: latest ordered view
       if (snap.metadata.hasPendingWrites) {

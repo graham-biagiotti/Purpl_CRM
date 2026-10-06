@@ -188,9 +188,19 @@
   // unsupported browser leaves this instance with NO offline storage, so
   // entries logged without signal die with the page. The rep must know.
   let persistenceOk = true, persistFailCode = '';
+  function warnPersistence() {
+    if (window._persistWarned) return;
+    window._persistWarned = true;
+    toast(persistFailCode === 'failed-precondition'
+      ? '⚠️ The Field Log is open somewhere else on this phone (tab or home-screen icon) — THIS one has no offline storage. Close the other copy, or keep this page open until entries sync.'
+      : '⚠️ Offline storage unavailable on this browser — entries logged without signal are only safe while this page stays open.', 10000);
+  }
   db.enablePersistence({ synchronizeTabs: false }).catch((e) => {
     persistenceOk = false; persistFailCode = (e && e.code) || '';
     console.warn('[field] offline persistence unavailable:', persistFailCode);
+    // Gate fix [5]: a restored session's auth callback can run BEFORE this
+    // rejection lands — warn from here too, not only at sign-in.
+    if (me) warnPersistence();
   });
 
   const $ = (id) => document.getElementById(id);
@@ -251,7 +261,18 @@
   $('btn-signout').onclick = () => { if (confirm('Sign out?')) auth.signOut(); };
 
   auth.onAuthStateChanged(async (user) => {
-    if (!user) { if (logsUnsub) { logsUnsub(); logsUnsub = null; } show('v-auth'); return; }
+    if (!user) {
+      // Gate fix [3]: full sign-out cleanup. Leaving `me` set with a pending
+      // resub timer kept re-attaching the OLD uid's listener unauthenticated
+      // (denied → rescheduled, forever), and the cache's initial snapshot
+      // could flash the previous rep's pending bar on a shared phone.
+      if (logsUnsub) { logsUnsub(); logsUnsub = null; }
+      clearTimeout(window._logsResub);
+      me = null; myLogs = [];
+      const pb = $('pending-bar'); if (pb) pb.style.display = 'none';
+      show('v-auth');
+      return;
+    }
     show('v-loading');
     // TS1: the role gate must only sign out on a CONFIRMED negative. The old
     // code treated a FAILED read (flaky signal, cold start in a dead zone)
@@ -282,12 +303,7 @@
     myName = user.displayName || (user.email || '').split('@')[0];
     $('hdr-who').textContent = myName;
     show('v-app');
-    if (!persistenceOk && !window._persistWarned) {
-      window._persistWarned = true;
-      toast(persistFailCode === 'failed-precondition'
-        ? '⚠️ The Field Log is open somewhere else on this phone (tab or home-screen icon) — THIS one has no offline storage. Close the other copy, or keep this page open until entries sync.'
-        : '⚠️ Offline storage unavailable on this browser — entries logged without signal are only safe while this page stays open.', 10000);
-    }
+    if (!persistenceOk) warnPersistence();
     initForm();
     loadStores();
     listenMyLogs();
@@ -735,7 +751,11 @@
         // the page shows stale entries forever with no hint.
         console.warn('[field] log listener error:', err && err.code);
         clearTimeout(window._logsResub);
-        window._logsResub = setTimeout(() => { if (me) listenMyLogs(); }, 15000);
+        // Gate fix [3]: never resubscribe for a user who has since signed out
+        // (or been replaced) — that loop ran unauthenticated forever.
+        window._logsResub = setTimeout(() => {
+          if (me && auth.currentUser && auth.currentUser.uid === me.uid) listenMyLogs();
+        }, 15000);
       });
   }
 
@@ -859,8 +879,10 @@
   function renderPendingBar() {
     const bar = $('pending-bar');
     if (!bar) return;
-    const pend = myLogs.filter((l) => l._pending && l.createdAt);
-    const oldest = pend.length ? Math.min(...pend.map((l) => new Date(l.createdAt).getTime() || Date.now())) : 0;
+    // Age from the latest touch, not creation — an offline edit of a
+    // week-old entry is minutes stale, not a week (gate advisory [8]).
+    const pend = myLogs.filter((l) => l._pending && (l.updatedAt || l.createdAt));
+    const oldest = pend.length ? Math.min(...pend.map((l) => new Date(l.updatedAt || l.createdAt).getTime() || Date.now())) : 0;
     const ageMin = oldest ? Math.floor((Date.now() - oldest) / 60000) : 0;
     if (!pend.length || ageMin < 10) { bar.style.display = 'none'; return; }
     const ageTxt = ageMin >= 1440 ? Math.floor(ageMin / 1440) + 'd' : ageMin >= 60 ? Math.floor(ageMin / 60) + 'h' : ageMin + ' min';

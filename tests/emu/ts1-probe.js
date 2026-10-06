@@ -9,6 +9,13 @@
 // NOTE: restarts the shared emulator (twice) and rewrites firestore.rules in
 // place (restored at the end) — run it alone, then restart the emulator before
 // other suites.
+//
+// SCOPE (gate [6]): this runs the Node SDK with MEMORY cache, so it cannot
+// reproduce the browser's IndexedDB-persistence behavior — in particular the
+// initial FROM-CACHE snapshot every (re)listen raises before the server
+// answers (gate finding [1]: healing on it defeated the backoff). That
+// contract is covered by wave15's B5/B6 dynamic tests; a green probe here
+// does NOT cover it.
 'use strict';
 const fs = require('fs');
 const path = require('path');

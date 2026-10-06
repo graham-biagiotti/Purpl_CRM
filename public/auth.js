@@ -166,6 +166,11 @@ async function bootApp() {
       window.onAppReady();
 
     } else {
+      // TS1 gate fix [2]: stop the live streams and their resubscribe
+      // machinery on sign-out — otherwise every listener dies with
+      // permission-denied and the backoff/redrive loops retry forever from
+      // the login screen. Re-armed by DB.init on the next sign-in.
+      if (typeof DB !== 'undefined' && DB._teardownListeners) { try { DB._teardownListeners(); } catch(_) {} }
       authScreen.style.display = 'flex';
       loadingScreen.style.display = 'none';
       appShell.style.display = 'none';

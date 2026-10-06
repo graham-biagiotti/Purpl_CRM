@@ -12,6 +12,7 @@ const swSrc = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8'
 const cssSrc = fs.readFileSync(path.join(__dirname, '../../public/style.css'), 'utf8');
 const fieldSrc = fs.readFileSync(path.join(__dirname, '../../public/field.html'), 'utf8');
 const placesSrc = fs.readFileSync(path.join(__dirname, '../../public/places.js'), 'utf8');
+const authSrc = fs.readFileSync(path.join(__dirname, '../../public/auth.js'), 'utf8');
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ FAIL: ' + m); } };
@@ -34,10 +35,26 @@ console.log('[A] structural — db.js listener resilience');
   ok(/Math\.min\(60000,/.test(died), 'resubscribe backoff capped at 60s');
   ok(died.includes('this._deadListeners.add(key)') && died.includes('_updateSyncUI'),
     'death marks the stream dead and repaints the sync indicator');
-  const alive = slc(dbSrc, '_listenerAlive(key) {', '\n  },');
+  const alive = slc(dbSrc, '_listenerAlive(key, fromCache) {', '\n  },');
   ok(alive.includes('this._listenerRetries[key] = 0'), 'a delivered snapshot resets the backoff');
   ok(/deadListeners\.delete\(key\)[\s\S]{0,120}Live sync restored/.test(alive),
     'full recovery announces itself');
+  // Gate fix [1]: with IndexedDB persistence every (re)listen raises an
+  // initial FROM-CACHE snapshot before the server answers — healing on it
+  // defeated the backoff (permanent 2s loop) and flickered "Saved" mid-outage.
+  ok(/if \(fromCache\) return;/.test(alive), "only a SERVER snapshot heals (gate [1]: from-cache can't)");
+  ok((dbSrc.match(/_listenerAlive\((?:key|'__config__'), !!\(snap\.metadata && snap\.metadata\.fromCache\)\)/g) || []).length === 2,
+    'both listeners pass the snapshot origin into _listenerAlive');
+  // Gate fix [2]: sign-out teardown.
+  ok(dbSrc.includes('_teardownListeners()') && /_firestoreReady = false/.test(slc(dbSrc, '_teardownListeners() {', '\n  },')),
+    'teardown exists and parks the data layer (gate [2])');
+  ok(authSrc.includes('DB._teardownListeners()'),
+    'auth.js sign-out branch tears the listeners down (gate [2])');
+  // Gate fix [4]: first server snapshot after a resubscribe full-replaces.
+  ok(/_resubPending[\s\S]{0,40}\[key\] = true/.test(slc(dbSrc, '_resubscribe(key) {', '\n  },')),
+    'resubscribe arms the full-apply flag (gate [4])');
+  ok(/_resubPending && this\._resubPending\[key\] && !\(snap\.metadata && snap\.metadata\.fromCache\)/.test(dbSrc),
+    'full-apply consumes only a SERVER snapshot (gate [4])');
   // The redrive (online/visibility/heartbeat) also rescues dead listeners now.
   const wire = slc(dbSrc, 'if (!this._onlineWired)', '\n    }\n');
   ok(wire.includes('this._resubDeadNow()'), 'focus/online/heartbeat redrive fires pending resubscribes immediately');
@@ -76,9 +93,18 @@ console.log('[A2] structural — field.html hardening');
   ok(/setInterval\(renderPendingBar, 60000\)/.test(script), 'pending bar re-evaluated every minute');
   ok(/renderPendingBar\(\);[\s\S]{0,200}if \(openEntryId\)/.test(script),
     'pending bar refreshes on every snapshot, even with a detail card open');
-  // 4. Field log listener resubscribes on terminal error.
-  ok(/window\._logsResub = setTimeout\(\(\) => \{ if \(me\) listenMyLogs\(\); \}/.test(script),
-    'field log listener resubscribes after a terminal error');
+  // 4. Field log listener resubscribes on terminal error — but never for a
+  // signed-out/replaced user (gate [3]).
+  ok(/auth\.currentUser && auth\.currentUser\.uid === me\.uid\) listenMyLogs\(\)/.test(script),
+    'field log resubscribe is gated on the SAME still-signed-in user (gate [3])');
+  ok(/me = null; myLogs = \[\];/.test(script) && /clearTimeout\(window\._logsResub\)/.test(script),
+    'sign-out clears me/myLogs and the pending resub timer (gate [3])');
+  ok(/if \(pb\) pb\.style\.display = 'none'/.test(script), 'sign-out hides the pending bar (gate [3])');
+  // Gate [5]: the persistence warning also fires from the catch when the
+  // auth callback already ran (restored-session race).
+  ok(/if \(me\) warnPersistence\(\)/.test(script), 'persistence warning survives the auth/catch race (gate [5])');
+  // Gate [8]: pending age from the latest touch, not original creation.
+  ok(/new Date\(l\.updatedAt \|\| l\.createdAt\)/.test(script), 'pending age uses updatedAt||createdAt (gate [8])');
 }
 
 console.log('[A3] structural — app.js nav + places loader');
@@ -173,13 +199,56 @@ const liveSnap = { docChanges: () => [], docs: [], metadata: {} };
   cfgSubs[1].onNext({ metadata: {}, exists: false, data: () => ({}) });
   ok(DB._deadListeners.size === 0, 'B4: config snapshot heals the last dead stream');
 
-  // B5: repeated failures back off (2s, 4s, …) instead of hot-looping
-  const t1 = Date.now();
-  cfgSubs[1].onErr({ code: 'permission-denied' });
-  ok(DB._listenerRetries['__config__'] === 1, 'B5: retry counter advances per failure');
-  cfgSubs[1].onErr({ code: 'permission-denied' });
-  ok(DB._listenerRetries['__config__'] === 2 && (Date.now() - t1) < 1500,
-    'B5: second failure recorded without a hot resubscribe loop');
+  // B5 (gate [1]): a FROM-CACHE snapshot must not heal, must not reset the
+  // backoff, and must not consume the full-apply flag — with IndexedDB
+  // persistence the SDK raises one on every (re)listen before the server
+  // answers, so healing on it meant a permanent 2s resubscribe loop and a
+  // flickering "Saved" during the outage. (Contract update: the original B5
+  // only timed its own synchronous calls — vacuous, gate-caught; this one
+  // measures real backoff growth across the timers.)
+  const ac1 = subs.filter(s => s.path === 'workspace/main/ac').pop();
+  const restoredBefore = toasts.filter(t => t.includes('Live sync restored')).length;
+  ac1.onErr({ code: 'permission-denied' });
+  ok(DB._deadListeners.has('ac') && DB._listenerRetries['ac'] === 1, 'B5: failure marks dead (n=1)');
+  await sleep(2300); // first backoff = 2s
+  const ac2 = subs.filter(s => s.path === 'workspace/main/ac').pop();
+  ok(ac2 !== ac1, 'B5: 2s backoff resubscribed');
+  ac2.onNext({ docChanges: () => [], docs: [], metadata: { fromCache: true } });
+  ok(DB._deadListeners.has('ac'), 'B5: from-cache snapshot does NOT heal a dead stream');
+  ok(DB._listenerRetries['ac'] === 1, 'B5: from-cache snapshot does NOT reset the backoff');
+  ok(DB._resubPending['ac'] === true, 'B5: from-cache snapshot does NOT consume the full-apply flag');
+  ok(toasts.filter(t => t.includes('Live sync restored')).length === restoredBefore,
+    'B5: no spurious restored toast on the cache flicker');
+  ok(ui.label.textContent.includes('Live sync lost'), 'B5: indicator stays honest through the cache flicker');
+  ac2.onErr({ code: 'permission-denied' }); // n=2 → 4s delay
+  const nAc = subs.filter(s => s.path === 'workspace/main/ac').length;
+  await sleep(2500);
+  ok(subs.filter(s => s.path === 'workspace/main/ac').length === nAc,
+    'B5: second delay GREW past 2s — the backoff survives cache snapshots');
+  await sleep(2200); // ≥4s total
+  const ac3 = subs.filter(s => s.path === 'workspace/main/ac').pop();
+  ok(ac3 !== ac2, 'B5: 4s backoff resubscribed');
+
+  // B6 (gate [4]): the first SERVER snapshot after a resubscribe replaces the
+  // cache wholesale — a collection emptied remotely during the outage raises
+  // zero docChanges when nothing cached backs the query and would otherwise
+  // keep its stale rows until reload.
+  DB._cache.ac = [{ id: 'ghost', name: 'deleted-remotely-during-outage' }];
+  ac3.onNext({ docChanges: () => [], docs: [], metadata: { fromCache: false } });
+  ok(DB._deadListeners.size === 0, 'B6: server snapshot heals the stream');
+  ok(Array.isArray(DB._cache.ac) && DB._cache.ac.length === 0,
+    'B6: stale ghost rows replaced by the server view');
+  ok(DB._resubPending['ac'] === false, 'B6: full-apply flag consumed');
+
+  // B7 (gate [2]): sign-out teardown stops the whole machine.
+  ac3.onErr({ code: 'permission-denied' }); // leave a dead stream + pending timer behind
+  DB._teardownListeners();
+  ok(subs.every(s => s.unsubbed), 'B7: teardown unsubscribes every stream');
+  ok(DB._deadListeners.size === 0 && Object.keys(DB._resubTimers).length === 0,
+    'B7: dead set and resub timers cleared');
+  ok(DB._firestoreReady === false, 'B7: data layer parked until the next sign-in');
+  await sleep(2300);
+  ok(subs.every(s => s.unsubbed), 'B7: no resubscribe fires after teardown');
 
   console.log('[C] dynamic — places loader retry');
   {
