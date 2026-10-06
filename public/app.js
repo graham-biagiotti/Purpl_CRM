@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v236';
+const APP_VERSION = 'v237';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2099,7 +2099,13 @@ function renderFollowUps() {
     return `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:12px;${color}">${label}</span>`;
   }
 
-  el.innerHTML = items.length ? items.slice(0,10).map(i=>`
+  // FU-2: overdue items are never capped (the 10-slot ceiling crowded old
+  // overdue follow-ups out of the ONLY place with a Done button, making them
+  // undismissable in practice). Sorted ascending by date, so the first
+  // `nOverdue` entries are exactly the overdue ones.
+  const nOverdue = items.filter(i => i.daysUntil <= 0).length;
+  const shown = items.slice(0, Math.max(10, nOverdue));
+  el.innerHTML = shown.length ? shown.map(i=>`
     <div class="attn-item" onclick="${i.type==='account'?`openAccount('${i.id}')`:`openProspect('${i.id}')`}" style="cursor:pointer">
       <div class="attn-icon">${i.type==='account'?'📅':'🎯'}</div>
       <div class="attn-info" style="flex:1">
@@ -2108,7 +2114,32 @@ function renderFollowUps() {
       </div>
       ${chipHtml(i.daysUntil)}
       <button class="btn xs green" onclick="event.stopPropagation();dashMarkFollowUpDone('${i.id}','${i.type}')" title="Mark done">Done</button>
-    </div>`).join('') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
+    </div>`).join('') + (items.length > shown.length ? `<div style="text-align:center;margin-top:6px;font-size:12px;color:var(--muted)">+ ${items.length - shown.length} more upcoming</div>` : '') : '<div class="empty">No follow-ups scheduled in the next 14 days</div>';
+}
+
+// FU-1: card-level Done/Change — same canonical clear the dashboard uses
+// (nextFollowUp:null + clearedAt stamp silences legacy note dates too).
+function acMarkFollowUpDone(id) {
+  dashMarkFollowUpDone(id, 'account');
+  renderAccounts();
+}
+async function acChangeFollowUp(id) {
+  const a = DB.a('ac').find(x => x.id === id);
+  if (!a) return;
+  const cur = acNextFollowUp(a);
+  const v = await formDlg('Change follow-up', [
+    { id: 'next', label: 'What needs doing', initial: cur?.what || '' },
+    { id: 'nextDate', label: 'Follow-up date', type: 'date', initial: cur?.date || today() },
+  ], { okLabel: 'Save' });
+  if (!v) return;
+  // Only a real ISO date may reach the canonical field (same guard as the
+  // note dialog — garbage string-compares above every real date and becomes
+  // a phantom permanent follow-up).
+  const nextDate = v.nextDate || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) { toast('Pick a date — follow-up unchanged'); return; }
+  DB.update('ac', id, x => ({ ...x, nextFollowUp: nextDate, nextFollowUpNote: (v.next || '').trim() }));
+  renderAccounts();
+  toast('Follow-up updated — ' + fmtD(nextDate));
 }
 
 function dashMarkFollowUpDone(id, type) {
@@ -3251,7 +3282,10 @@ function _acCardHTML(a, muted) {
   if (nfu) {
     const nfuColor = nfu < today() ? '#dc2626' : nfu === today() ? '#d97706' : '#1d4ed8';
     const nfuLabel = nfu < today() ? 'Overdue' : nfu === today() ? 'Today' : fmtD(nfu);
-    nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}${_nf.what ? ' · ' + escHtml(_nf.what) : ''}</div></div>`;
+    // FU-1: Done + Change live ON the card — the only clear used to be the
+    // dashboard widget, so stale legacy follow-ups were undismissable from
+    // the place they actually show.
+    nfuHtml = `<div class="pr-card-nextsteps" style="border-left-color:${nfuColor}"><div class="ac-card-section-label" style="color:${nfuColor}">📅 Next Follow-Up</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="pr-card-nextsteps-text" style="color:${nfuColor};font-weight:600;flex:1;min-width:140px">${nfuLabel}${nfu < today() || nfu === today() ? ' — '+fmtD(nfu) : ''}${_nf.what ? ' · ' + escHtml(_nf.what) : ''}</div><button class="btn xs green" onclick="acMarkFollowUpDone('${a.id}')">✓ Done</button><button class="btn xs" onclick="acChangeFollowUp('${a.id}')">✏️ Change</button></div></div>`;
   }
 
   return `<div class="ac-card${needsAttn?' needs-attention':''}${muted?' ac-dist-served':''}">
