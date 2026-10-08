@@ -578,8 +578,13 @@ exports.getStockists = onCall(async () => {
     const locs = (Array.isArray(a.locs) && a.locs.length)
       ? a.locs
       : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    // v240: a location can opt OUT of the public map (findUs:false — an
+    // office/warehouse that exists for invoicing but isn't a store).
+    // Absent/true = shown, so every pre-v240 location keeps its pin.
+    const eligible = locs.filter(l => l && l.findUs !== false);
+    if (!eligible.length) return; // every location opted out — no pins
     let pushed = 0, missedHere = 0;
-    locs.forEach(l => {
+    eligible.forEach(l => {
       if (push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands)) pushed++;
       else missedHere++;
     });
@@ -587,8 +592,12 @@ exports.getStockists = onCall(async () => {
     // the account; a locs[] entry without its own coords must not hide the
     // store. If NO location produced a pin, fall back to the account pin —
     // and only then does the fallback absorb this account's misses.
-    if (!pushed && a.lat && a.lng) {
-      if (push(a.name, a.address || (locs[0] && locs[0].address) || '', a.lat, a.lng, a.stockistBrands)) missedHere = 0;
+    // v240: the account pin IS the primary location (that's where top-level
+    // coords come from) — skip the fallback when the primary opted out,
+    // otherwise the office would sneak onto the map through the back door.
+    const prim = locs.find(l => l && l.primary) || locs[0];
+    if (!pushed && a.lat && a.lng && (!prim || prim.findUs !== false)) {
+      if (push(a.name, a.address || (eligible[0] && eligible[0].address) || '', a.lat, a.lng, a.stockistBrands)) missedHere = 0;
     }
     skipped += missedHere;
   });

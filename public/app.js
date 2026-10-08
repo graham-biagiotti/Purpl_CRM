@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v239';
+const APP_VERSION = 'v240';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -5761,7 +5761,7 @@ function meBatchReset() {
 }
 
 // ── Multi-location helpers (Edit Account) ─────────────────
-function _eacLocRow(loc, canRemove) {
+function _eacLocRow(loc, canRemove, isPrimary) {
   const esc = s => (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   return `
     <div class="eac-loc-row" data-loc-id="${loc.id}" style="background:var(--surface-2,#f9f8ff);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
@@ -5777,6 +5777,18 @@ function _eacLocRow(loc, canRemove) {
         <div><input class="eac-loc-phone" type="tel" placeholder="Phone (optional)" value="${esc(loc.phone)}"></div>
       </div>
       <textarea class="eac-loc-droprules" placeholder="Drop-off / delivery rules for this location" style="width:100%;box-sizing:border-box;min-height:40px;resize:vertical">${esc(loc.dropOffRules)}</textarea>
+      <!-- v240: per-location roles. Primary = the account's own address (the
+           Billed-To block on invoices, map fallback pin). Find-us = whether
+           this location appears on the public Where to Find Us map (an
+           office/warehouse location stays off it). -->
+      <div style="display:flex;gap:18px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer">
+          <input type="radio" name="eac-loc-primary" class="eac-loc-primary" value="${esc(loc.id)}" ${isPrimary?'checked':''} style="width:auto;margin:0"> Primary (account's billing address)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer">
+          <input type="checkbox" class="eac-loc-findus" ${loc.findUs!==false?'checked':''} style="width:auto;margin:0"> Show on Where to Find Us
+        </label>
+      </div>
     </div>`;
 }
 
@@ -5791,7 +5803,10 @@ function _eacAttachPlaces(container) {
 function eacRenderLocs(locs) {
   const container = qs('#eac-locs-list');
   if (!container) return;
-  container.innerHTML = locs.map((loc, i) => _eacLocRow(loc, locs.length > 1)).join('');
+  // v240: exactly one primary — an explicit flag wins, else the first row
+  // (which is what the top-level account address derived from before).
+  const hasPrimary = locs.some(l => l && l.primary);
+  container.innerHTML = locs.map((loc, i) => _eacLocRow(loc, locs.length > 1, loc.primary || (!hasPrimary && i === 0))).join('');
   _eacAttachPlaces(container);
 }
 
@@ -6038,8 +6053,17 @@ async function saveAccount(id, isNew) {
       if (prevLoc && prevLoc.address === address && prevLoc.addrParts) addrParts = prevLoc.addrParts;
       else if (!existing?.locs?.length && existing?.address === address && existing?.addrParts) addrParts = existing.addrParts;
     }
-    locs.push({id: locId, label, address, lat, lng, addrParts: addrParts || null, contact, phone, dropOffRules});
+    locs.push({id: locId, label, address, lat, lng, addrParts: addrParts || null, contact, phone, dropOffRules,
+      // v240: per-location roles (see _eacLocRow)
+      primary: !!row.querySelector('.eac-loc-primary')?.checked,
+      findUs:  !!row.querySelector('.eac-loc-findus')?.checked,
+    });
   }
+  // Exactly one primary: if the checked row was removed (or legacy markup
+  // without the radio), the first location inherits it — same row the
+  // account address derived from before v240.
+  if (locs.length && !locs.some(l => l.primary)) locs[0].primary = true;
+  const primLoc = locs.find(l => l.primary) || locs[0] || {};
 
   // Collect contacts from the contacts section
   const contacts = [];
@@ -6068,20 +6092,22 @@ async function saveAccount(id, isNew) {
     contact:      primaryContact.name||'',
     phone:        primaryContact.phone||'',
     email:        primaryContact.email||'',
-    // top-level address/lat/lng from first location (backward compat for display)
-    address:      locs[0]?.address||'',
-    lat:          locs[0]?.lat||null,
-    lng:          locs[0]?.lng||null,
-    addrParts:    locs[0]?.addrParts||null,
+    // v240: top-level address/lat/lng from the PRIMARY location (was: first
+    // row). This is the account's own address — the Billed-To block on
+    // invoices, the ship-to when no door is chosen, the map fallback pin.
+    address:      primLoc.address||'',
+    lat:          primLoc.lat||null,
+    lng:          primLoc.lng||null,
+    addrParts:    primLoc.addrParts||null,
     // Changed address gets a fresh shot at map geocoding
-    geocodeFailed: ((locs[0]?.address||'') === (existing?.address||'')) ? (existing?.geocodeFailed || null) : null,
+    geocodeFailed: ((primLoc.address||'') === (existing?.address||'')) ? (existing?.geocodeFailed || null) : null,
     locs,
     type:         qs('#eac-type')?.value||'Grocery',
     territory:    qs('#eac-territory')?.value?.trim()||'',
     billingEmail: qs('#eac-billing-email')?.value?.trim()||'',
     status:       qs('#eac-status')?.value||'active',
     since:        qs('#eac-since')?.value||today(),
-    dropOffRules: locs[0]?.dropOffRules||'',
+    dropOffRules: primLoc.dropOffRules||'',
     // Two-way: an unticked box must clear the flag — || made it a one-way
     // ratchet (once LF, forever LF). Fallback only when the box isn't rendered.
     isPbf:        qs('#eac-ispbf') ? qs('#eac-ispbf').checked : (existing?.isPbf || false),
@@ -14026,7 +14052,6 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin:14px 0 6px;font-weight:600">Deliver To</div>
         <div style="font-size:14px;font-weight:600;color:#1a1a2e">${escHtml(o.deliverTo.label || o.deliverTo.address || '')}</div>
         ${o.deliverTo.label && o.deliverTo.address ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(o.deliverTo.address)}</div>` : ''}
-        ${(o.deliverTo.contact || o.deliverTo.phone) ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml([o.deliverTo.contact, o.deliverTo.phone].filter(Boolean).join(' · '))}</div>` : ''}
         ${o.warehouseCopy && o.deliverTo.dropOffRules ? `<div style="font-size:12px;color:#92400e;margin-top:4px">📦 ${escHtml(o.deliverTo.dropOffRules)}</div>` : ''}` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">
