@@ -32,8 +32,11 @@ console.log('[A] structural — markup + wiring');
     'combined account change re-syncs');
   ok(/openNewCombinedModal[\s\S]{0,400}_doorRowSync\('nciv', '', null\)/.test(src),
     'new-combined open resets the door row');
-  ok(/qs\('#nciv-account'\)\.value = rec\.accountId \|\| '';\s*_doorRowSync\('nciv', rec\.accountId \|\| '', rec\.deliverTo \|\| null\)/.test(src),
-    'combined EDIT prefills the door row from the parent stamp');
+  // Gate F1: a manually-combined family carries its stamps on the CHILDREN —
+  // the edit seed must use the same fallback chain as the printed document,
+  // or a routine quantity edit nulls the children's stamps on save.
+  ok(/_doorRowSync\('nciv', rec\.accountId \|\| '', rec\.deliverTo \|\| purplChild\?\.deliverTo \|\| lfChild\?\.deliverTo \|\| null\)/.test(src),
+    'combined EDIT seeds the picker parent-then-children (gate F1)');
 }
 
 console.log('[A2] structural — stamps on every save path');
@@ -43,12 +46,15 @@ console.log('[A2] structural — stamps on every save path');
   const lfRec = slc(src, 'const rec = {\n    ...(existing||{}),\n    id: saveId, number, invoiceNumber: number,', 'if (isNew) DB.push');
   ok(lfRec.includes("deliverTo: _doorStamp('lfi', accountId)"), 'LF save stamps deliverTo');
   const combEdit = slc(src, 'if (_editingCombinedId) {', '_editingCombinedId = null;');
-  ok(/const shared = \{[\s\S]{0,220}deliverTo: _doorStamp\('nciv', accountId\)/.test(combEdit),
-    'combined EDIT writes the stamp into parent AND both children (shared)');
+  // Gate F5: each record gets its OWN stamp copy — a shared reference would
+  // alias future in-place edits across parent and children.
+  ok(combEdit.includes("const _doorE = _doorStamp('nciv', accountId)"), 'combined EDIT reads the stamp once');
+  ok((combEdit.match(/deliverTo: _doorECopy\(\)/g) || []).length === 3,
+    'combined EDIT writes a FRESH stamp copy into parent + both children (gate F5)');
   const combCreate = slc(src, 'const purplNum = combNum + ', 'DB.atomicUpdate(cache => {');
-  ok(combCreate.includes("const deliverTo = _doorStamp('nciv', accountId)"), 'combined CREATE reads the stamp once');
-  ok((combCreate.match(/trackingNumber, deliverTo,/g) || []).length === 3,
-    'combined CREATE carries the stamp on parent + purpl child + LF child');
+  ok(combCreate.includes("const _door0 = _doorStamp('nciv', accountId)"), 'combined CREATE reads the stamp once');
+  ok((combCreate.match(/deliverTo: _doorCopy\(\)/g) || []).length === 3,
+    'combined CREATE carries a FRESH stamp copy on parent + both children (gate F5)');
 }
 
 console.log('[A3] structural — print + ShipStation');
@@ -67,8 +73,20 @@ console.log('[A3] structural — print + ShipStation');
   ok((src.match(/deliverTo: inv\.deliverTo \|\| null,/g) || []).length === 2,
     'purpl + LF wrappers pass the stamp');
   const push = slc(src, 'async function pushInvoiceToShipStation', 'const d = result.data');
-  ok(/const door = \(inv\.deliverTo && inv\.deliverTo\.address\) \? inv\.deliverTo : null/.test(push),
+  // Gate F2: the combined push resolves the door through the SAME chain as
+  // the printed document (parent → purpl child → LF child) — label and
+  // paper can never disagree on the store.
+  ok(/\(inv\.deliverTo \|\| _purplChild\.deliverTo \|\| _lfChild\.deliverTo\)/.test(push),
+    'combined push falls back to the children for the door (gate F2)');
+  ok(/const door = \(_doorSrc && _doorSrc\.address\) \? _doorSrc : null/.test(push),
     'push resolves the door (address required)');
+  // Gate F3: a free-hand door address that parses to no street/city refuses
+  // loudly — and never silently falls back to the account address (that is
+  // the WRONG store).
+  ok(/if \(door && !\(addr\.street1 && addr\.city\)\)[\s\S]{0,400}return false/.test(push),
+    'unparseable door address refuses the push (gate F3)');
+  ok(!/addr\.street1 && addr\.city[\s\S]{0,300}_shipAddrFor\(ac\)/.test(slc(push, 'if (door && !(addr.street1', 'const shipName')),
+    'F3 refusal does NOT fall back to the account address');
   ok(/door\s*\? _shipAddrFor\(\{ addrParts: door\.addrParts, address: door\.address \}\)/.test(push),
     'door address becomes the structured ship-to (autocomplete parts preferred)');
   ok(/door\.label \? ' — ' \+ door\.label : ''/.test(push), 'ship-to name carries "Account — Store"');
@@ -98,10 +116,10 @@ console.log('[B] dynamic — helpers against stub DOM/DB');
     });
     return s;
   };
-  const makeEnv = (locs) => {
+  const makeEnv = (locs, locsB) => {
     const row = { style: { display: 'none' } };
     const sel = mkSel();
-    const DB = { a: (k) => k === 'ac' ? [{ id: 'A1', name: 'BuyerCo', locs }] : [] };
+    const DB = { a: (k) => k === 'ac' ? [{ id: 'A1', name: 'BuyerCo', locs }, { id: 'B1', name: 'OtherCo', locs: locsB || [] }] : [] };
     const document = { getElementById: (id) => id.endsWith('-door-row') ? row : id.endsWith('-door') ? sel : null };
     const fns = new Function('DB', 'document', 'escHtml', helpers + '\nreturn { _acDoors, _doorRowSync, _doorStamp };')(DB, document, escHtml);
     return { row, sel, ...fns };
@@ -152,13 +170,33 @@ console.log('[B] dynamic — helpers against stub DOM/DB');
     ok(e._doorStamp('iv', 'A1').address === '9 Hill Rd, Dublin, NH',
       'D4: re-save refreshes the stamp from the CURRENT account door');
   }
-  // D5: account switch (no stamped arg) → old stamp cannot leak
+  // D5 (contract updated for gate F4): the stamp renders only for ITS OWN
+  // account — it cannot leak into another account's option list — but
+  // switching away and BACK restores it (flirting with the wrong account in
+  // the dropdown doesn't cost the saved door).
   {
-    const e = makeEnv(twoDoors);
+    const bDoors = [{ id: 'B-L1', label: 'B One', address: 'b1' }, { id: 'B-L2', label: 'B Two', address: 'b2' }];
+    const e = makeEnv(twoDoors, bDoors);
     e._doorRowSync('iv', 'A1', { locId: 'GONE', label: 'Closed Door', address: '5 Old Rd' });
-    e._doorRowSync('iv', 'A1'); // user re-picked an account — change handler form
-    ok(!e.sel.options.some(o => o.value === 'GONE'), 'D5: account change drops the synthetic stamp option');
-    ok(e._doorStamp('iv', 'A1') === null, 'D5: nothing selected after the switch');
+    e._doorRowSync('iv', 'B1'); // switch to another multi-door account
+    ok(!e.sel.options.some(o => o.value === 'GONE') && !e.sel.innerHTML.includes('Closed Door'),
+      'D5: the stamp cannot leak into another account\'s option list');
+    ok(e._doorStamp('iv', 'B1') === null, 'D5: nothing auto-selected on the other account');
+    e._doorRowSync('iv', 'A1'); // switch back
+    ok(e.sel.options.some(o => o.value === 'GONE') && e.sel.value === 'GONE',
+      'D5: switching back restores the saved door (gate F4)');
+    const st = e._doorStamp('iv', 'A1');
+    ok(st && st.locId === 'GONE' && st.label === 'Closed Door', 'D5: restored stamp re-saves verbatim');
+  }
+  // D5b: a single-location account hides the row entirely mid-flirt
+  {
+    const e = makeEnv(twoDoors, [{ id: 'B-only', label: 'Solo', address: 'b' }]);
+    e._doorRowSync('iv', 'A1', { locId: 'L1', label: 'Village Market', address: '1 Main St, Keene, NH' });
+    e._doorRowSync('iv', 'B1');
+    ok(e.row.style.display === 'none' && e._doorStamp('iv', 'B1') === null,
+      'D5b: single-door account hides the picker (no stale selection)');
+    e._doorRowSync('iv', 'A1');
+    ok(e.sel.value === 'L1', 'D5b: and the stamp still restores on return');
   }
   // D6: hostile label is escaped in the option markup
   {

@@ -715,14 +715,32 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   if (!inv) { toast('Invoice not found'); return false; }
   if (inv.shipStationOrderId) { toast('Already pushed to ShipStation'); return true; }
   const ac = DB.a('ac').find(a => a.id === inv.accountId) || {};
+  // Children fetched up front: a combined parent's line items AND (gate F2)
+  // its door stamp may live on the children (manual combines built the
+  // parent pre-picker).
+  const _purplChild = collection === 'combined_invoices' ? (findInvoice(inv.purplInvoiceId) || {}) : null;
+  const _lfChild    = collection === 'combined_invoices' ? (DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId) || {}) : null;
   // Doors (v239): an invoice stamped with a specific store ships THERE —
   // name, structured address and phone all come from the frozen stamp.
-  const door = (inv.deliverTo && inv.deliverTo.address) ? inv.deliverTo : null;
+  // Gate F2: combined uses the SAME fallback chain as the printed document
+  // (parent → purpl child → LF child), so label and paper can never disagree.
+  const _doorSrc = collection === 'combined_invoices'
+    ? (inv.deliverTo || _purplChild.deliverTo || _lfChild.deliverTo)
+    : inv.deliverTo;
+  const door = (_doorSrc && _doorSrc.address) ? _doorSrc : null;
   if (!door && !ac.address && !ac.shipAddress) { _stickyError('Cannot push to ShipStation: no shipping address on this account. Add one in the account first.'); return false; }
 
   const addr = door
     ? _shipAddrFor({ addrParts: door.addrParts, address: door.address })
     : _shipAddrFor(ac);
+  // Gate F3: a door address typed free-hand (no autocomplete pick) can parse
+  // to no street/city — pushing that creates an unshippable ShipStation
+  // order. Refuse loudly; do NOT fall back to the account address (that's
+  // the WRONG store — a mis-ship, not a fix).
+  if (door && !(addr.street1 && addr.city)) {
+    _stickyError(`Cannot push: the Deliver-to store "${door.label || door.address}" has no shippable street address. Open Edit Account, re-enter that location's address picking the autocomplete suggestion, re-save this invoice's Deliver-to, then push again.`);
+    return false;
+  }
   const shipName = door
     ? ((ac.name || inv.accountName || '') + (door.label ? ' — ' + door.label : ''))
     : (ac.name || '');
@@ -734,9 +752,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   // the two child invoices (purpl + LF). Gather from both, same as the preview.
   let _lineItems = inv.lineItems || [];
   if (collection === 'combined_invoices') {
-    const _purplInv = findInvoice(inv.purplInvoiceId) || {};
-    const _lfInv    = DB.a('lf_invoices').find(x => x.id === inv.lfInvoiceId) || {};
-    _lineItems = [...( _purplInv.lineItems || _purplInv.items || [] ), ...( _lfInv.lineItems || [] )];
+    _lineItems = [...( _purplChild.lineItems || _purplChild.items || [] ), ...( _lfChild.lineItems || [] )];
   }
 
   const items = [];
@@ -2484,20 +2500,27 @@ function _doorRowSync(prefix, acId, stamped) {
   const sel = document.getElementById(prefix + '-door');
   if (!row || !sel) return;
   const doors = _acDoors(acId);
-  // Modal open passes `stamped` (possibly null) and it sticks; an account
-  // CHANGE calls without it, and the old account's stamp must not leak into
-  // the new account's option list.
-  sel._doorStamped = stamped !== undefined ? (stamped || null) : null;
-  const stampedLive = sel._doorStamped && doors.some(l => l.id === sel._doorStamped.locId);
-  if (doors.length < 2 && !sel._doorStamped) {
+  // Modal open passes `stamped` (possibly null) and it sticks, remembering
+  // WHICH account it belongs to. An account CHANGE calls without it: the
+  // stamp is RENDERED only for its own account — it can't leak into another
+  // account's option list (gate-tested), but switching away and back
+  // restores it (gate F4): flirting with the wrong account in the dropdown
+  // doesn't cost the saved door.
+  if (stamped !== undefined) {
+    sel._doorStamped = stamped || null;
+    sel._stampAcId = stamped ? String(acId || '') : '';
+  }
+  const stamp = (sel._doorStamped && String(acId || '') === sel._stampAcId) ? sel._doorStamped : null;
+  const stampedLive = stamp && doors.some(l => l.id === stamp.locId);
+  if (doors.length < 2 && !stamp) {
     row.style.display = 'none'; sel.innerHTML = ''; return;
   }
   sel.innerHTML = '<option value="">— account address (no specific store) —</option>' +
     doors.map(l => `<option value="${escHtml(l.id)}">${escHtml(l.label || l.address)}</option>`).join('') +
-    (sel._doorStamped && !stampedLive
-      ? `<option value="${escHtml(sel._doorStamped.locId)}">${escHtml((sel._doorStamped.label || sel._doorStamped.address || 'saved store') + ' (saved on invoice)')}</option>`
+    (stamp && !stampedLive
+      ? `<option value="${escHtml(stamp.locId)}">${escHtml((stamp.label || stamp.address || 'saved store') + ' (saved on invoice)')}</option>`
       : '');
-  const want = sel._doorStamped ? sel._doorStamped.locId : '';
+  const want = stamp ? stamp.locId : '';
   if (want && [...sel.options].some(o => o.value === want)) sel.value = want;
   row.style.display = '';
 }
@@ -13246,7 +13269,11 @@ function editCombinedInvoice(combinedId) {
   _ncivSetMode(true);
 
   if (qs('#nciv-account')) qs('#nciv-account').value = rec.accountId || '';
-  _doorRowSync('nciv', rec.accountId || '', rec.deliverTo || null);
+  // Gate F1: seed with the SAME fallback chain the printed document uses — a
+  // manually-combined family carries its stamps on the CHILDREN (the parent
+  // was built pre-picker), and seeding from the parent alone made a routine
+  // quantity edit null the children's stamps on save.
+  _doorRowSync('nciv', rec.accountId || '', rec.deliverTo || purplChild?.deliverTo || lfChild?.deliverTo || null);
   if (qs('#nciv-number')) qs('#nciv-number').value = rec.number || rec.invoiceNumber || '';
   if (qs('#nciv-date')) qs('#nciv-date').value = rec.date || today();
   if (qs('#nciv-due')) qs('#nciv-due').value = rec.dueDate || rec.due || '';
@@ -13545,8 +13572,11 @@ async function saveNewCombinedInvoice() {
     const rec = DB.a('combined_invoices').find(x => x.id === combId);
     if (!rec) { _saveCombInFlight = false; toast('Invoice not found'); return; }
     const editShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
-    const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber,
-      deliverTo: _doorStamp('nciv', accountId) };
+    // Gate F5: stamp cloned per record below — one shared reference across
+    // parent + children would alias future in-place edits.
+    const _doorE = _doorStamp('nciv', accountId);
+    const _doorECopy = () => (_doorE ? { ..._doorE } : null);
+    const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber };
     // Legacy purpl children live in 'iv' — write to where the child IS.
     const pcCol = rec.purplInvoiceId ? _invoiceCol(rec.purplInvoiceId) : null;
     let abortReason = '';
@@ -13575,15 +13605,15 @@ async function saveNewCombinedInvoice() {
       const lExtras = li >= 0 ? _extrasOf(cache.lf_invoices[li]) : [];
       const pTotal = Math.round((purplSub + pExtras.reduce((s,l)=>s+_lv(l),0)) * 100) / 100;
       const lTotal = Math.round((lfSub    + lExtras.reduce((s,l)=>s+_lv(l),0)) * 100) / 100;
-      if (pi >= 0) cache[pcCol][pi] = { ...cache[pcCol][pi], ...shared, lineItems: [...purplLines, ...pExtras], total: pTotal, amount: pTotal };
-      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, issued, due, lineItems: [...lfLines, ...lExtras], total: lTotal };
+      if (pi >= 0) cache[pcCol][pi] = { ...cache[pcCol][pi], ...shared, deliverTo: _doorECopy(), lineItems: [...purplLines, ...pExtras], total: pTotal, amount: pTotal };
+      if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...shared, deliverTo: _doorECopy(), issued, due, lineItems: [...lfLines, ...lExtras], total: lTotal };
       const p = cache.combined_invoices[ci];
       const rest = (p.lineItems||[]).filter(l=>l.skuId!=='__shipping__');
       // Parent-level discount survives an items edit, re-clamped so the new,
       // possibly smaller order can never go negative.
       const _disc = Math.min(_combDiscOf(p), Math.max(0, pTotal + lTotal + editShip)); // base floored: a child whose own discount lines exceed products must not store a negative parent discount
       cache.combined_invoices[ci] = {
-        ...p, ...shared,
+        ...p, ...shared, deliverTo: _doorECopy(),
         purplSubtotal: pTotal, lfSubtotal: lTotal,
         combinedDiscount: _disc,
         grandTotal: Math.round((pTotal + lTotal + editShip - _disc) * 100) / 100,
@@ -13622,19 +13652,22 @@ async function saveNewCombinedInvoice() {
   const lfId     = uid();
   const combId   = uid();
   // Doors (v239): one stamp, carried by parent AND both children so every
-  // printable/pushable record self-identifies its store.
-  const deliverTo = _doorStamp('nciv', accountId);
+  // printable/pushable record self-identifies its store. Each record gets
+  // its OWN copy (gate F5) — a shared reference would let a future in-place
+  // edit of one record's stamp invisibly edit its siblings in cache.
+  const _door0 = _doorStamp('nciv', accountId);
+  const _doorCopy = () => (_door0 ? { ..._door0 } : null);
 
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo: _doorCopy(), combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: lfSub, status,
     lineItems: lfLines,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo: _doorCopy(), wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   // Manual shipping charge lives on the combined PARENT as a __shipping__ line
   // (same place the ShipStation webhook writes it for combined pushes).
@@ -13646,7 +13679,7 @@ async function saveNewCombinedInvoice() {
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: Math.round((purplSub + lfSub + shipVal) * 100) / 100,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo: _doorCopy(), source: 'manual',
     // shippingByOrder = the provenance map the ShipStation webhook maintains;
     // a user-entered amount is the authoritative 'manual' entry (a later real
     // charge replaces it server-side).
