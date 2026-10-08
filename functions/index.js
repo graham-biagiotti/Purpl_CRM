@@ -1267,6 +1267,11 @@ exports.payInvoice = onRequest(
       const invoiceNumber = inv.number || inv.invoiceNumber || '';
       if (inv.status === 'paid') return page('Already paid — thank you! 💜', `Invoice <strong>${esc(invoiceNumber)}</strong> is marked paid. No further payment is needed.`);
       if (inv.status === 'void') return page('Invoice no longer active', `Invoice <strong>${esc(invoiceNumber)}</strong> has been cancelled. If that seems wrong, just reply to your invoice email.`);
+      // Payment-sweep fix: a DRAFT is payable the moment its preview/print
+      // renders a Pay button — but draft→paid skips markInvoiceSent, the only
+      // place purpl inventory is deducted, so stock silently overstates.
+      // Refuse politely until the invoice is actually issued.
+      if ((inv.status || 'draft') === 'draft') return page('Invoice not issued yet', `Invoice <strong>${esc(invoiceNumber)}</strong> hasn't been finalized. You'll get the official copy by email shortly — its Pay button will work. Questions? Just reply to that email.`);
       const serverTotal = parseFloat(inv.grandTotal || inv.total || inv.amount || 0);
       if (!serverTotal || serverTotal < 0.50) return page('Nothing due', 'This invoice has no payable balance. Questions? Reply to your invoice email.');
       const key = (process.env.STRIPE_SECRET_KEY || '').trim();

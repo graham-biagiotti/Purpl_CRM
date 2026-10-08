@@ -2335,11 +2335,22 @@ function renderInvoiceReminders() {
     </div>`;
 }
 
+const _reminderInFlight = new Set();
 async function sendInvoiceReminder(invId, collection) {
+  // Payment-sweep fix (BS2): the button had no guard — a double-tap (or a
+  // slow pay-link await) sent the customer two identical reminder emails
+  // before reminderSentAt landed. One send per invoice at a time; the row
+  // removal below already retires the button on success.
+  if (_reminderInFlight.has(invId)) return;
+  _reminderInFlight.add(invId);
+  setTimeout(() => _reminderInFlight.delete(invId), 15000); // belt: never stuck
+  const _btn = document.getElementById('dir-' + invId)?.querySelector?.('button') || null;
+  if (_btn) { _btn.disabled = true; _btn.textContent = 'Sending…'; }
+  const _unlock = () => { _reminderInFlight.delete(invId); if (_btn) { _btn.disabled = false; _btn.textContent = 'Send Reminder'; } };
   const inv = DB.a(collection).find(x => x.id === invId);
-  if (!inv) return;
+  if (!inv) { _unlock(); return; }
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
-  if (!ac || !_invRecipient(inv, ac)) { toast('No email on file for this account or invoice'); return; }
+  if (!ac || !_invRecipient(inv, ac)) { _unlock(); toast('No email on file for this account or invoice'); return; }
 
   const type = collection === 'lf_invoices' ? 'lf' : collection === 'combined_invoices' ? 'combined' : 'retail';
   const payLink = await _getStripePayLink(inv, type);
@@ -2365,8 +2376,11 @@ async function sendInvoiceReminder(invId, collection) {
       if (list && !list.children.length) {
         document.getElementById('dash-invoice-reminders').style.display = 'none';
       }
+      _reminderInFlight.delete(invId); // row gone — nothing left to guard
+    } else {
+      _unlock(); // failed/fell back — let him retry deliberately
     }
-  });
+  }).catch(() => _unlock());
 }
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {

@@ -56,7 +56,10 @@
   </div>
   <script>
     var p = new URLSearchParams(window.location.search);
-    var inv = p.get('inv') || '';
+    // Payment-sweep fix: inv is attacker-controllable (anyone can craft a
+    // link to this page) and lands in innerHTML — allow only invoice-number
+    // characters so no markup can ever ride in.
+    var inv = (p.get('inv') || '').replace(/[^A-Za-z0-9._#\- ]/g, '').slice(0, 40);
     var cancelled = p.get('cancelled') === '1';
     var el = document.getElementById('body-content');
     var card = document.getElementById('card');

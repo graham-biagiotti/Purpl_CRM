@@ -149,5 +149,32 @@ console.log('[B2] dynamic — loc row rendering');
   ok(!/value="s1" checked/.test(storeHtml), 'non-primary radio unchecked');
 }
 
+console.log('[C] payment-sweep fixes (ride the v240 deploy)');
+{
+  const ps = fs.readFileSync(path.join(__dirname, '../../public/payment-success.html'), 'utf8');
+  const psw = fs.readFileSync(path.join(__dirname, '../../public-wholesale/payment-success.html'), 'utf8');
+  [['public', ps], ['public-wholesale', psw]].forEach(([which, html]) => {
+    ok(html.includes(".replace(/[^A-Za-z0-9._#\\- ]/g, '').slice(0, 40)"),
+      `${which}/payment-success sanitizes the inv param (reflected-XSS closed)`);
+    ok(!/var inv = p\.get\('inv'\) \|\| '';/.test(html), `${which}: raw inv read removed`);
+  });
+  // Draft invoices are not payable: draft→paid skipped markInvoiceSent, the
+  // only purpl inventory deduction point.
+  const pay = slc(fnSrc, 'exports.payInvoice', 'exports.');
+  ok(/\(inv\.status \|\| 'draft'\) === 'draft'\) return page\('Invoice not issued yet'/.test(pay),
+    'payInvoice refuses drafts (inventory-skip hole closed)');
+  ok(pay.indexOf("=== 'draft'") > pay.indexOf("=== 'void'") && pay.indexOf('stripe.checkout.sessions.create') > pay.indexOf("=== 'draft'"),
+    'draft check sits after paid/void, before session mint');
+  // Reminder double-send guard.
+  const rem = slc(src, 'const _reminderInFlight', '\nfunction buildInvoiceReminderHTML');
+  ok(/_reminderInFlight\.has\(invId\)\) return;/.test(rem) && /_reminderInFlight\.add\(invId\)/.test(rem),
+    'sendInvoiceReminder is single-flight per invoice');
+  ok(/setTimeout\(\(\) => _reminderInFlight\.delete\(invId\), 15000\)/.test(rem),
+    'guard self-clears (can never wedge the button)');
+  ok(/_btn\.disabled = true/.test(rem) && /_unlock\(\)/.test(rem),
+    'button disables while sending and unlocks on failure for a deliberate retry');
+  ok((rem.match(/_unlock\(\)/g) || []).length >= 3, 'every early-exit path unlocks');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
