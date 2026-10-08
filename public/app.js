@@ -11533,9 +11533,14 @@ function _stockistPinIssues() {
   const issues = [];
   const has = v => !!parseFloat(v);
   DB.a('ac').filter(a => a.stockistListed && a.status !== 'inactive').forEach(a => {
-    const locs = (a.locs && a.locs.length) ? a.locs : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    const allLocs = (a.locs && a.locs.length) ? a.locs : [{ address: a.address, lat: a.lat, lng: a.lng, label: '' }];
+    // v240 (gate): mirror getStockists' findUs filter — an opted-out office
+    // will never pin by DESIGN, so nagging about its geocode is pure noise.
+    const locs = allLocs.filter(l => l && l.findUs !== false);
+    if (!locs.length) return; // fully opted-out account: no public pins, no nags
     const anyPinned = locs.some(l => has(l.lat) && has(l.lng));
-    const fallbackCovers = !anyPinned && has(a.lat) && has(a.lng);
+    const _prim = allLocs.find(l => l && l.primary) || allLocs[0];
+    const fallbackCovers = !anyPinned && has(a.lat) && has(a.lng) && (!_prim || _prim.findUs !== false);
     locs.forEach((l, i) => {
       if (has(l.lat) && has(l.lng)) return;
       // The account-pin fallback fully represents a SINGLE-location store;
@@ -14066,6 +14071,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin:14px 0 6px;font-weight:600">Deliver To</div>
         <div style="font-size:14px;font-weight:600;color:#1a1a2e">${escHtml(o.deliverTo.label || o.deliverTo.address || '')}</div>
         ${o.deliverTo.label && o.deliverTo.address ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(o.deliverTo.address)}</div>` : ''}
+        ${o.warehouseCopy && (o.deliverTo.contact || o.deliverTo.phone) ? `<div style="font-size:12px;color:#4b5563;margin-top:2px">👤 ${escHtml([o.deliverTo.contact, o.deliverTo.phone].filter(Boolean).join(' · '))}</div>` : ''}
         ${o.warehouseCopy && o.deliverTo.dropOffRules ? `<div style="font-size:12px;color:#92400e;margin-top:4px">📦 ${escHtml(o.deliverTo.dropOffRules)}</div>` : ''}` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">

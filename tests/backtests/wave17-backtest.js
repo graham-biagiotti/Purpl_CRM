@@ -45,9 +45,14 @@ console.log('[A] structural — edit-account controls + save derivation');
 console.log('[A2] structural — invoice doc + find-us function');
 {
   const doc = slc(src, '>Billed To</div>', 'Invoice Details</div>');
-  // v240 owner request: no store-specific contact on the invoice.
-  ok(!doc.includes('o.deliverTo.contact') && !doc.includes('o.deliverTo.phone'),
-    'DELIVER TO block prints NO store contact/phone');
+  // v240 owner request: no store-specific contact on the CUSTOMER invoice.
+  // Gate finding 2: the driver's warehouse copy keeps the call-ahead
+  // contact/phone (same gating as drop-off rules) — contract updated.
+  ok(/o\.warehouseCopy && \(o\.deliverTo\.contact \|\| o\.deliverTo\.phone\)/.test(doc),
+    'store contact/phone prints on the WAREHOUSE copy only');
+  ok(doc.split('\n').filter(l => l.includes('o.deliverTo.contact') || l.includes('o.deliverTo.phone'))
+       .every(l => l.includes('o.warehouseCopy')),
+    'every contact/phone reference sits behind the warehouseCopy gate');
   ok(doc.includes('o.deliverTo.label || o.deliverTo.address') &&
      /o\.warehouseCopy && o\.deliverTo\.dropOffRules/.test(doc),
     'store name/address + warehouse-only drop-off rules still print');
