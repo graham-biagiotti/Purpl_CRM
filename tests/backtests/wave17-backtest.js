@@ -181,5 +181,21 @@ console.log('[C] payment-sweep fixes (ride the v240 deploy)');
   ok((rem.match(/_unlock\(\)/g) || []).length >= 3, 'every early-exit path unlocks');
 }
 
+console.log('[D] v241 — invoice lists show the door');
+{
+  const ul = slc(src, 'function renderInvUnifiedList', '\nfunction ');
+  ok(/const _doorLabel = d => d \? \(d\.label \|\| d\.address \|\| ''\) : ''/.test(ul),
+    'unified list derives a door label from the stamp');
+  ok((ul.match(/door: _doorLabel\(x\.deliverTo\),/g) || []).length === 2,
+    'purpl + LF rows carry their door');
+  ok(/door: _doorLabel\(x\.deliverTo\) \|\|\s*_doorLabel\(\(x\.purplInvoiceId/.test(ul),
+    'combined rows use the parent→children chain (manual combines)');
+  ok(ul.includes("r.num + ' ' + r.name + ' ' + r.door"), 'search matches the store name too');
+  ok(/escHtml\(r\.name\)\}\$\{r\.door \? `<div[^`]*📍 \$\{escHtml\(r\.door\)\}/.test(ul),
+    'door renders as an escaped sub-line under the account');
+  ok((src.match(/📍 \$\{escHtml\(inv\.deliverTo\.label \|\| inv\.deliverTo\.address\)\}/g) || []).length >= 2,
+    'LF tables show the door sub-line as well');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

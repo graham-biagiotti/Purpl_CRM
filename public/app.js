@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v240';
+const APP_VERSION = 'v241';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -12464,7 +12464,7 @@ function renderLfInvoicesPage() {
       : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
     return `<tr>
       <td><strong>${escHtml(inv.number||'—')}</strong></td>
-      <td>${escHtml(inv.accountName||'—')}</td>
+      <td>${escHtml(inv.accountName||'—')}${inv.deliverTo && (inv.deliverTo.label || inv.deliverTo.address) ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">📍 ${escHtml(inv.deliverTo.label || inv.deliverTo.address)}</div>` : ''}</td>
       <td>${fmtD(inv.due)}</td>
       <td><strong>${fmtC(inv.total||0)}</strong></td>
       <td><span class="badge ${sc.cls}">${sc.label}</span></td>
@@ -17427,11 +17427,15 @@ function renderInvUnifiedList() {
     return (due && due < todayStr) ? 'overdue' : st;
   };
 
+  // v241: the list shows WHICH store a door-stamped invoice is for — two
+  // drop-off invoices for the same buyer used to read identically.
+  const _doorLabel = d => d ? (d.label || d.address || '') : '';
   const rows = [];
   const push = (x, type, opts) => rows.push({
     id: x.id, type,
     num: x.number || x.invoiceNumber || '—',
     name: opts.name,
+    door: opts.door || '',
     issued: opts.issued || '',
     due: opts.due || '',
     amt: opts.amt,
@@ -17444,6 +17448,7 @@ function renderInvUnifiedList() {
   if (_invTypeFilter === 'all' || _invTypeFilter === 'purpl') {
     _allPurplInvoices().filter(x => !x.combinedInvoiceId).forEach(x => push(x, 'purpl', {
       name: x.accountName || DB.a('ac').find(a=>a.id===x.accountId)?.name || '—',
+      door: _doorLabel(x.deliverTo),
       issued: x.date || '', due: x.dueDate || x.due || '',
       amt: parseFloat(x.amount || x.total || 0),
       edit: `openInvModal('${x.id}')`, print: `openInvoicePreview('purpl','${x.id}')`,
@@ -17453,6 +17458,7 @@ function renderInvUnifiedList() {
   if (_invTypeFilter === 'all' || _invTypeFilter === 'lf') {
     DB.a('lf_invoices').filter(x => !x.combinedInvoiceId).forEach(x => push(x, 'lf', {
       name: x.accountName || '—',
+      door: _doorLabel(x.deliverTo),
       issued: x.issued || x.date || '', due: x.due || x.dueDate || '',
       amt: parseFloat(x.total || 0),
       edit: `openLfInvoiceModal('${x.id}')`, print: `openInvoicePreview('lf','${x.id}')`,
@@ -17462,6 +17468,11 @@ function renderInvUnifiedList() {
   if (_invTypeFilter === 'all' || _invTypeFilter === 'combined') {
     DB.a('combined_invoices').forEach(x => push(x, 'combined', {
       name: x.accountName || '—',
+      // Same parent→children chain as the document/push (manual combines
+      // carry the stamp on the children).
+      door: _doorLabel(x.deliverTo) ||
+            _doorLabel((x.purplInvoiceId && findInvoice(x.purplInvoiceId))?.deliverTo) ||
+            _doorLabel((x.lfInvoiceId && DB.a('lf_invoices').find(l => l.id === x.lfInvoiceId))?.deliverTo),
       issued: x.date || (x.createdAt||'').slice(0,10), due: x.dueDate || x.due || '',
       amt: parseFloat(x.grandTotal || 0),
       edit: `editCombinedInvoice('${x.id}')`, print: `openInvoicePreview('combined','${x.id}')`,
@@ -17486,7 +17497,7 @@ function renderInvUnifiedList() {
   if (statusFilter === 'open')             list = list.filter(r => !['paid','void'].includes(r.st));
   else if (statusFilter === 'warehouse')   list = list.filter(r => r.rawSt === 'draft' && r.inv.warehousePushedAt);
   else if (statusFilter !== 'all')         list = list.filter(r => r.st === statusFilter);
-  if (q) list = list.filter(r => (r.num + ' ' + r.name).toLowerCase().includes(q));
+  if (q) list = list.filter(r => (r.num + ' ' + r.name + ' ' + r.door).toLowerCase().includes(q));
 
   const dirMul = _invSortState.dir === 'desc' ? -1 : 1;
   list.sort((a, b) => {
@@ -17529,7 +17540,7 @@ function renderInvUnifiedList() {
 
   tbody.innerHTML = list.map(r => `<tr>
     <td style="white-space:nowrap">${typeBadge[r.type]||''} <strong style="margin-left:4px">${escHtml(r.num)}</strong>${r.inv.readyToSend && !['sent','paid','void'].includes(r.rawSt)?' <span class="badge green" style="font-size:10px;animation:pulse 1.5s infinite">📦 Ready to send</span>':r.inv.deliveryMethod==='ship'?' <span class="badge gray" style="font-size:10px">📦 Ship</span>':''}${r.inv.fulfillmentSource==='warehouse'?' <span class="badge" style="font-size:10px;background:#e0f2fe;color:#0369a1">🏭 Warehouse'+(r.inv.warehousePushedAt?' ✓':'')+'</span>':''}${r.inv.trackingNumber?' <span class="badge green" style="font-size:10px">🚚 '+escHtml(r.inv.trackingNumber.length>20?r.inv.trackingNumber.slice(0,18)+'…':r.inv.trackingNumber)+'</span>':''}${r.inv.paidAmountMismatch?' <span class="badge red" style="font-size:10px" title="Stripe payment amount differs from the invoice total — see invoice notes">⚠ Paid ≠ total</span>':''}${_invEmailBadge(r.inv)}</td>
-    <td>${escHtml(r.name)}</td>
+    <td>${escHtml(r.name)}${r.door ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">📍 ${escHtml(r.door)}</div>` : ''}</td>
     <td style="white-space:nowrap">${fmtD(r.issued)}</td>
     <td style="white-space:nowrap;${r.st==='overdue' ? 'color:var(--red);font-weight:600' : ''}">${fmtD(r.due)}</td>
     <td style="text-align:right"><strong>${fmtC(r.amt)}</strong></td>
@@ -17869,7 +17880,7 @@ function renderInvColLf() {
               : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
             return `<tr>
               <td><strong>${escHtml(inv.number||'—')}</strong>${_invEmailBadge(inv)}</td>
-              <td>${escHtml(inv.accountName||'—')}</td>
+              <td>${escHtml(inv.accountName||'—')}${inv.deliverTo && (inv.deliverTo.label || inv.deliverTo.address) ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">📍 ${escHtml(inv.deliverTo.label || inv.deliverTo.address)}</div>` : ''}</td>
               <td>${fmtD(inv.due)}</td>
               <td><strong>${fmtC(inv.total||0)}</strong></td>
               <td><span class="badge ${sc.cls}">${sc.label}</span></td>
