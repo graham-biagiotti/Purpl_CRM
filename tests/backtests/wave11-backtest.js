@@ -83,8 +83,12 @@ function loadCode(env, cache, hooks) {
   const renderInvoicesPage = () => {};
   const closeModal = () => {};
   const openModal = () => {};
+  // v239 (wave16): saveNewCombinedInvoice now stamps a door via _doorStamp.
+  // No door picker exists in this harness's DOM, so stamp null (= account
+  // address) — the real helper has its own dynamic suite in wave16.
+  const _doorStamp = () => null;
   void window; void toast; void _stickyError; void DB; void getNextInvoiceNumber;
-  void openCombinedInvoicePreview; void renderInvoicesPage; void closeModal; void openModal; void peekNextInvoiceNumber;
+  void openCombinedInvoicePreview; void renderInvoicesPage; void closeModal; void openModal; void peekNextInvoiceNumber; void _doorStamp;
   const code = [
     'const CANS_PER_CASE = 12;',
     'const qs = (s) => document.querySelector(s);',

@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v238';
+const APP_VERSION = 'v239';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -715,9 +715,17 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
   if (!inv) { toast('Invoice not found'); return false; }
   if (inv.shipStationOrderId) { toast('Already pushed to ShipStation'); return true; }
   const ac = DB.a('ac').find(a => a.id === inv.accountId) || {};
-  if (!ac.address && !ac.shipAddress) { _stickyError('Cannot push to ShipStation: no shipping address on this account. Add one in the account first.'); return false; }
+  // Doors (v239): an invoice stamped with a specific store ships THERE —
+  // name, structured address and phone all come from the frozen stamp.
+  const door = (inv.deliverTo && inv.deliverTo.address) ? inv.deliverTo : null;
+  if (!door && !ac.address && !ac.shipAddress) { _stickyError('Cannot push to ShipStation: no shipping address on this account. Add one in the account first.'); return false; }
 
-  const addr = _shipAddrFor(ac);
+  const addr = door
+    ? _shipAddrFor({ addrParts: door.addrParts, address: door.address })
+    : _shipAddrFor(ac);
+  const shipName = door
+    ? ((ac.name || inv.accountName || '') + (door.label ? ' — ' + door.label : ''))
+    : (ac.name || '');
   const ss = DB.obj('shipstation_settings', {});
   const invNum = inv.number || inv.invoiceNumber || '';
   const brand = collection === 'combined_invoices' ? 'purpl + LF' : (collection === 'lf_invoices' ? 'Lavender Fields' : 'purpl');
@@ -768,7 +776,7 @@ async function pushInvoiceToShipStation(invoiceId, collection) {
       brand,
       storeId: ss.storeId || null,
       notes: inv.notes || '',
-      shipTo: { name: ac.name || '', ...addr, phone: ac.phone || '' },
+      shipTo: { name: shipName, ...addr, phone: (door && door.phone) || ac.phone || '' },
       items,
     });
     const d = result.data || {};
@@ -2457,6 +2465,65 @@ function _populateAccountSelect(selectId, accounts, selectedId, placeholder) {
   if (selectedId) sel.value = selectedId;
 }
 
+// ── Doors (v239): per-invoice "Deliver to" for multi-location accounts ──
+// A buyer who orders for several stores gets ONE account (money, Owes and
+// statements stay whole) and a door choice per invoice. The chosen door is
+// DENORMALIZED onto the invoice at save (label/address/parts frozen), so a
+// later edit to the account can never silently re-address an issued invoice.
+function _acDoors(acId) {
+  const a = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  return (a && Array.isArray(a.locs)) ? a.locs.filter(l => l && l.id && (l.address || l.label)) : [];
+}
+
+// Populate/show the picker for one modal (prefix = 'iv' | 'lfi' | 'nciv').
+// `stamped` is the invoice's existing deliverTo (edit mode): if its door was
+// since removed from the account, a synthetic "(saved)" option keeps the
+// stamp selectable so a routine edit can't silently drop it.
+function _doorRowSync(prefix, acId, stamped) {
+  const row = document.getElementById(prefix + '-door-row');
+  const sel = document.getElementById(prefix + '-door');
+  if (!row || !sel) return;
+  const doors = _acDoors(acId);
+  // Modal open passes `stamped` (possibly null) and it sticks; an account
+  // CHANGE calls without it, and the old account's stamp must not leak into
+  // the new account's option list.
+  sel._doorStamped = stamped !== undefined ? (stamped || null) : null;
+  const stampedLive = sel._doorStamped && doors.some(l => l.id === sel._doorStamped.locId);
+  if (doors.length < 2 && !sel._doorStamped) {
+    row.style.display = 'none'; sel.innerHTML = ''; return;
+  }
+  sel.innerHTML = '<option value="">— account address (no specific store) —</option>' +
+    doors.map(l => `<option value="${escHtml(l.id)}">${escHtml(l.label || l.address)}</option>`).join('') +
+    (sel._doorStamped && !stampedLive
+      ? `<option value="${escHtml(sel._doorStamped.locId)}">${escHtml((sel._doorStamped.label || sel._doorStamped.address || 'saved store') + ' (saved on invoice)')}</option>`
+      : '');
+  const want = sel._doorStamped ? sel._doorStamped.locId : '';
+  if (want && [...sel.options].some(o => o.value === want)) sel.value = want;
+  row.style.display = '';
+}
+
+// Read the picker into the frozen deliverTo stamp (null = account address).
+function _doorStamp(prefix, acId) {
+  const sel = document.getElementById(prefix + '-door');
+  const locId = sel?.value || '';
+  if (!locId) return null;
+  const loc = _acDoors(acId).find(l => l.id === locId);
+  if (!loc) {
+    // The synthetic "(saved)" option: the door left the account — keep the
+    // invoice's existing stamp verbatim.
+    return (sel._doorStamped && sel._doorStamped.locId === locId) ? sel._doorStamped : null;
+  }
+  return {
+    locId: loc.id,
+    label: loc.label || '',
+    address: loc.address || '',
+    addrParts: loc.addrParts || null,
+    contact: loc.contact || '',
+    phone: loc.phone || '',
+    dropOffRules: loc.dropOffRules || '',
+  };
+}
+
 function _renderAccountSelectOptions(sel, q) {
   const ql = (q || '').trim().toLowerCase();
   const list = (sel._accounts || []).filter(a => !ql || a.name.toLowerCase().includes(ql));
@@ -2548,6 +2615,7 @@ function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNo
   // Account selector (searchable)
   const accounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
   _populateAccountSelect('iv-account', accounts, inv?.accountId || prefillAccountId || '');
+  _doorRowSync('iv', inv?.accountId || prefillAccountId || '', inv?.deliverTo || null);
 
   // Pricing tier
   const tierSel = qs('#iv-tier');
@@ -2738,6 +2806,7 @@ function ivTermsChange() {
 function ivAccountChange() {
   const acId = qs('#iv-account')?.value;
   const ac   = acId ? DB.a('ac').find(x => x.id === acId) : null;
+  _doorRowSync('iv', acId);
   const tier = qs('#iv-tier')?.value || 'direct';
   const basePrice = _ivGetPrice(ac, tier);
   qs('#iv-line-items')?.querySelectorAll('[data-sku-id]').forEach(row => {
@@ -12399,6 +12468,7 @@ function openLfInvoiceModal(id) {
   // Account selector (all non-inactive accounts, searchable)
   const lfiAccounts = DB.a('ac').filter(a => a.status !== 'inactive').sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
   _populateAccountSelect('lfi-account', lfiAccounts, inv?.accountId || '');
+  _doorRowSync('lfi', inv?.accountId || '', inv?.deliverTo || null);
 
   // Line items
   const container = qs('#lfi-line-items');
@@ -12781,6 +12851,7 @@ function _saveLfInvoiceCore(id, isNew) {
     // manual LF invoices could never get the Warehouse badge / push button.
     fulfillmentSource: qs('#lfi-fulfillment')?.value || existing?.fulfillmentSource || 'farm',
     notes, link, deliveryDate, trackingNumber,
+    deliverTo: _doorStamp('lfi', accountId),
   };
   // Born-paid LF invoices: stamp the paid date (see purpl save; year-end filter).
   if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
@@ -13118,6 +13189,7 @@ function openNewCombinedModal() {
   _ncivSetMode(false);
   const accts = DB.a('ac').filter(a => a.isPbf).sort((a,b) => (a.name||'') < (b.name||'') ? -1 : 1);
   _populateAccountSelect('nciv-account', accts, '', 'Select account...');
+  _doorRowSync('nciv', '', null);
 
   if (qs('#nciv-number')) { const _pk = peekNextInvoiceNumber(); qs('#nciv-number').value = _pk; qs('#nciv-number').dataset.prefill = _pk; }
   if (qs('#nciv-date')) qs('#nciv-date').value = today();
@@ -13174,6 +13246,7 @@ function editCombinedInvoice(combinedId) {
   _ncivSetMode(true);
 
   if (qs('#nciv-account')) qs('#nciv-account').value = rec.accountId || '';
+  _doorRowSync('nciv', rec.accountId || '', rec.deliverTo || null);
   if (qs('#nciv-number')) qs('#nciv-number').value = rec.number || rec.invoiceNumber || '';
   if (qs('#nciv-date')) qs('#nciv-date').value = rec.date || today();
   if (qs('#nciv-due')) qs('#nciv-due').value = rec.dueDate || rec.due || '';
@@ -13258,6 +13331,7 @@ function editCombinedInvoice(combinedId) {
 }
 
 function ncivAccountChanged() {
+  _doorRowSync('nciv', qs('#nciv-account')?.value);
   _ncivRenderSkuRows();
 }
 
@@ -13471,7 +13545,8 @@ async function saveNewCombinedInvoice() {
     const rec = DB.a('combined_invoices').find(x => x.id === combId);
     if (!rec) { _saveCombInFlight = false; toast('Invoice not found'); return; }
     const editShip = Math.max(0, parseFloat(document.getElementById('nciv-shipping')?.value) || 0);
-    const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber };
+    const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber,
+      deliverTo: _doorStamp('nciv', accountId) };
     // Legacy purpl children live in 'iv' — write to where the child IS.
     const pcCol = rec.purplInvoiceId ? _invoiceCol(rec.purplInvoiceId) : null;
     let abortReason = '';
@@ -13546,17 +13621,20 @@ async function saveNewCombinedInvoice() {
   const purplId  = uid();
   const lfId     = uid();
   const combId   = uid();
+  // Doors (v239): one stamp, carried by parent AND both children so every
+  // printable/pushable record self-identifies its store.
+  const deliverTo = _doorStamp('nciv', accountId);
 
   const purplInv = {
     id: purplId, number: purplNum, invoiceNumber: purplNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: purplSub, amount: purplSub, status, lineItems: purplLines,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, combinedInvoiceId: combId, source: 'manual',
   };
   const lfInv = {
     id: lfId, number: lfNum, invoiceNumber: lfNum, accountId, accountName: account.name||'',
     date: issued, dueDate: due, total: lfSub, status,
     lineItems: lfLines,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, wixPulled: false, combinedInvoiceId: combId, source: 'manual',
   };
   // Manual shipping charge lives on the combined PARENT as a __shipping__ line
   // (same place the ShipStation webhook writes it for combined pushes).
@@ -13568,7 +13646,7 @@ async function saveNewCombinedInvoice() {
     date: issued, dueDate: due,
     createdAt: new Date().toISOString(), sentAt: null, paidAt: null, portalOrderId: null,
     purplSubtotal: purplSub, lfSubtotal: lfSub, grandTotal: Math.round((purplSub + lfSub + shipVal) * 100) / 100,
-    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, source: 'manual',
+    notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber, deliverTo, source: 'manual',
     // shippingByOrder = the provenance map the ShipStation webhook maintains;
     // a user-entered amount is the authoritative 'manual' entry (a later real
     // charge replaces it server-side).
@@ -13911,6 +13989,12 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
         <div style="font-size:15px;font-weight:600;color:#1a1a2e">${escHtml(o.accountName || '')}</div>
         ${o.accountEmail ? `<div style="font-size:13px;color:#4b5563;margin-top:3px">${escHtml(o.accountEmail)}</div>` : ''}
         ${o.accountAddress ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(o.accountAddress)}</div>` : ''}
+        ${o.deliverTo ? `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin:14px 0 6px;font-weight:600">Deliver To</div>
+        <div style="font-size:14px;font-weight:600;color:#1a1a2e">${escHtml(o.deliverTo.label || o.deliverTo.address || '')}</div>
+        ${o.deliverTo.label && o.deliverTo.address ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml(o.deliverTo.address)}</div>` : ''}
+        ${(o.deliverTo.contact || o.deliverTo.phone) ? `<div style="font-size:13px;color:#4b5563;margin-top:2px">${escHtml([o.deliverTo.contact, o.deliverTo.phone].filter(Boolean).join(' · '))}</div>` : ''}
+        ${o.warehouseCopy && o.deliverTo.dropOffRules ? `<div style="font-size:12px;color:#92400e;margin-top:4px">📦 ${escHtml(o.deliverTo.dropOffRules)}</div>` : ''}` : ''}
       </td>
       <td style="vertical-align:top;text-align:right">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;margin-bottom:6px;font-weight:600">Invoice Details</div>
@@ -13987,6 +14071,7 @@ function buildCombinedInvoiceHTML(combinedId, payLink, opts) {
     accountName: rec.accountName || account.name || '',
     accountEmail: account.email || '',
     accountAddress: account.address || '',
+    deliverTo: rec.deliverTo || purplInv.deliverTo || lfInv.deliverTo || null,
     issueDate: rec.date,
     dueDate: rec.dueDate || rec.due,
     terms: _invTermsLabel(rec),
@@ -14014,6 +14099,7 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     accountName: ac.name || inv.accountName || '',
     accountEmail: ac.email || '',
     accountAddress: ac.address || '',
+    deliverTo: inv.deliverTo || null,
     issueDate: inv.date,
     dueDate: inv.due || inv.dueDate,
     terms: _invTermsLabel(inv),
@@ -14041,6 +14127,7 @@ function buildLfInvoiceEmailHTML(inv, opts) {
     accountName: ac.name || inv.accountName || '',
     accountEmail: ac.email || '',
     accountAddress: ac.address || '',
+    deliverTo: inv.deliverTo || null,
     issueDate: inv.issued || inv.date,
     dueDate: inv.due || inv.dueDate,
     terms: inv.paymentTerms ? _invTermsLabel(inv) : 'Net ' + (s.terms || 30),
@@ -14116,6 +14203,7 @@ function buildCombinedInvoiceEmailHTML(inv, opts) {
     accountName: ac.name || inv.accountName || '',
     accountEmail: ac.email || '',
     accountAddress: ac.address || '',
+    deliverTo: inv.deliverTo || purplChild?.deliverTo || lfChild?.deliverTo || null,
     issueDate: inv.date || inv.issued,
     dueDate: inv.dueDate || inv.due,
     terms: inv.paymentTerms ? _invTermsLabel(inv) : 'Net ' + (s.terms || 30),
@@ -18210,6 +18298,7 @@ async function _saveInvCore(id, isNew) {
     lineItems,
     paymentTerms,
     ...(paymentTermsCustom !== undefined ? { paymentTermsCustom } : {}),
+    deliverTo:    _doorStamp('iv', accountId),
     source:       existing?.source || 'manual',
     fromEmail:    invSettings.fromEmail || 'lavender@pbfwholesale.com',
   };

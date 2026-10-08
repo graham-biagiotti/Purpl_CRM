@@ -2139,8 +2139,13 @@
       <div class="form-group"><label>Invoice #</label><input id="lfi-number" placeholder="LF-001"></div>
       <div class="form-group"><label>Account *</label>
         <input id="lfi-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('lfi-account', this.value)">
-        <select id="lfi-account"></select>
+        <select id="lfi-account" onchange="_doorRowSync('lfi', this.value)"></select>
       </div>
+    </div>
+    <!-- Doors (v239) -->
+    <div class="form-group" id="lfi-door-row" style="display:none">
+      <label>Deliver to <span style="font-weight:400;text-transform:none;letter-spacing:0">(this account has multiple stores)</span></label>
+      <select id="lfi-door"></select>
     </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="lfi-issued"></div>
@@ -2687,6 +2692,11 @@
         <select id="iv-account" onchange="ivAccountChange()"></select>
       </div>
     </div>
+    <!-- Doors (v239): shown only when the account has multiple locations -->
+    <div class="form-group" id="iv-door-row" style="display:none">
+      <label>Deliver to <span style="font-weight:400;text-transform:none;letter-spacing:0">(this account has multiple stores)</span></label>
+      <select id="iv-door"></select>
+    </div>
     <div class="form-row col2">
       <div class="form-group"><label>Issued</label><input type="date" id="iv-date" onchange="ivTermsChange()"></div>
       <div class="form-group"><label>Due</label><input type="date" id="iv-due"></div>
@@ -3211,6 +3221,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <label>Account *</label>
         <input id="nciv-account-search" type="search" placeholder="Type to search accounts…" autocomplete="off" oninput="filterAccountSelect('nciv-account', this.value)">
         <select id="nciv-account" onchange="ncivAccountChanged()"></select>
+        <!-- Doors (v239) -->
+        <div id="nciv-door-row" style="display:none;margin-top:8px">
+          <label>Deliver to <span style="font-weight:400;text-transform:none;letter-spacing:0">(multiple stores)</span></label>
+          <select id="nciv-door"></select>
+        </div>
       </div>
       <div class="form-group">
         <label>Invoice Number</label>
