@@ -112,8 +112,15 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
   ok(!html.includes('dir-r-child'), 'combined CHILD excluded (parent is the real bill)');
   ok(html.includes('dir-c1') && html.includes("'c1','combined_invoices'"), 'combined PARENT queued against its collection');
   ok(html.includes('$137.40'), 'combined parent shows grandTotal (discount-aware), not $0');
-  ok(!html.includes('dir-r-fresh'), 'reminded 3 days ago → silenced');
-  ok(html.includes('dir-r-week'), 'reminded 8 days ago, still unpaid → resurfaces weekly');
+  // v242 CONTRACT CHANGE (owner: "they all arent showing up on the dashboard"):
+  // a sent reminder used to vanish for 7 days — indistinguishable from a
+  // failed send, with no way to resend. Reminded invoices now STAY listed.
+  ok(html.includes('dir-r-fresh') && /dir-r-fresh[\s\S]{0,500}reminded 3d ago[\s\S]{0,300}>Resend</.test(html),
+    'reminded 3 days ago → stays listed as ✓ reminded, with a Resend button (v242)');
+  ok(html.indexOf('dir-r-over') < html.indexOf('dir-r-fresh'),
+    'freshly-reminded rows sort BELOW needs-action rows (v242)');
+  ok(html.includes('dir-r-week') && /dir-r-week[\s\S]{0,500}reminded 8d ago[\s\S]{0,300}btn xs primary"[^>]*>Resend</.test(html),
+    'reminded 8+ days ago, still unpaid → urgent (primary) Resend for a re-nudge');
   ok(!html.includes('dir-r-nomail'), 'account with no email at all excluded');
   ok(html.includes('dir-l-old') && html.includes("'l-old','iv'"), 'legacy-ledger invoice queued against iv collection');
   ok(html.includes('dir-lf1') && html.includes("'lf1','lf_invoices'"), 'portal LF invoice (dueDate-only) queued');
@@ -133,7 +140,12 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
     'cadence logs the reminder with invoice ref + message id (Emails tab history)');
   ok(!(cad && cad.doc.lastContacted), 'transactional stage does NOT bump lastContacted');
   ok(state.toasts.some(t => t.includes('Email sent')), 'success toast fires');
-  ok(els['dir-r-over']?.removed === true, 'row leaves the card immediately');
+  // v242 CONTRACT CHANGE: success re-renders the card in place of removing
+  // the row — the invoice flips to "✓ reminded today" with a Resend button.
+  const rerendered = els['dash-invoice-reminders'].innerHTML;
+  ok(rerendered.includes('dir-r-over') && /dir-r-over[\s\S]{0,500}reminded today/.test(rerendered),
+    'sent row stays on the card as ✓ reminded today (v242)');
+  ok(els['dir-r-over']?.removed !== true, 'row is no longer deleted from the DOM');
 
   let captured = null;
   state.sendResult = (args) => { captured = args; return Promise.resolve({ id: 'msg-2' }); };

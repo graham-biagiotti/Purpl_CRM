@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v241';
+const APP_VERSION = 'v242';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2264,13 +2264,15 @@ function renderInvoiceReminders() {
   _allPurplInvoices().forEach(inv => {
     if (inv.combinedInvoiceId) return;
     if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
-    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
+    // v242: a sent reminder used to VANISH for 7 days — indistinguishable
+    // from a failed send, and no way to resend. Reminded invoices now stay
+    // listed (with their sent date + a Resend button) until paid.
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !_invRecipient(inv, ac)) return;
     const coll = DB.a('retail_invoices').find(x => x.id === inv.id) ? 'retail_invoices' : 'iv';
-    queue.push({ inv, ac, collection: coll, isOverdue: days > 0, amount: inv.total||inv.amount });
+    queue.push({ inv, ac, collection: coll, isOverdue: days > 0, amount: inv.total||inv.amount, remindedDays: inv.reminderSentAt ? daysAgo(String(inv.reminderSentAt).slice(0,10)) : null });
   });
 
   DB.a('lf_invoices').forEach(inv => {
@@ -2278,12 +2280,14 @@ function renderInvoiceReminders() {
     // due||dueDate: portal-confirmed LF invoices store dueDate only — they
     // never surfaced in this card at all.
     if (['paid','draft','void'].includes(inv.status) || !(inv.due||inv.dueDate) || !inv.accountId) return;
-    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
+    // v242: a sent reminder used to VANISH for 7 days — indistinguishable
+    // from a failed send, and no way to resend. Reminded invoices now stay
+    // listed (with their sent date + a Resend button) until paid.
     const days = daysAgo(inv.due||inv.dueDate);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !_invRecipient(inv, ac)) return;
-    queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total });
+    queue.push({ inv, ac, collection: 'lf_invoices', isOverdue: days > 0, amount: inv.total, remindedDays: inv.reminderSentAt ? daysAgo(String(inv.reminderSentAt).slice(0,10)) : null });
   });
 
   // Combined PARENTS — the real bill for a dual-brand order. Children are
@@ -2292,12 +2296,14 @@ function renderInvoiceReminders() {
   // combined_invoices collection.
   DB.a('combined_invoices').forEach(inv => {
     if (['paid','draft','void'].includes(inv.status) || !(inv.dueDate||inv.due) || !inv.accountId) return;
-    if (inv.reminderSentAt && daysAgo(String(inv.reminderSentAt).slice(0,10)) < 7) return; // re-surface weekly while unpaid — one reminder used to silence an invoice forever
+    // v242: a sent reminder used to VANISH for 7 days — indistinguishable
+    // from a failed send, and no way to resend. Reminded invoices now stay
+    // listed (with their sent date + a Resend button) until paid.
     const days = daysAgo(inv.dueDate||inv.due);
     if (days < -7) return;
     const ac = DB.a('ac').find(x => x.id === inv.accountId);
     if (!ac || !_invRecipient(inv, ac)) return;
-    queue.push({ inv, ac, collection: 'combined_invoices', isOverdue: days > 0, amount: inv.grandTotal });
+    queue.push({ inv, ac, collection: 'combined_invoices', isOverdue: days > 0, amount: inv.grandTotal, remindedDays: inv.reminderSentAt ? daysAgo(String(inv.reminderSentAt).slice(0,10)) : null });
   });
 
   // Find or create container, inserted before #dash-dist-kpis
@@ -2315,20 +2321,31 @@ function renderInvoiceReminders() {
   if (!queue.length) { el.style.display = 'none'; return; }
   el.style.display = '';
 
+  // v242: needs-action first (never reminded, or reminded 7+ days ago and
+  // still unpaid — time for another nudge); freshly-reminded rows sink to
+  // the bottom but STAY VISIBLE with a Resend button.
+  const _needsAction = r => r.remindedDays == null || r.remindedDays >= 7;
+  queue.sort((a, b) => {
+    const d = (_needsAction(a) ? 0 : 1) - (_needsAction(b) ? 0 : 1);
+    if (d !== 0) return d;
+    return (b.isOverdue ? 1 : 0) - (a.isOverdue ? 1 : 0);
+  });
+  const actionCount = queue.filter(_needsAction).length;
+
   el.innerHTML = `
     <div class="section-hdr">
-      <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 7l10 7 10-7"></path></svg>Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:var(--red);color:#fff;margin-left:6px;vertical-align:middle">${queue.length}</span></h2>
-      <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue</small>
+      <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 7l10 7 10-7"></path></svg>Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:${actionCount ? 'var(--red)' : 'var(--green, #16a34a)'};color:#fff;margin-left:6px;vertical-align:middle">${actionCount || '✓'}</span></h2>
+      <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue — reminded ones stay listed until paid</small>
     </div>
     <div id="dash-inv-reminders-list">
-      ${queue.slice(0, 8).map(({ inv, ac, collection, isOverdue, amount }) => `
+      ${queue.slice(0, 8).map(({ inv, ac, collection, isOverdue, amount, remindedDays }) => `
         <div class="attn-item" id="dir-${inv.id}">
-          <div class="attn-icon">${isOverdue ? '🔴' : '🟡'}</div>
+          <div class="attn-icon">${remindedDays != null && remindedDays < 7 ? '✅' : isOverdue ? '🔴' : '🟡'}</div>
           <div class="attn-info" style="flex:1">
             <div class="attn-name">${escHtml(ac.name)} — ${escHtml(inv.number || '')}</div>
-            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.dueDate || inv.due)}</div>
+            <div class="attn-reason">${isOverdue ? 'Overdue' : 'Due in 7 days'} · ${fmtC(amount || 0)} · Due ${fmtD(inv.dueDate || inv.due)}${remindedDays != null ? ` · <span style="color:var(--green,#16a34a);font-weight:600">✓ reminded ${remindedDays <= 0 ? 'today' : remindedDays + 'd ago'}</span>` : ''}</div>
           </div>
-          <button class="btn xs primary" onclick="sendInvoiceReminder('${inv.id}','${collection}')">Send Reminder</button>
+          <button class="btn xs ${remindedDays != null && remindedDays < 7 ? '' : 'primary'}" onclick="sendInvoiceReminder('${inv.id}','${collection}')">${remindedDays != null ? 'Resend' : 'Send Reminder'}</button>
         </div>
       `).join('')}
       ${queue.length > 8 ? `<div style="text-align:center;margin-top:6px;font-size:12px;color:var(--muted)">+ ${queue.length - 8} more — <a href="#" onclick="nav('invoices');return false">open Invoices</a></div>` : ''}
@@ -2345,8 +2362,9 @@ async function sendInvoiceReminder(invId, collection) {
   _reminderInFlight.add(invId);
   setTimeout(() => _reminderInFlight.delete(invId), 15000); // belt: never stuck
   const _btn = document.getElementById('dir-' + invId)?.querySelector?.('button') || null;
+  const _btnLabel = _btn ? _btn.textContent : 'Send Reminder'; // v242: may be "Resend"
   if (_btn) { _btn.disabled = true; _btn.textContent = 'Sending…'; }
-  const _unlock = () => { _reminderInFlight.delete(invId); if (_btn) { _btn.disabled = false; _btn.textContent = 'Send Reminder'; } };
+  const _unlock = () => { _reminderInFlight.delete(invId); if (_btn) { _btn.disabled = false; _btn.textContent = _btnLabel; } };
   const inv = DB.a(collection).find(x => x.id === invId);
   if (!inv) { _unlock(); return; }
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
@@ -2370,13 +2388,11 @@ async function sendInvoiceReminder(invId, collection) {
   }).then(result => {
     if (result) {
       DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString() }));
-      const row = document.getElementById('dir-' + invId);
-      if (row) row.remove();
-      const list = document.getElementById('dash-inv-reminders-list');
-      if (list && !list.children.length) {
-        document.getElementById('dash-invoice-reminders').style.display = 'none';
-      }
-      _reminderInFlight.delete(invId); // row gone — nothing left to guard
+      _reminderInFlight.delete(invId);
+      // v242: the row used to be REMOVED here — a sent reminder looked
+      // identical to a vanished one and could never be resent. Re-render:
+      // the row stays, flipped to "✓ reminded today · Resend".
+      try { renderInvoiceReminders(); } catch(_) {}
     } else {
       _unlock(); // failed/fell back — let him retry deliberately
     }
