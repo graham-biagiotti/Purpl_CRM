@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v243';
+const APP_VERSION = 'v244';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -17011,6 +17011,14 @@ async function confirmPortalOrder() {
       singleInvId = uid();
     }
 
+    // v244: the customer's order notes (already merged with staff confirm-
+    // modal notes above) go ON THE INVOICES — every invoice site discarded
+    // them for the bare provenance line, so "deliver to the back door" never
+    // reached the invoice Notes section or the ShipStation packing slip.
+    const _invNotes = d.notes
+      ? d.notes + '\n— Auto-drafted from portal order.'
+      : 'Auto-drafted from portal order.';
+
     // Single atomicUpdate for all writes — orders + invoices together.
     // (No markDirty/markClean here: atomicUpdate guards itself via
     // _atomicInProgress, and markClean's remote-reload could wipe the
@@ -17058,7 +17066,7 @@ async function confirmPortalOrder() {
             total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
           })),
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.', deliveryMethod, fulfillmentSource,
+          notes: _invNotes, deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
         }];
@@ -17069,7 +17077,7 @@ async function confirmPortalOrder() {
           total: lfTotal, amount: lfTotal, status: 'draft',
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.', deliveryMethod, fulfillmentSource,
+          notes: _invNotes, deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
@@ -17082,7 +17090,7 @@ async function confirmPortalOrder() {
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.', source: 'portal',
+          notes: _invNotes, source: 'portal',
           portalOrderId: _portalOrderId,
         }];
       } else if (hasPurpl) {
@@ -17105,7 +17113,7 @@ async function confirmPortalOrder() {
           priceType: isDistFulfilled ? 'dist' : 'direct',
           status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod, fulfillmentSource,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.',
+          notes: _invNotes,
           linkedPortalOrderId: _portalOrderId,
         }];
       } else if (hasLf) {
@@ -17116,7 +17124,7 @@ async function confirmPortalOrder() {
           total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal', deliveryMethod,
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
-          notes: 'Auto-drafted from portal order.',
+          notes: _invNotes,
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
         cache.lf_wix_deductions = [...(cache.lf_wix_deductions || []), _lfWixDeductionFor(singleInvId, singleInvNum, lfItems, d.accountId, d.accountName, todayStr)];
