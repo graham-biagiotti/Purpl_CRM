@@ -121,6 +121,12 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
     'freshly-reminded rows sort BELOW needs-action rows (v242)');
   ok(html.includes('dir-r-week') && /dir-r-week[\s\S]{0,500}reminded 8d ago[\s\S]{0,300}btn xs primary"[^>]*>Resend</.test(html),
     'reminded 8+ days ago, still unpaid → urgent (primary) Resend for a re-nudge');
+  // v243 (owner: "no point in hiding them ever"): the 8-row cap is gone —
+  // every queued invoice renders; the list scrolls instead of truncating.
+  ok(!html.includes('more —') && (html.match(/class="attn-item"/g) || []).length === 7,
+    'ALL queued invoices render — no row cap, no "+N more" truncation (v243)');
+  ok(/dash-inv-reminders-list" style="max-height:[\s\S]{0,40}overflow-y:auto/.test(html),
+    'long lists scroll instead of hiding rows');
   ok(!html.includes('dir-r-nomail'), 'account with no email at all excluded');
   ok(html.includes('dir-l-old') && html.includes("'l-old','iv'"), 'legacy-ledger invoice queued against iv collection');
   ok(html.includes('dir-lf1') && html.includes("'lf1','lf_invoices'"), 'portal LF invoice (dueDate-only) queued');

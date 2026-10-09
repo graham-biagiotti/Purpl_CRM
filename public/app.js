@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v242';
+const APP_VERSION = 'v243';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2337,8 +2337,8 @@ function renderInvoiceReminders() {
       <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;color:var(--brand-purple)"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 7l10 7 10-7"></path></svg>Invoice Reminders <span style="display:inline-block;min-width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;font-size:11px;font-weight:700;padding:0 5px;background:${actionCount ? 'var(--red)' : 'var(--green, #16a34a)'};color:#fff;margin-left:6px;vertical-align:middle">${actionCount || '✓'}</span></h2>
       <small style="color:var(--muted);font-size:12px">Unpaid invoices due soon or overdue — reminded ones stay listed until paid</small>
     </div>
-    <div id="dash-inv-reminders-list">
-      ${queue.slice(0, 8).map(({ inv, ac, collection, isOverdue, amount, remindedDays }) => `
+    <div id="dash-inv-reminders-list" style="max-height:380px;overflow-y:auto">
+      ${queue.map(({ inv, ac, collection, isOverdue, amount, remindedDays }) => `
         <div class="attn-item" id="dir-${inv.id}">
           <div class="attn-icon">${remindedDays != null && remindedDays < 7 ? '✅' : isOverdue ? '🔴' : '🟡'}</div>
           <div class="attn-info" style="flex:1">
@@ -2348,7 +2348,6 @@ function renderInvoiceReminders() {
           <button class="btn xs ${remindedDays != null && remindedDays < 7 ? '' : 'primary'}" onclick="sendInvoiceReminder('${inv.id}','${collection}')">${remindedDays != null ? 'Resend' : 'Send Reminder'}</button>
         </div>
       `).join('')}
-      ${queue.length > 8 ? `<div style="text-align:center;margin-top:6px;font-size:12px;color:var(--muted)">+ ${queue.length - 8} more — <a href="#" onclick="nav('invoices');return false">open Invoices</a></div>` : ''}
     </div>`;
 }
 
