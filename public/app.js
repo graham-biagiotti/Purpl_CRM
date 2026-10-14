@@ -7054,7 +7054,14 @@ async function pushSampleToShipStation(accountId) {
       items: [{ sku: 'classic-sample', name: 'Sample Box — Classic Lavender Lemonade', quantity: 3, unitPrice: 0 }],
     });
     const d = result.data || {};
-    if (d.ok) {
+    if (!d.ok) {
+      _stickyError('Sample push failed: ' + (d.error || 'unknown'));
+      return false;
+    }
+    // Gate F2 (v245): from here the ShipStation order EXISTS — local
+    // bookkeeping failures must warn, never report "push failed" (that
+    // message invited a re-click and a duplicate box).
+    try {
       const sample = {
         id: uid(), date: today(), sku: 'classic', qty: 3,
         contact: '', notes: 'Sample box pushed to ShipStation: ' + sampleNum,
@@ -7066,11 +7073,11 @@ async function pushSampleToShipStation(accountId) {
       auditLog('sample_push', 'account', accountId, ac.name, { shipStationOrderId: d.orderId, sampleNum });
       toast('Sample pushed to ShipStation ✓ — ' + sampleNum);
       openAccount(accountId);
-      return true;
-    } else {
-      _stickyError('Sample push failed: ' + (d.error || 'unknown'));
-      return false;
+    } catch (e) {
+      console.warn('Sample bookkeeping failed after a SUCCESSFUL push:', e?.message);
+      toast('Sample shipped ✓ (' + sampleNum + ') — but logging it on the account failed. Do not push again.', 9000);
     }
+    return true;
   } catch (e) {
     _stickyError('Sample push failed: ' + (e?.message || 'unknown'));
     return false;
@@ -16128,16 +16135,25 @@ function _sampleSiblingIds(order) {
     .map(o => o.id);
 }
 
+const _approveSampleInFlight = new Set();
 async function _approveSampleRequest(portalOrderId) {
+  // Gate F1 (v245): no in-flight guard meant a double-click during the
+  // seconds-long push shipped TWO boxes (sampleNum embeds Date.now, so
+  // ShipStation can't dedupe). One approval per request at a time.
+  if (_approveSampleInFlight.has(portalOrderId)) { toast('Already approving — give it a second…'); return; }
+  _approveSampleInFlight.add(portalOrderId);
+  setTimeout(() => _approveSampleInFlight.delete(portalOrderId), 30000); // belt: never stuck
+  const _done = () => _approveSampleInFlight.delete(portalOrderId);
   const order = PortalDB.getOrders().find(o => o.id === portalOrderId);
-  if (!order) return;
+  if (!order) { _done(); return; }
   const accountId = order.accountId;
-  if (!accountId) { toast('No matched account — match this order to an account first'); return; }
+  if (!accountId) { _done(); toast('No matched account — match this order to an account first'); return; }
   // v245 (F19): approve ONLY what actually shipped. A failed push used to
   // fall through and stamp sampleApproved anyway — the request looked
   // handled forever while no sample ever went out.
   const pushed = await pushSampleToShipStation(accountId);
   if (!pushed) {
+    _done();
     renderPreOrders(true); // row stays Pending — the sticky error says why
     return;
   }
@@ -16154,6 +16170,7 @@ async function _approveSampleRequest(portalOrderId) {
   if (writeFails) {
     _stickyError('The sample SHIPPED, but marking the request approved failed (' + writeFails + ' record' + (writeFails > 1 ? 's' : '') + '). Do NOT click Approve again — that would ship a second box. Reload and the row should clear; if it still shows Pending, tell Claude.');
   }
+  _done();
   renderPreOrders(true);
 }
 

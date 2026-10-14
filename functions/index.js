@@ -2554,7 +2554,9 @@ exports.submitSamplingRequest = onCall(
     }
     // v245: 'custom' carries the store's own time wording (event, all day,
     // odd hours) in timeCustom — required so a custom pick can't be blank.
-    const timeWindow = SAMPLING_WINDOWS[data.timeWindow] ? data.timeWindow
+    // Gate F3: own-property check — '__proto__'/'toString' pass a plain
+    // truthy lookup via Object.prototype and wrecked the ICS times.
+    const timeWindow = Object.prototype.hasOwnProperty.call(SAMPLING_WINDOWS, data.timeWindow) ? data.timeWindow
       : (data.timeWindow === 'custom' ? 'custom' : 'morning');
     const timeCustom = timeWindow === 'custom' ? str(data.timeCustom, 200) : '';
     if (timeWindow === 'custom' && !timeCustom) {

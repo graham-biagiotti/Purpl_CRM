@@ -23,8 +23,21 @@ console.log('[A] F19 — approve only what shipped');
   const appr = slc(src, 'async function _approveSampleRequest', '\nasync function _declineSampleRequest');
   ok(/const pushed = await pushSampleToShipStation\(accountId\);\s*if \(!pushed\) \{/.test(appr),
     'approve bails (row stays Pending) when the push failed — no ghost approval');
-  ok(appr.indexOf('if (!pushed)') < appr.indexOf('sampleApproved: true'),
+  const _gi = appr.indexOf('if (!pushed)');
+  ok(_gi >= 0 && _gi < appr.indexOf('sampleApproved: true'),
     'the approved stamp is unreachable without a successful ship');
+  // Gate F1: one approval per request at a time — double-click shipped twice.
+  ok(/_approveSampleInFlight\.has\(portalOrderId\)\) \{ toast/.test(appr) || /_approveSampleInFlight\.has\(portalOrderId\)/.test(appr),
+    'approve is single-flight per request (gate F1)');
+  ok((appr.match(/_done\(\)/g) || []).length >= 4, 'every exit path releases the in-flight guard');
+  // Gate F2: post-acceptance bookkeeping failures warn, never report failure.
+  ok(/if \(!d\.ok\) \{\s*_stickyError[\s\S]{0,80}return false;/.test(push),
+    'ShipStation rejection checked FIRST (gate F2)');
+  ok(push.includes('but logging it on the account failed. Do not push again.'),
+    'bookkeeping failure after a real ship warns instead of inviting a re-click (gate F2)');
+  // Gate F3: prototype-key bypass closed server-side.
+  ok(fnSrc.includes("Object.prototype.hasOwnProperty.call(SAMPLING_WINDOWS, data.timeWindow)"),
+    "timeWindow validated as an OWN property (gate F3: '__proto__' wrecked the ICS)");
   ok(/catch\(e\) \{ writeFails\+\+/.test(appr) && appr.includes('Do NOT click Approve again'),
     'write failures AFTER a ship are surfaced loudly (duplicate-box warning)');
   ok(!/\} catch\(e\) \{\}/.test(appr), 'no silently-swallowed writes remain in approve');
