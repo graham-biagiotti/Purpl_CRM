@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v244';
+const APP_VERSION = 'v245';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -7028,10 +7028,14 @@ function saveLogSample() {
   toast('Sample logged');
 }
 
+// v245 (F19): returns TRUE only when ShipStation accepted the order — the
+// approve flow stamps sampleApproved from this result. Every failure used to
+// be swallowed into a toast while the caller marked the request approved
+// anyway: no sample ever shipped and nothing said so.
 async function pushSampleToShipStation(accountId) {
   const ac = DB.a('ac').find(a => a.id === accountId);
-  if (!ac) { toast('Account not found'); return; }
-  if (!ac.address && !ac.shipAddress) { toast('No address on file — add one first'); return; }
+  if (!ac) { toast('Account not found'); return false; }
+  if (!ac.address && !ac.shipAddress) { toast('No address on file — add one first'); return false; }
   const addr = _shipAddrFor(ac);
   const ss = DB.obj('shipstation_settings', {});
   const sampleNum = 'SAMPLE-' + (ac.name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() + '-' + Date.now().toString(36).slice(-4);
@@ -7062,11 +7066,14 @@ async function pushSampleToShipStation(accountId) {
       auditLog('sample_push', 'account', accountId, ac.name, { shipStationOrderId: d.orderId, sampleNum });
       toast('Sample pushed to ShipStation ✓ — ' + sampleNum);
       openAccount(accountId);
+      return true;
     } else {
       _stickyError('Sample push failed: ' + (d.error || 'unknown'));
+      return false;
     }
   } catch (e) {
     _stickyError('Sample push failed: ' + (e?.message || 'unknown'));
+    return false;
   }
 }
 
@@ -16126,12 +16133,26 @@ async function _approveSampleRequest(portalOrderId) {
   if (!order) return;
   const accountId = order.accountId;
   if (!accountId) { toast('No matched account — match this order to an account first'); return; }
-  // Push sample to ShipStation once via the account
-  await pushSampleToShipStation(accountId);
-  // Mark ALL sibling docs (dual-brand pair) as approved so neither lingers
+  // v245 (F19): approve ONLY what actually shipped. A failed push used to
+  // fall through and stamp sampleApproved anyway — the request looked
+  // handled forever while no sample ever went out.
+  const pushed = await pushSampleToShipStation(accountId);
+  if (!pushed) {
+    renderPreOrders(true); // row stays Pending — the sticky error says why
+    return;
+  }
+  // Mark ALL sibling docs (dual-brand pair) as approved so neither lingers.
+  // v245 (F19 reverse direction): a swallowed write here left the row
+  // "Pending" after a SUCCESSFUL push, and a second Approve click shipped a
+  // DUPLICATE sample. Surface the failure instead of eating it.
   const ts = new Date().toISOString();
+  let writeFails = 0;
   for (const id of _sampleSiblingIds(order)) {
-    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleApproved: true, sampleApprovedAt: ts }); } catch(e) {}
+    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleApproved: true, sampleApprovedAt: ts }); }
+    catch(e) { writeFails++; console.warn('sampleApproved write failed:', id, e?.message); }
+  }
+  if (writeFails) {
+    _stickyError('The sample SHIPPED, but marking the request approved failed (' + writeFails + ' record' + (writeFails > 1 ? 's' : '') + '). Do NOT click Approve again — that would ship a second box. Reload and the row should clear; if it still shows Pending, tell Claude.');
   }
   renderPreOrders(true);
 }
@@ -18910,6 +18931,12 @@ let _samplingReqs = [];
 let _samplingUnsub = null;
 let _samplingCfg = null;
 const _SAMPLING_WINDOW_LABELS = { morning: 'Morning (10am–1pm)', midday: 'Midday (11am–2pm)', afternoon: 'Afternoon (2–5pm)' };
+// v245: mirrors functions/_samplingWindowText — 'custom' shows the store's
+// own wording (event / all day / odd hours) from timeCustom.
+function _samplingWindowText(r) {
+  if ((r?.timeWindow) === 'custom') return (r.timeCustom || '').trim() || 'Custom time — see notes';
+  return _SAMPLING_WINDOW_LABELS[r?.timeWindow] || r?.timeWindow || '';
+}
 
 function _samplingToday() { return today(); }
 
@@ -19006,8 +19033,8 @@ function _samplingCard(r) {
   const t = _samplingToday();
   const awaitingOutcome = r.status === 'confirmed' && (r.confirmedDate || '') < t;
   const dates = r.status === 'confirmed'
-    ? `<strong>${fmtD(r.confirmedDate)}</strong> · ${_SAMPLING_WINDOW_LABELS[r.timeWindow] || ''}`
-    : `${fmtD(r.date1)}${r.date2 ? ' / ' + fmtD(r.date2) : ''} · ${_SAMPLING_WINDOW_LABELS[r.timeWindow] || ''}`;
+    ? `<strong>${fmtD(r.confirmedDate)}</strong> · ${escHtml(_samplingWindowText(r))}`
+    : `${fmtD(r.date1)}${r.date2 ? ' / ' + fmtD(r.date2) : ''} · ${escHtml(_samplingWindowText(r))}`;
   const btns = [];
   if (['pending_sampler', 'needs_reschedule'].includes(r.status)) {
     btns.push(`<button class="btn xs" onclick="samplingResend('${r.id}')">↻ Re-send to sampler</button>`);

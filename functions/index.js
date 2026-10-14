@@ -2142,6 +2142,14 @@ const SAMPLING_WINDOWS = {
   midday:    { label: 'Midday (11am–2pm)',   start: '110000', end: '140000' },
   afternoon: { label: 'Afternoon (2–5pm)',   start: '140000', end: '170000' },
 };
+
+// v245: the human-readable time for a request — the single source every
+// email/page/sheet/reminder uses. timeWindow 'custom' carries the store's
+// own words (an event, all day, odd hours) in timeCustom.
+function _samplingWindowText(r) {
+  if ((r?.timeWindow) === 'custom') return (r.timeCustom || '').trim() || 'Custom time — see notes';
+  return (SAMPLING_WINDOWS[r?.timeWindow] || {}).label || r?.timeWindow || '';
+}
 const SAMPLING_OPEN = ['pending_sampler', 'proposed_alt', 'needs_reschedule', 'confirmed'];
 
 function _samplingTodayET() {
@@ -2209,11 +2217,13 @@ p{font-size:16px;line-height:1.6}
 }
 
 function _samplingIcs(reqId, r) {
-  const w = SAMPLING_WINDOWS[r.timeWindow] || SAMPLING_WINDOWS.morning;
   const d = (r.confirmedDate || '').replace(/-/g, '');
   const now = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   const escIcs = s => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
   const desc = [
+    // v245: a custom time can't be parsed into event hours — the event goes
+    // ALL-DAY and the store's own wording leads the description.
+    r.timeWindow === 'custom' ? 'Time: ' + _samplingWindowText(r) : '',
     'Contact: ' + (r.contact?.name || '') + ' ' + (r.contact?.cell || ''),
     r.logistics?.table ? 'Table: ' + r.logistics.table : '',
     r.logistics?.power ? 'Power: ' + r.logistics.power : '',
@@ -2221,12 +2231,20 @@ function _samplingIcs(reqId, r) {
     r.logistics?.busyHours ? 'Busy hours: ' + r.logistics.busyHours : '',
     r.logistics?.notes ? 'Notes: ' + r.logistics.notes : '',
   ].filter(Boolean).join('\n');
+  let dtLines;
+  if (r.timeWindow === 'custom') {
+    const next = new Date(new Date((r.confirmedDate || '1970-01-01') + 'T12:00:00Z').getTime() + 864e5)
+      .toISOString().slice(0, 10).replace(/-/g, '');
+    dtLines = ['DTSTART;VALUE=DATE:' + d, 'DTEND;VALUE=DATE:' + next];
+  } else {
+    const w = SAMPLING_WINDOWS[r.timeWindow] || SAMPLING_WINDOWS.morning;
+    dtLines = ['DTSTART:' + d + 'T' + w.start, 'DTEND:' + d + 'T' + w.end];
+  }
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PBF//purpl sampling//EN', 'BEGIN:VEVENT',
     'UID:sampling-' + reqId + '@pbfwholesale.com',
     'DTSTAMP:' + now,
-    'DTSTART:' + d + 'T' + w.start,
-    'DTEND:' + d + 'T' + w.end,
-    'SUMMARY:' + escIcs('purpl demo day — ' + (r.accountName || '')),
+    ...dtLines,
+    'SUMMARY:' + escIcs('purpl demo day — ' + (r.accountName || '') + (r.timeWindow === 'custom' ? ' (' + _samplingWindowText(r) + ')' : '')),
     'LOCATION:' + escIcs(r.storeAddress || ''),
     'DESCRIPTION:' + escIcs(desc),
     'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
@@ -2369,7 +2387,7 @@ function _samplingPacketEmail(reqId, r) {
     <div style="background:#f9fafb;border-radius:8px;padding:14px 16px;font-size:14px;line-height:1.8">
       📍 ${escHtml(r.storeAddress || '')}<br>
       👤 Day-of contact: ${escHtml(r.contact?.name || '')} — ${escHtml(r.contact?.cell || '')}<br>
-      🕐 ${escHtml((SAMPLING_WINDOWS[r.timeWindow] || {}).label || r.timeWindow || '')}<br>
+      🕐 ${escHtml(_samplingWindowText(r))}<br>
       ${L.table ? '🪑 Table: ' + escHtml(L.table) + '<br>' : ''}
       ${L.power ? '🔌 Power: ' + escHtml(L.power) + '<br>' : ''}
       ${L.parking ? '🚗 Parking/load-in: ' + escHtml(L.parking) + '<br>' : ''}
@@ -2393,7 +2411,7 @@ async function _samplingConfirmAndNotify(reqId, ref, rec, chosen, decidedBy) {
   await ref.update({ status: 'confirmed', confirmedDate: chosen, confirmedAt: nowIso, decidedBy });
   const confirmed = { ...rec, status: 'confirmed', confirmedDate: chosen };
   const cfg = await _samplingConfig();
-  const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+  const w = _samplingWindowText(rec);
   const ics = _samplingIcs(reqId, confirmed);
   const icsAttachment = { filename: 'purpl-demo-day.ics', content: Buffer.from(ics).toString('base64') };
   const dateLabel = _samplingFmtDate(chosen);
@@ -2534,14 +2552,21 @@ exports.submitSamplingRequest = onCall(
       if (err) throw new HttpsError('invalid-argument', 'Backup date: ' + err);
       if (date2 === date1) throw new HttpsError('invalid-argument', 'Backup date must be a different day.');
     }
-    const timeWindow = SAMPLING_WINDOWS[data.timeWindow] ? data.timeWindow : 'morning';
+    // v245: 'custom' carries the store's own time wording (event, all day,
+    // odd hours) in timeCustom — required so a custom pick can't be blank.
+    const timeWindow = SAMPLING_WINDOWS[data.timeWindow] ? data.timeWindow
+      : (data.timeWindow === 'custom' ? 'custom' : 'morning');
+    const timeCustom = timeWindow === 'custom' ? str(data.timeCustom, 200) : '';
+    if (timeWindow === 'custom' && !timeCustom) {
+      throw new HttpsError('invalid-argument', 'Tell us the time or event (e.g. "all day during the fall festival").');
+    }
 
     const rec = {
       accountId: acct.acId,
       accountName: acct.name,
       storeAddress: str(data.storeAddress, 300) || acct.address,
       contact,
-      date1, date2: date2 || null, timeWindow,
+      date1, date2: date2 || null, timeWindow, timeCustom: timeCustom || null,
       logistics: {
         table: str(data.table, 300), power: str(data.power, 60),
         parking: str(data.parking, 500), busyHours: str(data.busyHours, 200),
@@ -2662,7 +2687,7 @@ exports.samplingAction = onRequest(
         if (upcoming.length) {
           upcomingHtml = '<h2 style="margin-top:4px">Your upcoming demos</h2>' + upcoming.slice(0, 8).map(({ id, x }) => `
             <div style="background:#fff;border:1px solid #E7E1F0;border-radius:10px;padding:11px 12px;margin:6px 0;font-size:13.5px;line-height:1.7">
-              <strong>${escHtml(_samplingFmtDate(x.confirmedDate))}</strong> — ${escHtml(x.accountName || '')} <span style="color:#6b7280">(${escHtml((SAMPLING_WINDOWS[x.timeWindow] || {}).label || '')})</span><br>
+              <strong>${escHtml(_samplingFmtDate(x.confirmedDate))}</strong> — ${escHtml(x.accountName || '')} <span style="color:#6b7280">(${escHtml(_samplingWindowText(x))})</span><br>
               📍 <a href="https://maps.google.com/?q=${encodeURIComponent(x.storeAddress || '')}" style="color:#4F5D80">${escHtml(x.storeAddress || '')}</a><br>
               👤 ${escHtml(x.contact?.name || '')} — ${escHtml(x.contact?.cell || '')} ·
               <a href="${link(id, x.samplerActionToken, 'sheet')}" style="color:#4D2A6F;font-weight:700">🖨 demo sheet</a>
@@ -2745,7 +2770,7 @@ ${months}
     if (!expectedKey || expectedKey !== k) {
       return res.status(403).send(_samplingActionPage('Not valid', '<h1>Link not valid</h1><p>This link doesn&#39;t match a demo request. If you think that&#39;s wrong, just reply to the email you got.</p>'));
     }
-    const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+    const w = _samplingWindowText(rec);
     const metaBox = `<div class="meta">📍 ${escHtml(rec.storeAddress || '')}<br>👤 ${escHtml(rec.contact?.name || '')} — ${escHtml(rec.contact?.cell || '')}<br>🕐 ${escHtml(w)}</div>`;
     const sheetBtn = `<a class="btn no" href="${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(String(r))}&k=${encodeURIComponent(String(rec.samplerActionToken || ''))}&a=sheet">🖨 Print demo sheet</a>`;
 
@@ -3109,7 +3134,7 @@ exports.samplingDailySweep = onSchedule(
       for (const doc of snap.docs) {
         const rec = doc.data();
         if (rec.samplerReminderSentAt) continue;
-        const w = (SAMPLING_WINDOWS[rec.timeWindow] || {}).label || '';
+        const w = _samplingWindowText(rec);
         const L = rec.logistics || {};
         try {
           await resend.emails.send({

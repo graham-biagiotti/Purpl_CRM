@@ -104,11 +104,16 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
       </div>
     </div>
     <div class="fg"><label>Time window <span class="req">*</span></label>
-      <select id="sp-window">
+      <select id="sp-window" onchange="spWindowChange()">
         <option value="morning">Morning (10am–1pm)</option>
         <option value="midday">Midday (11am–2pm)</option>
         <option value="afternoon">Afternoon (2–5pm)</option>
+        <option value="custom">Different time / event / all day…</option>
       </select>
+      <div id="sp-window-custom-wrap" style="display:none;margin-top:8px">
+        <input id="sp-window-custom" maxlength="200" placeholder='e.g. "12–6 during the fall festival" or "all day — anniversary event"'>
+        <div class="hint">Tell us the time or event in your own words — we'll plan around it.</div>
+      </div>
     </div>
 
     <div class="section-label">The day itself</div>
@@ -119,7 +124,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
     </div>
     <div class="fg"><label>Parking / load-in notes</label><input id="sp-parking" maxlength="500" placeholder="Where to park, which door to use"></div>
     <div class="fg"><label>Your busiest hours</label><input id="sp-busy" maxlength="200" placeholder="e.g. Saturdays 11–2"></div>
-    <div class="fg"><label>Anything else?</label><textarea id="sp-notes" maxlength="2000"></textarea></div>
+    <div class="fg"><label>Anything else?</label><textarea id="sp-notes" maxlength="2000" rows="5" style="min-height:120px" placeholder="Events that day, where to find the manager, anything custom you're planning — the more the better."></textarea></div>
 
     <button class="submit-btn" id="sp-submit" onclick="spSubmit()">Request Demo Day</button>
     <div class="err" id="sp-err"></div>
@@ -127,7 +132,7 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
 
   <div id="sp-done" class="card" style="display:none">
     <h2>Request sent ✓</h2>
-    <p class="lead">We're checking our sampler's schedule — you'll get a confirmation email with a calendar invite within <strong>2 days</strong>. Nothing else to do.</p>
+    <p class="lead">We're checking our sampler's schedule — once the date locks in you'll get a <strong>confirmation email with a calendar invite</strong>. Questions in the meantime? Email <a href="mailto:lavender@pbfwholesale.com">lavender@pbfwholesale.com</a>.</p>
   </div>
 </div>
 
@@ -291,11 +296,20 @@ function spErr(msg) {
   el.style.display = 'block';
 }
 
+function spWindowChange() {
+  var isCustom = document.getElementById('sp-window').value === 'custom';
+  document.getElementById('sp-window-custom-wrap').style.display = isCustom ? '' : 'none';
+  if (isCustom) document.getElementById('sp-window-custom').focus();
+}
+
 function spSubmit() {
   if (_spInFlight) return;
   document.getElementById('sp-err').style.display = 'none';
   var name = document.getElementById('sp-contact-name').value.trim();
   var cell = document.getElementById('sp-contact-cell').value.trim();
+  if (document.getElementById('sp-window').value === 'custom' && !document.getElementById('sp-window-custom').value.trim()) {
+    spErr('Tell us the time or event (the box under the time window).'); return;
+  }
   var date1 = document.getElementById('sp-date1').value;
   var date2 = document.getElementById('sp-date2').value;
   if (!name || !cell) { spErr('Please add the contact name and cell number.'); return; }
@@ -317,6 +331,7 @@ function spSubmit() {
     contactEmail: document.getElementById('sp-contact-email').value.trim(),
     date1: date1, date2: date2 || '',
     timeWindow: document.getElementById('sp-window').value,
+    timeCustom: document.getElementById('sp-window-custom').value.trim(),
     storeAddress: document.getElementById('sp-address').value.trim(),
     table: document.getElementById('sp-table').value.trim(),
     power: document.getElementById('sp-power').value,
