@@ -48,25 +48,48 @@ console.log('[A2] queue affordances + guards');
     'waiting-badge excludes handled');
 }
 
-console.log('[A3] void/delete ask instead of silently re-opening');
+console.log('[A3] void/delete ask instead of silently re-opening (gate F1/F2/F7)');
 {
-  // Both flows (combined VOID + combined DELETE) present the same choice.
-  ok((src.match(/okLabel: 'Re-open portal order', cancelLabel: 'Mark handled'/g) || []).length === 2,
-    'void AND delete ask re-open vs handled');
-  // NB: two preview shells carry #civ-btn-void — anchor on the v246 comment,
-  // which lives in the combined (portal-born) one.
-  const voidBlk = slc(src, 'voiding a portal-born invoice used to SILENTLY', "toast('Invoice voided'");
-  ok(/const patch = reopen\s*\? \{ status: 'new', confirmedAt: null, convertedOrderId: null \}/.test(voidBlk),
-    'void: re-open restores the old reset behavior');
-  ok(voidBlk.includes('voided — handled manually'), 'void: handled path self-documents in the note');
-  const delBlk = slc(src, 'async function deleteCombinedInvoice', "closeModal('modal-combined-invoice')");
-  ok(delBlk.includes("okLabel: 'Re-open portal order', cancelLabel: 'Mark handled'"),
-    'DELETE asks the same choice');
-  ok((delBlk.match(/_poPatch/g) || []).length >= 4 && delBlk.includes('d.ref.update(_poPatch)'),
-    'delete applies the chosen outcome to primary AND the paired twin');
-  ok(!delBlk.includes('reset linked portal orders so you can re-confirm'),
-    'stale confirm copy removed');
-  ok(delBlk.includes("deleted — handled manually"), 'delete: handled note self-documents');
+  // Gate F1: ONE shared question, and CANCEL (= Esc, backdrop, navigation)
+  // maps to the RECOVERABLE outcome (re-open) — dismissal must never write
+  // the irreversible 'handled' state.
+  const ask = slc(src, 'async function _askPortalOutcome', '\n}');
+  ok(ask.includes("okLabel: 'Mark handled (done manually)', cancelLabel: 'Re-open portal order'"),
+    'handled is the DELIBERATE (OK) choice; cancel re-opens (gate F1)');
+  ok(/return handled\s*\? \{ status: 'handled'/.test(ask) && ask.includes("{ status: 'new', confirmedAt: null, convertedOrderId: null }"),
+    'dismissal restores the old recoverable reset');
+  ok(/'Invoice ' \+ \(invNumber \|\| ''\) \+ ' ' \+ verb/.test(ask), 'handled note self-documents (voided/deleted)');
+  // Gate F2: one helper applies the outcome to primary + same-submission twin,
+  // used by BOTH flows.
+  const helper = slc(src, 'function _applyPortalOutcome', '\n}\n');
+  ok(helper.includes('d.ref.update(patch)') && helper.includes("where('status', '==', 'confirmed')"),
+    'shared helper covers the paired twin');
+  ok((src.match(/_askPortalOutcome\(rec\.number \|\| rec\.invoiceNumber/g) || []).length === 2,
+    'void AND delete both ask');
+  ok((src.match(/_applyPortalOutcome\(portalOrderId, rec\.accountId/g) || []).length === 2,
+    'void AND delete both apply through the helper (void used to skip the twin)');
+  // Gate F7: toasts say what actually happened.
+  ok(!src.includes("toast('Combined invoice deleted · portal order reset')"), 'false delete toast removed');
+  ok((src.match(/portal order marked handled' : ' · portal order re-opened'/g) || []).length === 2,
+    'void + delete toasts reflect the chosen outcome');
+}
+
+console.log('[A4] stale-row guards (gate F3–F6)');
+{
+  const mh = slc(src, 'async function markPortalOrderHandled(orderId)', '\n}\n');
+  ok(/runTransaction/.test(mh) && /\['confirmed', 'declined', 'handled'\]\.includes\(st\)/.test(mh),
+    'F3: ✓ Handled is transactional — cannot blind-overwrite a just-confirmed order');
+  ok(mh.includes('This order is already '), 'F3: blocked click explains itself');
+  ok(src.includes("['confirmed', 'handled', 'declined'].includes(ps.data().status)) return false"),
+    'F4: pair-claim transaction rejects ALL terminal states');
+  const dec = slc(src, 'async function declinePortalOrder', '\n}\n');
+  ok(/\['confirmed', 'handled', 'declined'\]\.includes\(o\.status\)/.test(dec),
+    'F5: Decline refuses terminal orders');
+  ok(dec.includes("!['confirmed','declined','handled'].includes(p.status)"),
+    'F5: declined twin-sweep skips handled');
+  const pr = slc(src, 'async function createProspectFromPortalOrder', '\n}\n');
+  ok(/if \(!o\.status \|\| o\.status === 'new'\) \{/.test(pr),
+    'F6: → Prospect no longer reverts a terminal order to reviewed');
 }
 
 console.log('[B] dynamic — badge rendering');
