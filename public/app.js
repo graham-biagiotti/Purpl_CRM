@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v245';
+const APP_VERSION = 'v246';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -13119,11 +13119,22 @@ function _syncCombinedParentForChild(childId) {
 
 async function deleteCombinedInvoice(combinedId) {
   if (!_requireAdmin('delete invoices')) return;
-  if (!(await confirmDlg('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions and reset linked portal orders so you can re-confirm.'))) return;
+  if (!(await confirmDlg('Delete this combined invoice and its purpl + LF components? This will reverse any inventory deductions.'))) return;
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
   if (!rec) return;
   auditLog('delete', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId);
   const portalOrderId = rec.portalOrderId;
+  // v246: same choice as void — re-open the portal order, or mark it handled.
+  let _poPatch = null;
+  if (portalOrderId) {
+    const reopen = await confirmDlg(
+      'This invoice came from a portal order. Re-open that order so it can be re-confirmed through the portal flow — or mark it handled (you took care of it manually)?',
+      { okLabel: 'Re-open portal order', cancelLabel: 'Mark handled', danger: false });
+    _poPatch = reopen
+      ? { status: 'new', confirmedAt: null, convertedOrderId: null }
+      : { status: 'handled', handledAt: new Date().toISOString(), handledBy: _currentUserName(),
+          handledNote: 'Invoice ' + (rec.number || rec.invoiceNumber || '') + ' deleted — handled manually' };
+  }
   DB.atomicUpdate(cache => {
     cache.combined_invoices = (cache.combined_invoices||[]).filter(x => x.id !== combinedId);
     if (rec.purplInvoiceId) {
@@ -13142,16 +13153,17 @@ async function deleteCombinedInvoice(combinedId) {
       cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'lf'));
     }
   });
-  // Reset the portal order(s) so they can be re-confirmed
-  if (portalOrderId) {
+  // Apply the chosen portal-order outcome (re-open or handled) to the
+  // primary doc AND its same-submission twin.
+  if (portalOrderId && _poPatch) {
     const primaryOrder = PortalDB.getOrders().find(o => o.id === portalOrderId);
     const primaryTime = primaryOrder?.submittedAt?.toDate
       ? primaryOrder.submittedAt.toDate().getTime()
       : (primaryOrder?.submittedAt ? new Date(primaryOrder.submittedAt).getTime() : 0);
     firebase.firestore().collection('portal_orders').doc(portalOrderId)
-      .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
-      .catch(e => console.warn('Could not reset portal order:', e));
-    // Also reset the paired portal order from the same submission (same account, within 60s, different brand)
+      .update(_poPatch)
+      .catch(e => console.warn('Could not update portal order:', e));
+    // Also the paired portal order from the same submission (same account, within 60s, different brand)
     firebase.firestore().collection('portal_orders')
       .where('accountId', '==', rec.accountId)
       .where('status', '==', 'confirmed').get()
@@ -13162,7 +13174,7 @@ async function deleteCombinedInvoice(combinedId) {
         const dTime = data.submittedAt?.toDate ? data.submittedAt.toDate().getTime()
                     : (data.submittedAt ? new Date(data.submittedAt).getTime() : 0);
         if (primaryTime && dTime && Math.abs(dTime - primaryTime) < 60000 && data.brand !== primaryOrder?.brand) {
-          d.ref.update({ status: 'new', confirmedAt: null, convertedOrderId: null });
+          d.ref.update(_poPatch);
         }
       }))
       .catch(() => {});
@@ -14957,12 +14969,21 @@ async function openCombinedInvoicePreview(combinedId) {
         cache.iv = (cache.iv||[]).filter(x => !(x.type === 'out' && (x.invoiceId === rec.purplInvoiceId || x.invoiceId === combinedId)));
       }
     });
-    // Reset linked portal order so it can be re-confirmed with a new invoice
+    // v246: voiding a portal-born invoice used to SILENTLY re-open the portal
+    // order — right when the owner had just redone it manually, leaving a
+    // "not reviewed" row whose only exit was a duplicate invoice. Ask.
     const portalOrderId = rec.portalOrderId;
     if (portalOrderId) {
+      const reopen = await confirmDlg(
+        'This invoice came from a portal order. Re-open that order so it can be re-confirmed through the portal flow — or mark it handled (you took care of it manually)?',
+        { okLabel: 'Re-open portal order', cancelLabel: 'Mark handled', danger: false });
+      const patch = reopen
+        ? { status: 'new', confirmedAt: null, convertedOrderId: null }
+        : { status: 'handled', handledAt: new Date().toISOString(), handledBy: _currentUserName(),
+            handledNote: 'Invoice ' + (rec.number || rec.invoiceNumber || '') + ' voided — handled manually' };
       firebase.firestore().collection('portal_orders').doc(portalOrderId)
-        .update({ status: 'new', confirmedAt: null, convertedOrderId: null })
-        .catch(e => console.warn('Could not reset portal order:', e));
+        .update(patch)
+        .catch(e => console.warn('Could not update portal order:', e));
     }
     toast('Invoice voided' + (wasDeducted ? ' · inventory restored' : ''));
     closeModal('modal-combined-invoice');
@@ -16186,11 +16207,42 @@ async function _declineSampleRequest(portalOrderId) {
 }
 
 const PO_STATUS_LABELS = {
-  new:'New', reviewed:'Reviewed', confirmed:'Confirmed', declined:'Declined'
+  new:'New', reviewed:'Reviewed', confirmed:'Confirmed', declined:'Declined', handled:'Handled ✓'
 };
 const PO_STATUS_CLS = {
-  new:'amber', reviewed:'blue', confirmed:'green', declined:'red'
+  new:'amber', reviewed:'blue', confirmed:'green', declined:'red', handled:'green'
 };
+
+// v246: "handled" = taken care of OUTSIDE the portal flow (manual invoice,
+// phone change, sample-only). The queue's only exit used to be Confirm —
+// which creates an invoice — so a voided-and-redone-manually order sat as
+// "not reviewed" forever with no safe way to clear it.
+async function markPortalOrderHandled(orderId) {
+  const o = PortalDB.getOrders().find(x => x.id === orderId);
+  if (!o) return;
+  const ans = await formDlg('Mark handled — no invoice will be created', [
+    { id: 'note', label: 'Note (optional) — e.g. "manual half-case invoice 13142"', type: 'text' },
+  ], { okLabel: 'Mark handled' });
+  if (ans === null) return; // cancelled
+  const patch = {
+    status: 'handled',
+    handledAt: new Date().toISOString(),
+    handledBy: _currentUserName(),
+    handledNote: String(ans.note || '').trim().slice(0, 300),
+  };
+  // The dual-brand twin from the same submission is the same real-world
+  // order — mark it too (unless it already reached its own terminal state).
+  const ids = [orderId];
+  const twin = PortalDB.getOrders().find(p => _samePortalSubmission(o, p));
+  if (twin && !['confirmed', 'declined', 'handled'].includes(twin.status)) ids.push(twin.id);
+  for (const id of ids) {
+    try { await firebase.firestore().collection('portal_orders').doc(id).update(patch); }
+    catch (e) { toast('Could not mark handled: ' + (e?.message || 'error'), 6000); return; }
+  }
+  auditLog('portal_handled', 'portal_order', orderId, o.accountName || '', { note: patch.handledNote });
+  toast('Marked handled ✓ — nothing was created');
+  renderPreOrders(true);
+}
 
 function _poStatusBadge(s) {
   const cls = PO_STATUS_CLS[s]||'gray';
@@ -16331,10 +16383,11 @@ function _renderPoAll() {
         <td>${_poStatusBadge(o.status||'new')}</td>
         <td style="white-space:nowrap">
           <button class="btn xs" onclick="reviewPortalOrder('${o.id}')">Review</button>
-          ${o.status!=='confirmed'&&o.status!=='declined'&&o.isMatched
+          ${o.status!=='confirmed'&&o.status!=='declined'&&o.status!=='handled'&&o.isMatched
             ? `<button class="btn xs primary" onclick="openConfirmPortalOrder('${o.id}')">Confirm</button>` : ''}
-          ${o.status!=='declined'&&o.status!=='confirmed'
-            ? `<button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
+          ${o.status!=='confirmed'&&o.status!=='declined'&&o.status!=='handled'
+            ? `<button class="btn xs" style="color:#0f766e;border-color:#0f766e" onclick="markPortalOrderHandled('${o.id}')" title="Done outside the portal flow — no invoice created">✓ Handled</button>
+               <button class="btn xs red" onclick="declinePortalOrder('${o.id}')">Decline</button>` : ''}
           <button class="btn xs red" onclick="deletePortalOrder('${o.id}')">✕</button>
         </td>
       </tr>`;
@@ -16890,11 +16943,13 @@ async function confirmPortalOrder() {
     const d = await firebase.firestore().runTransaction(async tx => {
       const snap = await tx.get(portalRef);
       const data = snap.data();
-      if (data.status === 'confirmed') return null;
+      // v246: 'handled' is terminal too — a stale tab's Confirm must not
+      // invoice an order the owner already took care of manually.
+      if (data.status === 'confirmed' || data.status === 'handled') return null;
       tx.update(portalRef, { status: 'confirmed', confirmedAt: firebase.firestore.FieldValue.serverTimestamp() });
       return data;
     });
-    if (!d) { toast('This order has already been confirmed'); closeModal('modal-confirm-portal-order'); return; }
+    if (!d) { toast('This order was already confirmed or marked handled'); closeModal('modal-confirm-portal-order'); return; }
 
     // If unmatched, use the selected account from the picker
     if (!d.accountId) {
@@ -16927,7 +16982,7 @@ async function confirmPortalOrder() {
 
     // Find paired order from same submission (other brand, within 60s)
     const allPortal = PortalDB.getOrders();
-    let paired = allPortal.find(p => p.status !== 'confirmed' && _samePortalSubmission(d, p));
+    let paired = allPortal.find(p => p.status !== 'confirmed' && p.status !== 'handled' && _samePortalSubmission(d, p));
     // #4: claim the paired (other-brand) doc TRANSACTIONALLY before building the
     // combined invoice, so two tabs converting the two halves of one submission
     // can't both succeed. If it's already been confirmed elsewhere, drop it and
@@ -18709,7 +18764,7 @@ function _listenPortalOrders() {
           // or the nav badge stays lit forever (confirm bails on no-items).
           const sampleOnly = !((d.items||[]).some(i => (i.cases||0) > 0)) && !(d.lineItems||[]).length;
           const sampleHandled = sampleOnly && (d.sampleApproved || d.sampleDeclined);
-          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined' && !sampleHandled) unconfirmed.push({ id: doc.id, ...d });
+          if (d.status !== 'confirmed' && d.status !== 'rejected' && d.status !== 'declined' && d.status !== 'handled' && !sampleHandled) unconfirmed.push({ id: doc.id, ...d });
           if (!_portalOrderIds.has(doc.id) && _portalOrderIds.size > 0) {
             newCount++;
           }
