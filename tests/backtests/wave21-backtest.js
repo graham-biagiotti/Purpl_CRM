@@ -29,7 +29,11 @@ console.log('[A2] gradient headers — blocked-state resilience (client + server
   const hdr = slc(src, 'const PBF_HEADER_HTML', '`;');
   const shell = slc(fnSrc, 'function _samplingEmailShell', 'return `') + slc(fnSrc, 'function _samplingEmailShell', '</html>`;');
   [['PBF_HEADER_HTML', hdr], ['_samplingEmailShell', shell]].forEach(([name, h]) => {
-    ok(h.includes('bgcolor="#4D2A6F"'), `${name}: purple band guaranteed in the Word renderer (bgcolor attr)`);
+    // Gate (v247): bgcolor must sit on the SAME td as the gradient style —
+    // a cell background paints OVER the table background, so a bare bgcolor
+    // td flattened the gradient in every CSS client.
+    ok(/<td bgcolor="#4D2A6F" style="background:#4D2A6F;background:linear-gradient/.test(h),
+      `${name}: bgcolor AND gradient on the same cell (Word fallback without flattening CSS clients)`);
     ok(h.includes('<!--[if mso]>') && h.includes('<!--[if !mso]><!-->') && h.includes('<!--<![endif]-->'),
       `${name}: classic Outlook gets a TEXT header (and quotes it cleanly in replies)`);
     ok(/purpl-wordmark-white\.png"[^>]*color:#ffffff/.test(h) && /lf-logo-white\.png"[^>]*color:#ffffff/.test(h),

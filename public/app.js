@@ -561,7 +561,7 @@ const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
   style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);border-radius:8px 8px 0 0">
   <tr>
-    <td bgcolor="#4D2A6F" style="padding:32px 40px;text-align:center">
+    <td bgcolor="#4D2A6F" style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
       <!--[if mso]>
       <div style="font-family:Arial,sans-serif;font-size:26px;font-weight:bold;color:#ffffff">purpl</div>
       <div style="font-family:Arial,sans-serif;font-size:12px;color:#ffffff;margin-top:4px">Lavender Fields &middot; Pumpkin Blossom Farm</div>
