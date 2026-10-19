@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v246';
+const APP_VERSION = 'v247';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -548,28 +548,43 @@ function _signatureHTML() {
 </table>`;
 }
 
+// v247 email resilience: (1) bgcolor ATTRIBUTE guarantees the purple band in
+// Outlook's Word renderer (it ignores the CSS gradient); (2) the white logos
+// carry styled white alt + px dims in BOTH attrs and style, so clients that
+// block remote images (Gmail/OWA/Thunderbird honor img CSS for alt) show a
+// clean white wordmark instead of invisible dark-on-dark in collapsed boxes;
+// (3) classic Outlook ignores img CSS entirely AND strips remote images when
+// a customer replies — the [if mso] block hands it a TEXT header instead
+// (the inviteEmployee model), so originals and quoted replies both stay
+// clean there. Every other client skips the conditional and renders images.
 const PBF_HEADER_HTML = `
 <table width="100%" cellpadding="0" cellspacing="0"
   style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);border-radius:8px 8px 0 0">
   <tr>
-    <td style="padding:32px 40px;text-align:center">
+    <td bgcolor="#4D2A6F" style="padding:32px 40px;text-align:center">
+      <!--[if mso]>
+      <div style="font-family:Arial,sans-serif;font-size:26px;font-weight:bold;color:#ffffff">purpl</div>
+      <div style="font-family:Arial,sans-serif;font-size:12px;color:#ffffff;margin-top:4px">Lavender Fields &middot; Pumpkin Blossom Farm</div>
+      <![endif]-->
+      <!--[if !mso]><!-->
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr><td align="center">
           <table cellpadding="0" cellspacing="0" width="auto">
             <tr>
               <td width="auto" valign="middle" style="padding-right:16px">
-                <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block">
+                <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block;width:170px;height:65px;color:#ffffff;font-family:Arial,sans-serif;font-weight:bold;font-size:24px">
               </td>
               <td width="1px" valign="middle">
                 <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
               </td>
               <td width="auto" valign="middle" style="padding-left:16px">
-                <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block">
+                <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block;width:84px;height:78px;color:#ffffff;font-family:Arial,sans-serif;font-size:13px">
               </td>
             </tr>
           </table>
         </td></tr>
       </table>
+      <!--<![endif]-->
       <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;
         color:rgba(255,255,255,0.9);letter-spacing:0.15em;
         text-transform:uppercase;margin-top:10px">
@@ -1039,7 +1054,7 @@ function getProspectEmailTemplate(tplId, p) {
   const optOut = `<p style="font-size:11px;color:#9ca3af;margin-top:24px">Not the right fit? Just reply "no thanks" and you won't hear from me again.</p>`;
   const pricingBox = `
         <div style="text-align:center;margin:8px 0 20px">
-          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="200" style="width:200px;max-width:55%;height:auto;border-radius:12px;display:inline-block">
+          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="200" height="250" style="width:200px;max-width:55%;height:auto;border-radius:12px;display:inline-block;color:#4D2A6F;font-family:Arial,sans-serif">
         </div>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
@@ -1186,7 +1201,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         </td></tr></table>
         <p style="line-height:1.7">If you haven't ordered yet, now's the moment. Early orders go out with the first deliveries. Here's the lineup:</p>
         <div style="text-align:center;margin:8px 0 20px">
-          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="220" style="width:220px;max-width:60%;height:auto;border-radius:12px;display:inline-block">
+          <img src="https://purpl-crm.web.app/images/can-classic.jpg" alt="purpl Classic Lavender Lemonade" width="220" height="275" style="width:220px;max-width:60%;height:auto;border-radius:12px;display:inline-block;color:#4D2A6F;font-family:Arial,sans-serif">
         </div>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0">
           <tr><td style="padding:20px 24px;background:#faf5ff;border-radius:8px;border:1px solid #e9d5ff">
@@ -2424,19 +2439,7 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
   <tr><td style="padding:36px 48px 20px">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="vertical-align:middle">
-        <table cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="vertical-align:middle;padding-right:18px">
-              <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="140" style="display:block;height:auto">
-            </td>
-            <td style="vertical-align:middle;padding:0 4px">
-              <div style="width:1px;height:44px;background:#d1d5db"></div>
-            </td>
-            <td style="vertical-align:middle;padding-left:18px">
-              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="52" height="52" style="display:block">
-            </td>
-          </tr>
-        </table>
+        ${_docBrandRowHTML()}
       </td>
       <td align="right" style="vertical-align:middle">
         <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">REMINDER</div>
@@ -2479,6 +2482,34 @@ function buildInvoiceReminderHTML(inv, collection, isOverdue) {
     lavender@pbfwholesale.com · 603-748-3038
   </td></tr>
 </table></td></tr></table></body></html>`;
+}
+
+// v247: THE doc-family logo row (sprig + divider + LF circle on white) —
+// one source for the reminder header and the invoice document header.
+// Email resilience: full px dims in attrs AND style (the sprig is a square
+// 320×320, so width/height 140 is an exact no-op when loaded but stops the
+// blocked-image box collapsing; style px also pins Outlook DPI scaling), and
+// dark styled alt so a blocked state reads "purpl / Lavender Fields" in ink
+// on white in every client. The LF circle stays 52×52 DELIBERATELY (its
+// source is 420×392 — correcting the ~6% squash would change the printed/PDF
+// header, which must stay pixel-identical). Placement of this function is
+// load-bearing for the test harnesses: it must sit AFTER
+// buildInvoiceReminderHTML (inside reminder-backtest's eval slice, so the
+// eval'd builder can call it via hoisting) and BEFORE setInvStatus.
+function _docBrandRowHTML() {
+  return `<table cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="vertical-align:middle;padding-right:18px">
+              <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png" alt="purpl" width="140" height="140" style="display:block;width:140px;height:140px;color:#4D2A6F;font-family:Arial,sans-serif;font-weight:bold;font-size:22px">
+            </td>
+            <td style="vertical-align:middle;padding:0 4px">
+              <div style="width:1px;height:44px;background:#d1d5db"></div>
+            </td>
+            <td style="vertical-align:middle;padding-left:18px">
+              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png" alt="Lavender Fields" width="52" height="52" style="display:block;width:52px;height:52px;color:#4D2A6F;font-family:Arial,sans-serif;font-size:12px">
+            </td>
+          </tr>
+        </table>`;
 }
 
 function setInvStatus(id, status) {
@@ -14050,21 +14081,7 @@ ${o.printButton ? `<div class="no-print" style="position:fixed;top:14px;right:14
   <tr><td style="padding:36px 48px 20px">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td style="vertical-align:middle">
-        <table cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="vertical-align:middle;padding-right:18px">
-              <img src="https://purpl-crm.web.app/images/purpl-logo-top-sprig.png"
-                alt="purpl" width="140" style="display:block;height:auto">
-            </td>
-            <td style="vertical-align:middle;padding:0 4px">
-              <div style="width:1px;height:44px;background:#d1d5db"></div>
-            </td>
-            <td style="vertical-align:middle;padding-left:18px">
-              <img src="https://purpl-crm.web.app/images/lf-logo-circle-transparent.png"
-                alt="Lavender Fields" width="52" height="52" style="display:block">
-            </td>
-          </tr>
-        </table>
+        ${_docBrandRowHTML()}
       </td>
       <td align="right" style="vertical-align:middle">
         <div style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:1px">INVOICE</div>
@@ -17257,7 +17274,12 @@ async function confirmPortalOrder() {
           id: singleInvId, number: singleInvNum, invoiceNumber: singleInvNum,
           accountId: d.accountId, accountName: d.accountName,
           orderId: lfOrderId, date: todayStr, dueDate: dueDateStr,
-          total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal', deliveryMethod,
+          // v247 (sweep F6, owner-hit): fulfillmentSource was dropped on the
+          // LF-ONLY branch alone — the list's 🏭 button reads the record
+          // (hidden), while the Preview's dropdown defaults to warehouse
+          // (shown). The modal's choice is in scope; store it like the
+          // purpl-only and dual-brand branches do.
+          total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal', deliveryMethod, fulfillmentSource,
           lineItems: lfItems,
           billingEmail: d.billingEmail || acct.email || '',
           notes: _invNotes,
@@ -17774,15 +17796,26 @@ async function pushToWarehouse(invoiceId, collection) {
   // HTML to PDF server-side (headless Chromium), so the printed page matches
   // the emailed invoice one-for-one.
   const fileName = String(invNum).replace(/[^A-Za-z0-9._-]+/g, '-') + '-invoice.pdf';
-  const bodyHtml = `<div style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
+  // v247: the banner used to be CONCATENATED in front of docHtml — a full
+  // document (its own <!DOCTYPE html>) nested after a loose <div>, i.e.
+  // malformed HTML that rendered by luck. The banner now gets INJECTED just
+  // inside the document's <body>, as a centered table block aligned with the
+  // invoice card. The PDF attachment keeps the raw, banner-free docHtml.
+  const bannerHtml = `<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:16px 16px 0">
+    <table width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%"><tr>
+      <td style="background:#fef3c7;border:2px solid #d97706;border-radius:8px;padding:14px 18px;font-family:Arial,sans-serif;font-size:15px;color:#78350f">` +
     (isRepush ? `<b>UPDATED COPY</b> — this replaces the earlier version of this invoice; discard any previous printout. ` : '') +
     `<b>To print:</b> open the attached PDF <b>${escHtml(fileName)}</b> and print it. ` +
     (isDistPush
-      ? `This is a <b>distributor order</b> — prep it for pickup and include the printed copy with the shipment. The order is also shown below for reference.</div>`
-      : `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.</div>`) + docHtml;
+      ? `This is a <b>distributor order</b> — prep it for pickup and include the printed copy with the shipment. The order is also shown below for reference.`
+      : `Leave the printed copy with the customer at delivery. The invoice is also shown below for reference.`) +
+    `</td></tr></table></td></tr></table>`;
+  // Replacement CALLBACK, not a string: invoice content carries $ amounts,
+  // and string replacements would corrupt on $& / $' patterns.
+  const emailHtml = docHtml.replace(/<body([^>]*)>/i, (m) => m + bannerHtml);
   toast('Sending to warehouse… (PDF render takes a few seconds)');
   try {
-    await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, bodyHtml,
+    await callSendEmail(whEmail, 'lavender@pbfwholesale.com', subject, emailHtml,
       [{filename: fileName, htmlToPdf: _b64utf8(docHtml)}]);
     DB.update(collection, invoiceId, x => ({...x, fulfillmentSource: 'warehouse', warehousePushedAt: new Date().toISOString()}));
     auditLog('warehouse_push', 'invoice', invoiceId, `${inv.number || inv.invoiceNumber || invoiceId} → ${whEmail}`);

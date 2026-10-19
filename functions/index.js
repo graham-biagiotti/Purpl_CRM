@@ -255,35 +255,9 @@ exports.sendOrderConfirmation = onCall(
 
     const accentColor = data.isPbf ? '#4F5D80' : '#4D2A6F';
 
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0"
-  style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr><td align="center">
-        <table cellpadding="0" cellspacing="0" width="auto">
-          <tr>
-            <td width="auto" valign="middle" style="padding-right:16px">
-              <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block">
-            </td>
-            <td width="1px" valign="middle">
-              <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
-            </td>
-            <td width="auto" valign="middle" style="padding-left:16px">
-              <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block">
-            </td>
-          </tr>
-        </table>
-      </td></tr>
-    </table>
-    <div style="text-align:center;font-family:Arial,sans-serif;font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
-  </td></tr>
-  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
-  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+    // v247: chrome consolidated into _samplingEmailShell (this was a
+    // hand-rolled byte-copy of it — one of three).
+    const html = _samplingEmailShell(`
     <p>Hi ${escHtml(data.contactName || 'there')},</p>
     <p style="line-height:1.7">Thanks for your ${data.mode === 'preorder' ? 'pre-order' : 'order'} for <strong>${escHtml(data.accountName)}</strong>. I've got it and I'm on it personally.</p>
     ${orderSummaryHtml}
@@ -309,16 +283,7 @@ exports.sendOrderConfirmation = onCall(
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#6b7280">
       ${data.portalLink ? `<a href="${escHtml(data.portalLink)}" style="color:${accentColor};text-decoration:none">Place another order →</a><br>` : ''}
       Wholesale info: <a href="https://pbfwholesale.com" style="color:${accentColor};text-decoration:none">pbfwholesale.com</a>
-    </div>
-  </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    lavender@pbfwholesale.com
-  </td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>`;
+    </div>`);
 
     const {Resend} = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
@@ -408,23 +373,8 @@ exports.sendApplicationConfirmation = onCall(
     const safeName = escHtml(data.contactName);
     const safeBiz = escHtml(data.businessName);
 
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0"
-  style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
-    <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
-      <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block"></td>
-    </tr></table>
-    <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
-  </td></tr>
-  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
-  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+    // v247: chrome consolidated into _samplingEmailShell (hand-rolled copy #2).
+    const html = _samplingEmailShell(`
     <p style="font-size:17px;font-weight:500;margin:0 0 20px">Hi ${safeName},</p>
     <p>Thank you for your interest in carrying our products at <strong>${safeBiz}</strong>. We've received your application and will be in touch within 1 business day.</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0">
@@ -434,16 +384,7 @@ exports.sendApplicationConfirmation = onCall(
       </td></tr>
     </table>
     <p>In the meantime, feel free to reach out with any questions.</p>
-    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm<br>603-748-3038</p>
-  </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    lavender@pbfwholesale.com
-  </td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>`;
+    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm<br>603-748-3038</p>`);
 
     const {Resend} = require('resend');
     const resend = new Resend(process.env.RESEND_API_KEY);
@@ -1799,21 +1740,9 @@ exports.shipStationWebhook = onRequest(
                 const {Resend} = require('resend');
                 const resend = new Resend(process.env.RESEND_API_KEY);
                 const contactName = (ac.contacts && ac.contacts.length) ? (ac.contacts[0].name || 'there') : 'there';
-                const sampleHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
-    <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
-      <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block"></td>
-    </tr></table>
-    <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
-  </td></tr>
-  <tr><td style="background:#B3C8C1;height:4px"></td></tr>
-  <tr><td style="padding:32px 40px;font-size:15px;color:#1a1a2e;line-height:1.7">
+                // v247: chrome consolidated into _samplingEmailShell (copy #3;
+                // this one's footer carried the phone number — footerExtra).
+                const sampleHtml = _samplingEmailShell(`
     <p>Hi ${escHtml(contactName)},</p>
     <p>Your <strong>purpl sample box</strong> is on its way! Here are the details:</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
@@ -1830,13 +1759,7 @@ exports.shipStationWebhook = onRequest(
         <a href="https://pbfwholesale.com/order?t=${ac.orderPortalToken}" style="display:inline-block;background:#7B4FA0;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place Your First Order →</a>
       </td></tr>
     </table>` : ''}
-    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>
-  </td></tr>
-  <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>
-    lavender@pbfwholesale.com · 603-748-3038
-  </td></tr>
-</table></td></tr></table></body></html>`;
+    <p>Warmly,<br><strong>Graham Biagiotti</strong><br>Pumpkin Blossom Farm</p>`, { footerExtra: ' · 603-748-3038' });
                 try {
                   await resend.emails.send({
                     from: 'lavender@pbfwholesale.com',
@@ -2172,8 +2095,16 @@ function _samplingIsOpen(r) {
   return true;
 }
 
-// Standard PBF email shell — identical chrome to every other system email.
-function _samplingEmailShell(bodyHtml) {
+// Standard PBF email shell — THE chrome for every server-sent email (all
+// sampling sends + order confirmation + application confirmation + sample-
+// shipped, consolidated v247; the three used to be hand-rolled copies).
+// v247 email resilience, mirroring the client's PBF_HEADER_HTML:
+// bgcolor attribute (Word renderer ignores the CSS gradient), styled white
+// alt + px dims on both logos (clean text when images are blocked in
+// Gmail/OWA), and an [if mso] TEXT header for classic Outlook — which
+// ignores img CSS and strips remote images in replies, so it gets (and
+// quotes) a clean text wordmark instead of empty boxes.
+function _samplingEmailShell(bodyHtml, opts = {}) {
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif">
@@ -2181,12 +2112,18 @@ function _samplingEmailShell(bodyHtml) {
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0"
   style="max-width:600px;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-  <tr><td style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
+  <tr><td bgcolor="#4D2A6F" style="background:#4D2A6F;background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:32px 40px;text-align:center">
+    <!--[if mso]>
+    <div style="font-family:Arial,sans-serif;font-size:26px;font-weight:bold;color:#ffffff">purpl</div>
+    <div style="font-family:Arial,sans-serif;font-size:12px;color:#ffffff;margin-top:4px">Lavender Fields &middot; Pumpkin Blossom Farm</div>
+    <![endif]-->
+    <!--[if !mso]><!-->
     <table cellpadding="0" cellspacing="0" style="margin:0 auto"><tr>
-      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block"></td>
+      <td valign="middle" style="padding-right:16px"><img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="170" height="65" style="display:block;width:170px;height:65px;color:#ffffff;font-family:Arial,sans-serif;font-weight:bold;font-size:24px"></td>
       <td valign="middle" style="padding:0 16px"><div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div></td>
-      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block"></td>
+      <td valign="middle"><img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="84" height="78" style="display:block;width:84px;height:78px;color:#ffffff;font-family:Arial,sans-serif;font-size:13px"></td>
     </tr></table>
+    <!--<![endif]-->
     <div style="font-size:10px;color:rgba(255,255,255,0.9);letter-spacing:0.15em;text-transform:uppercase;margin-top:10px">Pumpkin Blossom Farm · Wholesale</div>
   </td></tr>
   <tr><td style="background:#B3C8C1;height:4px"></td></tr>
@@ -2194,7 +2131,7 @@ function _samplingEmailShell(bodyHtml) {
 ${bodyHtml}
   </td></tr>
   <tr><td style="background:#f9fafb;padding:16px 40px;text-align:center;font-size:11px;color:#6b7280">
-    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>lavender@pbfwholesale.com
+    Pumpkin Blossom Farm LLC · 393 Pumpkin Hill Rd · Warner, NH 03278<br>lavender@pbfwholesale.com${opts.footerExtra || ''}
   </td></tr>
 </table>
 </td></tr>

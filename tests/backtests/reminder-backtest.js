@@ -190,6 +190,14 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
   ok(over.includes('Pay Online') && over.includes('pay?inv=r-over'), 'Pay Online button uses the evergreen link');
   ok(over.includes('ACH / Wire:') && over.includes('Mail checks to:'), 'full payment block: ACH + mail-a-check');
   ok(over.includes('purpl-logo-top-sprig.png') && over.includes('lf-logo-circle-transparent.png'), 'brand logo row (doc family)');
+  // v247 email resilience: a blocked/quoted image state must stay tidy —
+  // the sprig reserves its square box (320×320 source, so 140×140 is a
+  // loaded-state no-op) and both logos carry styled DARK alt so the box
+  // reads "purpl / Lavender Fields" in ink on white.
+  ok(/purpl-logo-top-sprig\.png" alt="purpl" width="140" height="140"/.test(over),
+    'sprig reserves its square box when images are blocked (v247)');
+  ok(/purpl-logo-top-sprig\.png"[^>]*color:#4D2A6F/.test(over) && /lf-logo-circle-transparent\.png"[^>]*color:#4D2A6F/.test(over),
+    'doc-header logos carry styled dark alt (v247)');
   ok(over.includes('Big Y &amp; Sons &lt;script&gt;'), 'account name escaped in email body');
   const soon = buildInvoiceReminderHTML(cache.retail_invoices[1], 'retail_invoices', false);
   ok(soon.includes('DUE SOON') && !soon.includes('>OVERDUE<'), 'due-soon pill');
