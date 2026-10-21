@@ -526,7 +526,11 @@ exports.getStockists = onCall(async () => {
     if (!eligible.length) return; // every location opted out — no pins
     let pushed = 0, missedHere = 0;
     eligible.forEach(l => {
-      if (push(a.name + (l.label ? ' — ' + l.label : ''), l.address || a.address, l.lat, l.lng, a.stockistBrands)) pushed++;
+      // v248 (owner): the PUBLIC pin shows the store's own name — the parent
+      // account is internal bookkeeping ("Associated Grocers Northeast —
+      // Sully's Allenstown" → "Sully's Allenstown"). Labeled locations show
+      // the label alone; unlabeled ones keep the account name.
+      if (push(l.label || a.name, l.address || a.address, l.lat, l.lng, a.stockistBrands)) pushed++;
       else missedHere++;
     });
     // The Territory Map batch geocoder writes coordinates at the TOP LEVEL of

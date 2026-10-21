@@ -100,7 +100,12 @@ console.log('[B] dynamic — find-us filtering (real function body)');
     ]});
     ok(r.out.length === 2 && !r.out.some(p => p.name.includes('Office')),
       'B1: opted-out office never pinned; both stores are');
-    ok(r.out.every(p => p.name.startsWith('BuyerCo — ')), 'B1: pins carry the store label');
+    // v248 CONTRACT CHANGE (owner): public pins show the STORE name alone —
+    // the parent account name is internal ("AGNE — Sully's" read wrong on
+    // the public map). Label wins; unlabeled locations keep the account name.
+    ok(r.out.map(p => p.name).sort().join('|') === 'Hillside|Village Market',
+      'B1: pins show the store label ALONE (v248 — no internal account prefix)');
+    ok(!r.out.some(p => p.name.includes('BuyerCo')), 'B1: parent account name never leaks to the public map');
   }
   // B2: ALL locations opted out → account absent entirely (no fallback leak)
   {
