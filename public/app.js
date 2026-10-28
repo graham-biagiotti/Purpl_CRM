@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v249';
+const APP_VERSION = 'v250';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1439,6 +1439,30 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
           </td></tr>
         </table>
         <p>Interested in adding this to your next order? Reply to this email or place an order through your portal:</p>
+        <p style="text-align:center"><a href="${portalLink}" style="color:${accentColor};font-weight:500">Open Your Portal →</a></p>
+`, account.id)
+    },
+    // v250: October 2026 LF packaging/product announcement — owner sends to
+    // LF-carrying accounts from the Emails tab (single or mass; the brand
+    // filter already isolates LF/both accounts). Photo is hosted with the
+    // v247 blocked-image conventions (dims + styled alt).
+    'lf-whats-new': {
+      subject: `What's new from Lavender Fields — eye pillow + fresh packaging`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p>A few Lavender Fields updates for <strong>${businessName}</strong> — same farm-grown lavender, some fresh looks on the shelf:</p>
+        <div style="text-align:center;margin:24px 0">
+          <img src="https://purpl-crm.web.app/images/lf-sleepmask.jpg" alt="Aromatherapy Eye Pillow" width="260" height="260" style="width:260px;max-width:70%;height:auto;border-radius:12px;display:inline-block;color:#4D2A6F;font-family:Arial,sans-serif">
+        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0">
+          <tr><td style="background:#fdf9ff;border:1px solid #e9d5ff;border-radius:8px;padding:20px 24px;font-size:14px;color:#374151;line-height:1.9">
+            <div><strong style="color:#4D2A6F">🆕 NEW — Aromatherapy Eye Pillow.</strong> Satin eye pillow with a travel pouch, filled with our hand-harvested lavender. On your order portal now.</div>
+            <div style="margin-top:10px"><strong style="color:#4D2A6F">Simple Syrup — new 16 oz glass bottle.</strong> Bigger bottle, same wholesale price.</div>
+            <div style="margin-top:10px"><strong style="color:#4D2A6F">Refresh Powder — fresh new packaging.</strong> Same all-natural formula inside.</div>
+          </td></tr>
+        </table>
+        <p>Everything's live on your portal — reply to this email with any questions or to talk shelf placement:</p>
         <p style="text-align:center"><a href="${portalLink}" style="color:${accentColor};font-weight:500">Open Your Portal →</a></p>
 `, account.id)
     },
@@ -4570,6 +4594,7 @@ function _renderEmailsTemplatesCol() {
     {id:'reorder-reminder',     name:'Reorder Reminder',        desc:'Time to restock?'},
     {id:'delivery-followup',    name:'Post-Delivery Check-In',  desc:'How did delivery go?'},
     {id:'new-product',          name:'New Product Announcement', desc:'Announce new product'},
+    {id:'lf-whats-new',         name:'LF What\'s New (Oct 2026)', desc:'Eye pillow · 16oz syrup · refresh packaging'},
     {id:'sampling-invite',      name:'Demo Day Invite',         desc:'Book an in-store purpl sampling'},
     {id:'thank-you',            name:'General Thank You',       desc:'Thank a retailer'},
     {id:'custom',               name:'Custom Email',            desc:'Write your own'},
@@ -5545,7 +5570,7 @@ function meTemplatePreview() {
 let _meTemplateInFlight = false;
 // Templates whose body shows a "personalized order link / no password needed"
 // button — every recipient needs a portal token for that link to actually work.
-const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'launch-announcement', 'approved', 'sampling-invite'];
+const _TEMPLATES_NEED_LINK = ['preorder-announcement', 'launch-announcement', 'approved', 'sampling-invite', 'lf-whats-new'];
 async function meTemplateSend() {
   if (_meTemplateInFlight) { toast('Send already in progress'); return; }
   const tplId = qs('#me-template-select')?.value || '';

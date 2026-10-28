@@ -24,8 +24,9 @@ console.log('[A] images + wholesale site');
   ['lf-syrup.PNG', 'lf-rollon.PNG', 'lf-refresh-powder.PNG', 'lf-scrunchies.PNG']
     .forEach(f => ok(!fs.existsSync(path.join(imgDir, f)), `replaced PNG removed: ${f}`));
   ok(!/lf-(syrup|rollon|refresh-powder|scrunchies)\.PNG/.test(ws), 'wholesale.html references no removed images');
-  ok(ws.includes('/images/lf-sleepmask.jpg') && ws.includes('Aromatherapy Sleep Mask'),
-    'new Sleep Mask card on the wholesale site');
+  // v250: owner named it the Aromatherapy Eye Pillow.
+  ok(ws.includes('/images/lf-sleepmask.jpg') && ws.includes('Aromatherapy Eye Pillow') && !ws.includes('Sleep Mask'),
+    'Eye Pillow card on the wholesale site (v250 rename)');
   ok(ws.includes('16 oz · culinary') && !ws.includes('12.7'), 'syrup copy reads 16 oz, no stale 12.7');
   ok((ws.match(/<div/g) || []).length === (ws.match(/<\/div>/g) || []).length, 'wholesale.html divs balanced');
 }
@@ -41,8 +42,8 @@ console.log('[B] order form — fallback, banner, badges');
     'BOTH row renderers (variant + simple) show the badge');
   // Badge matcher truth table — run the REAL helper.
   const badge = new Function(slc(ord, 'function lfNewBadge', '\n    }') + '\n}\nreturn lfNewBadge;')();
-  ok(badge('Aromatherapy Sleep Mask').includes('NEW') && !badge('Aromatherapy Sleep Mask').includes('16 OZ'),
-    'mask → NEW badge');
+  ok(badge('Aromatherapy Eye Pillow').includes('NEW') && !badge('Aromatherapy Eye Pillow').includes('16 OZ'),
+    'eye pillow → NEW badge (matcher covers sleep|eye pillow)');
   ok(badge('Lavender Simple Syrup 16oz').includes('NEW 16 OZ BOTTLE'), 'syrup → 16oz badge');
   ok(badge('Lavender Refresh Powder').includes('NEW PACKAGING'), 'refresh → packaging badge');
   ok(badge('Soy Candle') === '' && badge('Seatbelt Sachet') === '' && badge('') === '',
@@ -81,6 +82,18 @@ console.log('[C] live-SKU rename migration (one-shot, owner-approved)');
   ok(r3.updates.length === 0, 'never touches a hand-edited name');
   const r4 = mk([{ id: 'a', name: 'Lavender Simple Syrup 12.7oz' }], false);
   ok(r4.updates.length === 0, 'waits for Firestore readiness (no blind write)');
+}
+
+console.log('[D] v250 — LF what\'s-new email template');
+{
+  const tpl = slc(src, "'lf-whats-new': {", "'thank-you': {");
+  ok(tpl.includes('Aromatherapy Eye Pillow') && tpl.includes('16 oz glass bottle') && tpl.includes('fresh new packaging'),
+    'template announces all three changes');
+  ok(/lf-sleepmask\.jpg" alt="Aromatherapy Eye Pillow" width="260" height="260"/.test(tpl) && tpl.includes('color:#4D2A6F;font-family:Arial'),
+    'photo follows v247 blocked-image conventions (dims + styled alt)');
+  ok(tpl.includes('${portalLink}'), 'portal CTA present');
+  ok(src.includes("{id:'lf-whats-new'"), 'template listed on the Emails tab');
+  ok(src.includes("'sampling-invite', 'lf-whats-new']"), 'mass-send mints portal links for it');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
