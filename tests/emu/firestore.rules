@@ -1,8 +1,263 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // Helper: check if the authenticated user has admin role
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+
+    // Helper: check if the authenticated user is admin or employee
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'employee'];
+    }
+
+    // Helper: road sales rep. Deliberately NOT staff — a field login can
+    // touch field_logs only; every other collection stays denied.
+    function isField() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'field';
+    }
+
+    // Users collection: user can read own doc, admins can read/write all.
+    // Create rule blocks role field — prevents self-elevation.
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && !('role' in request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    // App config (access_control, etc.): admin-only write, staff read
+    match /app_config/{docId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // Accounts and prospects: staff only (LAYER 2 — was request.auth != null)
+    // v251: delete on the accounts mirror is admin-only, matching the
+    // workspace account docs — routine staff flows (portal-token minting)
+    // only create/update here.
+    match /accounts/{accountId} {
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /prospects/{prospectId} {
+      allow read, write: if isStaff();
+    }
+
+    // Portal: public can submit orders (create only)
+    match /portal_orders/{orderId} {
+      allow create: if true
+        && request.resource.data.keys().hasAll(['accountName', 'billingEmail', 'status'])
+        && request.resource.data.accountName is string
+        && request.resource.data.accountName.size() < 200
+        && request.resource.data.billingEmail is string
+        && request.resource.data.billingEmail.size() < 200
+        && request.resource.data.status in ['new', 'pending']
+        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 2000))
+        && (!('items' in request.resource.data) || request.resource.data.items.size() < 50)
+        && (!('lineItems' in request.resource.data) || request.resource.data.lineItems.size() < 50)
+        && request.resource.data.size() < 50;
+      allow read: if isStaff();
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // In-store sampling requests: created ONLY by Cloud Functions (admin
+    // SDK), never from a public client. Staff read/update for the CRM
+    // Sampling page; delete stays admin-only.
+    match /sampling_requests/{requestId} {
+      allow read, update: if isStaff();
+      allow delete: if isAdmin();
+      allow create: if false;
+    }
+
+    // Purchase orders (supplier POs, e.g. sugar): staff-only, standalone —
+    // no public access of any kind. Includes the _meta counter doc.
+    match /purchase_orders/{poId} {
+      allow read, write: if isStaff();
+    }
+
+    // Field log: road-rep visit entries. Field reps create logs stamped
+    // with their own uid and read/fix ONLY their own; staff read/update
+    // all (review stamps); delete stays admin-only. Never public.
+    match /field_logs/{logId} {
+      allow read: if isStaff() || (isField() && resource.data.uid == request.auth.uid);
+      allow create: if (isStaff() || isField())
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'createdAt', 'storeName'])
+        && request.resource.data.storeName is string
+        && request.resource.data.storeName.size() > 0
+        && request.resource.data.storeName.size() < 200
+        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
+        && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
+        // Review state cannot be forged at create either: a new log must
+        // arrive unreviewed and without staff stamps.
+        && (!('reviewed' in request.resource.data) || request.resource.data.reviewed == false)
+        && !('reviewedAt' in request.resource.data)
+        && !('reviewedBy' in request.resource.data)
+        && !('historyAppliedAt' in request.resource.data)
+        && !('contactSavedAt' in request.resource.data)
+        && !('prospectId' in request.resource.data)
+        && request.resource.data.size() < 40;
+      // Field reps update their OWN docs in two tiers:
+      //  - Planning tier (ALWAYS): follow-up scheduling only — their to-do
+      //    list, never Graham's record.
+      //  - Content tier (only while NOT reviewed): fix what they typed —
+      //    notes/contact/type/outcome + an editedAt stamp. Once staff marks
+      //    an entry reviewed, content freezes.
+      // Structural facts (uid, storeName, accountId, prospectRefId,
+      // newPlace, createdAt) and review flags/applied-stamps are NEVER in
+      // either allowlist, so identity and review state cannot be forged.
+      // Value guards check the post-update doc for every rep-writable key.
+      allow update: if isStaff()
+        || (isField() && resource.data.uid == request.auth.uid
+            && (!('followUpDate' in request.resource.data) || (request.resource.data.followUpDate is string && request.resource.data.followUpDate.size() < 12))
+            && (!('followUpDone' in request.resource.data) || request.resource.data.followUpDone is bool)
+            && (!('followUpDoneAt' in request.resource.data) || (request.resource.data.followUpDoneAt is string && request.resource.data.followUpDoneAt.size() < 40))
+            && (!('updatedAt' in request.resource.data) || (request.resource.data.updatedAt is string && request.resource.data.updatedAt.size() < 40))
+            && (!('editedAt' in request.resource.data) || (request.resource.data.editedAt is string && request.resource.data.editedAt.size() < 40))
+            && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
+            && (!('contactName' in request.resource.data) || (request.resource.data.contactName is string && request.resource.data.contactName.size() < 200))
+            && (!('contactRole' in request.resource.data) || (request.resource.data.contactRole is string && request.resource.data.contactRole.size() < 200))
+            && (!('contactPhone' in request.resource.data) || (request.resource.data.contactPhone is string && request.resource.data.contactPhone.size() < 100))
+            && (!('contactEmail' in request.resource.data) || (request.resource.data.contactEmail is string && request.resource.data.contactEmail.size() < 200))
+            && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() < 40))
+            && (!('outcome' in request.resource.data) || (request.resource.data.outcome is string && request.resource.data.outcome.size() < 40))
+            && request.resource.data.size() < 45
+            && (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['followUpDate', 'followUpDone', 'followUpDoneAt', 'updatedAt'])
+              || ((!('reviewed' in resource.data) || resource.data.reviewed != true)
+                  && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['notes', 'contactName', 'contactRole', 'contactPhone',
+                                 'contactEmail', 'type', 'outcome', 'followUpDate',
+                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt']))
+            ));
+      allow delete: if isAdmin();
+    }
+
+    // Field rep notepad: one free-text doc per rep, keyed by uid. The rep
+    // (or a staff member, for their own uid) writes only their own doc,
+    // shape-locked to {text, updatedAt}. Staff can read; never public.
+    match /field_notes/{noteUid} {
+      allow read: if isStaff() || (request.auth != null && request.auth.uid == noteUid);
+      allow create, update: if request.auth != null && request.auth.uid == noteUid
+        && (isField() || isStaff())
+        && request.resource.data.keys().hasOnly(['text', 'updatedAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() < 20000
+        && request.resource.data.updatedAt is string
+        && request.resource.data.updatedAt.size() < 40;
+      allow delete: if isAdmin();
+    }
+
+    // Portal: public can sign up for notifications
+    match /portal_notify/{docId} {
+      allow create: if true
+        && request.resource.data.keys().hasAll(['email', 'flavor'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() < 200
+        && request.resource.data.flavor is string
+        && request.resource.data.flavor.size() < 100
+        && request.resource.data.size() < 10;
+      allow read, delete: if isStaff();
+    }
+
+    // Portal settings: admin-only write, staff read
+    match /portal_settings/{docId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // Portal config: admin-only write, staff read
+    match /portal_config/{docId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // Portal tokens: admin-only write, staff read
+    match /portal_tokens/{docId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // Wholesale page: public can submit inquiries
+    match /portal_inquiries/{docId} {
+      allow create: if true
+        && request.resource.data.keys().hasAll(['businessName', 'email'])
+        && request.resource.data.businessName is string
+        && request.resource.data.businessName.size() < 200
+        && request.resource.data.email is string
+        && request.resource.data.email.size() < 200
+        && (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() < 5000))
+        && request.resource.data.size() < 20;
+      allow read, update, delete: if isStaff();
+    }
+
+    // Workspace data: LAYER 2 — requires staff role (was request.auth != null)
+    // HIGH-7: audit_log is APPEND-ONLY. The client (db.js) legitimately CREATEs
+    // audit entries under the signed-in user's auth, so a blanket `write:false`
+    // would break audit logging entirely (permission-denied on every audited
+    // action). Tamper-proofing comes from denying UPDATE and DELETE — once
+    // written, an entry can never be altered or removed by a client.
+    // A dedicated `match` is NOT enough on its own: the recursive
+    // `workspace/{path=**}` below ALSO matches audit_log docs, and Firestore
+    // grants access if ANY matching rule allows it. So the catch-all must keep
+    // excluding audit_log writes (see its condition), and this match re-grants
+    // ONLY create.
+    match /workspace/main/audit_log/{docId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+    // v251 (second-user hardening): the write grant is split so the UI's
+    // admin-only gates are enforced HERE, not just as hidden buttons.
+    // Firestore grants access if ANY matching rule allows it, so these
+    // restrictions must live inside this catch-all's own conditions — a
+    // denying sub-match cannot revoke what this match grants.
+    match /workspace/{path=**} {
+      allow read: if isStaff();
+      // Creates/updates: staff, EXCEPT audit_log (immutable from the client;
+      // its own match above re-grants create only) and EXCEPT changes to the
+      // invoice_settings config key by non-admins. invoice_settings carries
+      // what invoices tell customers about paying (remit bank details, Stripe
+      // link, from-address) — admin-only. The one non-admin writer it has is
+      // the invoice-number allocator's transaction, which touches ONLY
+      // nextInvoiceNum, so that single nested field stays staff-writable.
+      // Size guard prevents an index error on short paths (e.g. a write to
+      // workspace/main itself).
+      allow create, update: if isStaff()
+        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && (isAdmin()
+            || !(path.size() >= 2 && path[0] == 'main' && path[1] == 'config')
+            || (request.method == 'create'
+                 ? !('invoice_settings' in request.resource.data)
+                 : (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice_settings'])
+                    || request.resource.data.get('invoice_settings', {})
+                         .diff(resource.data.get('invoice_settings', {}))
+                         .affectedKeys().hasOnly(['nextInvoiceNum']))));
+      // Deletes: accounts and the five invoice collections are admin-only —
+      // irreversible, and the client writes its audit entries voluntarily, so
+      // a non-admin console delete would also leave no trail. Everything else
+      // (inventory ledger corrections etc.) stays staff. audit_log entries
+      // can never be deleted by anyone.
+      allow delete: if isStaff()
+        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && (isAdmin()
+            || !(path.size() >= 2 && path[0] == 'main'
+                 && path[1] in ['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices']));
+    }
+
+    // Default posture: DENY. No catch-all rule.
+    // Cloud Functions using Admin SDK bypass these rules entirely.
   }
 }

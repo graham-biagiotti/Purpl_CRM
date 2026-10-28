@@ -21,8 +21,21 @@ console.log('[A] F19 — approve only what shipped');
   ok(push.includes('return true;') && (push.match(/return false;/g) || []).length >= 4,
     'pushSampleToShipStation reports success/failure on every path');
   const appr = slc(src, 'async function _approveSampleRequest', '\nasync function _declineSampleRequest');
-  ok(/const pushed = await pushSampleToShipStation\(accountId\);\s*if \(!pushed\) \{/.test(appr),
+  // v251 CONTRACT CHANGE: approve now passes { orderRef: portalOrderId } so the
+  // ShipStation orderKey is deterministic per request (duplicate push = update,
+  // not a second box). The bail-on-failed-push contract is unchanged.
+  ok(/const pushed = await pushSampleToShipStation\(accountId, \{ orderRef: portalOrderId \}\);\s*if \(!pushed\) \{/.test(appr),
     'approve bails (row stays Pending) when the push failed — no ghost approval');
+  // v251: cross-user claim — approve claims the request on the SERVER before
+  // pushing, and a lost claim exits before any push.
+  ok(/_txActionClaim\('portal_orders\/' \+ portalOrderId, 'sampleClaim'/.test(appr),
+    'approve claims the request server-side before pushing (v251)');
+  ok(appr.indexOf("_txActionClaim('portal_orders/") < appr.indexOf('await pushSampleToShipStation'),
+    'claim happens BEFORE the push (v251)');
+  ok(/abortIf: d => !!d\.sampleApproved/.test(appr),
+    'an already-approved request aborts the claim (v251)');
+  ok(/_claim\.release\(\)/.test(appr),
+    'a failed push releases the claim for a deliberate retry (v251)');
   const _gi = appr.indexOf('if (!pushed)');
   ok(_gi >= 0 && _gi < appr.indexOf('sampleApproved: true'),
     'the approved stamp is unreachable without a successful ship');

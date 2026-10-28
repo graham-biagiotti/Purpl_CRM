@@ -1110,6 +1110,13 @@ const DB = {
   },
   obj(k, def = {}) { return this._cache[k] || def; },
   setObj(k, v) { this._cache[k] = v; this._save(k); },
+  // v251: cache-only echo — updates the local copy WITHOUT marking the key
+  // dirty or scheduling a Firestore write. For values the server already owns
+  // (e.g. the invoice counter, written by its allocation transaction): the
+  // old setObj echo re-sent the client's whole possibly-stale invoice_settings
+  // object, which the new admin-only rule on its sensitive fields would
+  // reject for an employee, poisoning the save pipeline for nothing.
+  setObjLocal(k, v) { this._cache[k] = v; },
   a(k) { return this.get(k); },
   _stamp(item) { if (item && typeof item === 'object') item._updatedAt = new Date().toISOString(); return item; },
   push(k, v) {
@@ -1134,6 +1141,42 @@ const DB = {
     if (COLLECTION_KEYS.includes(k)) this._markDocDeleted(k, id);
     this._cache[k] = this.a(k).filter(x => x.id !== id); this._save(k);
     if (COLLECTION_KEYS.includes(k)) this._deleteDoc(k, id);
+  },
+  // v251: field-targeted update for concurrent-edit safety. update()/_writeDoc
+  // re-send the WHOLE cached doc, so with two users the second save reverts
+  // every field the first user changed (and the open-modal snapshot deferral
+  // guarantees the cache copy is stale). This merges only the given fields
+  // into the cache and sends only them (top-level replace, no deep merge) —
+  // fields this user didn't touch are never written, so the other user's
+  // concurrent changes survive. Falls back to the full-doc path on failure.
+  updateFields(k, id, patch) {
+    const a = this.a(k);
+    const i = a.findIndex(x => x.id === id);
+    if (i < 0) {
+      console.warn(`[db] updateFields: ${k}/${id} not found (may have been deleted)`);
+      return false;
+    }
+    const stamped = { ...patch, _updatedAt: new Date().toISOString() };
+    a[i] = { ...a[i], ...stamped }; this._cache[k] = a; this._save(k);
+    if (!COLLECTION_KEYS.includes(k)) return true;
+    const full = a[i];
+    try {
+      this._collRef(k).doc(id).update(stamped)
+        .then(() => {
+          if (this._dirtyIds[k]) this._dirtyIds[k].delete(id);
+          this._updateSyncUI('synced');
+          this._drainDeferred();
+        })
+        .catch(e => {
+          console.warn(`[db] updateFields failed for ${k}/${id}, falling back to full write:`, e?.message);
+          this._markDocDirty(k, id);
+          this._writeDoc(k, full);
+        });
+    } catch (e) {
+      this._markDocDirty(k, id);
+      this._writeDoc(k, full);
+    }
+    return true;
   },
 
   atomicUpdate(fn) {

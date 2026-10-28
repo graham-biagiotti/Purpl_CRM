@@ -49,7 +49,24 @@ const window = { open: (u) => state.opened.push(u) };
 const toast = (m) => state.toasts.push(String(m));
 const callSendEmail = (to, from, subject, html) => state.sendResult({ to, from, subject, html });
 const _currentUserName = () => 'Graham';
-void document; void window; void toast; void callSendEmail; void _currentUserName;
+// v251: sendInvoiceReminder now claims the send on the SERVER doc through
+// _txActionClaim (cross-user single-flight). The harness backs it with a tiny
+// Firestore stub: state.claimDocs holds per-path server doc data, and
+// transactions read/write it like the real thing — so the claim contract is
+// itself testable (see the v251 section in [B]).
+state.claimDocs = {};
+const firebase = { firestore: () => ({
+  doc: (p) => ({
+    _p: p,
+    update: (patch) => { Object.assign(state.claimDocs[p] = state.claimDocs[p] || {}, patch); return Promise.resolve(); },
+  }),
+  runTransaction: async (fn) => fn({
+    get: async (ref) => ({ exists: ref._p in state.claimDocs, data: () => state.claimDocs[ref._p] }),
+    update: (ref, patch) => { Object.assign(state.claimDocs[ref._p] = state.claimDocs[ref._p] || {}, patch); },
+    set: (ref, patch) => { Object.assign(state.claimDocs[ref._p] = state.claimDocs[ref._p] || {}, patch); },
+  }),
+}) };
+void document; void window; void toast; void callSendEmail; void _currentUserName; void firebase;
 
 // ── real code slices ──
 const code = [
@@ -170,6 +187,7 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
   state.updates.length = 0; state.toasts.length = 0; state.opened.length = 0;
   state.sendResult = () => Promise.reject(new Error('resend down'));
   cache.retail_invoices.find(x => x.id === 'r-over').reminderSentAt = null;
+  state.claimDocs = {}; // v251: clear this session's own earlier claim stamps
   await sendInvoiceReminder('r-over', 'retail_invoices'); await tick();
   ok(!state.updates.some(u => u.k === 'retail_invoices'), 'failed send does NOT stamp reminderSentAt (stays on the card)');
   ok(state.opened.some(u => u.startsWith('mailto:buyer%40bigy.com') || u.startsWith('mailto:buyer@bigy.com')), 'failure opens a Gmail/mailto fallback');
@@ -179,6 +197,32 @@ const { renderInvoiceReminders, sendInvoiceReminder, buildInvoiceReminderHTML, _
   state.toasts.length = 0; captured = null;
   await sendInvoiceReminder('r-nomail', 'retail_invoices'); await tick();
   ok(state.toasts.some(t => t.includes('No email')) && captured === null, 'no-email invoice refuses with a toast, sends nothing');
+
+  // ── [B2] v251: cross-user claim ──
+  console.log('[B2] cross-user claim (v251)');
+  state.claimDocs = {}; state.toasts.length = 0; captured = null;
+  // Another session holds a fresh claim on the server doc → this send aborts.
+  state.claimDocs['workspace/main/retail_invoices/r-week'] =
+    { reminderClaim: { at: new Date().toISOString(), by: 'Ashley' } };
+  await sendInvoiceReminder('r-week', 'retail_invoices'); await tick();
+  ok(captured === null, 'a fresh claim by another session blocks the send entirely');
+  ok(state.toasts.some(t => t.includes('right now')), 'blocked send says who is sending');
+  // Another session FINISHED a send seconds ago (server reminderSentAt fresh,
+  // this screen stale) → also blocked. Older stamps stay resendable (v242).
+  state.toasts.length = 0; captured = null;
+  state.claimDocs['workspace/main/retail_invoices/r-soon'] =
+    { reminderSentAt: new Date().toISOString() };
+  await sendInvoiceReminder('r-soon', 'retail_invoices'); await tick();
+  ok(captured === null && state.toasts.some(t => t.includes('just sent')),
+    'a server-side send seconds ago blocks the duplicate');
+  // Stale/expired claims never wedge the button: with clean server state the
+  // same invoice sends normally again.
+  state.claimDocs = {}; state.toasts.length = 0; captured = null;
+  state.sendResult = (args) => { captured = args; return Promise.resolve({ id: 'msg-9' }); };
+  await sendInvoiceReminder('r-week', 'retail_invoices'); await tick();
+  ok(captured !== null, 'clean server state → send proceeds (claims expire, never wedge)');
+  ok(!!(state.claimDocs['workspace/main/retail_invoices/r-week'] || {}).reminderClaim,
+    'winning send stamped its claim on the server doc');
 
   // ── [C] the email HTML itself ──
   console.log('[C] reminder email HTML');

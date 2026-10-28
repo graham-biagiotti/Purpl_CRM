@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v250';
+const APP_VERSION = 'v251';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2403,6 +2403,39 @@ function renderInvoiceReminders() {
     </div>`;
 }
 
+// v251: cross-user single-flight claim. The in-memory Sets guarding sends
+// and approvals only protect ONE tab — with two staff users (or desktop +
+// phone), both sessions pass their local guard and the action fires twice
+// (double reminder email, double sample box, double stock deduction). This
+// claims the action on the server doc itself inside a transaction: a fresh
+// claim stamp (or opts.abortIf saying the action already finished) makes
+// every other session lose. If the transaction can't reach the server at
+// all, the action proceeds under the old single-tab guard rather than
+// blocking work offline — offline, the other user's click isn't visible
+// anyway, which is exactly today's behavior.
+async function _txActionClaim(docPath, field, opts = {}) {
+  const windowMs = opts.windowMs || 120000;
+  const ref = firebase.firestore().doc(docPath);
+  try {
+    await firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const d = snap.exists ? snap.data() : {};
+      if (snap.exists && opts.abortIf && opts.abortIf(d)) throw { _claim: 'done' };
+      const prev = d[field] ? Date.parse(d[field].at || d[field]) || 0 : 0;
+      if (prev && (Date.now() - prev) < windowMs) throw { _claim: 'held', by: (d[field] && d[field].by) || '' };
+      const stamp = { at: new Date().toISOString(), by: _currentUserName() || '' };
+      if (snap.exists) tx.update(ref, { [field]: stamp });
+      else tx.set(ref, { [field]: stamp }, { merge: true });
+    });
+    return { ok: true, release: () => { ref.update({ [field]: null }).catch(() => {}); } };
+  } catch (e) {
+    if (e && e._claim === 'done') return { ok: false, reason: 'done' };
+    if (e && e._claim === 'held') return { ok: false, reason: 'held', by: e.by };
+    console.warn('[claim] transaction unavailable, proceeding single-tab:', e?.message || e);
+    return { ok: true, release: () => {} };
+  }
+}
+
 const _reminderInFlight = new Set();
 async function sendInvoiceReminder(invId, collection) {
   // Payment-sweep fix (BS2): the button had no guard — a double-tap (or a
@@ -2421,6 +2454,21 @@ async function sendInvoiceReminder(invId, collection) {
   const ac = DB.a('ac').find(x => x.id === inv.accountId);
   if (!ac || !_invRecipient(inv, ac)) { _unlock(); toast('No email on file for this account or invoice'); return; }
 
+  // v251: cross-user claim — two dashboards both showing this invoice must
+  // not both email the customer. A reminder sent in the last 2 minutes by
+  // ANY session also aborts (deliberate Resends later still work).
+  const _claim = await _txActionClaim('workspace/main/' + collection + '/' + invId, 'reminderClaim', {
+    abortIf: d => !!(d.reminderSentAt && (Date.now() - (Date.parse(d.reminderSentAt) || 0)) < 120000),
+  });
+  if (!_claim.ok) {
+    _unlock();
+    toast(_claim.reason === 'done'
+      ? 'This reminder was just sent — not sending twice.'
+      : 'Someone else is sending this reminder right now' + (_claim.by ? ' (' + _claim.by + ')' : '') + '.');
+    try { renderInvoiceReminders(); } catch (_) {}
+    return;
+  }
+
   const type = collection === 'lf_invoices' ? 'lf' : collection === 'combined_invoices' ? 'combined' : 'retail';
   const payLink = await _getStripePayLink(inv, type);
   const sendInv = payLink ? { ...inv, _payLink: payLink } : inv;
@@ -2438,16 +2486,17 @@ async function sendInvoiceReminder(invId, collection) {
     extra: { invoiceId: invId, invoiceRef: inv.number || '' },
   }).then(result => {
     if (result) {
-      DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString() }));
+      // v251: clear the cross-user claim in the same write that stamps the send
+      DB.update(collection, invId, x => ({ ...x, reminderSentAt: new Date().toISOString(), reminderClaim: null }));
       _reminderInFlight.delete(invId);
       // v242: the row used to be REMOVED here — a sent reminder looked
       // identical to a vanished one and could never be resent. Re-render:
       // the row stays, flipped to "✓ reminded today · Resend".
       try { renderInvoiceReminders(); } catch(_) {}
     } else {
-      _unlock(); // failed/fell back — let him retry deliberately
+      _unlock(); _claim.release(); // failed/fell back — let him retry deliberately
     }
-  }).catch(() => _unlock());
+  }).catch(() => { _unlock(); _claim.release(); });
 }
 
 function buildInvoiceReminderHTML(inv, collection, isOverdue) {
@@ -6238,7 +6287,24 @@ async function saveAccount(id, isNew) {
   };
 
   if (isNew) DB.push('ac', rec);
-  else DB.update('ac', id, ()=>rec);
+  else {
+    // v251: write ONLY the fields this save actually changed. The whole-record
+    // write clobbered the other user's concurrent edit: while this modal was
+    // open, remote snapshots were deferred, so `existing` reflects the state
+    // at modal-open — any field where rec matches it was NOT touched here and
+    // must not be written (the other user's change to it survives). Fields
+    // that differ are this user's edits (or derived from them) and win.
+    const _patch = {};
+    Object.keys(rec).forEach(k => {
+      if (k === 'id') return;
+      const _a = JSON.stringify(rec[k] === undefined ? null : rec[k]);
+      const _b = JSON.stringify(existing && existing[k] !== undefined ? existing[k] : null);
+      if (_a !== _b) _patch[k] = rec[k];
+    });
+    if (Object.keys(_patch).length) {
+      if (!DB.updateFields('ac', id, _patch)) DB.update('ac', id, ()=>rec);
+    }
+  }
 
   // Invoices snapshot accountName at creation, so a rename never reached
   // already-drafted invoices. Sync the denormalized name on every save
@@ -7101,13 +7167,21 @@ function saveLogSample() {
 // approve flow stamps sampleApproved from this result. Every failure used to
 // be swallowed into a toast while the caller marked the request approved
 // anyway: no sample ever shipped and nothing said so.
-async function pushSampleToShipStation(accountId) {
+async function pushSampleToShipStation(accountId, opts = {}) {
   const ac = DB.a('ac').find(a => a.id === accountId);
   if (!ac) { toast('Account not found'); return false; }
   if (!ac.address && !ac.shipAddress) { toast('No address on file — add one first'); return false; }
   const addr = _shipAddrFor(ac);
   const ss = DB.obj('shipstation_settings', {});
-  const sampleNum = 'SAMPLE-' + (ac.name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() + '-' + Date.now().toString(36).slice(-4);
+  // v251: opts.orderRef (the portal request id, from the approve flow) makes
+  // the number — and therefore the ShipStation orderKey — deterministic per
+  // request, so a duplicate push updates the same order instead of shipping
+  // a second box. Without it (manual push), the timestamp suffix stays: each
+  // deliberate push is a new order.
+  const _ref = opts.orderRef
+    ? String(opts.orderRef).replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase()
+    : Date.now().toString(36).slice(-4);
+  const sampleNum = 'SAMPLE-' + (ac.name || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toUpperCase() + '-' + _ref;
 
   toast('Pushing sample to ShipStation…');
   try {
@@ -10268,6 +10342,24 @@ async function createDeliveryInvoice(accountId, ordId) {
   const ac      = DB.a('ac').find(a=>a.id===accountId);
   const ord     = DB.a('orders').find(o=>o.id===ordId);
   if (!ac || !ord) { _deliveryInvInFlight.delete(ordId); return; }
+  // v251: the per-tab Set above never even checked invoiceStatus — two
+  // sessions invoicing the same delivered order each created an invoice
+  // (different numbers, so invisible) and deducted stock twice. Local check
+  // first, then a cross-user claim on the order doc.
+  if (ord.invoiceStatus === 'invoiced') {
+    toast('Already invoiced' + (ord.invoiceNumber ? ' — ' + ord.invoiceNumber : ''));
+    _deliveryInvInFlight.delete(ordId);
+    return;
+  }
+  const _claim = await _txActionClaim('workspace/main/orders/' + ordId, 'invoiceClaim', {
+    abortIf: d => d.invoiceStatus === 'invoiced',
+  });
+  if (!_claim.ok) {
+    toast(_claim.reason === 'done' ? 'This order was just invoiced by another user.' : 'Another user is invoicing this order right now.');
+    _deliveryInvInFlight.delete(ordId);
+    document.getElementById('del-invoice-offer')?.remove();
+    return;
+  }
 
   const terms   = _payTerms();
   const dueDate = new Date(Date.now() + terms*864e5).toISOString().slice(0,10);
@@ -10303,9 +10395,9 @@ async function createDeliveryInvoice(accountId, ordId) {
       note: 'Invoice ' + invoiceNumber, invoiceId: invoice.id,
     }));
     cache['iv'] = [...(cache['iv']||[]), ...ivEntries];
-    // Mark order as invoiced
+    // Mark order as invoiced (v251: clearing the cross-user claim with it)
     cache['orders'] = (cache['orders']||[]).map(o =>
-      o.id === ordId ? {...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber} : o
+      o.id === ordId ? {...o, invoiceStatus:'invoiced', invoiceDate:today(), invoiceNumber, invoiceClaim: null} : o
     );
   });
 
@@ -13285,7 +13377,7 @@ async function getNextInvoiceNumber(type) {
       return `INV-${String(assign).padStart(4, '0')}`;
     });
     const n = parseInt(num.replace(/[^0-9]/g, ''));
-    DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
+    DB.setObjLocal('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 }); // v251: cache-only — the tx owns the server counter; setObj queued a useless (and for employees, rule-rejected) echo of the whole object
     return num;
   } catch (e) {
     console.warn('Invoice number transaction failed, retrying once:', e);
@@ -13301,13 +13393,13 @@ async function getNextInvoiceNumber(type) {
         return `INV-${String(assign).padStart(4, '0')}`;
       });
       const n = parseInt(num.replace(/[^0-9]/g, ''));
-      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
+      DB.setObjLocal('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 }); // v251: cache-only — the tx owns the server counter; setObj queued a useless (and for employees, rule-rejected) echo of the whole object
       return num;
     } catch (e2) {
       console.error('Invoice number transaction failed twice, using cache fallback:', e2);
       const num = peekNextInvoiceNumber();
       const n = parseInt(num.replace(/[^0-9]/g, ''));
-      DB.setObj('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 });
+      DB.setObjLocal('invoice_settings', { ...DB.obj('invoice_settings', {}), nextInvoiceNum: n + 1 }); // v251: cache-only — the tx owns the server counter; setObj queued a useless (and for employees, rule-rejected) echo of the whole object
       // M6: the atomic allocator (Firestore transaction) is unreachable, so this
       // number is derived from local cache and is NOT collision-safe if another
       // user is creating an invoice at the same moment. Surface it so staff can
@@ -14909,6 +15001,14 @@ async function openCombinedInvoicePreview(combinedId) {
       await pushInvoiceToShipStation(combinedId, 'combined_invoices');
     }
     const sendHtml = html;
+    // v251: cross-user claim — the disabled-button guard above only protects
+    // THIS tab. Two users with the same preview open both emailed the
+    // customer (and the draft deduct ran twice). Claim before sending.
+    const _claim = await _txActionClaim('workspace/main/combined_invoices/' + combinedId, 'emailClaim', {});
+    if (!_claim.ok) {
+      toast('Another user is sending this invoice right now' + (_claim.by ? ' (' + _claim.by + ')' : '') + ' — not sending twice.');
+      return;
+    }
     // AWAIT the chain — it was fire-and-forget, so the finally re-enabled the
     // button mid-send and a double-click emailed the customer twice.
     await callSendCombinedInvoice(to, rec.accountName, subject, sendHtml, rec.accountId, rec.number || rec.invoiceNumber, cc)
@@ -14922,7 +15022,7 @@ async function openCombinedInvoicePreview(combinedId) {
         let didDeduct = false;
         DB.atomicUpdate(cache => {
           const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
-          const sendPatch = { status: 'sent', sentAt, sentMessageId, deliveryMethod: rec.deliveryMethod || 'deliver' };
+          const sendPatch = { status: 'sent', sentAt, sentMessageId, deliveryMethod: rec.deliveryMethod || 'deliver', emailClaim: null }; // v251: clear claim with the stamp
           if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...sendPatch };
           if (rec.purplInvoiceId) {
             const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
@@ -14968,6 +15068,7 @@ async function openCombinedInvoicePreview(combinedId) {
         setTimeout(() => openCombinedInvoicePreview(combinedId), 200);
       })
       .catch(() => {
+        _claim.release(); // v251: failed send frees the claim for a retry
         toast('Send failed — opening your email app as a fallback', 6000);
         window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       });
@@ -15959,9 +16060,7 @@ const PortalDB = {
         this._db().collection('portal_orders').get(),
         this._db().collection('portal_notify').get(),
       ]);
-      this._orders = ordSnap.docs.map(d => { const data = d.data(); return { ...data, id: d.id,
-        submittedAt: data.submittedAt?.toDate?.() || null }; });
-      this._orders.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
+      this._applyOrders(ordSnap);
       this._notify = notSnap.docs.map(d => ({ id: d.id, ...d.data(),
         submittedAt: d.data().submittedAt?.toDate?.() || null }));
       this._loaded = true;
@@ -15969,6 +16068,44 @@ const PortalDB = {
       console.error('PortalDB.load error:', e);
     }
     return this;
+  },
+
+  _applyOrders(snap) {
+    this._orders = snap.docs.map(d => { const data = d.data(); return { ...data, id: d.id,
+      submittedAt: data.submittedAt?.toDate?.() || null }; });
+    this._orders.sort((a,b) => (b.submittedAt||0) - (a.submittedAt||0));
+  },
+
+  // v251: portal_orders was the ONE page rendered from a one-shot fetch —
+  // an order the other user just confirmed/approved stayed "new" on this
+  // screen until re-entry, which is exactly the stale view behind the
+  // double-approve sample race. Live listener like every other collection.
+  _unsubOrders: null,
+  subscribe() {
+    if (this._unsubOrders) return;
+    try {
+      this._unsubOrders = this._db().collection('portal_orders').onSnapshot(snap => {
+        this._applyOrders(snap);
+        this._loaded = true;
+        // Repaint only when the user is LOOKING at the page, and never while
+        // they're mid-interaction (a dialog open, or focus inside one of the
+        // page's selects/inputs — a repaint would wipe a half-picked match).
+        if (typeof currentPage !== 'undefined' && currentPage === 'pre-orders') {
+          const pg = document.getElementById('page-pre-orders');
+          const focused = document.activeElement;
+          const busy = document.querySelector('dialog[open]') ||
+            (focused && pg && pg.contains(focused) && /^(SELECT|INPUT|TEXTAREA)$/.test(focused.tagName));
+          if (!busy) { try { renderPreOrders(); } catch(_) {} }
+        }
+      }, err => {
+        console.warn('portal_orders listener error (will resubscribe on next page view):', err?.message);
+        this._unsubOrders = null;
+      });
+    } catch(e) { console.warn('portal_orders subscribe failed:', e?.message); }
+  },
+  teardown() {
+    if (this._unsubOrders) { try { this._unsubOrders(); } catch(_) {} this._unsubOrders = null; }
+    this._loaded = false; this._orders = []; this._notify = [];
   },
 
   async setToken(token, data) {
@@ -16049,6 +16186,7 @@ let _poCurrentTab = 'all';
 async function renderPreOrders(forceReload) {
   const el = qs('#page-pre-orders');
   if (!el) return;
+  PortalDB.subscribe(); // v251: live updates; no-op if already listening
   if (forceReload || !PortalDB._loaded) {
     qs('#po-kpis').innerHTML = '<div style="color:var(--muted);font-size:13px;grid-column:1/-1">Loading portal orders…</div>';
     await PortalDB.load();
@@ -16194,12 +16332,35 @@ async function _approveSampleRequest(portalOrderId) {
   if (!order) { _done(); return; }
   const accountId = order.accountId;
   if (!accountId) { _done(); toast('No matched account — match this order to an account first'); return; }
+  // v251: cross-user claim — the Set above guards one tab, and the Pre-Orders
+  // page used to render from a one-shot fetch, so a second user's screen
+  // still said "Pending" after the first approval. Two Approve clicks =
+  // two shipped boxes (sampleNum embedded Date.now, so ShipStation couldn't
+  // dedupe them either). Claim the request before pushing; a 3-minute window
+  // covers the slow push.
+  const _claim = await _txActionClaim('portal_orders/' + portalOrderId, 'sampleClaim', {
+    windowMs: 180000,
+    abortIf: d => !!d.sampleApproved,
+  });
+  if (!_claim.ok) {
+    _done();
+    toast(_claim.reason === 'done'
+      ? 'Already approved — the sample shipped.'
+      : 'Another user is approving this sample right now' + (_claim.by ? ' (' + _claim.by + ')' : '') + '.');
+    renderPreOrders(true);
+    return;
+  }
   // v245 (F19): approve ONLY what actually shipped. A failed push used to
   // fall through and stamp sampleApproved anyway — the request looked
   // handled forever while no sample ever went out.
-  const pushed = await pushSampleToShipStation(accountId);
+  // v251: deterministic orderRef — even if a push somehow fires twice for
+  // this request, ShipStation sees the same orderKey and updates, not
+  // duplicates. (Manual pushes from the account page keep their unique key:
+  // a deliberate second sample box there is a real second box.)
+  const pushed = await pushSampleToShipStation(accountId, { orderRef: portalOrderId });
   if (!pushed) {
     _done();
+    _claim.release(); // failed push frees the claim for a deliberate retry
     renderPreOrders(true); // row stays Pending — the sticky error says why
     return;
   }
@@ -16210,7 +16371,7 @@ async function _approveSampleRequest(portalOrderId) {
   const ts = new Date().toISOString();
   let writeFails = 0;
   for (const id of _sampleSiblingIds(order)) {
-    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleApproved: true, sampleApprovedAt: ts }); }
+    try { await firebase.firestore().collection('portal_orders').doc(id).update({ sampleApproved: true, sampleApprovedAt: ts, sampleClaim: null }); }
     catch(e) { writeFails++; console.warn('sampleApproved write failed:', id, e?.message); }
   }
   if (writeFails) {
@@ -18292,11 +18453,27 @@ function _sendDistInvoiceReminder(invId) {
 }
 
 const _markSentInFlight = new Set();
-function markInvoiceSent(id) {
+async function markInvoiceSent(id) {
   if (_markSentInFlight.has(id)) return;
   _markSentInFlight.add(id);
   const inv = findInvoice(id);
   const col = _invoiceCol(id);
+  if (!inv || !col) { _markSentInFlight.delete(id); return; }
+  // v251: cross-user claim — two sessions both clicking Mark Sent on the same
+  // draft each passed the local alreadyDeducted check and BOTH appended out-
+  // ledger rows (stock deducted twice). The transaction serializes them: the
+  // loser sees status already flipped and aborts. Bonus: an invoice the other
+  // user (or the Stripe webhook) already marked PAID can no longer be flipped
+  // back to 'sent' by a stale screen.
+  const _claim = await _txActionClaim('workspace/main/' + col + '/' + id, 'sentClaim', {
+    abortIf: d => d.status === 'sent' || d.status === 'paid',
+  });
+  if (!_claim.ok) {
+    _markSentInFlight.delete(id);
+    toast(_claim.reason === 'done' ? 'Already marked sent ✓' : 'Another user is marking this sent right now.');
+    renderInvoicesPage();
+    return;
+  }
   // Deduct purpl inventory when a draft is first sent — skip if already deducted
   const alreadyDeducted = DB.a('iv').some(x => x.invoiceId === id && x.type === 'out');
   const deduct = inv && inv.status === 'draft' && !alreadyDeducted;
@@ -18305,7 +18482,7 @@ function markInvoiceSent(id) {
   DB.atomicUpdate(c => {
     const arr = c[col] || [];
     const idx = arr.findIndex(x => x.id === id);
-    if (idx >= 0) arr[idx] = {...arr[idx], status:'sent', sentAt: today()};
+    if (idx >= 0) arr[idx] = {...arr[idx], status:'sent', sentAt: today(), sentClaim: null};
     if (deduct) {
       const invNum = inv.number || inv.invoiceNumber || '';
       const lines = inv.lineItems || inv.items || [];

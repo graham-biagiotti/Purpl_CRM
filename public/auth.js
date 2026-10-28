@@ -171,6 +171,9 @@ async function bootApp() {
       // permission-denied and the backoff/redrive loops retry forever from
       // the login screen. Re-armed by DB.init on the next sign-in.
       if (typeof DB !== 'undefined' && DB._teardownListeners) { try { DB._teardownListeners(); } catch(_) {} }
+      // v251: the portal-orders listener lives outside DB — tear it down too,
+      // or a signed-out tab keeps a permission-denied retry stream.
+      if (typeof PortalDB !== 'undefined' && PortalDB.teardown) { try { PortalDB.teardown(); } catch(_) {} }
       authScreen.style.display = 'flex';
       loadingScreen.style.display = 'none';
       appShell.style.display = 'none';

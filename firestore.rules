@@ -41,8 +41,12 @@ service cloud.firestore {
     }
 
     // Accounts and prospects: staff only (LAYER 2 — was request.auth != null)
+    // v251: delete on the accounts mirror is admin-only, matching the
+    // workspace account docs — routine staff flows (portal-token minting)
+    // only create/update here.
     match /accounts/{accountId} {
-      allow read, write: if isStaff();
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
     }
 
     match /prospects/{prospectId} {
@@ -215,16 +219,42 @@ service cloud.firestore {
       allow create: if isStaff();
       allow update, delete: if false;
     }
-    // NOTE: invoice deletion, config changes, etc. are all isStaff() for now.
-    // If you want admin-only delete on invoices or admin-only write on
-    // invoice_settings, let me know and I'll add those sub-matches.
+    // v251 (second-user hardening): the write grant is split so the UI's
+    // admin-only gates are enforced HERE, not just as hidden buttons.
+    // Firestore grants access if ANY matching rule allows it, so these
+    // restrictions must live inside this catch-all's own conditions — a
+    // denying sub-match cannot revoke what this match grants.
     match /workspace/{path=**} {
       allow read: if isStaff();
-      // isStaff for all workspace writes EXCEPT audit_log, which stays
-      // immutable from the client. Size guard prevents an index error on
-      // short paths (e.g. a write to workspace/main itself).
-      allow write: if isStaff()
-        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log');
+      // Creates/updates: staff, EXCEPT audit_log (immutable from the client;
+      // its own match above re-grants create only) and EXCEPT changes to the
+      // invoice_settings config key by non-admins. invoice_settings carries
+      // what invoices tell customers about paying (remit bank details, Stripe
+      // link, from-address) — admin-only. The one non-admin writer it has is
+      // the invoice-number allocator's transaction, which touches ONLY
+      // nextInvoiceNum, so that single nested field stays staff-writable.
+      // Size guard prevents an index error on short paths (e.g. a write to
+      // workspace/main itself).
+      allow create, update: if isStaff()
+        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && (isAdmin()
+            || !(path.size() >= 2 && path[0] == 'main' && path[1] == 'config')
+            || (request.method == 'create'
+                 ? !('invoice_settings' in request.resource.data)
+                 : (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice_settings'])
+                    || request.resource.data.get('invoice_settings', {})
+                         .diff(resource.data.get('invoice_settings', {}))
+                         .affectedKeys().hasOnly(['nextInvoiceNum']))));
+      // Deletes: accounts and the five invoice collections are admin-only —
+      // irreversible, and the client writes its audit entries voluntarily, so
+      // a non-admin console delete would also leave no trail. Everything else
+      // (inventory ledger corrections etc.) stays staff. audit_log entries
+      // can never be deleted by anyone.
+      allow delete: if isStaff()
+        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && (isAdmin()
+            || !(path.size() >= 2 && path[0] == 'main'
+                 && path[1] in ['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices']));
     }
 
     // Default posture: DENY. No catch-all rule.
