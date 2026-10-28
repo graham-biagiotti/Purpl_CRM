@@ -2431,6 +2431,13 @@ async function _txActionClaim(docPath, field, opts = {}) {
   } catch (e) {
     if (e && e._claim === 'done') return { ok: false, reason: 'done' };
     if (e && e._claim === 'held') return { ok: false, reason: 'held', by: e.by };
+    // Gate F5 (v251): a REFUSED claim fails closed — degrading open on
+    // permission-denied would silently delete the cross-user protection for
+    // exactly the user it protects if the rules ever tighten.
+    if (e && e.code === 'permission-denied') {
+      toast('⚠️ The server refused the duplicate-action check — action blocked to be safe. Tell Claude.', 8000);
+      return { ok: false, reason: 'denied' };
+    }
     console.warn('[claim] transaction unavailable, proceeding single-tab:', e?.message || e);
     return { ok: true, release: () => {} };
   }
@@ -10371,7 +10378,7 @@ async function createDeliveryInvoice(accountId, ordId) {
   });
   const totalCases = lineItems.reduce((s,l)=>s+l.cases, 0);
   const total      = lineItems.reduce((s,l)=>s+l.amount, 0);
-  if (totalCases < 1) { toast('No items to invoice'); _deliveryInvInFlight.delete(ordId); return; }
+  if (totalCases < 1) { toast('No items to invoice'); _claim.release(); _deliveryInvInFlight.delete(ordId); return; } // gate F2 (v251): a leaked claim here wedged the fixed order for 2 minutes
   const pricePerCase = totalCases > 0 ? total / totalCases : 0;
 
   const invoice = {
@@ -16093,8 +16100,13 @@ const PortalDB = {
         if (typeof currentPage !== 'undefined' && currentPage === 'pre-orders') {
           const pg = document.getElementById('page-pre-orders');
           const focused = document.activeElement;
-          const busy = document.querySelector('dialog[open]') ||
-            (focused && pg && pg.contains(focused) && /^(SELECT|INPUT|TEXTAREA)$/.test(focused.tagName));
+          // Gate F3 (v251): this app's modals are .overlay divs, not <dialog>
+          // — the old dialog[open] check never fired, so a repaint could land
+          // under an open confirm modal or shift a row between a user's
+          // mousedown and mouseup on Approve. Any open overlay, or ANY
+          // focused control inside the page (buttons included), defers.
+          const busy = document.querySelector('.overlay.open, dialog[open]') ||
+            (focused && pg && pg.contains(focused) && /^(SELECT|INPUT|TEXTAREA|BUTTON)$/.test(focused.tagName));
           if (!busy) { try { renderPreOrders(); } catch(_) {} }
         }
       }, err => {
@@ -16338,7 +16350,12 @@ async function _approveSampleRequest(portalOrderId) {
   // two shipped boxes (sampleNum embedded Date.now, so ShipStation couldn't
   // dedupe them either). Claim the request before pushing; a 3-minute window
   // covers the slow push.
-  const _claim = await _txActionClaim('portal_orders/' + portalOrderId, 'sampleClaim', {
+  // Gate F4 (v251): claim a CANONICAL sibling (lexicographic min), not the
+  // clicked doc — a stale tab can elect the other twin of a dual-brand pair
+  // as its row representative, and per-doc claims on different twins would
+  // both win. One deterministic claim doc per submission closes that.
+  const _claimId = (_sampleSiblingIds(order) || [portalOrderId]).slice().sort()[0] || portalOrderId;
+  const _claim = await _txActionClaim('portal_orders/' + _claimId, 'sampleClaim', {
     windowMs: 180000,
     abortIf: d => !!d.sampleApproved,
   });

@@ -29,6 +29,9 @@ console.log('[A] version + claim helper');
   // never block the owner's work.
   ok(/proceeding single-tab/.test(h) && /return \{ ok: true, release: \(\) => \{\} \};/.test(h),
     'unreachable server degrades open (single-tab guard still applies)');
+  // Gate F5 (v251): but a REFUSED claim fails closed, loudly.
+  ok(/e\.code === 'permission-denied'/.test(h) && /reason: 'denied'/.test(h) && h.indexOf("'denied'") < h.indexOf('proceeding single-tab'),
+    'permission-denied fails CLOSED with a loud toast (gate F5)');
   ok(h.includes("ref.update({ [field]: null })"), 'release() clears the claim field');
 }
 
@@ -71,8 +74,18 @@ console.log('[B] claim sites');
   ok(/abortIf: d => d\.invoiceStatus === 'invoiced'/.test(dv),
     'server-side already-invoiced aborts');
   ok(dv.indexOf('_txActionClaim') < dv.indexOf('getNextInvoiceNumber'),
-    'the loser never burns an invoice number');
+    'the claim loser never burns an invoice number');
   ok(/invoiceNumber, invoiceClaim: null\}/.test(dv), 'winning invoice clears the claim');
+  // Gate F2 (v251): the empty-order early return must free the claim, or a
+  // fixed order stays wedged for 2 minutes behind the user's own stamp.
+  ok(/totalCases < 1\) \{ toast\('No items to invoice'\); _claim\.release\(\);/.test(dv),
+    'empty-order bail releases the claim (gate F2)');
+
+  // Sample approve claims a CANONICAL sibling (gate F4) — behavioral coverage
+  // in wave19; shape pinned here.
+  const ap = slc(src, 'async function _approveSampleRequest', '\nasync function _declineSampleRequest');
+  ok(/_sampleSiblingIds\(order\) \|\| \[portalOrderId\]\)\.slice\(\)\.sort\(\)\[0\]/.test(ap),
+    'sample claim doc is the lexicographic-min sibling (gate F4)');
 }
 
 console.log('[C] db.js — field-targeted saves + cache-only echo');
@@ -147,8 +160,10 @@ console.log('[E] portal_orders live listener');
   ok(p.includes("collection('portal_orders').onSnapshot"), 'live listener on portal_orders');
   ok(p.includes('_applyOrders(snap)'), 'one-shot load and listener share the mapping');
   ok(/currentPage === 'pre-orders'/.test(p), 'repaints only while the page is on screen');
-  ok(/dialog\[open\]/.test(p) && /SELECT\|INPUT\|TEXTAREA/.test(p),
-    'never repaints mid-interaction (open dialog / focused control)');
+  // Gate F3 (v251): this app's modals are .overlay divs (dialog[open] alone
+  // was dead code), and a poised BUTTON counts as mid-interaction too.
+  ok(/\.overlay\.open, dialog\[open\]/.test(p) && /SELECT\|INPUT\|TEXTAREA\|BUTTON/.test(p),
+    'never repaints mid-interaction (open overlay modal / any focused control, gate F3)');
   ok(/this\._unsubOrders = null;\s*\}\);/.test(p) || /err/.test(p),
     'listener error clears the handle so the next page view resubscribes');
   ok(p.includes('teardown()'), 'teardown exists');
@@ -164,7 +179,13 @@ console.log('[F] firestore.rules contracts (emulator-proven in tests/emu/rules-t
   ok(/'invoice_settings' in request\.resource\.data/.test(rules)
      && /affectedKeys\(\)\.hasOnly\(\['nextInvoiceNum'\]\)/.test(rules),
     'invoice_settings admin-only EXCEPT the allocator counter');
-  ok(/path\[1\] in \['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices'\]/.test(rules),
+  // Gate F1 (v251): rules restructured — {col} is a real string variable on a
+  // depth-pinned match, so denial is by logic, never by evaluation error
+  // (path.size() does not exist on the rules path type).
+  const rulesCode = rules.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  ok(/match \/workspace\/main\/\{col\}\/\{docId\}/.test(rulesCode) && !/path\.size\(\)/.test(rulesCode),
+    'writes matched at the real data shape — no path.size() pseudo-guards (gate F1)');
+  ok(/col in \['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices'\]/.test(rules),
     'account + all five invoice collections admin-only to delete');
   ok(/match \/accounts\/\{accountId\} \{\s*allow read, create, update: if isStaff\(\);\s*allow delete: if isAdmin\(\);/m
      .test(rules.replace(/\/\/[^\n]*\n/g, '')) ||

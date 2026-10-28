@@ -222,10 +222,22 @@ service cloud.firestore {
     // v251 (second-user hardening): the write grant is split so the UI's
     // admin-only gates are enforced HERE, not just as hidden buttons.
     // Firestore grants access if ANY matching rule allows it, so these
-    // restrictions must live inside this catch-all's own conditions — a
-    // denying sub-match cannot revoke what this match grants.
+    // restrictions must live inside the granting match's own conditions — a
+    // denying sub-match cannot revoke what another match grants.
+    //
+    // Gate F1 (v251): the old catch-all guarded segments with path.size(),
+    // which does not exist on the rules path type — every guard evaluated to
+    // an ERROR and only denied by Firestore's error-absorption semantics.
+    // Restructured: reads stay recursive (no segment logic, no errors);
+    // writes match the one real data shape, workspace/main/{col}/{docId},
+    // with {col} bound as a plain string so denial is by logic. The client
+    // data layer (db.js) only ever writes that flat shape; deeper paths and
+    // the workspace/main doc itself have no writers and stay denied, exactly
+    // as they were (previously denied-by-error).
     match /workspace/{path=**} {
       allow read: if isStaff();
+    }
+    match /workspace/main/{col}/{docId} {
       // Creates/updates: staff, EXCEPT audit_log (immutable from the client;
       // its own match above re-grants create only) and EXCEPT changes to the
       // invoice_settings config key by non-admins. invoice_settings carries
@@ -233,12 +245,10 @@ service cloud.firestore {
       // link, from-address) — admin-only. The one non-admin writer it has is
       // the invoice-number allocator's transaction, which touches ONLY
       // nextInvoiceNum, so that single nested field stays staff-writable.
-      // Size guard prevents an index error on short paths (e.g. a write to
-      // workspace/main itself).
       allow create, update: if isStaff()
-        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && col != 'audit_log'
         && (isAdmin()
-            || !(path.size() >= 2 && path[0] == 'main' && path[1] == 'config')
+            || col != 'config'
             || (request.method == 'create'
                  ? !('invoice_settings' in request.resource.data)
                  : (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice_settings'])
@@ -251,10 +261,9 @@ service cloud.firestore {
       // (inventory ledger corrections etc.) stays staff. audit_log entries
       // can never be deleted by anyone.
       allow delete: if isStaff()
-        && !(path.size() >= 2 && path[0] == 'main' && path[1] == 'audit_log')
+        && col != 'audit_log'
         && (isAdmin()
-            || !(path.size() >= 2 && path[0] == 'main'
-                 && path[1] in ['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices']));
+            || !(col in ['ac', 'retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices']));
     }
 
     // Default posture: DENY. No catch-all rule.

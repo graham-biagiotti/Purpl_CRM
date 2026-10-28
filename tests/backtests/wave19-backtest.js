@@ -28,7 +28,9 @@ console.log('[A] F19 — approve only what shipped');
     'approve bails (row stays Pending) when the push failed — no ghost approval');
   // v251: cross-user claim — approve claims the request on the SERVER before
   // pushing, and a lost claim exits before any push.
-  ok(/_txActionClaim\('portal_orders\/' \+ portalOrderId, 'sampleClaim'/.test(appr),
+  // (gate F4: the claim doc is the canonical lexicographic-min sibling, so
+  // both twins of a dual-brand pair contend on ONE doc.)
+  ok(/_txActionClaim\('portal_orders\/' \+ _claimId, 'sampleClaim'/.test(appr),
     'approve claims the request server-side before pushing (v251)');
   ok(appr.indexOf("_txActionClaim('portal_orders/") < appr.indexOf('await pushSampleToShipStation'),
     'claim happens BEFORE the push (v251)');
