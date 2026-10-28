@@ -47,6 +47,8 @@ console.log('[B] order form — fallback, banner, badges');
   ok(badge('Lavender Refresh Powder').includes('NEW PACKAGING'), 'refresh → packaging badge');
   ok(badge('Soy Candle') === '' && badge('Seatbelt Sachet') === '' && badge('') === '',
     'everything else unbadged');
+  // Gate F1: the gallon ALSO matches /syrup/ — it must never claim 16oz.
+  ok(badge('Lavender Simple Syrup 1 gal') === '', 'gallon jug stays unbadged (gate F1)');
 }
 
 console.log('[C] live-SKU rename migration (one-shot, owner-approved)');

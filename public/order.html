@@ -694,7 +694,7 @@ function renderLfSkus(skus, prevOrder) {
     function lfNewBadge(name) {
       var n = (name || '').toLowerCase();
       if (/sleep|eye pillow/.test(n)) return ' <span style="background:#4D2A6F;color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW</span>';
-      if (/syrup/.test(n)) return ' <span style="background:#eef6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW 16 OZ BOTTLE</span>';
+      if (/syrup/.test(n) && !/gal/.test(n)) return ' <span style="background:#eef6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW 16 OZ BOTTLE</span>';
       if (/refresh/.test(n)) return ' <span style="background:#f6fdf8;color:#14532d;border:1px solid #bbe3c8;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW PACKAGING</span>';
       return '';
     }
