@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v247';
+const APP_VERSION = 'v249';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1478,7 +1478,7 @@ function seedIfEmpty() {
   // Seed LF SKUs independently — happens once regardless of other data state
   if (!DB.a('lf_skus').length) {
     DB.set('lf_skus', [
-      {id:uid(),name:'Lavender Simple Syrup 12.7oz',wholesalePrice:8.99, caseSize:12,msrp:17.99,archived:false},
+      {id:uid(),name:'Lavender Simple Syrup 16oz',wholesalePrice:8.99, caseSize:12,msrp:17.99,archived:false},
       {id:uid(),name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99,caseSize:1, msrp:null, archived:false},
       {id:uid(),name:'Aromatherapy Scrunchie',        wholesalePrice:7.49, caseSize:6, msrp:14.99,archived:false},
       {id:uid(),name:'Seatbelt Sachet',               wholesalePrice:4.99, caseSize:12,msrp:9.99, archived:false},
@@ -1547,7 +1547,7 @@ function migrateLfSkuPrices() {
   if (DB.obj('settings', {}).lfPriceMigrationDone) return;
   DB.setObj('settings', { ...DB.obj('settings', {}), lfPriceMigrationDone: true });
   const PRICE_CATALOG = {
-    'Lavender Simple Syrup 12.7oz': {wholesalePrice:8.99,  caseSize:12, msrp:17.99},
+    'Lavender Simple Syrup 16oz': {wholesalePrice:8.99,  caseSize:12, msrp:17.99},
     'Lavender Simple Syrup 1 gal':  {wholesalePrice:49.99, caseSize:1,  msrp:null},
     'Aromatherapy Scrunchie':        {wholesalePrice:7.49,  caseSize:6,  msrp:14.99},
     'Seatbelt Sachet':               {wholesalePrice:4.99,  caseSize:12, msrp:9.99},
@@ -1565,6 +1565,19 @@ function migrateLfSkuPrices() {
     if (!needsUpdate) return;
     DB.update('lf_skus', s.id, sk => ({...sk, ...catalog}));
   });
+}
+
+// v249: packaging change — the syrup moved to a 16 oz glass bottle, same
+// wholesale price/MSRP. One-shot rename of the LIVE SKU (owner-approved
+// data edit, 10/28): idempotent by exact-name match, so it fires once and
+// never touches a hand-edited name again. Historical invoices keep their
+// snapshot names (that's the truthful record of what shipped).
+function migrateLfSyrupSize() {
+  if (!DB._firestoreReady) return;
+  const old = DB.a('lf_skus').find(s => s.name === 'Lavender Simple Syrup 12.7oz');
+  if (!old) return;
+  DB.update('lf_skus', old.id, sk => ({ ...sk, name: 'Lavender Simple Syrup 16oz' }));
+  console.log('[migrate] LF syrup renamed to 16oz');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -15361,6 +15374,7 @@ window.onAppReady = function() {
   seedIfEmpty();
   migrateLfSkuVariants();
   migrateLfSkuPrices();
+  migrateLfSyrupSize(); // v249: 16oz bottle rename (idempotent name-match)
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
   migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
   migrateInvoiceStatuses(); // one-time: unpaid/overdue → sent for all invoice types
@@ -15370,6 +15384,7 @@ window.onAppReady = function() {
   // 10s startup timeout fired before Firestore data arrived.
   window.refreshCurrentPage = () => {
     migrateLfSkuVariants();
+    migrateLfSyrupSize(); // retried here in case the 10s boot window missed the data
     restoreMyData();
     migrateAccountContacts();
     _checkShippedInvoices();

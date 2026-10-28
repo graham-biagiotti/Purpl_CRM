@@ -366,6 +366,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
     <div class="card" id="lf-order-section" style="display:none">
       <h2>🪻 Lavender Fields</h2>
       <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Handcrafted farm goods &nbsp;·&nbsp; Minimum order per item noted below &nbsp;·&nbsp; Net 30</p>
+      <!-- v249: packaging/product announcements -->
+      <div style="background:#f6fdf8;border:1px solid #bbe3c8;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#14532d;line-height:1.7">
+        <strong>What's new:</strong> 🆕 Aromatherapy Sleep Mask &nbsp;·&nbsp; Simple Syrup now in a <strong>16&nbsp;oz glass bottle</strong> &nbsp;·&nbsp; Refresh Powder has <strong>fresh new packaging</strong>
+      </div>
       <div id="lf-sku-list">
         <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Loading products…</div>
       </div>
@@ -531,7 +535,7 @@ let _brandLf = false;
 let _lfSkus = [];
 let _lfSkusLoaded = false;
 const LF_SKU_FALLBACK = [
-  {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 12.7oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
+  {id:'lf-simple-syrup-sm', name:'Lavender Simple Syrup 16oz', wholesalePrice:8.99,  caseSize:12, msrp:17.99},
   {id:'lf-simple-syrup-lg', name:'Lavender Simple Syrup 1 gal',  wholesalePrice:49.99, caseSize:1,  msrp:null},
   {id:'lf-scrunchie', name:'Aromatherapy Scrunchie', wholesalePrice:7.49, caseSize:6, msrp:14.99, variants:[
     {id:'blossom-satin',    name:'Blossom Satin'},
@@ -642,7 +646,7 @@ function renderLfSkus(skus, prevOrder) {
 
       return '<div class="lf-sku-row lf-sku-has-variants" id="lf-row-'+s.id+'">' +
         '<div class="lf-sku-info">' +
-          '<div class="lf-sku-name">'+s.name+'</div>' +
+          '<div class="lf-sku-name">'+s.name+lfNewBadge(s.name)+'</div>' +
           '<div class="lf-sku-meta">Case of '+s.caseSize+' · '+activeVariants.length+' variants'+msrpText+'</div>' +
           '<div class="lf-sku-price">$'+parseFloat(s.wholesalePrice).toFixed(2)+'/unit · $'+(parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2)+'/case</div>' +
           prevNoteHtml +
@@ -666,7 +670,7 @@ function renderLfSkus(skus, prevOrder) {
     var prevNote = prev > 0 ? '<div class="lf-prev-note">Last order: ' + prev + ' case' + (prev!==1?'s':'') + '</div>' : '';
     return '<div class="lf-sku-row" id="lf-row-' + s.id + '">' +
       '<div class="lf-sku-info">' +
-        '<div class="lf-sku-name">' + s.name + '</div>' +
+        '<div class="lf-sku-name">' + s.name + lfNewBadge(s.name) + '</div>' +
         '<div class="lf-sku-meta">Case of ' + s.caseSize + msrpText + '</div>' +
         '<div class="lf-sku-price">$' + parseFloat(s.wholesalePrice).toFixed(2) + '/unit · $' + (parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2) + '/case</div>' +
         prevNote +
@@ -684,7 +688,18 @@ function renderLfSkus(skus, prevOrder) {
   updateLfSubtotal();
 }
 
-function updateLfCalc(skuId) {
+
+    // v249: temporary launch badges — matched on the live SKU name so Graham's
+    // Settings renames flow through. Remove when the news is old.
+    function lfNewBadge(name) {
+      var n = (name || '').toLowerCase();
+      if (/sleep|eye pillow/.test(n)) return ' <span style="background:#4D2A6F;color:#fff;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW</span>';
+      if (/syrup/.test(n)) return ' <span style="background:#eef6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW 16 OZ BOTTLE</span>';
+      if (/refresh/.test(n)) return ' <span style="background:#f6fdf8;color:#14532d;border:1px solid #bbe3c8;border-radius:8px;padding:1px 8px;font-size:10px;font-weight:700;vertical-align:1px">NEW PACKAGING</span>';
+      return '';
+    }
+
+    function updateLfCalc(skuId) {
   var sku = _lfSkus.find(function(s){return s.id===skuId;});
   if (!sku) return;
   var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
