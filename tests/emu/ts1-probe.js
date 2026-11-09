@@ -17,12 +17,16 @@
 // contract is covered by wave15's B5/B6 dynamic tests; a green probe here
 // does NOT cover it.
 'use strict';
+// v253 gate F3: the harness emulator loads firestore-open.rules (firebase.json)
+// — rewriting the production-rules copy here stopped denying anything, making
+// the deny-phase vacuous. The open file's single `if true` makes the flip a
+// real global deny, and the production copy is never touched (wave23 sync).
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { makeClient, loadDB, seed, sleep } = require('./harness-transport');
 
-const RULES = path.join(__dirname, 'firestore.rules');
+const RULES = path.join(__dirname, 'firestore-open.rules');
 const ALLOW = fs.readFileSync(RULES, 'utf8');
 const DENY = ALLOW.replace('if true', 'if false');
 

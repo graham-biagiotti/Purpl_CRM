@@ -52,7 +52,13 @@ console.log('[B] db.js structural guarantees');
 
   ok((dbSrc.match(/this\._deferredRemote\.add\(/g) || []).length >= 2, 'M4: both listeners queue deferred keys');
   const dd = dbSrc.slice(dbSrc.indexOf('_drainDeferred() {'), dbSrc.indexOf('// ── Migration from single-doc'));
-  ok(dd.includes("if (this._dirty || this._atomicInProgress) return;"), 'M4: drain refuses to run while blocked');
+  // v253 CONTRACT CHANGE: the freeze is keyed now — the drain fully bails
+  // only on the legacy freeze-everything state, and skips frozen keys
+  // individually inside the loop (so unfrozen collections stay live while a
+  // modal is open).
+  ok(dd.includes("if (this._dirty === true || this._atomicInProgress) return;"), 'M4: drain refuses to run while fully blocked');
+  ok((dd.match(/this\._frozen\(key\)/g) || []).length >= 1 && dd.includes('_frozenCfg()'),
+    'M4/v253: drain skips individually frozen keys (collection + config)');
   ok(dd.indexOf('_deferredSnaps[key]') > 0 && dd.indexOf('_deferredSnaps[key]') < dd.indexOf('.get()'),
     'M4: drain prefers the latest DELIVERED snapshot (ordered, no fetch race); fetch is fallback only');
   ok((dbSrc.match(/this\._deferredSnaps\[/g) || []).length >= 4,

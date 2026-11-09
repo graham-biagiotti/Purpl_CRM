@@ -1231,6 +1231,13 @@ const DB = {
       });
       fn(this._cache);
       COLLECTION_KEYS.forEach(k => {
+        // Gate advisory (v253): deletions are NOT supported here — warn loudly
+        // if a mutator removed a doc, so a future call site can't lose data
+        // silently (the doc would vanish from cache but never from the server).
+        const after = new Set((this._cache[k] || []).map(x => x && x.id));
+        before[k].forEach((_, id) => {
+          if (!after.has(id)) console.error(`[db] atomicUpdateFields: mutator DELETED ${k}/${id} — deletions are not written by this path; use atomicUpdate/remove`);
+        });
         (this._cache[k] || []).forEach(x => {
           if (!x || typeof x !== 'object' || !x.id) return;
           const prevRaw = before[k].get(x.id);

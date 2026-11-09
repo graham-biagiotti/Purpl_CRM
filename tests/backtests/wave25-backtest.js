@@ -59,10 +59,22 @@ console.log('[B] openModal freeze map');
   ok(/'modal-edit-account':\s*\['ac'\]/.test(map),
     'account modal freezes only ac — the whole-tab freeze is gone');
   const om = fnSlice('function openModal(id) {', '\nfunction closeModal');
-  ok(om.indexOf('DB.markClean()') > -1 && om.indexOf('DB.markClean()') < om.indexOf('markDirty'),
-    'opening a modal over another clears the old freeze first (leak fixed)');
+  // Gate F2 (v253): forms are prefilled BEFORE openModal runs, so the NEW
+  // freeze must be set before the drain — the modal's own keys stay deferred
+  // (diff baseline matches the prefill) while everything else catches up.
+  // A non-edit modal replacing an edit modal still clears the leaked freeze.
+  ok(om.indexOf('DB.markDirty') > -1 && om.indexOf('DB.markDirty') < om.indexOf('DB._drainDeferred()'),
+    'freeze set BEFORE the drain (prefill/diff-baseline consistency, gate F2)');
+  ok(om.includes('DB._dirty = false;') && om.includes('DB._drainDeferred()'),
+    'non-edit modals clear a leaked freeze; drain always runs (leak fixed)');
   ok(/MODAL_FREEZE_KEYS\[id\]/.test(om) && /DB\.markDirty\(\)/.test(om),
     'mapped modals freeze their keys; unmapped edit modals keep legacy freeze-all');
+  ok(map.includes("'dist_invoices'"),
+    'preview shell freeze covers dist invoices too (gate F4)');
+  // Gate F5: dist invoice edit save is diff-based like the rest.
+  const dsv = slc(src, 'async function saveDistInvoice', '\nfunction markDistInvoicePaid');
+  ok(/DB\.updateFields\('dist_invoices', existingId, _patch\)/.test(dsv),
+    'dist invoice edit writes only changed fields (gate F5)');
 }
 
 console.log('[C] diff-based saves');

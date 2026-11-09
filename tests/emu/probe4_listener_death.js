@@ -11,12 +11,16 @@
 // (listeners reconnect -> permission-denied -> onError); restart again with
 // allow rules; have B write; see if A's cache ever hears about it.
 'use strict';
+// v253 gate F3: the harness emulator loads firestore-open.rules (firebase.json)
+// — rewriting the production-rules copy here stopped denying anything, making
+// the deny-phase vacuous. The open file's single `if true` makes the flip a
+// real global deny, and the production copy is never touched (wave23 sync).
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 const { makeClient, loadDB, seed, sleep } = require('./harness-transport');
 
-const ALLOW = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
+const ALLOW = fs.readFileSync(path.join(__dirname, 'firestore-open.rules'), 'utf8');
 const DENY = ALLOW.replace('if true', 'if false');
 
 function emuPid() {
@@ -52,14 +56,14 @@ async function restartEmu() {
   console.log('[init] d1 =', DB.a('ac').find(x => x.id === 'd1')?.name);
 
   // Phase 1: restart with DENY rules — reconnecting listeners get permission-denied
-  fs.writeFileSync(path.join(__dirname, 'firestore.rules'), DENY);
+  fs.writeFileSync(path.join(__dirname, 'firestore-open.rules'), DENY);
   console.log('[phase1] restarting emulator with DENY rules...');
   await restartEmu();
   await sleep(20000); // listeners reconnect and die
   console.log('[phase1] snapshot-error callbacks fired:', errCount);
 
   // Phase 2: back to ALLOW rules — if listeners were alive they would recover
-  fs.writeFileSync(path.join(__dirname, 'firestore.rules'), ALLOW);
+  fs.writeFileSync(path.join(__dirname, 'firestore-open.rules'), ALLOW);
   console.log('[phase2] restarting emulator with ALLOW rules...');
   await restartEmu();
   await sleep(5000);

@@ -8725,7 +8725,21 @@ async function saveDistInvoice(existingId) {
   // Born-paid dist invoices: stamp the paid date (see purpl save; year-end filter).
   if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
 
-  if (existingId) DB.update('dist_invoices', existingId, () => rec);
+  if (existingId) {
+    // v253 gate F5: changed-fields-only, same pattern as the other invoice
+    // edit paths — the whole-record write could flip back a concurrent
+    // mark-paid (or resurrect a concurrently-voided dist invoice).
+    const _existing = DB.a('dist_invoices').find(x => x.id === existingId);
+    const _patch = {};
+    Object.keys(rec).forEach(k => {
+      if (k === 'id' || rec[k] === undefined) return;
+      const _b = JSON.stringify(_existing && _existing[k] !== undefined ? _existing[k] : null);
+      if (JSON.stringify(rec[k]) !== _b) _patch[k] = rec[k];
+    });
+    if (Object.keys(_patch).length) {
+      if (!DB.updateFields('dist_invoices', existingId, _patch)) DB.update('dist_invoices', existingId, () => rec);
+    }
+  }
   else DB.push('dist_invoices', rec);
 
   closeModal('modal-add-dist-invoice');
@@ -12145,26 +12159,32 @@ const MODAL_FREEZE_KEYS = {
   // v253: these two never matched the id patterns and were NEVER frozen —
   // their saves diffed against live data, the worst combination.
   'modal-lf-invoice':       ['lf_invoices', 'lf_wix_deductions'],
-  'modal-combined-invoice': ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv'],
+  'modal-combined-invoice': ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'dist_invoices'], // gate F4: the shell edits dist invoices too
 };
 
 function openModal(id) {
   document.querySelectorAll('.overlay.open').forEach(o => {
     if (o.id !== id) o.classList.remove('open');
   });
-  // v253: replacing one modal with another used to leak the old freeze (the
-  // closed modal never got its markClean). One modal at a time: always start
-  // from clean, which also drains anything deferred while the last one was
-  // open, so the new form prefills from the freshest state.
-  DB.markClean();
   const m = document.getElementById(id);
   if (m) m.classList.add('open');
-  // Freeze what this modal writes (mapped), or everything (legacy patterns)
+  // v253: replacing one modal with another used to leak the old freeze (the
+  // closed modal never got its markClean). One modal at a time: always reset.
+  // Gate F2 ordering: the form was PREFILLED before openModal ran, so set the
+  // NEW freeze first and drain after — deferred changes to this modal's own
+  // keys stay deferred (the diff-baseline matches the prefill), while every
+  // other key catches up. Draining before freezing moved the baseline under
+  // an already-filled form, and an untouched field then wrote the other
+  // user's just-applied change back to its stale prefill value.
   if (MODAL_FREEZE_KEYS[id]) {
     DB.markDirty(MODAL_FREEZE_KEYS[id]);
   } else if (id && (id.includes('edit') || id.includes('add') || id.includes('new') || id.includes('log'))) {
     DB.markDirty();
+  } else {
+    DB._dirty = false; // non-edit modal: clear any leaked freeze
   }
+  DB._dismissRemoteWarning();
+  DB._drainDeferred();
 }
 function closeModal(id) {
   // The shared dialog must NEVER be closed without resolving its promise
