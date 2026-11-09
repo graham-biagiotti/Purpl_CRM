@@ -73,6 +73,17 @@ console.log('[B] seedIfEmpty — run the REAL function against stub DBs');
   const r5 = run({ cache: { settings: { company: 'purpl' }, lf_skus: [{ id: 'x' }] } });
   ok(r5.set.length === 0 && r5.setObj.length === 1 && r5.setObj[0] === 'settings',
     'existing unseeded settings → marked seeded, nothing else written');
+
+  // Gate F1 (v252): restoreMyData — the OTHER boot writer (hardcoded account
+  // restorer from the March 2026 incident) — carries the identical guard, in
+  // the right order (after _firestoreReady, before the data_restored check
+  // that reads the possibly-unloaded settings cache).
+  const rmd = slc(src, 'function restoreMyData()', 'const mkId');
+  ok(rmd.includes('if (!DB._loadConfirmed) return;'),
+    'restoreMyData refuses to run after a failed boot read (gate F1)');
+  ok(rmd.indexOf('_firestoreReady') < rmd.indexOf('_loadConfirmed')
+     && rmd.indexOf('_loadConfirmed') < rmd.indexOf('data_restored'),
+    'guard ordered before the cache-reading restored-flag check');
 }
 
 console.log('[C] places.js loader — static contracts');
@@ -136,8 +147,21 @@ console.log('[D] places.js loader — run the REAL loader against stubs');
     hangTimer.fn();
     ok(await p1 === false, 'hung load resolves false instead of pending forever');
     ok(e1.scripts[0].removed === true, 'dead script tag removed');
-    e1.window.PlacesAC.load();
-    ok(e1.scripts.length === 2, 'the very next load() retries with a fresh script');
+    // Gate F2 (v252): the timed-out script can still EXECUTE late (removing
+    // the tag doesn't abort the fetch). The late callback hits the settled
+    // closure, which must record the live API — and the next load() must NOT
+    // inject a second Maps copy.
+    e1.window.__purplPlacesReady();
+    ok(await e1.window.PlacesAC.load() === true && e1.scripts.length === 1,
+      'late execution after timeout → recorded as loaded, NO second include (gate F2)');
+
+    // Without a late arrival, the next load() retries with a fresh script.
+    const e1b = mk();
+    const p1c = e1b.window.PlacesAC.load();
+    e1b.timers.find(t => t.ms === 10000 && !t.cleared).fn();
+    await p1c;
+    e1b.window.PlacesAC.load();
+    ok(e1b.scripts.length === 2, 'no late arrival → the very next load() retries with a fresh script');
 
     // Script loads and callback fires: resolves true, watchdog cancelled,
     // later loads are satisfied from cache (no second script).
@@ -149,6 +173,13 @@ console.log('[D] places.js loader — run the REAL loader against stubs');
     ok(w2 && w2.cleared === true, 'watchdog cancelled on success');
     e2.window.PlacesAC.load();
     ok(e2.scripts.length === 1, 'loaded state cached — no duplicate script');
+
+    // Gate F2 (v252): a page where Google Maps is ALREADY live short-circuits
+    // entirely — load() never injects a duplicate copy.
+    const e4 = mk();
+    e4.window.google = { maps: { places: {} } };
+    ok(await e4.window.PlacesAC.load() === true && e4.scripts.length === 0,
+      'API already present → load() returns true without injecting anything (gate F2)');
 
     // network onerror: same recovery as timeout.
     const e3 = mk();

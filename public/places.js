@@ -57,6 +57,11 @@
 
   // ── Load Google Maps JS API with Places library ───────
   function load() {
+    // v252 gate F2: removing a timed-out script tag does NOT abort its
+    // in-flight fetch — a slow connection can execute it late, making the
+    // API live while our state says failed. Never inject a second copy
+    // (Google warns, and duplicate includes can corrupt Places widgets).
+    if (!_loaded && window.google?.maps?.places) _loaded = true;
     if (_loaded)  return Promise.resolve(true);
     if (_loading) return _loading;
 
@@ -94,7 +99,10 @@
       };
       const timer = setTimeout(() => fail('timeout'), 10000);
       window.__purplPlacesReady = () => {
-        if (settled) return;
+        // v252 gate F2: a LATE arrival (after the watchdog already failed
+        // this attempt) still means the API is live now — record that so the
+        // next load() returns instantly instead of double-including.
+        if (settled) { _loaded = true; return; }
         settled = true;
         clearTimeout(timer);
         _loaded = true;

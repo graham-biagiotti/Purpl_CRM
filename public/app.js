@@ -12200,6 +12200,12 @@ function restoreMyData() {
   // The 10s startup timeout can fire before the snapshot arrives — without
   // this guard, restoreMyData would see an empty cache and overwrite real data.
   if (!DB._firestoreReady) return;
+  // v252 gate F1: same guard as seedIfEmpty — a FAILED boot read left
+  // _firestoreReady true with an empty cache, and this restorer (built to
+  // undo the March 2026 seed-overwrite!) would then re-create its hardcoded
+  // accounts under new ids and merge a 3-flag settings object over the
+  // production settings when the writes flushed on reconnect.
+  if (!DB._loadConfirmed) return;
   // Already done — skip
   if (DB.obj('settings',{}).data_restored) return;
 
