@@ -69,7 +69,9 @@ console.log('[B] openModal freeze map');
     'non-edit modals clear a leaked freeze; drain always runs (leak fixed)');
   ok(/MODAL_FREEZE_KEYS\[id\]/.test(om) && /DB\.markDirty\(\)/.test(om),
     'mapped modals freeze their keys; unmapped edit modals keep legacy freeze-all');
-  ok(map.includes("'dist_invoices'"),
+  // (verify-pass tightening: the plain includes() matched modal-add-dist-invoice's
+  // entry and was vacuous — pin the combined-shell line specifically)
+  ok(/'modal-combined-invoice':[^\]]*'dist_invoices'/.test(map),
     'preview shell freeze covers dist invoices too (gate F4)');
   // Gate F5: dist invoice edit save is diff-based like the rest.
   const dsv = slc(src, 'async function saveDistInvoice', '\nfunction markDistInvoicePaid');

@@ -18,7 +18,7 @@
 // does NOT cover it.
 'use strict';
 // v253 gate F3: the harness emulator loads firestore-open.rules (firebase.json)
-// — rewriting the production-rules copy here stopped denying anything, making
+// — rewriting the production-rules copy (which it loaded before v251 synced it) stopped denying, making
 // the deny-phase vacuous. The open file's single `if true` makes the flip a
 // real global deny, and the production copy is never touched (wave23 sync).
 const fs = require('fs');
