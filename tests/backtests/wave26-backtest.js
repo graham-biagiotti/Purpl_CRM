@@ -65,9 +65,15 @@ console.log('[C] template mass-send — cap stop + resume (run the REAL loop)');
     'preflight confirm names the skip count');
   ok(/if \(_alreadyGot\(a\)\) \{ skipped\+\+; continue; \}/.test(ts),
     'loop skips already-received accounts (the resume mechanism)');
-  ok(/if \(_isEmailQuotaError\(e\)\) \{ capHit = true; break; \}/.test(ts),
-    'quota rejection stops the loop instead of burning the rest as failures');
+  // Gate F4: one paused retry before declaring the cap (burst 429 ≠ daily cap)
+  ok(/if \(r === 'cap'\) \{[\s\S]{0,300}setTimeout\(w, 2500\)[\s\S]{0,80}r = await _sendOne\(email\);/.test(ts),
+    'first quota hit retries once after a pause (gate F4)');
+  ok(/if \(r === 'cap'\) \{ capHit = true; break; \}/.test(ts),
+    'persisting quota rejection stops the loop instead of burning the rest as failures');
   ok(/if \(capHit\) break;/.test(ts), 'outer loop stops too');
+  // Gate F2: remaining counted from the LIVE cache, not the stale captured array
+  ok(/const remaining = DB\.a\('ac'\)\.filter\(a => _meSelectedIds\.has\(a\.id\)/.test(ts),
+    'cap summary counts remaining from the live cache (gate F2)');
   ok(ts.includes('Daily email limit reached') && ts.includes('Re-run this same send tomorrow'),
     'cap summary tells him exactly what to do');
   ok(/if \(capHit\) \{[\s\S]{0,700}return; \/\/ selections kept/.test(ts),
@@ -93,16 +99,36 @@ console.log('[D] broadcast — primary contact + cap resume');
   const bs = slc(src, 'async function meBroadcastSend()', '\n// ── Mass Template Send');
   ok(/_bc\.find\(c=>c\.isPrimary\) \|\| _bc\[0\]/.test(bs),
     'broadcast goes to the PRIMARY contact (was: first with an email)');
-  ok(/if \(_isEmailQuotaError\(e\)\) \{ capHit = true; break; \}/.test(bs),
-    'broadcast stops at the daily cap');
+  ok(/if \(r === 'cap'\) \{ capHit = true; break; \}/.test(bs),
+    'broadcast stops at the daily cap (after the gate-F4 retry)');
+  // Gate F1: DURABLE resume — the selection Set dies with the tab, so the
+  // same-subject-within-7-days cadence skip is what makes "re-select all and
+  // re-send tomorrow" safe instead of a double-send.
+  ok(/const _bcGot = a =>/.test(bs) && /e\.stage === 'broadcast' && e\.invoiceRef === subject/.test(bs)
+     && /7 \* 86400000/.test(bs),
+    'broadcast resume survives a reload: same subject within 7 days is skipped (gate F1)');
+  ok(/if \(_bcGot\(a\)\) \{ skipped\+\+; sentIds\.add\(a\.id\); continue; \}/.test(bs),
+    'already-got accounts are skipped AND deselected');
   ok(/sentIds\.forEach\(id => _meSelectedIds\.delete\(id\)\);/.test(bs),
     'cap stop deselects ONLY the sent accounts — re-click finishes the rest');
-  ok(bs.includes('still selected. Click Send tomorrow'),
-    'cap summary explains the resume');
+  ok(bs.includes('re-send the SAME subject'),
+    'cap summary explains the durable resume');
   ok(/callSendEmail\(email, 'lavender@pbfwholesale\.com', subject, html, undefined, undefined, a\.id\)/.test(bs),
     'broadcast sends carry the unsubscribe-header id');
+  // Gate F3: both exits re-render the MAIN account list (the one with the
+  // selection checkboxes), not the batch-session worker list.
+  ok((bs.match(/renderMeAccountList/g) || []).length >= 2 && !/renderMeBatchList/.test(bs),
+    'cap stop and completion both refresh the real selection list (gate F3)');
   ok(bs.indexOf('_meSelectedIds.clear()') > bs.indexOf('if (capHit) {'),
     'full-completion clear still happens on the happy path');
+  // Run the REAL broadcast-resume predicate
+  const bp = new Function('subject', 'return ' + bs.match(/const _bcGot = (a =>[\s\S]*?);\n/)[1])('LF news!');
+  ok(bp({ cadence: [{ stage: 'broadcast', invoiceRef: 'LF news!', sentAt: new Date().toISOString() }] }) === true,
+    '_bcGot: same subject today → skip');
+  ok(bp({ cadence: [{ stage: 'broadcast', invoiceRef: 'other subject', sentAt: new Date().toISOString() }] }) === false,
+    '_bcGot: different subject → sends');
+  ok(bp({ cadence: [{ stage: 'broadcast', invoiceRef: 'LF news!', sentAt: new Date(Date.now() - 10 * 86400000).toISOString() }] }) === false,
+    '_bcGot: 10 days old → sends again');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -5592,6 +5592,13 @@ async function meBroadcastSend() {
   if (sendBtn) sendBtn.disabled = true;
   let sent = 0, failed = 0, skipped = 0, capHit = false; // v254
   const sentIds = new Set(); // v254: cap-stop resume — drop only these from the selection
+  // v254 gate F1: DURABLE resume — the selection Set dies with the tab, and
+  // the natural post-cap move (Select All → Send tomorrow) would double-send.
+  // Every broadcast writes a cadence row {stage:'broadcast', invoiceRef:
+  // subject}, so the same subject within 7 days is the skip key.
+  const _bcGot = a => (a.cadence || []).some(e =>
+    e.stage === 'broadcast' && e.invoiceRef === subject && e.sentAt &&
+    (Date.now() - Date.parse(e.sentAt)) < 7 * 86400000);
 
   for (let i = 0; i < accounts.length; i++) {
     const a     = accounts[i];
@@ -5602,32 +5609,41 @@ async function meBroadcastSend() {
     if (statusEl) statusEl.textContent = `Sending ${i+1} of ${accounts.length}…`;
 
     if (a.emailOptOut) { skipped++; continue; }
+    if (_bcGot(a)) { skipped++; sentIds.add(a.id); continue; } // v254 gate F1: already got this subject
 
     // Build per-account HTML so each email has a unique unsubscribe link
     const html = buildEmailHTML(PBF_HEADER_HTML, '#4D2A6F', `<p style="white-space:pre-wrap;margin:0">${bodyHtml}</p>`, a.id);
 
     if (!email) { failed++; }
     else {
-      try {
-        const result = await callSendEmail(email, 'lavender@pbfwholesale.com', subject, html, undefined, undefined, a.id);
-        const entry = {
-          id: uid(), stage: 'broadcast',
-          sentAt: new Date().toISOString(),
-          sentBy: _currentUserName(), method: 'resend',
-          invoiceRef: subject,
-        };
-        if (result?.id) entry.sentMessageId = result.id;
-        DB.update('ac', a.id, ac => ({
-          ...ac,
-          lastContacted: today(),
-          cadence: _pushCadence(ac.cadence, entry),
-        }));
-        sent++;
-        sentIds.add(a.id);
-      } catch(e) {
-        if (_isEmailQuotaError(e)) { capHit = true; break; } // v254: stop at the daily cap
-        failed++;
+      const _sendOne = async () => {
+        try {
+          const result = await callSendEmail(email, 'lavender@pbfwholesale.com', subject, html, undefined, undefined, a.id);
+          const entry = {
+            id: uid(), stage: 'broadcast',
+            sentAt: new Date().toISOString(),
+            sentBy: _currentUserName(), method: 'resend',
+            invoiceRef: subject,
+          };
+          if (result?.id) entry.sentMessageId = result.id;
+          DB.update('ac', a.id, ac => ({
+            ...ac,
+            lastContacted: today(),
+            cadence: _pushCadence(ac.cadence, entry),
+          }));
+          sent++;
+          sentIds.add(a.id);
+          return 'ok';
+        } catch(e) { return _isEmailQuotaError(e) ? 'cap' : 'fail'; }
+      };
+      let r = await _sendOne();
+      if (r === 'cap') {
+        // Gate F4 (v254): burst rate-limit vs daily cap — retry once first.
+        await new Promise(w => setTimeout(w, 2500));
+        r = await _sendOne();
       }
+      if (r === 'cap') { capHit = true; break; } // v254: stop at the daily cap
+      if (r === 'fail') failed++;
     }
 
     if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 300));
@@ -5635,11 +5651,13 @@ async function meBroadcastSend() {
 
   if (capHit) {
     // v254: keep the UNSENT accounts selected — clicking Send tomorrow
-    // finishes exactly the remainder.
+    // finishes exactly the remainder. Gate F1: even if the selection is lost
+    // overnight (reload), re-selecting everyone and re-sending the SAME
+    // subject is safe — accounts that already got it are skipped by cadence.
     sentIds.forEach(id => _meSelectedIds.delete(id));
-    if (typeof renderMeBatchList === 'function') renderMeBatchList();
+    if (typeof renderMeAccountList === 'function') renderMeAccountList(); // gate F3: the broadcast selection lives in the MAIN list
     const remaining = _meSelectedIds.size;
-    const summary = `⛔ Daily email limit reached — ${sent} sent, ${remaining} still selected. Click Send tomorrow to finish the rest.`;
+    const summary = `⛔ Daily email limit reached — ${sent} sent, ${remaining} remaining. Tomorrow: re-select and re-send the SAME subject — accounts that already got it are skipped automatically.`;
     if (statusEl) statusEl.textContent = summary;
     _meBroadcastInFlight = false;
     if (sendBtn) sendBtn.disabled = false;
@@ -5648,7 +5666,7 @@ async function meBroadcastSend() {
   }
 
   _meSelectedIds.clear(); // same stale-selection hazard as template send
-  if (typeof renderMeBatchList === 'function') renderMeBatchList();
+  if (typeof renderMeAccountList === 'function') renderMeAccountList(); // gate F3 (pre-existing wrong renderer here too)
   const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meBroadcastInFlight = false;
@@ -5791,7 +5809,7 @@ async function meTemplateSend() {
     const tpl = getCadenceEmailTemplate(tplId, a, extra);
     if (!tpl) { failed++; continue; }
 
-    for (const email of recipients) {
+    const _sendOne = async (email) => {
       try {
         const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body, undefined, undefined, a.id);
         const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
@@ -5799,20 +5817,33 @@ async function meTemplateSend() {
         if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', a.id, ac => ({ ...ac, ...stamp, cadence: _pushCadence(ac.cadence, entry) }));
         sent++;
-      } catch(e) {
-        // v254: a quota/rate-cap rejection stops the run cleanly — the rest
-        // aren't failures, they're tomorrow's batch (the cadence skip above
-        // makes a re-run resume exactly here).
-        if (_isEmailQuotaError(e)) { capHit = true; break; }
-        failed++;
+        return 'ok';
+      } catch(e) { return _isEmailQuotaError(e) ? 'cap' : 'fail'; }
+    };
+    for (const email of recipients) {
+      let r = await _sendOne(email);
+      if (r === 'cap') {
+        // Gate F4 (v254): a burst rate-limit (requests/second) is reported
+        // with the same code as the DAILY cap — pause and retry once before
+        // writing the whole day off.
+        await new Promise(w => setTimeout(w, 2500));
+        r = await _sendOne(email);
       }
-      await new Promise(r => setTimeout(r, 500)); // ~2/sec — gentle on Resend rate limits
+      // v254: a persisting quota rejection stops the run cleanly — the rest
+      // aren't failures, they're tomorrow's batch (the cadence skip above
+      // makes a re-run resume exactly here).
+      if (r === 'cap') { capHit = true; break; }
+      if (r === 'fail') failed++;
+      await new Promise(w => setTimeout(w, 500)); // ~2/sec — gentle on Resend rate limits
     }
     if (capHit) break;
   }
 
   if (capHit) {
-    const remaining = accounts.filter(a => !a.emailOptOut && !_alreadyGot(a) && hasEmail(a)).length;
+    // Gate F2: count from the LIVE cache — DB.update replaced the sent
+    // accounts' objects, so the captured `accounts` array still shows them
+    // as unsent and the estimate read "100 sent, ~150 remaining".
+    const remaining = DB.a('ac').filter(a => _meSelectedIds.has(a.id) && !a.emailOptOut && !_alreadyGot(a) && hasEmail(a)).length;
     const summary = `⛔ Daily email limit reached — ${sent} sent, ~${remaining} remaining. Re-run this same send tomorrow: accounts that already got it are skipped automatically.`;
     if (statusEl) statusEl.textContent = summary;
     _meTemplateInFlight = false;
