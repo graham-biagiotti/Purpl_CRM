@@ -74,6 +74,26 @@ console.log('[C] Chart.js SRI — verifiable bytes');
   ok(!idx.includes('chart.umd.min.js'), 'no stray reference to the old file');
 }
 
+console.log('[B2] gate F1/F2 — ESM chromium shape + CORS-mode script tags');
+{
+  const fnSrc = fs.readFileSync(path.join(__dirname, '../../functions/index.js'), 'utf8');
+  // Gate F1: chromium 153 is ESM — the bare require() returned the module
+  // namespace and every invoice-PDF render threw. Shape-tolerant unwrap.
+  ok(fnSrc.includes("const _chr = require('@sparticuz/chromium');")
+     && fnSrc.includes('const chromium = _chr.default || _chr;'),
+    '_htmlToPdf unwraps the ESM default export (gate F1 — PDF emails)');
+  // Gate F2: without crossorigin the browser fetches these no-cors → OPAQUE
+  // responses the SW can never cache — the offline cold-start fix was inert.
+  const fld = pub('field.html');
+  [['index.html', idx], ['field.html', fld]].forEach(([name, t]) => {
+    const tags = t.match(/<script src="https:\/\/www\.gstatic\.com\/firebasejs\/[^"]+"[^>]*>/g) || [];
+    ok(tags.length === 4 && tags.every(x => x.includes('crossorigin="anonymous"')),
+      `${name}: all 4 SDK scripts fetch in CORS mode (cacheable by the SW, gate F2)`);
+    ok(/fonts\.googleapis\.com[^>]+rel="stylesheet" crossorigin="anonymous"/.test(t),
+      `${name}: font stylesheet fetches in CORS mode`);
+  });
+}
+
 console.log('[D] functions dependencies');
 {
   const dep = n => fnPkg.dependencies[n] || '';

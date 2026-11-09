@@ -38,7 +38,12 @@ function escHtml(s) {
 // Render an HTML document to a PDF buffer (headless Chromium). Lazy-required
 // so ordinary sends never pay the chromium startup cost.
 async function _htmlToPdf(html) {
-  const chromium = require('@sparticuz/chromium');
+  // v256 gate F1: @sparticuz/chromium went ESM at v153 — require() under
+  // Node ≥22 returns the module NAMESPACE, so args/executablePath live on
+  // .default and the bare require threw 'executablePath is not a function'
+  // on every PDF render. Shape-tolerant so a future packaging flip is safe.
+  const _chr = require('@sparticuz/chromium');
+  const chromium = _chr.default || _chr;
   const puppeteer = require('puppeteer-core');
   const browser = await puppeteer.launch({
     args: chromium.args,
