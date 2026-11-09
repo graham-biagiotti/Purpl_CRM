@@ -39,7 +39,7 @@ console.log('[A2] queue affordances + guards');
   const cpo = slc(src, 'async function confirmPortalOrder()', 'if (!d) {');
   ok(cpo.includes("data.status === 'confirmed' || data.status === 'handled'"),
     'confirm transaction treats handled as terminal');
-  ok(src.includes("toast('This order was already confirmed or marked handled')"), 'honest refusal toast');
+  ok(src.includes("toast('This order was already confirmed, declined, or marked handled')"), 'honest refusal toast');
   // A handled twin can never be claimed into a combined confirm.
   ok(src.includes("p.status !== 'confirmed' && p.status !== 'handled' && _samePortalSubmission(d, p)"),
     'paired-claim skips handled twins');

@@ -455,47 +455,6 @@ exports.sendApplicationConfirmation = onCall(
   }
 );
 
-// ── 3c. AI Proxy — keeps Anthropic key server-side ───────
-exports.callAnthropic = onCall(
-  async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
-    await _assertStaffRole(request);
-    const data = request.data;
-    if (!data.prompt || typeof data.prompt !== 'string') {
-      throw new HttpsError('invalid-argument', 'Missing prompt');
-    }
-    if (data.prompt.length > 5000) {
-      throw new HttpsError('invalid-argument', 'Prompt too long');
-    }
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new HttpsError('failed-precondition', 'AI features not configured — ask admin to set ANTHROPIC_API_KEY');
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: data.systemPrompt || '',
-          messages: [{ role: 'user', content: data.prompt }],
-        }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `API error ${response.status}`);
-      }
-      const result = await response.json();
-      return { text: result.content?.[0]?.text || '' };
-    } catch (err) {
-      console.error('Anthropic API error:', err.message);
-      throw new HttpsError('internal', 'AI service unavailable');
-    }
-  }
-);
 
 // ── 3e. Check Duplicate Application ──────────────────────
 exports.checkDuplicateApplication = onCall(async (request) => {

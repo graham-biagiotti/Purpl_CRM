@@ -14,15 +14,12 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v254';
+const APP_VERSION = 'v255';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
-function _cogs(sku) { return _costs().cogs?.[sku] || 2.15; }
 function _margin() { return _costs().target_margin || 0.60; }
 function _payTerms() { return DB?.obj?.('settings',{})?.default_payment_terms || DB?.obj?.('settings',{})?.payment_terms || 30; }
-function _gasPrice() { return DB?.obj?.('settings',{})?.gasPrice || 3.50; }
-function _lowStock() { return DB?.obj?.('settings',{})?.lowStockThreshold || 500; }
 
 // ── Pricing helper — single fallback chain ──────────────
 function _calcPricePerCase(account) {
@@ -39,12 +36,6 @@ function _findAccount(accountId, fallbackName) {
   return null;
 }
 
-// ── Overdue helper ──────────────────────────────────────
-function _isOverdue(inv) {
-  if (['paid','draft','void'].includes(inv.status)) return false;
-  const due = inv.dueDate || inv.due;
-  return !!due && due < today();
-}
 
 // ── Invoice helpers — single source of truth ────────────
 const _INV_COLS = ['retail_invoices', 'lf_invoices', 'combined_invoices', 'dist_invoices', 'iv'];
@@ -630,14 +621,6 @@ function _b64utf8(str) {
   return btoa(unescape(encodeURIComponent(str)));
 }
 
-function _stripeErrHint(e) {
-  const code = String(e?.code || '');
-  if (code.includes('not-found'))           return 'the createStripePaymentLink function is not deployed — run: firebase deploy --only functions';
-  if (code.includes('failed-precondition')) return 'STRIPE_SECRET_KEY is not set — run: firebase functions:secrets:set STRIPE_SECRET_KEY, then redeploy functions';
-  if (code.includes('unauthenticated'))     return 'you are signed out — refresh the page and sign in';
-  if (code.includes('invalid-argument'))    return e?.message || 'invalid invoice data';
-  return e?.message || 'unknown error';
-}
 
 // Sticky error banner — stays on screen until dismissed, unlike toasts.
 function _stickyError(msg) {
@@ -965,16 +948,6 @@ async function callSendCombinedInvoice(to, accountName, subject, html, accountId
   }
 }
 
-async function callSendOrderConfirmation(to, accountName, contactName, orderSummary, portalLink, isPbf, portalOrderId, accountId, shipAddress, requestSample, mode) {
-  try {
-    const fn = firebase.functions().httpsCallable('sendOrderConfirmation');
-    const result = await fn({to, accountName, contactName, orderSummary, portalLink, isPbf, portalOrderId: portalOrderId || null, accountId: accountId || null, shipAddress: shipAddress || null, requestSample: requestSample || false, mode: mode || 'preorder'});
-    return result.data;
-  } catch (err) {
-    console.error('Send order confirmation error:', err);
-    throw err;
-  }
-}
 
 function _sendWithCadence({to, subject, html, accountId, stage, extra={}, sendFn}) {
   const fn = sendFn || ((t,s,h) => callSendEmail(t, 'lavender@pbfwholesale.com', s, h));
@@ -2012,12 +1985,6 @@ async function deleteNoteSection(id) {
 // debounceSaveScratchpad kept as alias for any stale references
 function debounceSaveScratchpad() { debounceNoteSectionSave(); }
 
-function fmtDt(ts) {
-  if (!ts) return '—';
-  const d = new Date(ts);
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' +
-         d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-}
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -2027,32 +1994,6 @@ function kpiHtml(label, val, color) {
   return `<div class="kpi ${color}"><div class="num">${val}</div><div class="label">${label}</div></div>`;
 }
 
-function dashFilterBrand(val) {
-  _acBrandFilter = val;
-  nav('accounts');
-  renderAccounts();
-}
-
-function dashFilterStatus(val) {
-  nav('accounts');
-  const el = qs('#ac-status-filter');
-  if (el) el.value = val;
-  renderAccounts();
-}
-
-function dashFilterFulfill(val) {
-  nav('accounts');
-  const el = qs('#ac-fulfill-filter');
-  if (el) {
-    // 'dist' means show all distributor-linked; pick first distributor or leave as ''
-    if (val === 'dist') {
-      el.value = '__any_dist__'; // "Via distributor (any)" — renderAccounts adds this option
-    } else {
-      el.value = val;
-    }
-    renderAccounts();
-  }
-}
 
 // Price an order. Items qty is in CASES.
 // Account pricing takes priority. Fallback: COGS × markup from target_margin × cans per case.
@@ -3093,8 +3034,6 @@ function _ivCalcTotal() {
   set('#iv-total', fmtC(products + ship + misc - disc));
 }
 
-// Legacy alias called from old oninput handlers
-function calcInvTotal() { _ivCalcTotal(); }
 
 
 function markRetailInvPaid(id) {
@@ -3133,11 +3072,6 @@ async function deleteRetailInv(id) {
 let _invSortKey = 'date';
 let _invSortDir = -1; // -1 = desc
 
-function sortInv(key) {
-  if (_invSortKey === key) { _invSortDir *= -1; }
-  else { _invSortKey = key; _invSortDir = -1; }
-  renderInvoicesPage();
-}
 
 
 // ══════════════════════════════════════════════════════════
@@ -4327,13 +4261,6 @@ function _latestAccountInvoiceId(accountId) {
 }
 
 
-function markCadenceSent(accountId, stageId, method, invoiceId) {
-  const entry = { id: uid(), stage: stageId, sentAt: today(), sentBy: _currentUserName(), method: method||'manual' };
-  if (invoiceId) entry.invoiceId = invoiceId;
-  DB.update('ac', accountId, a => ({...a, cadence: _pushCadence(a.cadence, entry)}));
-  renderMacEmailsTab(accountId);
-  toast('Email logged as sent');
-}
 
 // ══════════════════════════════════════════════════════════
 //  AI EMAIL DRAFTING
@@ -4459,13 +4386,6 @@ const CADENCE_STAGES = [
   },
 ];
 
-async function _callAnthropicApi(userPrompt) {
-  const fn = firebase.functions().httpsCallable('callAnthropic');
-  const result = await fn({ prompt: userPrompt, systemPrompt: _aiSystemPrompt() });
-  const text = result.data?.text || '';
-  const clean = text.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
-  return JSON.parse(clean);
-}
 
 function _defaultFromForRegarding(r) {
   return 'lavender@pbfwholesale.com';
@@ -4508,68 +4428,6 @@ function openDraftOutreachModal(accountId) {
   openModal('modal-draft-outreach');
 }
 
-async function generateOutreachDraft() {
-  const accountId = qs('#mdo-account-id').value;
-  const a = DB.a('ac').find(x=>x.id===accountId);
-  if (!a) return;
-  const regarding = qs('#mdo-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
-  const context   = qs('#mdo-context')?.value?.trim() || '';
-  const entries   = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,3);
-
-  const btn = qs('#mdo-generate-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
-
-  const historyText = entries.length
-    ? entries.map(e=>`- ${e.date} (${e.type||'—'}): ${e.notes||e.note||'—'}`).join('\n')
-    : 'No prior outreach.';
-
-  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
-  const userPrompt = `Write a wholesale outreach email for the following account:
-
-Account: ${a.name}
-Type: ${a.type || 'Wholesale Account'}
-Territory: ${a.territory || 'New Hampshire'}
-Brand: ${brandLabel}
-Last order: ${a.lastOrder ? fmtD(a.lastOrder) : 'Never'}
-Last contacted: ${a.lastContacted ? fmtD(a.lastContacted) : 'Never'}
-
-Recent outreach history:
-${historyText}
-
-${context ? `Goal / context: ${context}` : ''}
-
-End the email with this exact signature:
-${_aiSignature()}`;
-
-  try {
-    const result = await _callAnthropicApi(userPrompt);
-    if (qs('#mdo-subject')) qs('#mdo-subject').value = result.subject || '';
-    if (qs('#mdo-body'))    qs('#mdo-body').value    = result.body    || '';
-    qs('#mdo-output').style.display = '';
-
-    // Auto-log if checkbox checked
-    if (qs('#mdo-log-check')?.checked) {
-      const subject = result.subject || '';
-      DB.update('ac', accountId, ac=>({
-        ...ac,
-        lastContacted: today(),
-        outreach: [...(ac.outreach||[]), {
-          id: uid(), date: today(), type: 'email',
-          regarding, notes: `Draft generated: ${subject}`, outcome: '',
-        }],
-      }));
-    }
-  } catch(e) {
-    toast('Error: ' + e.message, 5000);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate Draft'; }
-  }
-}
-
-function mdoRegenerateClick() {
-  qs('#mdo-output').style.display = 'none';
-  generateOutreachDraft();
-}
 
 function mdoOpenMailto() {
   const subject = encodeURIComponent(qs('#mdo-subject')?.value || '');
@@ -5079,16 +4937,6 @@ async function emailsPageSendEmail() {
   })();
 }
 
-function emailsPageMarkSent() {
-  if (!_emailsSelectedTemplate || !_emailsSelectedAccountId) return;
-  const stageId = _TEMPLATE_STAGE_IDS[_emailsSelectedTemplate] || _emailsSelectedTemplate;
-  DB.update('ac', _emailsSelectedAccountId, a => ({
-    ...a,
-    cadence: _pushCadence(a.cadence, {id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'manual'})
-  }));
-  toast('Email marked as sent');
-  renderEmailsPage();
-}
 
 // ── Prospect outreach send: logs to the prospect's outreach history, stamps
 // lastContacted, bumps lead → contacted. No tokens, no cadence machinery.
@@ -5567,12 +5415,6 @@ function _updateMeBatchCount() {
 function setMeFilter() { renderMeAccountList(); }
 function setMeBatchFilter() { renderMeBatchList(); }
 
-function setMeRegarding(val) {
-  qs('#me-regarding-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
-    b.classList.toggle('active', b.dataset.val === val);
-  });
-  setMeFrom(_defaultFromForRegarding(val));
-}
 
 function setMeFrom(val) {
   qs('#me-from-btns')?.querySelectorAll('.ac-brand-btn').forEach(b=>{
@@ -5580,24 +5422,6 @@ function setMeFrom(val) {
   });
 }
 
-async function meBroadcastGenerate() {
-  const n        = _meSelectedIds.size;
-  const regarding = qs('#me-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
-  const goal     = qs('#me-goal')?.value?.trim() || '';
-  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
-  const userPrompt = `Write a broadcast wholesale email to ${n} accounts. Regarding: ${brandLabel}. ${goal ? 'Goal: ' + goal + '.' : ''} Keep it under 150 words, professional, no emojis. End with this exact signature:\n${_aiSignature()}`;
-  const statusEl = qs('#me-broadcast-status');
-  if (statusEl) statusEl.textContent = '⏳ Generating…';
-  try {
-    const result = await _callAnthropicApi(userPrompt);
-    if (qs('#me-subject')) qs('#me-subject').value = result.subject || '';
-    if (qs('#me-body'))    qs('#me-body').value    = result.body    || '';
-    if (statusEl) statusEl.textContent = '✓ Draft generated';
-  } catch(e) {
-    if (statusEl) statusEl.textContent = '';
-    toast('Error: ' + e.message, 5000);
-  }
-}
 
 let _meBroadcastInFlight = false;
 async function meBroadcastSend() {
@@ -5977,31 +5801,6 @@ function setMebwFrom(val) {
   });
 }
 
-async function meBatchGenerate(accountId) {
-  const a = DB.a('ac').find(x=>x.id===accountId);
-  if (!a) return;
-  const regarding = qs('#mebw-regarding-btns')?.querySelector('.ac-brand-btn.active')?.dataset?.val || 'purpl';
-  const context   = qs('#mebw-context')?.value?.trim() || '';
-  const entries   = (a.outreach||[]).slice().sort((x,y)=>y.date>x.date?1:-1).slice(0,3);
-  const historyText = entries.length ? entries.map(e=>`- ${e.date} (${e.type||'—'}): ${e.notes||e.note||'—'}`).join('\n') : 'No prior outreach.';
-  const brandLabel = regarding === 'purpl' ? 'purpl (lavender lemonade)' : regarding === 'lf' ? 'Lavender Fields (farm products)' : 'purpl and Lavender Fields';
-
-  const btn = qs('#mebw-gen-btn');
-  if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
-
-  const userPrompt = `Write a wholesale outreach email for the following account:\n\nAccount: ${a.name}\nType: ${a.type||'Wholesale Account'}\nTerritory: ${a.territory||'New Hampshire'}\nBrand: ${brandLabel}\nLast order: ${a.lastOrder?fmtD(a.lastOrder):'Never'}\nLast contacted: ${a.lastContacted?fmtD(a.lastContacted):'Never'}\n\nRecent outreach history:\n${historyText}\n\n${context?'Goal / context: '+context+'\n':''}\nEnd the email with this exact signature:\n${_aiSignature()}`;
-
-  try {
-    const result = await _callAnthropicApi(userPrompt);
-    if (qs('#mebw-subject')) qs('#mebw-subject').value = result.subject || '';
-    if (qs('#mebw-body'))    qs('#mebw-body').value    = result.body    || '';
-    qs('#mebw-output').style.display = '';
-  } catch(e) {
-    toast('Error: '+e.message, 5000);
-  } finally {
-    if (btn) { btn.disabled=false; btn.textContent='✨ Generate Draft'; }
-  }
-}
 
 function mebwOpenMailto(accountId) {
   const a = DB.a('ac').find(x=>x.id===accountId);
@@ -7102,9 +6901,6 @@ function saveLogOutreach() {
   }
 }
 
-function deleteProspect(id) {
-  markProspectLost(id);
-}
 
 // ── Prospect Import from CSV ────────────────────────────────
 let _importProspectsCsvText = '';
@@ -8876,7 +8672,6 @@ function markDistInvoicePaid(invId, distId) {
   const d = DB.a('dist_profiles').find(x => x.id === distId);
   const pane = qs('#mdist-tab-invoices');
   if (d && pane) pane.innerHTML = renderDistInvoicesHTML(d);
-  if (qs('#inv-col-dist')) renderInvColDist();
   toast('Marked as paid');
 }
 
@@ -12794,12 +12589,6 @@ const LF_INV_STATUS = {
   overdue: {label:'Overdue', cls:'red'},
 };
 
-function setLfInvFilter(status) {
-  _lfInvStatusFilter = status;
-  document.querySelectorAll('#lf-inv-tabs .ac-brand-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.status === status));
-  renderLfInvoicesPage();
-}
 
 function renderLfInvoicesPage() {
   const all = DB.a('lf_invoices');
@@ -18626,169 +18415,6 @@ function renderInvColLf() {
     </table></div>`;
 }
 
-function renderInvColCombined() {
-  const all = DB.a('combined_invoices');
-
-  const outstanding = all.filter(x => x.status !== 'paid').reduce((s,x) => s + parseFloat(x.grandTotal||0), 0);
-
-  const summEl = qs('#inv-col-combined-summary');
-  if (summEl) summEl.textContent = all.length
-    ? `${all.length} combined · ${fmtC(outstanding)} outstanding`
-    : 'No combined invoices';
-
-  // Compact view
-  const compactEl = qs('#inv-col-combined-compact');
-  if (compactEl) {
-    if (!all.length) {
-      compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">No combined invoices yet. Combined invoices are created automatically when an isPbf account orders both brands, or manually from the account detail modal.</div>';
-    } else {
-      const pending = all.filter(x => x.status !== 'paid').slice(0,5);
-      if (!pending.length) {
-        compactEl.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted)">All combined invoices paid</div>';
-      } else {
-        compactEl.innerHTML = pending.map(ci => `<div class="inv-col-compact-row" style="cursor:pointer" onclick="openCombinedInvoicePreview('${ci.id}')">
-          <div>
-            <div style="font-weight:600">${escHtml(ci.accountName||'—')}${_invEmailBadge(ci)}</div>
-            <div style="font-size:11px;color:var(--muted)">${escHtml(ci.number||ci.invoiceNumber||'')} · purpl ${fmtC(ci.purplSubtotal||0)} + LF ${fmtC(ci.lfSubtotal||0)}</div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <span class="badge ${ci.status==='paid'?'green':'amber'}">${ci.status||'draft'}</span>
-            <strong style="font-size:13px">${fmtC(ci.grandTotal||0)}</strong>
-          </div>
-        </div>`).join('');
-      }
-    }
-  }
-
-  // Expanded view
-  const expandedEl = qs('#inv-col-combined-expanded');
-  if (!expandedEl) return;
-  if (!qs('#inv-col-combined').classList.contains('expanded')) return;
-
-  if (!all.length) {
-    expandedEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--muted)">No combined invoices yet. Combined invoices are created automatically when an isPbf account orders both brands, or manually from the account detail modal.</div>';
-    return;
-  }
-
-  const sorted = all.slice().sort((a,b) => (b.createdAt||'') > (a.createdAt||'') ? 1 : -1);
-  expandedEl.innerHTML = `
-    <div style="overflow-x:auto">
-    <table class="data-table" style="width:100%;font-size:13px">
-      <thead><tr>
-        <th>Account</th><th>purpl</th><th>LF</th><th>Total</th><th>Status</th><th></th>
-      </tr></thead>
-      <tbody>${sorted.map(ci => `<tr>
-        <td><strong>${escHtml(ci.accountName||'—')}</strong></td>
-        <td>${fmtC(ci.purplSubtotal||0)}</td>
-        <td>${fmtC(ci.lfSubtotal||0)}</td>
-        <td><strong>${fmtC(ci.grandTotal||0)}</strong></td>
-        <td><span class="badge ${ci.status==='paid'?'green':ci.status==='sent'?'blue':ci.status==='void'?'red':'amber'}">${ci.status||'draft'}</span></td>
-        <td style="white-space:nowrap">
-          <button class="btn xs" onclick="openCombinedInvoicePreview('${ci.id}')">View</button>
-          ${ci.status!=='paid' ? `<button class="btn xs green" onclick="markCombinedPaid('${ci.id}')">✓ Paid</button>` : ''}
-          ${_isAdmin()?`<button class="btn xs red" onclick="deleteCombinedInvoice('${ci.id}')">✕</button>`:''}
-        </td>
-      </tr>`).join('')}
-      </tbody>
-    </table></div>`;
-}
-
-function toggleInvCol(col) {
-  const el = qs(`#inv-col-${col}`);
-  if (!el) return;
-  el.classList.toggle('expanded');
-  // Render expanded content on open
-  if (el.classList.contains('expanded')) {
-    if (col === 'purpl')         renderInvColPurpl();
-    else if (col === 'lf')       renderInvColLf();
-    else if (col === 'combined') renderInvColCombined();
-    else if (col === 'dist')     renderInvColDist();
-  }
-}
-
-function renderInvColDist() {
-  const todayStr = today();
-  const dists = DB.a('dist_profiles');
-  const allInvs = DB.a('dist_invoices').slice().sort((a,b)=>a.dueDate>b.dueDate?1:-1);
-  const statusMap = {draft:'gray', sent:'blue', paid:'green', void:'red'};
-
-  const outstandingInvs = allInvs.filter(i => !['paid','draft','void'].includes(i.status));
-  const totalOut   = outstandingInvs.reduce((s,i) => s + parseFloat(i.total||0), 0);
-  const overdueInvs = outstandingInvs.filter(i => i.dueDate && i.dueDate < todayStr);
-  const overdueAmt = overdueInvs.reduce((s,i) => s + (i.total||0), 0);
-
-  const summaryEl = qs('#inv-col-dist-summary');
-  if (summaryEl) summaryEl.textContent = `${outstandingInvs.length} outstanding · ${fmtC(totalOut)}${overdueAmt>0?' · '+fmtC(overdueAmt)+' overdue':''}`;
-
-  const compactEl = qs('#inv-col-dist-compact');
-  if (compactEl) {
-    const top5 = outstandingInvs.slice(0,5);
-    compactEl.innerHTML = top5.length ? top5.map(inv=>{
-      const d = dists.find(x=>x.id===inv.distId);
-      const isOverdue = !['paid','void'].includes(inv.status) && inv.dueDate && inv.dueDate < todayStr;
-      return `<div class="inv-col-compact-row" onclick="editDistInvoice('${inv.id}')" style="cursor:pointer">
-        <div>
-          <div style="font-size:13px;font-weight:500">${escHtml(d?.name||inv.distName||'—')}</div>
-          <div style="font-size:11px;color:var(--muted)">${escHtml(inv.invoiceNumber||'—')} · Due ${inv.dueDate?fmtD(inv.dueDate):'—'}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:13px;font-weight:600">${fmtC(inv.total||0)}</span>
-          <span class="badge ${isOverdue?'red':statusMap[inv.status]||'amber'}">${isOverdue?'overdue':inv.status||'draft'}</span>
-        </div>
-      </div>`;
-    }).join('') : '<div class="empty" style="padding:16px">No outstanding distributor invoices</div>';
-  }
-
-  const expandedEl = qs('#inv-col-dist-expanded');
-  if (expandedEl) {
-    expandedEl.innerHTML = `
-    <div style="padding:0 4px 8px;display:flex;justify-content:flex-end">
-      <button class="btn xs primary" onclick="event.stopPropagation();_openDistInvModal()">+ New Invoice</button>
-    </div>
-    <div class="tbl-wrap">
-      <table>
-        <thead><tr><th>Invoice #</th><th>Distributor</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-        <tbody>${allInvs.map(inv=>{
-          const d = dists.find(x=>x.id===inv.distId);
-          const isOverdue = !['paid','void'].includes(inv.status) && inv.dueDate && inv.dueDate < todayStr;
-          return `<tr>
-            <td><a href="#" onclick="editDistInvoice('${inv.id}');return false" style="color:var(--purple);text-decoration:none;font-weight:500">${escHtml(inv.invoiceNumber||'—')}</a></td>
-            <td style="cursor:pointer;color:var(--lavblue)" onclick="openDistributor('${inv.distId}')">${escHtml(d?.name||inv.distName||'—')}</td>
-            <td>${inv.dateIssued?fmtD(inv.dateIssued):'—'}</td>
-            <td class="${isOverdue?'red':''}">${inv.dueDate?fmtD(inv.dueDate):'—'}</td>
-            <td>${fmtC(inv.total||0)}</td>
-            <td><span class="badge ${isOverdue?'red':statusMap[inv.status]||'amber'}">${isOverdue?'overdue':inv.status||'draft'}</span></td>
-            <td style="white-space:nowrap">
-              ${inv.status!=='paid'?`<button class="btn xs green" onclick="markDistInvoicePaid('${inv.id}','${inv.distId}')">✓ Paid</button>`:''}
-              <button class="btn xs" onclick="editDistInvoice('${inv.id}')">Edit</button>
-              <button class="btn xs" onclick="_sendDistInvoiceReminder('${inv.id}')">✉</button>
-            </td>
-          </tr>`;
-        }).join('')||'<tr><td colspan="7" class="empty">No distributor invoices</td></tr>'}
-        </tbody>
-      </table>
-    </div>`;
-  }
-}
-
-function _sendDistInvoiceReminder(invId) {
-  const inv = DB.a('dist_invoices').find(x=>x.id===invId);
-  if (!inv) return;
-  const d = DB.a('dist_profiles').find(x=>x.id===inv.distId);
-  const name = d?.name || 'Distributor';
-  const subject = `Invoice Reminder — ${inv.invoiceNumber||'Outstanding Balance'}`;
-  const html = `<p>Hi ${escHtml(name)},</p><p>This is a friendly reminder that invoice <strong>${escHtml(inv.invoiceNumber||'—')}</strong> for <strong>${fmtC(inv.total||0)}</strong> is due ${inv.dueDate?`on ${fmtD(inv.dueDate)}`:''}.</p><p>Please remit payment at your earliest convenience. Reply to this email with any questions.</p><p>Thank you,<br>Pumpkin Blossom Farm</p>`;
-  // Find a contact email on the distributor
-  const contacts = d?.contacts||[];
-  const repEmail = (DB.a('dist_reps').find(r=>r.distId===inv.distId&&r.email))?.email || '';
-  const to = contacts.find(c=>c.email)?.email || repEmail;
-  if (!to) { toast('No contact email found for this distributor'); return; }
-  callSendEmail(to, 'lavender@pbfwholesale.com', subject, html).then(()=>{
-    DB.update('dist_invoices', invId, i=>({...i, reminderSentAt:today()}));
-    toast('Reminder sent ✓');
-    renderInvColDist();
-  }).catch(()=>toast('Failed to send reminder'));
-}
 
 const _markSentInFlight = new Set();
 async function markInvoiceSent(id) {
@@ -18996,14 +18622,6 @@ async function generateLfInvoicePrint(invoiceId) {
   _writeInvoiceWindow(w, html);
 }
 
-async function generateCombinedInvoicePrint(invoiceId) {
-  const inv = DB.a('combined_invoices').find(x => x.id === invoiceId);
-  if (!inv) { toast('Invoice not found'); return; }
-  const w = _openInvoiceWindow();
-  if (!w) return;
-  const html = buildCombinedInvoiceEmailHTML(inv, { printButton: true });
-  _writeInvoiceWindow(w, html);
-}
 
 // ── Invoice modal helpers (v2 — iv collection) ─────────────
 
@@ -19195,74 +18813,6 @@ async function deleteInvRecord(id) {
   toast('Invoice deleted');
 }
 
-async function importWholesaleInquiries() {
-  try {
-    const snap = await firebase.firestore()
-      .collection('portal_inquiries')
-      .where('status', '==', 'new')
-      .get();
-    if (snap.empty) {
-      toast('No new wholesale inquiries');
-      return;
-    }
-    let count = 0;
-    for (const doc of snap.docs) {
-      const d = doc.data();
-      const existing = DB.a('pr').find(function(p) {
-        return p.name && d.businessName &&
-          p.name.toLowerCase() ===
-            d.businessName.toLowerCase();
-      });
-      if (existing) {
-        await firebase.firestore()
-          .collection('portal_inquiries')
-          .doc(doc.id).update({status:'duplicate'});
-        continue;
-      }
-      DB.push('pr', {
-        id: uid(),
-        name: d.businessName || '',
-        contact: d.contactName || '',
-        email: d.email || '',
-        phone: d.phone || '',
-        address: d.address || '',
-        type: d.storeType || 'Other',
-        isPbf: (d.brandsInterested || []).includes('lf'),
-        status: 'lead',
-        priority: 'Medium',
-        source: 'Wholesale Page',
-        lastContacted: null,
-        nextFollowUp: null,
-        notes: (function() {
-          var noteText = [
-            d.storeDescription ? 'Store: ' + d.storeDescription : '',
-            d.howHeard ? 'How they heard: ' + d.howHeard : '',
-            d.monthlyVolume ? 'Monthly volume: ' + d.monthlyVolume : '',
-            d.usesDistributor ? 'Uses distributor: ' + d.usesDistributor : '',
-            d.distributorName ? 'Distributor: ' + d.distributorName : '',
-            d.contactPreference ? 'Contact pref: ' + d.contactPreference : ''
-          ].filter(Boolean).join('\n');
-          return noteText ? [{ id: uid(), text: noteText, date: today() }] : [];
-        })(),
-        nextSteps: 'Follow up within 2 business days — wholesale page application',
-        createdAt: today()
-      });
-      await firebase.firestore()
-        .collection('portal_inquiries')
-        .doc(doc.id).update({
-          status: 'imported',
-          importedAt: firebase.firestore
-            .FieldValue.serverTimestamp()
-        });
-      count++;
-    }
-    renderProspects('');
-    toast('Imported ' + count + ' wholesale inquiries as prospects');
-  } catch(e) {
-    console.error(e);
-    toast('Error importing inquiries');
-  }
-}
 
 // ── Wholesale Application Pipeline ───────────────────────
 
