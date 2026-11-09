@@ -5,3 +5,7 @@ node_modules/
 playwright-report/
 test-results/
 tests/.auth/
+
+# emulator/probe scratch outputs (v253)
+tests/emu/*.out
+tests/emu/*.log
