@@ -91,6 +91,22 @@ console.log('[E] B4 — $0 LF invoice repair (run the REAL migration)');
     'never runs on an unconfirmed boot load (v252 seed-guard discipline)');
   ok(run([{ id: 'z', total: 90.5, lineItems: [{ lineTotal: 90.5 }] }]).length === 0,
     'idempotent: a repaired row never matches again');
+  // Gate F1: a repaired CHILD resyncs its combined parent (the migration is
+  // one-shot per row — missing this would freeze the parent wrong forever).
+  ok(/_syncCombinedParentForChild\(inv\.id\)/.test(mig),
+    'repair resyncs the combined parent (gate F1)');
+}
+
+console.log('[E2] gate F2/F3 — combined preview recompute + honest revert toast');
+{
+  const cb = slc(src, 'async function openCombinedInvoicePreview', '\n  const saveBtn');
+  ok(/civ-edit-terms'\)\.onchange = \(\) =>/.test(cb),
+    'combined preview attaches its own terms→due recompute (gate F2)');
+  const cp2 = slc(src, 'async function confirmPortalOrder()', '\n// ── Phase 5: Portal Settings');
+  ok(/const _reverted = await _c_portalRef\.update[\s\S]{0,120}\.then\(\(\) => true\)\.catch\(\(\) => false\);/.test(cp2),
+    'revert outcome is checked, not assumed (gate F3)');
+  ok(cp2.includes('could not be returned to the queue'),
+    'failed revert gets the honest warning, not the reassuring toast');
 }
 
 console.log('[F] B5 / B6 / B8');
@@ -118,8 +134,10 @@ console.log('[G] B9 — post-sign-out save hygiene');
   ok(td.includes('this._saveTimers = {};') && td.includes('_saveDirtyKeys.clear()')
      && td.includes('clearTimeout(this._applyPendingRetry)'),
     'teardown parks the save machinery (timers + dirty keys)');
-  ok(authSrc.includes('DB._flushPendingSave()'),
-    'sign-out flushes unsaved edits to the recovery snapshot first');
+  // (gate F4 tightening: the plain includes() also matched the pre-existing
+  // beforeunload flush — pin the sign-out click's guarded call specifically)
+  ok(/if \(!confirm\('Sign out of purpl CRM\?'\)\) return;[\s\S]{0,400}DB\._flushPendingSave\(\)/.test(authSrc),
+    'sign-out click flushes unsaved edits to the recovery snapshot first');
 }
 
 console.log('[H] v254 nits + login form');

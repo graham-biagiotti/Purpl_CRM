@@ -1612,6 +1612,12 @@ function migrateLfZeroTotals() {
     const sum = Math.round((inv.lineItems || []).reduce((s, l) => s + lineVal(l), 0) * 100) / 100;
     if (sum > 0) {
       DB.updateFields('lf_invoices', inv.id, { total: sum, amount: sum });
+      // Gate F1 (v255): a repaired CHILD must resync its combined parent —
+      // the parent's lfSubtotal/grandTotal are frozen-at-creation copies that
+      // drive the doc's Amount Due, the Stripe amount and the KPIs. Without
+      // this, the one-shot repair fixes LF views but the family still bills
+      // without the LF money. No-op for standalone LF invoices.
+      try { _syncCombinedParentForChild(inv.id); } catch (_) {}
       console.log('[migrate] LF invoice', inv.number || inv.invoiceNumber || inv.id, 'total repaired 0 →', sum);
     }
   });
@@ -14875,6 +14881,19 @@ async function openCombinedInvoicePreview(combinedId) {
   const _tlv = _termsToLabel(rec.paymentTerms) || 'Net 30';
   qs('#civ-edit-terms').value = _tlv;
   if (qs('#civ-edit-terms').value !== _tlv) qs('#civ-edit-terms').value = 'Net 30';
+  // Gate F2 (v255): same terms→due recompute as the single-invoice shell —
+  // this preview neither attached nor CLEARED the handler, so combined got
+  // the stale-due bug on a fresh page and a navigation-dependent leftover
+  // handler after visiting a single preview. Attach deliberately.
+  qs('#civ-edit-terms').onchange = () => {
+    const lbl = qs('#civ-edit-terms').value;
+    const m = /(\d+)/.exec(lbl);
+    const days = /receipt/i.test(lbl) ? 0 : (m ? parseInt(m[1]) : null);
+    if (days == null) return; // 'Custom'
+    const iss = qs('#civ-edit-date')?.value;
+    const dueEl = qs('#civ-edit-due');
+    if (iss && dueEl) dueEl.value = new Date(new Date(iss + 'T12:00:00').getTime() + days * 864e5).toISOString().slice(0, 10);
+  };
   qs('#civ-edit-notes').value = rec.notes || '';
   const delivSel = qs('#civ-edit-delivery');
   if (delivSel) delivSel.value = rec.deliveryMethod || 'deliver';
@@ -17648,12 +17667,20 @@ async function confirmPortalOrder() {
     // (recoverable: he just clicks Confirm again). With an invoice created,
     // the order stays confirmed — reverting then would invite a duplicate.
     if (_c_portalRef && !_c_invoiceCreated) {
-      await _c_portalRef.update({ status: _c_origStatus, confirmedAt: null }).catch(() => {});
+      // Gate F3 (v255): the revert itself can fail (same outage that broke
+      // the confirm) — only claim the order is back when the write LANDED,
+      // or the reassuring toast masks exactly the stranding B2 exists to fix.
+      const _reverted = await _c_portalRef.update({ status: _c_origStatus, confirmedAt: null })
+        .then(() => true).catch(() => false);
       if (_c_pairedId) {
         await firebase.firestore().collection('portal_orders').doc(_c_pairedId)
           .update({ status: _c_origStatus, confirmedAt: null }).catch(() => {});
       }
-      toast('Confirm failed — the order was returned to the review queue. Nothing was invoiced.', 8000);
+      if (_reverted) {
+        toast('Confirm failed — the order was returned to the review queue. Nothing was invoiced.', 8000);
+      } else {
+        toast('⚠️ Confirm failed AND the order could not be returned to the queue (connection?). It may show as confirmed with no invoice — reload and check, or tell Claude.', 10000);
+      }
       try { renderPreOrders(true); } catch(_) {}
     } else {
       toast('Error confirming order — check console');
