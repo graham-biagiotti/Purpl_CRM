@@ -142,7 +142,26 @@ exports.sendEmail = onCall(
         subject: data.subject,
         html: data.html,
         ...(attachments ? {attachments} : {}),
+        // v254: one-click unsubscribe header for deliverability — same target
+        // as the footer link buildEmailHTML embeds per account.
+        // unsubAccountId is header-only; accountId ALSO triggers the cadence
+        // log below (the mass-send loops log client-side, so they send only
+        // unsubAccountId to avoid double history rows).
+        ...((data.unsubAccountId || data.accountId) ? { headers: { 'List-Unsubscribe': `<https://purpl-crm.web.app/unsubscribe?id=${encodeURIComponent(String(data.unsubAccountId || data.accountId))}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {}),
       });
+      // v254: the Resend v6 SDK RETURNS {data, error} instead of throwing — a
+      // rate-limited, quota-capped or rejected send came back as
+      // {success:true, id:undefined}, the client counted it delivered and
+      // wrote it into the customer's history. Surface it as the failure it
+      // is; quota/rate errors get their own code so the mass-send loop can
+      // stop cleanly at the daily cap instead of burning the rest.
+      if (result.error) {
+        console.error('Resend rejected the send:', JSON.stringify(result.error));
+        const en = String(result.error.name || result.error.statusCode || '');
+        const quota = /rate_limit|quota|429/i.test(en) || /rate limit|quota/i.test(String(result.error.message || ''));
+        throw new HttpsError(quota ? 'resource-exhausted' : 'internal',
+          'Email NOT sent — ' + (result.error.message || en || 'Resend rejected the send'));
+      }
       const messageId = result.data?.id || result.id;
 
       // Log cadence entry if accountId provided
@@ -156,6 +175,7 @@ exports.sendEmail = onCall(
 
       return {success: true, id: messageId};
     } catch (err) {
+      if (err instanceof HttpsError) throw err; // v254: keep the specific code (resource-exhausted for quota stops)
       console.error('Email send error:', err.message);
       throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }
@@ -185,6 +205,15 @@ exports.sendCombinedInvoice = onCall(
         subject: data.subject || 'Invoice from Pumpkin Blossom Farm',
         html: data.html,
       });
+      // v254: same {data, error} check as sendEmail — an unexamined error
+      // meant "Invoice sent ✓" while nothing went out.
+      if (result.error) {
+        console.error('Resend rejected the send:', JSON.stringify(result.error));
+        const en = String(result.error.name || result.error.statusCode || '');
+        const quota = /rate_limit|quota|429/i.test(en) || /rate limit|quota/i.test(String(result.error.message || ''));
+        throw new HttpsError(quota ? 'resource-exhausted' : 'internal',
+          'Email NOT sent — ' + (result.error.message || en || 'Resend rejected the send'));
+      }
       const messageId = result.data?.id || result.id;
 
       // No server-side cadence log here: the CRM client logs this send itself
@@ -193,6 +222,7 @@ exports.sendCombinedInvoice = onCall(
 
       return {success: true, id: messageId};
     } catch (err) {
+      if (err instanceof HttpsError) throw err; // v254: keep the specific code (resource-exhausted for quota stops)
       console.error('Email send error:', err.message);
       throw new HttpsError('internal', 'Email send failed: ' + (err.message || 'unknown error'));
     }

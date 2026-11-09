@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v253';
+const APP_VERSION = 'v254';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -599,18 +599,30 @@ const PBF_HEADER_HTML = `
 </table>`;
 
 // ── Firebase Functions client helpers ─────────────────────
-async function callSendEmail(to, from, subject, html, attachments, cc) {
+async function callSendEmail(to, from, subject, html, attachments, cc, unsubAccountId) {
   try {
     const fn = firebase.functions().httpsCallable('sendEmail');
     const payload = {to, from, subject, html};
     if (attachments && attachments.length) payload.attachments = attachments;
     if (cc && cc.length) payload.cc = cc;
+    // v254: sets the one-click List-Unsubscribe header to this account's
+    // unsubscribe URL (same target the footer link carries). Deliberately a
+    // SEPARATE field from accountId — accountId also triggers the server's
+    // cadence log, and the client loops write their own entries.
+    if (unsubAccountId) payload.unsubAccountId = unsubAccountId;
     const result = await fn(payload);
     return result.data;
   } catch (err) {
     console.error('Send email error:', err);
     throw err;
   }
+}
+
+// v254: did a send fail because of Resend's quota/rate cap (free tier:
+// 100/day)? The server throws 'resource-exhausted' for those — the mass-send
+// loops stop cleanly at the cap instead of burning the rest as failures.
+function _isEmailQuotaError(e) {
+  return /resource-exhausted/.test(String(e?.code || '')) || /quota|rate limit/i.test(String(e?.message || ''));
 }
 
 // UTF-8-safe base64 for email attachments (btoa alone chokes on non-ASCII)
@@ -5578,11 +5590,15 @@ async function meBroadcastSend() {
 
   _meBroadcastInFlight = true;
   if (sendBtn) sendBtn.disabled = true;
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, capHit = false; // v254
+  const sentIds = new Set(); // v254: cap-stop resume — drop only these from the selection
 
   for (let i = 0; i < accounts.length; i++) {
     const a     = accounts[i];
-    const email = (a.contacts||[]).find(c=>c.email)?.email || a.email || '';
+    // v254: the PRIMARY contact gets the broadcast (it used to go to
+    // whichever contact happened to be first with an email).
+    const _bc = (a.contacts||[]).filter(c=>c.email);
+    const email = (_bc.find(c=>c.isPrimary) || _bc[0] || {}).email || a.email || '';
     if (statusEl) statusEl.textContent = `Sending ${i+1} of ${accounts.length}…`;
 
     if (a.emailOptOut) { skipped++; continue; }
@@ -5593,7 +5609,7 @@ async function meBroadcastSend() {
     if (!email) { failed++; }
     else {
       try {
-        const result = await callSendEmail(email, 'lavender@pbfwholesale.com', subject, html);
+        const result = await callSendEmail(email, 'lavender@pbfwholesale.com', subject, html, undefined, undefined, a.id);
         const entry = {
           id: uid(), stage: 'broadcast',
           sentAt: new Date().toISOString(),
@@ -5607,10 +5623,28 @@ async function meBroadcastSend() {
           cadence: _pushCadence(ac.cadence, entry),
         }));
         sent++;
-      } catch(_) { failed++; }
+        sentIds.add(a.id);
+      } catch(e) {
+        if (_isEmailQuotaError(e)) { capHit = true; break; } // v254: stop at the daily cap
+        failed++;
+      }
     }
 
     if (i < accounts.length - 1) await new Promise(r=>setTimeout(r, 300));
+  }
+
+  if (capHit) {
+    // v254: keep the UNSENT accounts selected — clicking Send tomorrow
+    // finishes exactly the remainder.
+    sentIds.forEach(id => _meSelectedIds.delete(id));
+    if (typeof renderMeBatchList === 'function') renderMeBatchList();
+    const remaining = _meSelectedIds.size;
+    const summary = `⛔ Daily email limit reached — ${sent} sent, ${remaining} still selected. Click Send tomorrow to finish the rest.`;
+    if (statusEl) statusEl.textContent = summary;
+    _meBroadcastInFlight = false;
+    if (sendBtn) sendBtn.disabled = false;
+    toast(summary, 12000);
+    return;
   }
 
   _meSelectedIds.clear(); // same stale-selection hazard as template send
@@ -5663,16 +5697,25 @@ async function meTemplateSend() {
   const hasEmail      = a => (a.contacts || []).some(c => c.email) || !!a.email;
   const noEmailCount  = accounts.filter(a => !hasEmail(a)).length;
   const newLinkCount  = needsLink ? accounts.filter(a => !a.orderPortalToken && !a.emailOptOut).length : 0;
+  // v254: resume support — an account that already received THIS template in
+  // the last 14 days is skipped, so re-running the same send after a
+  // daily-cap stop (Resend free tier: 100/day) continues where it left off
+  // instead of double-emailing the first 100.
+  const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
+  const _alreadyGot = a => (a.cadence || []).some(e =>
+    e.stage === stageId && e.sentAt && (Date.now() - Date.parse(e.sentAt)) < 14 * 86400000);
+  const alreadyCount = accounts.filter(_alreadyGot).length;
   let confirmMsg = `Send "${tplId}" to ${accounts.length} account${accounts.length > 1 ? 's' : ''}?`;
   if (noEmailCount) confirmMsg += `\n\n⚠️ ${noEmailCount} have no email address — they will be skipped.`;
   if (newLinkCount) confirmMsg += `\n\n🔗 ${newLinkCount} will get a brand-new personalized order link (generated now).`;
+  if (alreadyCount) confirmMsg += `\n\n🔁 ${alreadyCount} already received this template in the last 14 days — they'll be skipped (safe to re-run after a daily-limit stop).`;
   if (!(await confirmDlg(confirmMsg))) return;
 
   _meTemplateInFlight = true;
   const statusEl = qs('#me-template-status');
   const sendBtn = qs('#me-template-send-btn');
   if (sendBtn) sendBtn.disabled = true;
-  let sent = 0, failed = 0, skipped = 0;
+  let sent = 0, failed = 0, skipped = 0, capHit = false; // v254
 
   // Ensure every account has a portal token BEFORE sending, so the email's
   // "personalized link, no password needed" button actually works. Mirrors
@@ -5736,6 +5779,7 @@ async function meTemplateSend() {
     if (statusEl) statusEl.textContent = `Sending ${i + 1} of ${accounts.length}…`;
 
     if (a.emailOptOut) { skipped++; continue; }
+    if (_alreadyGot(a)) { skipped++; continue; } // v254: resume — got it recently
     if (!recipients.length) { failed++; continue; }
 
     const extra = { portalPassword };
@@ -5749,23 +5793,39 @@ async function meTemplateSend() {
 
     for (const email of recipients) {
       try {
-        const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body);
-        const stageId = _TEMPLATE_STAGE_IDS[tplId] || tplId;
+        const result = await callSendEmail(email, tpl.from || 'lavender@pbfwholesale.com', tpl.subject, tpl.body, undefined, undefined, a.id);
         const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
         const entry = { id: uid(), stage: stageId, sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', to: email };
         if (result?.id) entry.sentMessageId = result.id;
         DB.update('ac', a.id, ac => ({ ...ac, ...stamp, cadence: _pushCadence(ac.cadence, entry) }));
         sent++;
-      } catch(_) { failed++; }
+      } catch(e) {
+        // v254: a quota/rate-cap rejection stops the run cleanly — the rest
+        // aren't failures, they're tomorrow's batch (the cadence skip above
+        // makes a re-run resume exactly here).
+        if (_isEmailQuotaError(e)) { capHit = true; break; }
+        failed++;
+      }
       await new Promise(r => setTimeout(r, 500)); // ~2/sec — gentle on Resend rate limits
     }
+    if (capHit) break;
+  }
+
+  if (capHit) {
+    const remaining = accounts.filter(a => !a.emailOptOut && !_alreadyGot(a) && hasEmail(a)).length;
+    const summary = `⛔ Daily email limit reached — ${sent} sent, ~${remaining} remaining. Re-run this same send tomorrow: accounts that already got it are skipped automatically.`;
+    if (statusEl) statusEl.textContent = summary;
+    _meTemplateInFlight = false;
+    if (sendBtn) sendBtn.disabled = false;
+    toast(summary, 12000);
+    return; // selections kept — the re-run targets the same list
   }
 
   // Clear selections — they persisted across sessions/filters, so the NEXT
   // blast silently targeted every previously-checked (now hidden) account.
   _meSelectedIds.clear();
   if (typeof renderMeAccountList === 'function') renderMeAccountList();
-  const summary = `Template send complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
+  const summary = `Template send complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed or already received)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meTemplateInFlight = false;
   if (sendBtn) sendBtn.disabled = false;
