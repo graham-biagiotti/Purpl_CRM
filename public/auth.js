@@ -96,6 +96,10 @@ async function bootApp() {
   if (signOutBtn) {
     signOutBtn.addEventListener('click', async () => {
       if (!confirm('Sign out of purpl CRM?')) return;
+      // v255 (B9): flush any debounced edits to the recovery snapshot BEFORE
+      // auth dies — the teardown parks the save machinery, so this is the
+      // last chance for an unsaved change to survive into the next sign-in.
+      try { if (typeof DB !== 'undefined' && DB._flushPendingSave) DB._flushPendingSave(); } catch(_) {}
       await signOut(auth);
     });
   }

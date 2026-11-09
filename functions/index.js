@@ -3110,7 +3110,7 @@ exports.samplingDailySweep = onSchedule(
         const w = _samplingWindowText(rec);
         const L = rec.logistics || {};
         try {
-          await resend.emails.send({
+          const _r = await resend.emails.send({
             from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
             replyTo: 'graham@pumpkinblossomfarm.com',
             subject: `Demo in 2 days: ${rec.accountName} — ${_samplingFmtDate(rec.confirmedDate)}`,
@@ -3130,6 +3130,10 @@ exports.samplingDailySweep = onSchedule(
               </div>
               <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${doc.id}&k=${rec.samplerActionToken}&a=sheet" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">🖨 Print demo sheet</a></div>`),
           });
+          // v255: Resend v6 returns {data, error} — a quota-rejected sweep
+          // email was stamped as sent and never retried (the sampler missed
+          // her run sheet). No stamp on failure → tomorrow's sweep retries.
+          if (_r.error) { console.error('Sweep send rejected (T-2 reminder):', doc.id, JSON.stringify(_r.error)); continue; }
           await doc.ref.update({ samplerReminderSentAt: new Date().toISOString() });
         } catch (e) { console.error('Sampler T-2 reminder failed:', doc.id, e.message); }
       }
@@ -3145,7 +3149,7 @@ exports.samplingDailySweep = onSchedule(
         const rec = doc.data();
         if (rec.report || rec.reportRequestSentAt) continue;
         try {
-          await resend.emails.send({
+          const _r = await resend.emails.send({
             from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
             replyTo: 'graham@pumpkinblossomfarm.com',
             subject: `How'd it go at ${rec.accountName || 'the demo'}? (30 seconds)`,
@@ -3154,6 +3158,10 @@ exports.samplingDailySweep = onSchedule(
               <p>Tap below — three taps and two numbers, that's it. The backstock number is how Graham knows what to bill the store.</p>
               <div style="text-align:center;margin:20px 0"><a href="${SAMPLING_ACTION_BASE}?r=${doc.id}&k=${rec.samplerActionToken}&a=report" style="display:block;padding:18px 16px;border-radius:10px;font-size:17px;font-weight:700;text-decoration:none;background:#4D2A6F;color:#ffffff">FILE THE 30-SECOND REPORT</a></div>`),
           });
+          // v255: Resend v6 returns {data, error} — a quota-rejected sweep
+          // email was stamped as sent and never retried (the sampler missed
+          // her run sheet). No stamp on failure → tomorrow's sweep retries.
+          if (_r.error) { console.error('Sweep send rejected (report request):', doc.id, JSON.stringify(_r.error)); continue; }
           await doc.ref.update({ reportRequestSentAt: new Date().toISOString() });
         } catch (e) { console.error('Report request failed:', doc.id, e.message); }
       }
@@ -3170,12 +3178,16 @@ exports.samplingDailySweep = onSchedule(
         if ((rec.packetSentAt || rec.createdAt || '') > cutoff) continue;
         try {
           const mail = _samplingPacketEmail(doc.id, rec);
-          await resend.emails.send({
+          const _r = await resend.emails.send({
             from: 'lavender@pbfwholesale.com', to: cfg.samplerEmail,
             replyTo: 'graham@pumpkinblossomfarm.com',
             subject: 'Still waiting — ' + mail.subject,
             html: mail.html,
           });
+          // v255: Resend v6 returns {data, error} — a quota-rejected sweep
+          // email was stamped as sent and never retried (the sampler missed
+          // her run sheet). No stamp on failure → tomorrow's sweep retries.
+          if (_r.error) { console.error('Sweep send rejected (nudge):', doc.id, JSON.stringify(_r.error)); continue; }
           await doc.ref.update({ samplerNudgedAt: new Date().toISOString(), packetSendFailed: admin.firestore.FieldValue.delete() });
         } catch (e) { console.error('Sampler nudge failed:', doc.id, e.message); }
       }

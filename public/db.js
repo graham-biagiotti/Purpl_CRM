@@ -275,6 +275,13 @@ const DB = {
     this._listenerRetries = {};
     this._deadListeners = new Set();
     this._resubPending = {};
+    // v255 (B9): park the save machinery too — scheduled debounces and retry
+    // timers used to survive sign-out and fire permission-denied writes (and
+    // their failure toasts) onto the login screen.
+    Object.values(this._saveTimers || {}).forEach(t => { if (t) clearTimeout(t); });
+    this._saveTimers = {};
+    if (this._saveDirtyKeys) this._saveDirtyKeys.clear();
+    clearTimeout(this._applyPendingRetry);
     this._firestoreReady = false;
   },
 
@@ -870,6 +877,7 @@ const DB = {
   },
 
   _saveCollection(key) {
+    if (!this._db || !this._firestoreReady) return; // v255 (B9): no writes after sign-out teardown
     // M1: write ONLY docs marked dirty (created/updated and not yet confirmed),
     // never the whole cache. C1 still holds: deletion is never inferred from
     // cache-absence — only ids explicitly queued in _dirtyDeletes are deleted.
@@ -963,6 +971,10 @@ const DB = {
   },
 
   _saveConfig(keys) {
+    // v255 (B9): a retry setTimeout or atomicUpdate flush could fire AFTER
+    // sign-out teardown — permission-denied plus a scary "save rejected"
+    // toast on the login screen.
+    if (!this._db || !this._firestoreReady) return;
     // M3: write ONLY the named config keys (top-level merge), not the whole
     // config blob. Writing all keys on every save meant two users editing
     // DIFFERENT settings raced whole-doc last-writer-wins — the loser's key

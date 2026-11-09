@@ -1626,6 +1626,24 @@ function migrateLfSyrupSize() {
   console.log('[migrate] LF syrup renamed to 16oz');
 }
 
+// ── v255 (B4): repair legacy LF invoices stored with total 0 ──────────────
+// An older build wrote some LF invoices with total/amount 0 while their line
+// items sum above it — they showed $0 in reminder emails and dragged combined
+// parents and LF revenue reports down. Idempotent: once total is non-zero the
+// row never matches again; rows whose lines genuinely sum to 0 are untouched.
+function migrateLfZeroTotals() {
+  if (!DB._firestoreReady || !DB._loadConfirmed) return;
+  const lineVal = l => parseFloat(l.lineTotal != null ? l.lineTotal : (l.total != null ? l.total : l.amount)) || 0;
+  DB.a('lf_invoices').forEach(inv => {
+    if ((parseFloat(inv.total) || 0) !== 0) return;
+    const sum = Math.round((inv.lineItems || []).reduce((s, l) => s + lineVal(l), 0) * 100) / 100;
+    if (sum > 0) {
+      DB.updateFields('lf_invoices', inv.id, { total: sum, amount: sum });
+      console.log('[migrate] LF invoice', inv.number || inv.invoiceNumber || inv.id, 'total repaired 0 →', sum);
+    }
+  });
+}
+
 // ══════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
@@ -4209,7 +4227,16 @@ function renderMacSamplesTab(accountId) {
   if (btn) btn.onclick = () => openLogSampleModal('ac', accountId);
   const shipSampleBtn = qs('#mac-tab-ship-sample-btn');
   if (shipSampleBtn) shipSampleBtn.onclick = async () => {
-    if (await confirmDlg('Push a 3-can sample box to ShipStation for ' + (a.name || 'this account') + '?')) pushSampleToShipStation(accountId);
+    // v255 (B8): a second box is sometimes right (re-sample after months) —
+    // but the confirm must SAY one already shipped, and a double-click must
+    // not ship two (manual pushes have a unique ShipStation key by design).
+    const _prevSample = (a.samples || []).filter(s => s.shipStationOrderId).sort((x, y) => (y.date || '') > (x.date || '') ? 1 : -1)[0];
+    const _warn = _prevSample ? `\n\n⚠️ A sample box already shipped to this account on ${fmtD(_prevSample.date)} (${_prevSample.sampleOrderNumber || ''}). This will ship ANOTHER one.` : '';
+    if (await confirmDlg('Push a 3-can sample box to ShipStation for ' + (a.name || 'this account') + '?' + _warn)) {
+      if (window._manualSamplePushBusy) { toast('Sample push already in progress'); return; }
+      window._manualSamplePushBusy = true;
+      try { await pushSampleToShipStation(accountId); } finally { window._manualSamplePushBusy = false; }
+    }
   };
 
   const samples = (a.samples || []).slice().sort((x, y) => (x.date > y.date ? -1 : 1));
@@ -5667,7 +5694,7 @@ async function meBroadcastSend() {
 
   _meSelectedIds.clear(); // same stale-selection hazard as template send
   if (typeof renderMeAccountList === 'function') renderMeAccountList(); // gate F3 (pre-existing wrong renderer here too)
-  const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed)` : ''}`;
+  const summary = `Broadcast complete — ${sent} sent${failed ? `, ${failed} failed` : ''}${skipped ? `, ${skipped} skipped (unsubscribed or already sent this subject)` : ''}`;
   if (statusEl) statusEl.textContent = `✓ ${summary}`;
   _meBroadcastInFlight = false;
   if (sendBtn) sendBtn.disabled = false;
@@ -14538,7 +14565,9 @@ function buildPurplInvoiceEmailHTML(inv, opts) {
     accountAddress: ac.address || '',
     deliverTo: inv.deliverTo || null,
     issueDate: inv.date,
-    dueDate: inv.due || inv.dueDate,
+    // v255 (B1): purpl saves write dueDate — preferring the legacy `due` twin
+    // showed a STALE due date on the printed/emailed doc after a terms change.
+    dueDate: inv.dueDate || inv.due,
     terms: _invTermsLabel(inv),
     deliveryDate: inv.deliveryDate || '',
     tracking: inv.trackingNumber || '',
@@ -14725,6 +14754,17 @@ async function openInvoicePreview(type, id) {
     const _tl = _termsToLabel(rec.paymentTerms) || 'Net 30';
     qs('#civ-edit-terms').value = _tl;
     if (qs('#civ-edit-terms').value !== _tl) qs('#civ-edit-terms').value = 'Net 30';
+    // v255 (B1): picking new terms recomputes Due from the issue date — the
+    // due date silently kept the OLD terms before (the doc then printed it).
+    qs('#civ-edit-terms').onchange = () => {
+      const lbl = qs('#civ-edit-terms').value;
+      const m = /(\d+)/.exec(lbl);
+      const days = /receipt/i.test(lbl) ? 0 : (m ? parseInt(m[1]) : null);
+      if (days == null) return; // 'Custom' — leave the typed due date alone
+      const iss = qs('#civ-edit-date')?.value;
+      const dueEl = qs('#civ-edit-due');
+      if (iss && dueEl) dueEl.value = new Date(new Date(iss + 'T12:00:00').getTime() + days * 864e5).toISOString().slice(0, 10);
+    };
   }
   if (qs('#civ-edit-notes')) qs('#civ-edit-notes').value = rec.notes || '';
   // Dist workflow: terms run from DELIVERY. Setting the Issue Date to the
@@ -15131,6 +15171,11 @@ async function openCombinedInvoicePreview(combinedId) {
       const ri = rec.purplInvoiceId ? (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId) : -1;
       const li = rec.lfInvoiceId ? (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId) : -1;
       if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...patch };
+      // v255 (B6): legacy purpl child in the iv collection gets the edit too
+      else if (rec.purplInvoiceId) {
+        const ii = (cache.iv||[]).findIndex(x => x.id === rec.purplInvoiceId);
+        if (ii >= 0) cache.iv[ii] = { ...cache.iv[ii], ...patch };
+      }
       if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], ...patch, issued: newDate, due: newDue };
       // Shipping reconciliation: the charge may sit on the parent OR a child
       // (webhook matches by invoice number and can hit a child). A typed value
@@ -15253,6 +15298,13 @@ async function openCombinedInvoicePreview(combinedId) {
           if (rec.purplInvoiceId) {
             const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
             if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], ...sendPatch };
+            // v255 (B6): legacy purpl children live in the iv collection —
+            // the send flip skipped them (markCombinedPaid already has this
+            // fallback; the email went out but the child stayed 'draft').
+            else {
+              const ii = (cache.iv||[]).findIndex(x => x.id === rec.purplInvoiceId);
+              if (ii >= 0) cache.iv[ii] = { ...cache.iv[ii], ...sendPatch };
+            }
             // Re-check alreadyDeducted inside atomic block to close double-send race
             const alreadyDeducted = (cache.iv||[]).some(x => x.invoiceId === rec.purplInvoiceId && x.type === 'out');
             if (wasDraft && !alreadyDeducted && ri >= 0) {
@@ -15314,6 +15366,11 @@ async function openCombinedInvoicePreview(combinedId) {
       if (rec.purplInvoiceId) {
         const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
         if (ri >= 0) cache.retail_invoices[ri] = { ...cache.retail_invoices[ri], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
+        // v255 (B6): legacy purpl child in the iv collection voids too
+        else {
+          const ii = (cache.iv||[]).findIndex(x => x.id === rec.purplInvoiceId);
+          if (ii >= 0) cache.iv[ii] = { ...cache.iv[ii], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
+        }
       }
       if (rec.lfInvoiceId) {
         const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
@@ -15728,6 +15785,7 @@ window.onAppReady = function() {
   migrateLfSkuVariants();
   migrateLfSkuPrices();
   migrateLfSyrupSize(); // v249: 16oz bottle rename (idempotent name-match)
+  migrateLfZeroTotals(); // v255 (B4): repair $0 LF invoice totals
   restoreMyData(); // one-time: restores real accounts/prospects; guarded by _firestoreReady
   migrateAccountContacts(); // one-time: populates contacts[] array from single contact fields
   migrateInvoiceStatuses(); // one-time: unpaid/overdue → sent for all invoice types
@@ -15738,6 +15796,7 @@ window.onAppReady = function() {
   window.refreshCurrentPage = () => {
     migrateLfSkuVariants();
     migrateLfSyrupSize(); // retried here in case the 10s boot window missed the data
+    migrateLfZeroTotals(); // v255 (B4): retried too
     restoreMyData();
     migrateAccountContacts();
     _checkShippedInvoices();
@@ -17433,6 +17492,12 @@ async function confirmPortalOrder() {
   if (!_portalOrderId) return;
   if (_confirmPortalInFlight) { toast('Confirming — please wait…'); return; }
   _confirmPortalInFlight = true;
+  // v255 (B2): stranding recovery — the opening transaction claims the order
+  // as 'confirmed' long before the invoice exists. If ANYTHING between the
+  // claim and invoice creation throws (config fetch, number allocation, the
+  // write itself), the catch below must put the order back in the queue;
+  // before, it stayed 'confirmed' with no invoice and vanished from review.
+  let _c_portalRef = null, _c_origStatus = 'new', _c_pairedId = null, _c_invoiceCreated = false;
   try {
     const portalRef = firebase.firestore()
       .collection('portal_orders').doc(_portalOrderId);
@@ -17441,11 +17506,15 @@ async function confirmPortalOrder() {
       const data = snap.data();
       // v246: 'handled' is terminal too — a stale tab's Confirm must not
       // invoice an order the owner already took care of manually.
-      if (data.status === 'confirmed' || data.status === 'handled') return null;
+      // v255 (B7): 'declined' is terminal here as well — the paired-claim
+      // transaction already refused it, but the PRIMARY guard didn't, so a
+      // stale row's Confirm could revive a declined order into an invoice.
+      if (data.status === 'confirmed' || data.status === 'handled' || data.status === 'declined') return null;
       tx.update(portalRef, { status: 'confirmed', confirmedAt: firebase.firestore.FieldValue.serverTimestamp() });
       return data;
     });
-    if (!d) { toast('This order was already confirmed or marked handled'); closeModal('modal-confirm-portal-order'); return; }
+    if (!d) { toast('This order was already confirmed, declined, or marked handled'); closeModal('modal-confirm-portal-order'); return; }
+    _c_portalRef = portalRef; _c_origStatus = d.status || 'new'; // v255 (B2): claimed — revert on failure
 
     // If unmatched, use the selected account from the picker
     if (!d.accountId) {
@@ -17495,6 +17564,7 @@ async function confirmPortalOrder() {
         return true;
       });
       if (!claimed) paired = null;
+      if (paired) _c_pairedId = paired.id; // v255 (B2): claimed twin — revert on failure
     }
 
     const purplDoc = d.brand === 'lf' ? paired : d;
@@ -17728,6 +17798,8 @@ async function confirmPortalOrder() {
       }
     });
 
+    _c_invoiceCreated = true; // v255 (B2): invoice exists — never un-confirm past this point
+
     // Update portal_orders — primary already confirmed in transaction above
     await portalRef.update({ convertedOrderId: purplOrderId || lfOrderId });
     if (paired) {
@@ -17783,7 +17855,20 @@ async function confirmPortalOrder() {
 
   } catch(e) {
     console.error('confirmPortalOrder error:', e);
-    toast('Error confirming order — check console');
+    // v255 (B2): claimed but no invoice → put BOTH halves back in the queue
+    // (recoverable: he just clicks Confirm again). With an invoice created,
+    // the order stays confirmed — reverting then would invite a duplicate.
+    if (_c_portalRef && !_c_invoiceCreated) {
+      await _c_portalRef.update({ status: _c_origStatus, confirmedAt: null }).catch(() => {});
+      if (_c_pairedId) {
+        await firebase.firestore().collection('portal_orders').doc(_c_pairedId)
+          .update({ status: _c_origStatus, confirmedAt: null }).catch(() => {});
+      }
+      toast('Confirm failed — the order was returned to the review queue. Nothing was invoiced.', 8000);
+      try { renderPreOrders(true); } catch(_) {}
+    } else {
+      toast('Error confirming order — check console');
+    }
   } finally {
     _confirmPortalInFlight = false;
   }
@@ -18327,8 +18412,20 @@ function renderInvKpis() {
   const totalInvoiced = scoped.filter(x => (x.status || 'draft') !== 'void').reduce((s, x) => s + amtOf(x), 0);
   const outstanding   = scoped.filter(x => !['paid', 'draft', 'void'].includes(effStatus(x))).reduce((s, x) => s + amtOf(x), 0);
   const overdue       = scoped.filter(x => effStatus(x) === 'overdue').reduce((s, x) => s + amtOf(x), 0);
-  const collected     = invs.filter(x => x.status === 'paid' && paidD(x) && (!cFrom || paidD(x) >= cFrom) && (!cTo || paidD(x) <= cTo))
-                          .reduce((s, x) => s + amtOf(x), 0);
+  // v255 (B3): Collected now counts the same money Outstanding stops counting
+  // — legacy combined parents stuck at 'sent' with both children paid are
+  // effStatus 'paid'; their paid DATE falls back to the latest child's.
+  const _famPaidD = x => {
+    if (!_combFamilyPaid(x)) return '';
+    return [...DB.a('retail_invoices'), ...DB.a('iv'), ...DB.a('lf_invoices')]
+      .filter(k => k.id === x.purplInvoiceId || k.id === x.lfInvoiceId)
+      .map(k => (k.paidDate || k.paidAt || '').slice(0, 10)).sort().pop() || '';
+  };
+  const collected     = invs.filter(x => {
+                          if (effStatus(x) !== 'paid') return false;
+                          const pd = paidD(x) || _famPaidD(x);
+                          return pd && (!cFrom || pd >= cFrom) && (!cTo || pd <= cTo);
+                        }).reduce((s, x) => s + amtOf(x), 0);
 
   const el = qs('#inv-page-kpis');
   if (!el) return;
@@ -19023,6 +19120,7 @@ async function _saveInvCore(id, isNew) {
     accountName:  ac.name || '',
     date,
     dueDate:      due,
+    due,          // v255 (B1): keep the legacy twin in step (portal-born rows carry both)
     cases:        totalCases,
     cans:         totalCans,
     pricePerCase: lineItems[0]?.pricePerCase || null,
@@ -20827,7 +20925,12 @@ function flSaveContact(id) {
     } else {
       contacts.push({ name: l.contactName || '', role: l.contactRole || '', phone: l.contactPhone || '', email: l.contactEmail || '', isPrimary: contacts.length === 0 });
     }
-    return { ...x, contacts };
+    // v255 (B5): keep the FLAT contact/phone/email fields (what account
+    // cards, lists and invoices read) in step with the primary contact —
+    // this save used to update only contacts[], so the account kept showing
+    // the old person everywhere flat fields are displayed.
+    const prim = contacts.find(c => c.isPrimary) || contacts[0] || {};
+    return { ...x, contacts, contact: prim.name || '', phone: prim.phone || '', email: prim.email || '' };
   });
   firebase.firestore().collection('field_logs').doc(id).update({ contactSavedAt: new Date().toISOString() }).catch(() => {});
   toast('Contact saved to account ✓');
