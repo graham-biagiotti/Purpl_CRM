@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v252';
+const APP_VERSION = 'v253';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -489,6 +489,9 @@ function auditLog(action, entityType, entityId, entityName, extra) {
     entityName: entityName || '',
     changedBy:  _currentUserName(),
     changedByEmail: _currentUserEmail(),
+    // v253: display names collide and emails can change — the uid is the
+    // stable "who" now that two people work in here.
+    changedByUid: (typeof firebase !== 'undefined' && firebase.auth?.()?.currentUser?.uid) || '',
     ...(extra || {}),
   });
 }
@@ -2614,7 +2617,8 @@ function _docBrandRowHTML() {
 
 function setInvStatus(id, status) {
   const extra = status==='invoiced' ? {invoiceDate:today()} : status==='paid' ? {paidDate:today()} : {};
-  DB.update('orders', id, o=>({...o, invoiceStatus:status, ...extra}));
+  DB.updateFields('orders', id, { invoiceStatus: status, ...extra }); // v253: field-targeted
+  auditLog('status', 'order', id, '', { invoiceStatus: status }); // v253
   // Only refresh the order detail modal if it's already open (don't pop it open from dashboard)
   const detailModal = document.getElementById('modal-order-detail');
   if (detailModal && detailModal.classList.contains('open')) openOrderDetail(id);
@@ -3067,7 +3071,14 @@ function markRetailInvPaid(id) {
   if (!DB._firestoreReady) return;
   // Legacy purpl invoices live in the iv collection — route by _invoiceCol or
   // the update is a silent no-op that still toasts success.
-  DB.update(_invoiceCol(id), id, i=>({...i, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  const _col = _invoiceCol(id);
+  const _inv = DB.a(_col).find(x => x.id === id);
+  // v253: a voided invoice must not resurrect to paid (stock was restored by
+  // the void — books and stock would disagree). Same guard markCombinedPaid has.
+  if (_inv?.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
+  // v253: field-targeted flip (money-state changes never carry stale fields)
+  DB.updateFields(_col, id, { status:'paid', paidDate:today(), paidAt:new Date().toISOString() });
+  auditLog('paid', 'invoice', id, _inv?.number || _inv?.invoiceNumber || id);
   _syncCombinedParentForChild(id); // M1
   renderInvoiceStatus();
   if (currentPage === 'invoices') renderInvoicesPage();
@@ -8725,7 +8736,10 @@ async function saveDistInvoice(existingId) {
 }
 
 function markDistInvoicePaid(invId, distId) {
-  DB.update('dist_invoices', invId, i => ({ ...i, status: 'paid', paidDate: today(), paidAt: new Date().toISOString() }));
+  const _inv = DB.a('dist_invoices').find(x => x.id === invId);
+  if (_inv?.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; } // v253
+  DB.updateFields('dist_invoices', invId, { status: 'paid', paidDate: today(), paidAt: new Date().toISOString() }); // v253: field-targeted
+  auditLog('paid', 'dist_invoice', invId, _inv?.number || _inv?.invoiceNumber || invId);
   if (currentPage === 'invoices') renderInvoicesPage();
   const d = DB.a('dist_profiles').find(x => x.id === distId);
   const pane = qs('#mdist-tab-invoices');
@@ -9083,6 +9097,7 @@ function receiveLooseCans() {
   if (!sku) { toast('Select a SKU'); return; }
   if (!qty||qty<=0) { toast('Enter a valid quantity'); return; }
   DB.push('loose_cans', {id:uid(), date:today(), sku, qty, source:qs('#recv-loose-source')?.value?.trim()||'', note:qs('#recv-loose-note')?.value?.trim()||''});
+  auditLog('stock_receive', 'inventory', sku, SKU_MAP[sku]?.label || sku, { qty, form: 'loose_cans' }); // v253
   qs('#recv-loose-qty').value=''; qs('#recv-loose-source').value=''; qs('#recv-loose-note').value='';
   _invReceive();
   toast('Loose cans logged');
@@ -9105,6 +9120,7 @@ function receiveFinishedPacks() {
   const _packSize = ({'6pack':6, '12pack':12, '24pack':24, 'single':1})[packType] || 1;
   const cans = qty * _packSize;
   DB.push('iv', {id:uid(), date:today(), sku, type:'in', qty: cans, pool: recvPool, note:`${qty} × ${packType} = ${cans} cans — ${qs('#recv-pack-note')?.value?.trim()||''}`});
+  auditLog('stock_receive', 'inventory', sku, SKU_MAP[sku]?.label || sku, { qty: cans, pool: recvPool, form: 'finished_packs' }); // v253
   qs('#recv-pack-qty').value=''; qs('#recv-pack-note').value='';
   _invReceive();
   toast('Finished packs logged');
@@ -9523,6 +9539,7 @@ function poolTransfer() {
     ];
   });
   _poolTransferInFlight.delete(key);
+  auditLog('stock_transfer', 'inventory', xferId, SKU_MAP[sku]?.label || sku, { qty, fromPool, toPool }); // v253
   qs('#pool-xfer-qty').value = '';
   qs('#pool-xfer-note').value = '';
   renderInventory();
@@ -12106,14 +12123,46 @@ function saveInventorySettings() {
 // ══════════════════════════════════════════════════════════
 //  MODAL HELPERS
 // ══════════════════════════════════════════════════════════
+// v253: which collections each edit modal's SAVE actually writes. A mapped
+// modal freezes only those keys, so the rest of the tab keeps live-updating
+// while a form is open (an invoice the other user marks paid no longer shows
+// Send Reminder for as long as a note modal sits open). Entries that aren't
+// COLLECTION_KEYS (e.g. lf_wix_deductions) freeze the config doc. Unmapped
+// edit/add/new/log modals keep the legacy freeze-everything behavior.
+const MODAL_FREEZE_KEYS = {
+  'modal-add-inv':          ['retail_invoices', 'iv', 'combined_invoices'],
+  'modal-edit-account':     ['ac'],
+  'modal-edit-prospect':    ['pr', 'ac'],
+  'modal-log-outreach':     ['ac', 'pr', 'dist_profiles'],
+  'modal-log-sample':       ['ac', 'pr'],
+  'modal-edit-distributor': ['dist_profiles', 'ac'],
+  'modal-add-rep':          ['dist_reps'],
+  'modal-add-po':           ['dist_pos', 'iv'],
+  'modal-add-dist-invoice': ['dist_invoices', 'iv'],
+  'modal-add-chain':        ['dist_chains'],
+  'modal-new-order':        ['orders', 'ac', 'iv'],
+  'modal-new-combined':     ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'lf_wix_deductions'],
+  // v253: these two never matched the id patterns and were NEVER frozen —
+  // their saves diffed against live data, the worst combination.
+  'modal-lf-invoice':       ['lf_invoices', 'lf_wix_deductions'],
+  'modal-combined-invoice': ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv'],
+};
+
 function openModal(id) {
   document.querySelectorAll('.overlay.open').forEach(o => {
     if (o.id !== id) o.classList.remove('open');
   });
+  // v253: replacing one modal with another used to leak the old freeze (the
+  // closed modal never got its markClean). One modal at a time: always start
+  // from clean, which also drains anything deferred while the last one was
+  // open, so the new form prefills from the freshest state.
+  DB.markClean();
   const m = document.getElementById(id);
   if (m) m.classList.add('open');
-  // Mark dirty when opening an edit modal (forms with save buttons)
-  if (id && (id.includes('edit') || id.includes('add') || id.includes('new') || id.includes('log'))) {
+  // Freeze what this modal writes (mapped), or everything (legacy patterns)
+  if (MODAL_FREEZE_KEYS[id]) {
+    DB.markDirty(MODAL_FREEZE_KEYS[id]);
+  } else if (id && (id.includes('edit') || id.includes('add') || id.includes('new') || id.includes('log'))) {
     DB.markDirty();
   }
 }
@@ -12690,8 +12739,10 @@ function renderLfInvoicesPage() {
 function markLfInvPaid(id) {
   const inv = DB.a('lf_invoices').find(x => x.id === id);
   if (!inv) return;
+  if (inv.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; } // v253
   const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
-  DB.update('lf_invoices', id, x => ({...x, status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null}));
+  DB.updateFields('lf_invoices', id, { status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null }); // v253: field-targeted
+  auditLog(newStatus === 'paid' ? 'paid' : 'unpaid', 'lf_invoice', id, inv.number || inv.invoiceNumber || id);
   _syncCombinedParentForChild(id); // M1
   renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
@@ -13135,7 +13186,20 @@ function _saveLfInvoiceCore(id, isNew) {
   if (rec.status === 'paid' && !rec.paidDate && !rec.paidAt) { rec.paidDate = today(); rec.paidAt = new Date().toISOString(); }
 
   if (isNew) DB.push('lf_invoices', rec);
-  else DB.update('lf_invoices', id, () => rec);
+  else {
+    // v253: changed-fields-only write (modal-lf-invoice is now frozen, so
+    // `existing` is the open-time state — see the purpl save above for why
+    // the whole-record write clobbered concurrent paid flips).
+    const _patch = {};
+    Object.keys(rec).forEach(k => {
+      if (k === 'id' || rec[k] === undefined) return;
+      const _b = JSON.stringify(existing && existing[k] !== undefined ? existing[k] : null);
+      if (JSON.stringify(rec[k]) !== _b) _patch[k] = rec[k];
+    });
+    if (Object.keys(_patch).length) {
+      if (!DB.updateFields('lf_invoices', id, _patch)) DB.update('lf_invoices', id, () => rec);
+    }
+  }
 
   // Generate or refresh Wix pull deduction record
   const existingDeduction = !isNew ? DB.a('lf_wix_deductions').find(d => d.invoiceId === saveId) : null;
@@ -13231,7 +13295,9 @@ function markCombinedPaid(combinedId) {
   if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
   const now = new Date().toISOString();
   const pd = today(); // local date (was UTC — tomorrow after 8pm ET)
-  DB.atomicUpdate(cache => {
+  // v253: field-level — the paid stamp must never carry this tab's stale
+  // copies of other fields onto the three records.
+  DB.atomicUpdateFields(cache => {
     const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
     if (ci >= 0) cache.combined_invoices[ci] = {...cache.combined_invoices[ci], status:'paid', paidDate:pd, paidAt:now};
     const ri = (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId);
@@ -13243,6 +13309,7 @@ function markCombinedPaid(combinedId) {
     const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
     if (li >= 0) cache.lf_invoices[li] = {...cache.lf_invoices[li], status:'paid', paidDate:pd, paidAt:now};
   });
+  auditLog('paid', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId); // v253
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
 }
@@ -14646,7 +14713,10 @@ async function openInvoicePreview(type, id) {
         };
     const shipRaw = type === 'dist' ? '' : (qs('#civ-edit-shipping')?.value ?? '');
     const discRaw = type === 'dist' ? '' : (qs('#civ-edit-discount')?.value ?? '');
-    DB.update(col, id, x => {
+    // v253: compute the new record from the (frozen, open-time) cache, then
+    // write ONLY the changed fields — an untouched field never reaches the
+    // server, so a concurrent paid stamp or the other user's edit survives.
+    const _applyEdit = x => {
       const nx = { ...x, ...patch };
       // Blank = leave shipping untouched; a number (incl. 0) replaces the
       // __shipping__ line and shifts the invoice total by the difference.
@@ -14678,7 +14748,20 @@ async function openInvoicePreview(type, id) {
         if (nx.amount != null) nx.amount = Math.round(((parseFloat(nx.amount)||0) + delta) * 100) / 100;
       }
       return nx;
-    });
+    };
+    const _cur = DB.a(col).find(r => r.id === id);
+    if (_cur) {
+      const _nx = _applyEdit(_cur);
+      const _p = {};
+      Object.keys(_nx).forEach(k => {
+        if (k === 'id' || _nx[k] === undefined) return;
+        const _b = JSON.stringify(_cur[k] === undefined ? null : _cur[k]);
+        if (JSON.stringify(_nx[k]) !== _b) _p[k] = _nx[k];
+      });
+      if (Object.keys(_p).length) {
+        if (!DB.updateFields(col, id, _p)) DB.update(col, id, _applyEdit);
+      }
+    }
     toast('Invoice updated ✓');
     setTimeout(() => openInvoicePreview(type, id), 200);
   };
@@ -14710,9 +14793,14 @@ async function openInvoicePreview(type, id) {
         toast('Invoice sent ✓');
         // purpl deducts inventory via markInvoiceSent; LF is Wix-managed; dist
         // stock already moved at Log Shipment — status flip only for both.
-        if (type === 'lf' || type === 'dist') DB.update(col, id, x => ({ ...x, status: (x.status === 'draft' || !x.status) ? 'sent' : x.status, sentAt: new Date().toISOString() }));
+        if (type === 'lf' || type === 'dist') {
+          // v253: field-targeted flip (whole-doc write from a frozen modal
+          // carried stale fields over concurrent changes)
+          const _curSt = (DB.a(col).find(x => x.id === id) || {}).status;
+          DB.updateFields(col, id, { ...((_curSt === 'draft' || !_curSt) ? { status: 'sent' } : {}), sentAt: new Date().toISOString() });
+        }
         else markInvoiceSent(id);
-        if (type === 'dist') auditLog('send', 'dist_invoice', id, rec.number || rec.invoiceNumber || id);
+        if (type !== 'retail') auditLog('send', type === 'dist' ? 'dist_invoice' : 'lf_invoice', id, rec.number || rec.invoiceNumber || id); // v253: lf too (retail audits via markInvoiceSent)
         const entry = { id: uid(), stage: 'invoice_sent', sentAt: new Date().toISOString(), sentBy: _currentUserName(), method: 'resend', invoiceId: id, invoiceRef: rec.number || rec.invoiceNumber || '' };
         if (result?.id) entry.sentMessageId = result.id;
         if (rec.accountId) DB.update('ac', rec.accountId, a => ({ ...a, cadence: _pushCadence(a.cadence, entry) }));
@@ -14739,9 +14827,13 @@ async function openInvoicePreview(type, id) {
 
   const voidBtn = qs('#civ-btn-void');
   if (voidBtn) {
-    voidBtn.style.display = (st === 'void') ? 'none' : '';
+    // v253: parity with the combined-invoice void — admin-gated and audited.
+    // This was the one money-destroying button with neither.
+    voidBtn.style.display = (st === 'void') ? 'none' : (_isAdmin() ? '' : 'none');
     voidBtn.onclick = async () => {
+      if (!_requireAdmin('void invoices')) return;
       if (!(await confirmDlg('Void this invoice?'))) return;
+      auditLog('void', type === 'dist' ? 'dist_invoice' : type === 'lf' ? 'lf_invoice' : 'invoice', id, rec.number || rec.invoiceNumber || id);
       DB.atomicUpdate(cache => {
         const arr = cache[col] || [];
         const i2 = arr.findIndex(x => x.id === id);
@@ -14919,7 +15011,10 @@ async function openCombinedInvoicePreview(combinedId) {
     const shipRaw = qs('#civ-edit-shipping')?.value ?? '';
     const discRaw = qs('#civ-edit-discount')?.value ?? '';
     const _lineVal = li => parseFloat(li.lineTotal != null ? li.lineTotal : (li.total != null ? li.total : (li.amount != null ? li.amount : ((parseFloat(li.cases)||0) * (parseFloat(li.pricePerCase)||0))))) || 0;
-    DB.atomicUpdate(cache => {
+    // v253: field-level writes — an unchanged form field never reaches the
+    // server, so a concurrent change (webhook paid stamp, the other user's
+    // edit) to parent or children survives this save.
+    DB.atomicUpdateFields(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combinedId);
       if (ci >= 0) cache.combined_invoices[ci] = { ...cache.combined_invoices[ci], ...patch };
       const ri = rec.purplInvoiceId ? (cache.retail_invoices||[]).findIndex(x => x.id === rec.purplInvoiceId) : -1;
@@ -15069,6 +15164,7 @@ async function openCombinedInvoicePreview(combinedId) {
           }
         });
         if (didDeduct) toast('Inventory deducted ✓', 2000);
+        auditLog('send', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId, didDeduct ? { deductedStock: true } : undefined); // v253
         _clearReadyToSend(combinedId, 'combined_invoices');
         // Log to account cadence
         const entry = { id: uid(), stage: 'invoice_sent', sentAt, sentBy: _currentUserName(), method: 'resend', invoiceId: rec.id, invoiceRef };
@@ -17086,6 +17182,7 @@ async function declinePortalOrder(id) {
     !['confirmed','declined','handled'].includes(p.status) && _samePortalSubmission(o, p)) : null;
   await PortalDB.updateOrder(id, { status:'declined' });
   if (paired) await PortalDB.updateOrder(paired.id, { status:'declined' });
+  auditLog('portal_declined', 'portal_order', id, o?.accountName || ''); // v253
   toast('Submission declined' + (paired ? ' (both brands)' : ''));
   renderPreOrders(true);
 }
@@ -17538,6 +17635,7 @@ async function confirmPortalOrder() {
       try { await pushInvoiceToShipStation(pushInvId, pushCol); } catch(e) { console.warn('ShipStation push failed:', e); }
     }
 
+    auditLog('portal_confirmed', 'portal_order', _portalOrderId, d.accountName || '', { invoiceId: isDual ? combId : singleInvId }); // v253
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     if (isDual) {
@@ -17722,9 +17820,11 @@ const esc       = (s) => escHtml(String(s||''));
 function markPaid(id) {
   const inRetail = DB.a('retail_invoices').find(x => x.id === id);
   const inLf = DB.a('lf_invoices').find(x => x.id === id);
-  if (inRetail) DB.update('retail_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
-  else if (inLf) DB.update('lf_invoices', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
-  else DB.update('iv', id, x => ({...x, status:'paid', paidDate:today(), paidAt:new Date().toISOString()}));
+  const _rec = inRetail || inLf || DB.a('iv').find(x => x.id === id);
+  if (_rec?.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; } // v253
+  const _col = inRetail ? 'retail_invoices' : inLf ? 'lf_invoices' : 'iv';
+  DB.updateFields(_col, id, { status:'paid', paidDate:today(), paidAt:new Date().toISOString() }); // v253: field-targeted
+  auditLog('paid', 'invoice', id, _rec?.number || _rec?.invoiceNumber || id);
   _syncCombinedParentForChild(id); // M1
   renderInvoicesPage();
   toast('Marked as paid ✓');
@@ -18527,6 +18627,7 @@ async function markInvoiceSent(id) {
     }
   });
   _markSentInFlight.delete(id);
+  auditLog('sent', 'invoice', id, inv.number || inv.invoiceNumber || id, deduct ? { deductedStock: true } : undefined); // v253
   renderInvoicesPage();
   toast('Marked as sent ✓');
 }
@@ -18852,7 +18953,21 @@ async function _saveInvCore(id, isNew) {
       }
     });
   } else {
-    updateInvoice(id, () => rec);
+    // v253: write ONLY the fields this save changed (the v251 account-save
+    // pattern). The whole-record write re-stamped every field from this
+    // frozen modal's open-time view — including status, so an invoice the
+    // Stripe webhook (or the other user) marked PAID while the form was open
+    // was flipped back to 'sent' on save. An untouched field is never
+    // written, so the concurrent change survives.
+    const _patch = {};
+    Object.keys(rec).forEach(k => {
+      if (k === 'id' || rec[k] === undefined) return;
+      const _b = JSON.stringify(existing && existing[k] !== undefined ? existing[k] : null);
+      if (JSON.stringify(rec[k]) !== _b) _patch[k] = rec[k];
+    });
+    if (Object.keys(_patch).length) {
+      if (!DB.updateFields(_invoiceCol(id), id, _patch)) updateInvoice(id, () => rec);
+    }
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
   if (!_isNew) _syncCombinedParentForChild(saveId); // M1: modal status edit on a combined child
@@ -20036,6 +20151,7 @@ async function poToggleSent(id) {
       toSent ? { status: 'sent', sentAt: new Date().toISOString() } : { status: 'draft' }
     );
     p.status = toSent ? 'sent' : 'draft';
+    auditLog(toSent ? 'sent' : 'unsent', 'purchase_order', id, p.number || id); // v253
     _poRender();
   } catch (e) { toast('Update failed', 4000); }
 }

@@ -352,7 +352,7 @@ const DB = {
         // query, so the normal change-driven path below would skip it.
         if (this._resubPending && this._resubPending[key] && !(snap.metadata && snap.metadata.fromCache)) {
           this._resubPending[key] = false;
-          const blocked = this._dirty || this._atomicInProgress ||
+          const blocked = this._frozen(key) || this._atomicInProgress ||
             (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
             (this._dirtyIds[key] && this._dirtyIds[key].size) ||
             (this._dirtyDeletes[key] && this._dirtyDeletes[key].size) ||
@@ -390,7 +390,7 @@ const DB = {
         // 2-6s transient-retry backoff empties _saveDirtyKeys while edits are
         // still unconfirmed — applying a snapshot then would revert them and
         // the retry would write the server's own values back).
-        if (this._dirty || this._atomicInProgress ||
+        if (this._frozen(key) || this._atomicInProgress ||
             (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
             (this._dirtyIds[key] && this._dirtyIds[key].size) ||
             (this._inflightCols[key] > 0)) {
@@ -398,7 +398,7 @@ const DB = {
           // block lifts (drain), instead of dropping the change.
           this._deferredRemote.add(key);
           this._pendingRemoteChanges = true;
-          if (this._dirty) this._showRemoteChangeWarning();
+          if (this._frozen(key)) this._showRemoteChangeWarning(); // v253: keyed (warning itself is disabled)
         } else {
           try {
             this._cache[key] = snap.docs.map(d => ({ ...d.data(), id: d.id }));
@@ -436,7 +436,7 @@ const DB = {
       // a debounced save is pending, and atomicUpdate also flushes config.
       const _configKeyDirty = this._inflightCfg > 0 || (this._saveDirtyKeys &&
         [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys.has(k)));
-      if (this._dirty || this._atomicInProgress || _configKeyDirty) {
+      if (this._frozenCfg() || this._atomicInProgress || _configKeyDirty) {
         this._deferredRemote.add('__config__'); // M4: re-fetched on drain
         this._pendingRemoteChanges = true;
         this._showRemoteChangeWarning();
@@ -490,11 +490,14 @@ const DB = {
   // queued and re-drain when their save completes.
   _drainDeferred() {
     if (!this._deferredRemote || this._deferredRemote.size === 0) return;
-    if (this._dirty || this._atomicInProgress) return;
+    // v253: a keyed freeze no longer blocks the whole drain — unfrozen keys
+    // apply now, frozen ones stay queued and re-drain on markClean.
+    if (this._dirty === true || this._atomicInProgress) return;
     if (!this._db || !this._firestoreReady) return;
     const { getDoc } = window.FirestoreAPI;
     [...this._deferredRemote].forEach(key => {
       if (key === '__config__') {
+        if (this._frozenCfg()) return; // re-drained on markClean
         const cfgDirty = this._inflightCfg > 0 ||
           [...CONFIG_ARRAY_KEYS, ...OBJ_KEYS].some(k => this._saveDirtyKeys && this._saveDirtyKeys.has(k));
         if (cfgDirty) return; // re-drained when the config save completes
@@ -508,16 +511,18 @@ const DB = {
         }
         getDoc(this._configRef()).then(snap => {
           if (!snap || !snap.exists) return;
-          if (this._dirty || this._atomicInProgress) { this._deferredRemote.add('__config__'); return; }
+          if (this._frozenCfg() || this._atomicInProgress) { this._deferredRemote.add('__config__'); return; } // v253: keyed
           this._applyConfigData(snap.data());
           if (this._deferredRemote.size === 0) this._pendingRemoteChanges = false;
           this._scheduleRefresh();
         }).catch(() => { this._deferredRemote.add('__config__'); });
       } else if (COLLECTION_KEYS.includes(key)) {
-        // mid-save, unconfirmed docs, or pending deletes → re-drained when
-        // they settle (applying before a queued delete lands would transiently
-        // resurrect the removed row in the cache).
-        if ((this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
+        // mid-save, unconfirmed docs, pending deletes, or frozen by the open
+        // modal (v253) → re-drained when they settle / on markClean (applying
+        // before a queued delete lands would transiently resurrect the
+        // removed row in the cache).
+        if (this._frozen(key) ||
+            (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
             (this._dirtyIds[key] && this._dirtyIds[key].size) ||
             (this._dirtyDeletes[key] && this._dirtyDeletes[key].size) ||
             (this._inflightCols[key] > 0)) return;
@@ -534,7 +539,7 @@ const DB = {
           return;
         }
         this._collRef(key).get().then(snap => {
-          if (this._dirty || this._atomicInProgress ||
+          if (this._frozen(key) || this._atomicInProgress || // v253: keyed
               (this._saveDirtyKeys && this._saveDirtyKeys.has(key)) ||
               (this._dirtyIds[key] && this._dirtyIds[key].size) ||
               (this._dirtyDeletes[key] && this._dirtyDeletes[key].size)) {
@@ -1027,7 +1032,28 @@ const DB = {
   },
 
   // ── Dirty flag for multi-user ──
-  markDirty() { this._dirty = true; },
+  // v253: _dirty is now false | true | Set<key>. `true` freezes everything
+  // (legacy behavior, kept for unmapped edit modals); a Set freezes only the
+  // collections (and config keys) the open modal actually writes. Before,
+  // ANY open edit form stopped the whole tab from reflecting the other
+  // user's work — invoices someone just paid still showed Send Reminder for
+  // as long as a quick-note modal sat open.
+  markDirty(keys) {
+    this._dirty = (Array.isArray(keys) && keys.length) ? new Set(keys) : true;
+  },
+  // Is this collection key frozen?
+  _frozen(key) {
+    if (!this._dirty) return false;
+    return this._dirty === true || this._dirty.has(key);
+  },
+  // Is the config DOC frozen? Only when a frozen key is a config-resident key
+  // (the config doc carries many keys; freezing it for a collection-only
+  // modal would re-widen the freeze for no reason).
+  _frozenCfg() {
+    if (!this._dirty) return false;
+    if (this._dirty === true) return true;
+    return [...this._dirty].some(k => !COLLECTION_KEYS.includes(k));
+  },
   markClean() {
     this._dirty = false;
     // M4: drain (apply) any remote changes deferred while the modal was open,
@@ -1186,6 +1212,51 @@ const DB = {
       this._writeDoc(k, full);
     }
     return true;
+  },
+
+  // v253: atomicUpdate variant for multi-doc EDITS. Same mutator contract,
+  // but each changed doc is written with ONLY its changed top-level fields
+  // (via updateFields), so a form save built from this tab's (frozen,
+  // open-time) cache can no longer revert fields another user changed
+  // concurrently. New docs the mutator adds are written whole; it does not
+  // support deletes or config keys (use atomicUpdate for those).
+  atomicUpdateFields(fn) {
+    this._atomicInProgress = true;
+    try {
+      const before = {};
+      COLLECTION_KEYS.forEach(k => {
+        const m = new Map();
+        (this._cache[k] || []).forEach(x => { if (x && typeof x === 'object' && x.id) m.set(x.id, JSON.stringify(x)); });
+        before[k] = m;
+      });
+      fn(this._cache);
+      COLLECTION_KEYS.forEach(k => {
+        (this._cache[k] || []).forEach(x => {
+          if (!x || typeof x !== 'object' || !x.id) return;
+          const prevRaw = before[k].get(x.id);
+          if (prevRaw === undefined) {
+            // Doc the mutator ADDED — full write, like push()
+            this._stamp(x);
+            this._markDocDirty(k, x.id);
+            this._save(k);
+            this._writeDoc(k, x);
+            return;
+          }
+          if (JSON.stringify(x) === prevRaw) return; // untouched
+          const prev = JSON.parse(prevRaw);
+          const patch = {};
+          Object.keys(x).forEach(f => {
+            if (f === 'id' || x[f] === undefined) return;
+            const b = JSON.stringify(prev[f] === undefined ? null : prev[f]);
+            if (JSON.stringify(x[f]) !== b) patch[f] = x[f];
+          });
+          if (Object.keys(patch).length) this.updateFields(k, x.id, patch);
+        });
+      });
+    } finally {
+      this._atomicInProgress = false;
+      this._drainDeferred();
+    }
   },
 
   atomicUpdate(fn) {
