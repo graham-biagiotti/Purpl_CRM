@@ -453,7 +453,8 @@ window.__findUsMapReady = function () {
   var KEY = window.GOOGLE_PLACES_KEY || '';
   if (!KEY) return;
   var s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&libraries=places&callback=__findUsMapReady';
+  // v252: pinned to the quarterly channel + async loading, matching places.js
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + KEY + '&v=quarterly&loading=async&libraries=places&callback=__findUsMapReady';
   s.async = true; s.defer = true;
   s.onerror = function () { /* panel remains the product */ };
   document.head.appendChild(s);

@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v251';
+const APP_VERSION = 'v252';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1499,6 +1499,13 @@ function seedIfEmpty() {
   // The 10-second startup timeout can fire before the snapshot arrives — without
   // this guard, seedIfEmpty would see an empty cache and overwrite real data.
   if (!DB._firestoreReady) return;
+  // v252 seed guard: _firestoreReady alone is NOT enough — _loadAll sets it
+  // true even when every boot read FAILED (flaky network on a fresh device,
+  // exactly a new user's first phone login). An empty cache then looks like
+  // an empty database, and the demo seed would queue writes that overwrite
+  // live settings/costs/LF SKUs on reconnect. Only seed when the server
+  // actually ANSWERED the config read (doc present or genuinely absent).
+  if (!DB._loadConfirmed) return;
   // Seed LF SKUs independently — happens once regardless of other data state
   if (!DB.a('lf_skus').length) {
     DB.set('lf_skus', [

@@ -118,6 +118,15 @@ const DB = {
     const { getDoc } = window.FirestoreAPI;
     const configSnap = await getDoc(this._configRef()).catch(() => null);
 
+    // v252 seed guard: distinguish "the server ANSWERED (doc exists or is
+    // genuinely absent)" from "the read FAILED" (offline boot on a fresh
+    // device, transient network/permission error → catch gave null). Only an
+    // answered read confirms document state; a failed one must never let
+    // seedIfEmpty mistake an unloaded cache for an empty database and queue
+    // demo settings/costs/SKUs over production data when the writes later
+    // flush on reconnect.
+    this._loadConfirmed = !!configSnap;
+
     if (!configSnap || !configSnap.exists || !configSnap.data()?._dbVersion) {
       // No multi-collection data yet — check for legacy single doc
       const legacySnap = await getDoc(this._legacyRef()).catch(() => null);

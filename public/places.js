@@ -27,6 +27,33 @@
   const KEY = window.GOOGLE_PLACES_KEY || '';
   let _loaded  = false;
   let _loading = null;
+  let _autoRetries = 0;     // v252: bounded self-heal attempts after a failure
+  let _failToastShown = false;
+
+  // v252: one quiet retry path shared by the failure timer and the browser's
+  // back-online event. Bounded so a dead key can't retry forever; the cap
+  // resets whenever a retry is triggered by real connectivity returning.
+  function _scheduleRetry(fromOnline) {
+    if (fromOnline) _autoRetries = 0;
+    if (_loaded || _loading) return;
+    if (_autoRetries >= 3) return;
+    _autoRetries++;
+    setTimeout(() => {
+      if (_loaded || _loading) return;
+      load().then(ok => { if (ok) reattach(); });
+    }, fromOnline ? 500 : 15000);
+  }
+  window.addEventListener('online', () => _scheduleRetry(true));
+
+  // v252: Google calls this global on key/billing/referrer problems AFTER the
+  // script itself loaded — the one failure shape that used to die with no
+  // signal at all (it named the Geocoding-API outage only in the console).
+  window.gm_authFailure = () => {
+    console.warn('purpl CRM: Google Maps rejected the API key (auth/billing/referrer).');
+    if (typeof toast === 'function') {
+      toast('⚠️ Address suggestions unavailable — Google Maps key problem (check APIs & billing in Google Cloud).', 9000);
+    }
+  };
 
   // ── Load Google Maps JS API with Places library ───────
   function load() {
@@ -43,21 +70,43 @@
     }
 
     _loading = new Promise(resolve => {
-      window.__purplPlacesReady = () => { _loaded = true; resolve(true); };
-      const s   = document.createElement('script');
-      s.src     = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places&callback=__purplPlacesReady`;
-      s.async   = true;
-      s.defer   = true;
-      s.onerror = () => {
-        console.warn('purpl CRM: Google Places API failed to load. Check your API key and billing.');
-        // TS1: clear the cached promise so the NEXT load() call retries.
-        // Caching the failure wedged autocomplete for the tab's whole life
-        // after one flaky load (every caller re-invokes load() on render,
-        // so recovery is automatic once the network behaves).
+      // v252: every failure shape funnels here. The old loader only recovered
+      // from onerror — a request that HUNG, or a script that loaded but never
+      // called the ready-callback, left the cached promise pending for the
+      // tab's whole life, so autocomplete stayed dead until a full page
+      // reload. Now: settle once, clear the cache so the next load() (modal
+      // open, retry timer, back-online) starts fresh, and self-heal quietly.
+      let settled = false;
+      const s = document.createElement('script');
+      const fail = (why) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        console.warn('purpl CRM: Google Places API failed to load (' + why + ').');
         _loading = null;
         try { s.remove(); } catch (_) {}
+        if (!_failToastShown && typeof toast === 'function') {
+          _failToastShown = true;
+          toast('Address suggestions didn\'t load — retrying in the background.', 5000);
+        }
+        _scheduleRetry(false);
         resolve(false);
       };
+      const timer = setTimeout(() => fail('timeout'), 10000);
+      window.__purplPlacesReady = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        _loaded = true;
+        _autoRetries = 0;
+        resolve(true);
+      };
+      // v252: v=quarterly pins Google's slow channel (weekly updates landed
+      // silently); loading=async is their blessed pattern for callback loads.
+      s.src     = `https://maps.googleapis.com/maps/api/js?key=${KEY}&v=quarterly&loading=async&libraries=places&callback=__purplPlacesReady`;
+      s.async   = true;
+      s.defer   = true;
+      s.onerror = () => fail('network');
       document.head.appendChild(s);
     });
 

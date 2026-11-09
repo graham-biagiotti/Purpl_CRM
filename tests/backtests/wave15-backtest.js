@@ -253,7 +253,8 @@ const liveSnap = { docChanges: () => [], docs: [], metadata: {} };
   console.log('[C] dynamic — places loader retry');
   {
     const scripts = [];
-    const win = { GOOGLE_PLACES_KEY: 'TESTKEY' };
+    // v252: the loader now registers a back-online retry listener at eval time.
+    const win = { GOOGLE_PLACES_KEY: 'TESTKEY', addEventListener: () => {} };
     const doc = {
       createElement: () => { const s = { remove() { s.removed = true; } }; scripts.push(s); return s; },
       head: { appendChild: () => {} },
