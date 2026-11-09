@@ -9,7 +9,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- v256: chart.umd.js is the npm-shipped file (the .min.js variant was
+       jsdelivr's own re-minification, unverifiable); integrity hash computed
+       from the npm package's exact bytes, which jsdelivr serves verbatim. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"
+          integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo"
+          crossorigin="anonymous"></script>
   <link rel="manifest" href="manifest.json">
   <!-- SVG Favicon — purpl sprig on brand purple -->
   <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
