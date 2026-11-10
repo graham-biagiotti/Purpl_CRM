@@ -20231,9 +20231,9 @@ function _renderFlQueues() {
       <div style="font-size:12px;color:var(--muted)">${who(l)}</div>
       <div style="display:flex;gap:8px;margin-top:6px">
         <button class="btn xs" data-qact="prob-resolve" data-id="${escHtml(l.id)}">✓ Resolve…</button>
-      </div></div>`).join('');
+      </div></div>`);
   el.innerHTML =
-    card('#dc2626', '⚠️ Problems from the road', q.problems.map(() => '').length ? [probRows] : []) +
+    card('#dc2626', '⚠️ Problems from the road', probRows) + // verify-pass fix: real count, same shape as the other queues
     card('#8B5FBF', '🔁 Restock requests', restockRows) +
     card('#16a34a', '💵 Payments she collected', payRows);
   if (!el._qWired) {
