@@ -107,6 +107,7 @@ console.log('[C] db.js — field-targeted saves + cache-only echo');
     const calls = { targeted: [], full: [], dirty: [] };
     const DB = {
       _cache: { ac: [{ id: 'a1', name: 'Store', phone: 'old', territory: 'North', notes: ['x'] }] },
+      _db: {}, _firestoreReady: true, // v259: updateFields now carries the post-sign-out guard
       a(k) { return this._cache[k] || []; },
       _save() {}, _drainDeferred() {}, _updateSyncUI() {},
       _dirtyIds: {},

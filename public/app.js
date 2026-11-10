@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v258';
+const APP_VERSION = 'v259';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -3046,7 +3046,7 @@ function _ivCalcTotal() {
 
 
 function markRetailInvPaid(id) {
-  if (!DB._firestoreReady) return;
+  if (!DB._firestoreReady) return false; // v259: callers gate stamps on a REAL true
   // Legacy purpl invoices live in the iv collection — route by _invoiceCol or
   // the update is a silent no-op that still toasts success.
   const _col = _invoiceCol(id);
@@ -3955,9 +3955,9 @@ function renderAccountNotes(a) {
   if (!nl) return;
   nl.innerHTML = (a.notes||[]).slice().reverse().map((n,i)=>`
     <div class="note-item">
-      <div class="note-date">${fmtD(n.date)} — ${n.author||'you'}</div>
+      <div class="note-date">${fmtD(n.date)} — ${escHtml(n.author||'you')}</div>
       <div>${escHtml(n.text||'')}</div>
-      ${n.nextAction?`<div class="note-next">📅 Next: ${n.nextAction}${n.nextDate?' on '+fmtD(n.nextDate):''}</div>`:''}
+      ${n.nextAction?`<div class="note-next">📅 Next: ${escHtml(n.nextAction)}${n.nextDate?' on '+fmtD(n.nextDate):''}</div>`:''}
     </div>`).join('') || '<div class="empty" style="padding:16px">No notes yet</div>';
 
   const addBtn = qs('#mac-add-note-btn');
@@ -4252,7 +4252,7 @@ function renderMacEmailsTab(id) {
       const s = CADENCE_STAGES.find(x=>x.id===c.stage);
       const status = ['Sent ✓', c.opened ? `👁 Opened ${fmtD(c.openedAt)}` : '', c.clicked ? `🔗 Clicked ${fmtD(c.clickedAt)}` : ''].filter(Boolean).join(' · ');
       const toLabel = c.to ? `<div style="font-size:11px;color:var(--muted)">${escHtml(c.to)}</div>` : '';
-      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}${toLabel}</td><td>${c.method||'—'}</td><td>${c.sentBy||'—'}</td><td>${status}</td></tr>`;
+      return `<tr><td>${fmtD(c.sentAt)}</td><td>${s?.label||c.stage}${toLabel}</td><td>${escHtml(c.method||'—')}</td><td>${escHtml(c.sentBy||'—')}</td><td>${status}</td></tr>`;
     }).join('');
     logEl.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Email History</div>
       <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Stage</th><th>Method</th><th>Sent By</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -12675,7 +12675,7 @@ function renderLfInvoicesPage() {
 
 function markLfInvPaid(id) {
   const inv = DB.a('lf_invoices').find(x => x.id === id);
-  if (!inv) return;
+  if (!inv) return false; // v259
   if (inv.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return false; } // v253 / gate F5
   const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
   DB.updateFields('lf_invoices', id, { status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null }); // v253: field-targeted
@@ -13227,7 +13227,7 @@ async function createCombinedInvoice(purplInvId, lfInvId, accountId, portalOrder
 
 function markCombinedPaid(combinedId) {
   const rec = DB.a('combined_invoices').find(x => x.id === combinedId);
-  if (!rec) return;
+  if (!rec) return false; // v259
   // A voided invoice must not be resurrected to paid — inventory was already
   // restored by the void, so books and stock would disagree.
   if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return false; } // gate F5
@@ -18826,7 +18826,13 @@ async function _saveInvCore(id, isNew) {
       if (JSON.stringify(rec[k]) !== _b) _patch[k] = rec[k];
     });
     if (Object.keys(_patch).length) {
-      if (!DB.updateFields(_invoiceCol(id), id, _patch)) updateInvoice(id, () => rec);
+      // v259 (review F7): the old fallback consulted the same cache and could
+      // never succeed where updateFields refused — while still toasting
+      // success for an edit of a remotely-DELETED invoice. Refuse honestly.
+      if (!DB.updateFields(_invoiceCol(id), id, _patch)) {
+        toast('⚠️ This invoice no longer exists (deleted on another device?) — nothing was saved.', 8000);
+        return null;
+      }
     }
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
@@ -20138,7 +20144,8 @@ function _poDocHTML(p) {
 // rep's device never writes shared CRM data.
 
 let _flLogs = [];
-let _flUnsub = null;
+// v259: window-scoped so the auth.js sign-out teardown can reach it
+window._flUnsub = null;
 
 const _FL_TYPE = { visit: 'Visit', call: 'Call', cold_stop: 'Cold stop', scout: 'Scouted' };
 const _FL_OUTCOME = {
@@ -20148,9 +20155,9 @@ const _FL_OUTCOME = {
 };
 
 function _listenFieldLogs() {
-  if (_flUnsub) _flUnsub();
+  if (window._flUnsub) window._flUnsub();
   try {
-    _flUnsub = firebase.firestore().collection('field_logs')
+    window._flUnsub = firebase.firestore().collection('field_logs')
       .orderBy('createdAt', 'desc').limit(300)
       .onSnapshot(snap => {
         _flLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -20163,7 +20170,16 @@ function _listenFieldLogs() {
         // Snapshots refresh only the list — never the toolbar, so the
         // search box survives typing (same rule as the Sampling page).
         if (currentPage === 'field-log') { try { _renderFlQueues(); } catch (e2) { console.error('queue render failed:', e2); } _renderFieldLogList(); } // v257: queues live-update too (gate F3: crash-proof)
-      }, err => console.warn('Field log listener error:', err));
+      }, err => {
+        // v259 (review F2): this stream lives OUTSIDE db.js's TS1 machinery —
+        // a terminal error used to freeze the review page and the approval
+        // queues forever while the sync dot said "Saved". Resubscribe like
+        // the field app does.
+        console.warn('Field log listener error — resubscribing in 15s:', err);
+        window._flUnsub = null;
+        clearTimeout(window._flResub);
+        window._flResub = setTimeout(() => { if (firebase.auth().currentUser) _listenFieldLogs(); }, 15000);
+      });
   } catch (e) { console.warn('Could not start field log listener:', e); }
 }
 
@@ -20192,7 +20208,7 @@ function _renderFlQueues() {
       <div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${title} (${rows.length})</div>
       ${rows.join('')}
     </div>` : '';
-  const who = l => `${escHtml(l.repName || 'rep')} · ${escHtml((l.createdAt || '').slice(0, 10))}`;
+  const who = l => `${escHtml(l.repName || 'rep')} · ${escHtml(StringString(l.createdAt || '').slice(0, 10))}`; // v259: type-unguarded field — a numeric createdAt blanked all queues
   const restockRows = q.restocks.map(l => {
     // Gate F1 (v257): every field here is rep-device data rendered in the
     // OWNER'S session — cases is coerced numeric (it was the one unescaped
@@ -20253,7 +20269,11 @@ function _renderFlQueues() {
           const ac = DB.a('ac').find(x => x.id === l.accountId) || {};
           const tier = ac.pricePerCaseCustom ? 'custom' : (ac.fulfilledBy === 'dist' ? 'dist' : 'direct');
           openInvModal(null, l.accountId, tier, 'Restock requested by ' + (l.repName || 'rep') + (l.restock.note ? ' — ' + l.restock.note : ''));
-          _ivRenderLineRows((Array.isArray(l.restock.items) ? l.restock.items : []).filter(i => i.brand !== 'lf').map(i => ({ skuId: i.sku, cases: parseInt(i.cases, 10) || 0 }))); // gate F2: coerced — rep data must never reach value="" raw
+          // v259: aggregate duplicate SKU rows (2 + 3 cases of classic = 5, not 2)
+          const _agg = {};
+          (Array.isArray(l.restock.items) ? l.restock.items : []).filter(i => i.brand !== 'lf')
+            .forEach(i => { _agg[i.sku] = (_agg[i.sku] || 0) + (parseInt(i.cases, 10) || 0); });
+          _ivRenderLineRows(Object.entries(_agg).map(([skuId, cases]) => ({ skuId, cases }))); // gate F2 (v257): coerced — rep data must never reach value="" raw
           // Stamped only when the invoice actually SAVES (hook in _saveInvCore);
           // closing the modal leaves the request pending.
           window._pendingRestockLog = { logId, accountId: l.accountId, at: Date.now() };
@@ -20270,13 +20290,17 @@ function _renderFlQueues() {
         case 'pay-apply': {
           const col = b.dataset.col, invId = b.dataset.inv;
           if (!(await confirmDlg(`Mark ${invId && col ? 'that invoice' : 'it'} PAID with her ${l.payment.method || 'payment'} of ${fmtC(l.payment.amount)}?`))) return;
-          // Gate F5 (v257): stamp 'applied' only if the flip actually happened
-          // (a voided invoice refuses) — never record a payment as applied
-          // against an invoice that didn't change.
-          const _ok = col === 'combined_invoices' ? markCombinedPaid(invId)
-            : col === 'lf_invoices' ? markLfInvPaid(invId)
-            : markRetailInvPaid(invId);
-          if (_ok === false) return;
+          // Gate F5 (v257) + review F1 (v259): stamp 'applied' only on a REAL
+          // success — undefined early-exits no longer pass, and an LF invoice
+          // the other session already marked paid is a no-op success (the
+          // mark-paid toggle must never flip it back to unpaid from here).
+          let _ok;
+          if (col === 'lf_invoices') {
+            const _cur = DB.a('lf_invoices').find(x => x.id === invId);
+            _ok = (_cur && _cur.status === 'paid') ? true : markLfInvPaid(invId);
+          } else if (col === 'combined_invoices') _ok = markCombinedPaid(invId);
+          else _ok = markRetailInvPaid(invId);
+          if (_ok !== true) return;
           await stamp({ paymentStatus: 'applied', paymentInvoiceId: invId });
           auditLog('field_payment', 'field_log', logId, l.storeName || '', { amount: l.payment.amount, invoiceId: invId });
           break;
@@ -20512,7 +20536,7 @@ function flCreateProspectPlace(key) {
   const info = (f) => ((g.entries.find(x => x[f]) || {})[f] || '');
   const notes = [];
   [...g.entries].reverse().forEach(l => {
-    const d = (l.createdAt || '').slice(0, 10) || today();
+    const d = String(l.createdAt || '').slice(0, 10) || today();
     const txt = [
       (_FL_TYPE[l.type] || 'Visit') + ' — ' + (_FL_OUTCOME[l.outcome] || l.outcome || ''),
       l.contactName ? 'Spoke to: ' + [l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).join(' ') : '',
@@ -20588,7 +20612,7 @@ function flAddHistory(id) {
   if (!l || !l.accountId || l.historyAppliedAt) return;
   const a = DB.a('ac').find(x => x.id === l.accountId);
   if (!a) { toast('Account not found — it may have been deleted', 5000); return; }
-  const d = (l.createdAt || '').slice(0, 10) || today();
+  const d = String(l.createdAt || '').slice(0, 10) || today();
   const subj = [(_FL_TYPE[l.type] || 'Visit') + ' by ' + (l.repName || 'field rep'),
     _FL_OUTCOME[l.outcome] || l.outcome, (l.notes || '').slice(0, 200)].filter(Boolean).join(' — ');
   // 'field_visit' is real human contact — unlike sampling bookkeeping it is
@@ -20614,7 +20638,7 @@ function flAddProspectNote(id) {
   if (!targetId) return;
   const p = DB.a('pr').find(x => x.id === targetId);
   if (!p) { toast('Prospect not found — it may have been deleted or won', 5000); return; }
-  const d = (l.createdAt || '').slice(0, 10) || today();
+  const d = String(l.createdAt || '').slice(0, 10) || today();
   const text = [
     (_FL_TYPE[l.type] || 'Visit') + ' — ' + (_FL_OUTCOME[l.outcome] || l.outcome || ''),
     l.contactName ? 'Spoke to: ' + [l.contactName, l.contactRole && '(' + l.contactRole + ')', l.contactPhone, l.contactEmail].filter(Boolean).join(' ') : '',

@@ -178,6 +178,8 @@ async function bootApp() {
       // v251: the portal-orders listener lives outside DB — tear it down too,
       // or a signed-out tab keeps a permission-denied retry stream.
       if (typeof PortalDB !== 'undefined' && PortalDB.teardown) { try { PortalDB.teardown(); } catch(_) {} }
+      // v259 (review F2): the field-log listener also lives outside db.js
+      try { if (window._flUnsub) { window._flUnsub(); window._flUnsub = null; } clearTimeout(window._flResub); } catch(_) {}
       authScreen.style.display = 'flex';
       loadingScreen.style.display = 'none';
       appShell.style.display = 'none';

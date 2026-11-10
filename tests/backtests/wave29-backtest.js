@@ -110,8 +110,8 @@ console.log('[D] CRM queues — run the REAL pending filters');
   ok(qr.indexOf('openInvModal(null, l.accountId') < qr.indexOf('window._pendingRestockLog ='),
     'approve opens the modal FIRST, then arms the stamp flag (openInvModal clears stale flags)');
   ok(qr.includes(".filter(i => i.brand !== 'lf')"), 'prefill carries only purpl items into the purpl modal');
-  // (gate F5 reshaped this into a result-capturing ternary)
-  ok(/markCombinedPaid\(invId\)[\s\S]{0,120}markLfInvPaid\(invId\)[\s\S]{0,120}markRetailInvPaid\(invId\)/.test(qr),
+  // (v259 reshaped again: LF already-paid = no-op success, never un-toggled)
+  ok(/markLfInvPaid\(invId\)[\s\S]{0,160}markCombinedPaid\(invId\)[\s\S]{0,120}markRetailInvPaid\(invId\)/.test(qr),
     'payment apply routes to the right mark-paid per collection');
   ok(qr.includes('already invoiced TODAY'), 'duplicate-invoice warning rendered');
 
@@ -128,13 +128,14 @@ console.log('[D] CRM queues — run the REAL pending filters');
   // numeric-coerced at BOTH sinks, items tolerated non-array.
   ok(/parseInt\(i\.cases, 10\) \|\| 0\}× /.test(src), 'queue coerces cases numeric (gate F1)');
   ok(src.includes('Array.isArray(l.restock.items)'), 'queue tolerates a hostile non-list (gate F3 crash-proofing)');
-  ok(/cases: parseInt\(i\.cases, 10\) \|\| 0 \}\)\)/.test(src), 'invoice prefill coerces cases (gate F2)');
+  // (v259: coercion now lives in the aggregation loop — surface F4)
+  ok(/_agg\[i\.sku\] = \(_agg\[i\.sku\] \|\| 0\) \+ \(parseInt\(i\.cases, 10\) \|\| 0\);/.test(src), 'invoice prefill coerces cases (gate F2)');
   ok(src.includes("parseInt(existing?.cases, 10) || 0; // gate F2"), 'shared line renderer coerces too');
   ok((src.match(/try \{ _renderFlQueues\(\); \} catch/g) || []).length >= 2,
     'one bad doc can never kill the review page (gate F3)');
   // Gate F5: a refused mark-paid never stamps the payment applied.
-  ok(/const _ok = col === 'combined_invoices' \? markCombinedPaid\(invId\)/.test(src)
-     && src.includes('if (_ok === false) return;'),
+  // (v259: tightened to a strict !== true gate with the LF no-op-success path)
+  ok(src.includes('if (_ok !== true) return;'),
     'payment stamp gated on the flip actually happening (gate F5)');
   ok((src.match(/return true; \/\/ gate F5/g) || []).length === 3
      && (src.match(/return false; \} \/\/ (v253 \/ )?gate F5/g) || []).length >= 2,

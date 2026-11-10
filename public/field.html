@@ -312,7 +312,15 @@
     try { await auth.sendPasswordResetEmail(email); $('auth-msg').textContent = 'Reset email sent — check your inbox.'; }
     catch (_) { $('auth-msg').textContent = 'Could not send reset email.'; }
   };
-  $('btn-signout').onclick = () => { if (confirm('Sign out?')) auth.signOut(); };
+  $('btn-signout').onclick = () => {
+    // v259 (review F4): queued offline entries flushed AFTER sign-out go out
+    // unauthenticated and are silently dropped — the one way to lose her work.
+    const pending = myLogs.filter((l) => l._pending).length;
+    const msg = pending
+      ? '⚠️ You have ' + pending + ' entr' + (pending > 1 ? 'ies' : 'y') + " that HAVEN'T SYNCED yet. Signing out now will LOSE them. Get signal first, then sign out.\n\nSign out anyway and lose them?"
+      : 'Sign out?';
+    if (confirm(msg)) auth.signOut();
+  };
 
   auth.onAuthStateChanged(async (user) => {
     if (!user) {

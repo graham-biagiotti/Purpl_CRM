@@ -99,6 +99,14 @@ service cloud.firestore {
         && request.resource.data.storeName.size() < 200
         && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() < 8000))
         && (!('extras' in request.resource.data) || (request.resource.data.extras is list && request.resource.data.extras.size() <= 30))
+        // v259 (pre-invite review): type-guard the identity/metadata fields the
+        // OWNER'S renderers consume — repName reached two unescaped sinks via
+        // review actions, and a numeric createdAt blanked the approval queues.
+        && request.resource.data.createdAt is string
+        && (!('repName' in request.resource.data) || (request.resource.data.repName is string && request.resource.data.repName.size() < 200))
+        && (!('repEmail' in request.resource.data) || (request.resource.data.repEmail is string && request.resource.data.repEmail.size() < 250))
+        && (!('type' in request.resource.data) || (request.resource.data.type is string && request.resource.data.type.size() < 40))
+        && (!('outcome' in request.resource.data) || (request.resource.data.outcome is string && request.resource.data.outcome.size() < 40))
         // Review state cannot be forged at create either: a new log must
         // arrive unreviewed and without staff stamps.
         && (!('reviewed' in request.resource.data) || request.resource.data.reviewed == false)

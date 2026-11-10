@@ -85,8 +85,11 @@ console.log('[C] diff-based saves');
   const pv = slc(src, "const _invNum = number || existing?.invoiceNumber", 'async function deleteInvRecord');
   ok(/DB\.updateFields\(_invoiceCol\(id\), id, _patch\)/.test(pv),
     'purpl modal edit writes only changed fields');
-  ok(pv.indexOf('updateInvoice(id, () => rec)') > pv.indexOf('DB.updateFields'),
-    'whole-record write survives only as the fallback');
+  // v259 CONTRACT CHANGE (review F7): the whole-record fallback consulted the
+  // same cache and could never succeed where updateFields refused — replaced
+  // with an honest refusal toast for a remotely-deleted invoice.
+  ok(!pv.includes('updateInvoice(id, () => rec)') && pv.includes('This invoice no longer exists'),
+    'refused edit of a deleted invoice is honest, not a dead fallback');
   // LF modal
   const lf = slc(src, "if (isNew) DB.push('lf_invoices', rec);", '// Generate or refresh Wix pull deduction record');
   ok(/DB\.updateFields\('lf_invoices', id, _patch\)/.test(lf),
@@ -106,6 +109,7 @@ console.log('[C] diff-based saves');
       ac: [{ id: 'a1', name: 'Store', phone: '111', status: 'active' }],
       iv: [{ id: 'v1', qty: 5 }],
     },
+    _db: {}, _firestoreReady: true, // v259: both field-targeted writers now carry the post-sign-out guard
     _atomicInProgress: false,
     _stamp(x) { return x; },
     _markDocDirty() {}, _save() {}, _drainDeferred() {},

@@ -111,6 +111,15 @@ const deny = (p, m) => ok(p, m, true);
     'rep cannot forge a restock as already invoiced');
   await deny(fld.doc('field_logs/f5').set({ ...base, resolvedAt: '2026-11-10T12:00:00Z' }),
     'rep cannot forge resolution stamps');
+  // v259 pre-invite review: identity/metadata fields type-guarded at create
+  await deny(fld.doc('field_logs/f8').set({ ...base, createdAt: 12345 }),
+    'numeric createdAt refused (blanked the approval queues)');
+  await deny(fld.doc('field_logs/f9').set({ ...base, repName: 'x'.repeat(250) }),
+    'oversized repName refused');
+  await deny(fld.doc('field_logs/f10').set({ ...base, repName: { evil: true } }),
+    'non-string repName refused');
+  await allow(fld.doc('field_logs/f11').set({ ...base, repName: 'Ashley', repEmail: 'a@x.com', type: 'visit', outcome: 'interested' }),
+    'normal identity fields pass');
   // Gate F3 (v257): extras are CREATE-ONLY for the rep — the update tier had
   // no value guards, so string amounts / non-list items were writable one
   // update later (and crashed the owner's review page).

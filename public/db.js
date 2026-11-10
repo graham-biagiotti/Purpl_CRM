@@ -1207,6 +1207,7 @@ const DB = {
     a[i] = { ...a[i], ...stamped }; this._cache[k] = a; this._save(k);
     if (!COLLECTION_KEYS.includes(k)) return true;
     const full = a[i];
+    if (!this._db || !this._firestoreReady) return true; // v259 (review F6): cache updated; no writes after teardown
     try {
       this._collRef(k).doc(id).update(stamped)
         .then(() => {
@@ -1215,6 +1216,16 @@ const DB = {
           this._drainDeferred();
         })
         .catch(e => {
+          // v259 (review F3): not-found means the doc was DELETED by the other
+          // session (the freeze deferred the delete snapshot). The old full-doc
+          // fallback recreated it from this tab's stale cache WITHOUT its
+          // cleanup siblings (stock reversals, combined links) — an orphan.
+          // Drop the write and say so instead.
+          if (e?.code === 'not-found') {
+            if (typeof toast === 'function') toast('⚠️ That record was deleted on another device — your change was not saved.', 8000);
+            console.warn(`[db] updateFields: ${k}/${id} no longer exists — write dropped`);
+            return;
+          }
           console.warn(`[db] updateFields failed for ${k}/${id}, falling back to full write:`, e?.message);
           this._markDocDirty(k, id);
           this._writeDoc(k, full);
@@ -1233,6 +1244,7 @@ const DB = {
   // concurrently. New docs the mutator adds are written whole; it does not
   // support deletes or config keys (use atomicUpdate for those).
   atomicUpdateFields(fn) {
+    if (!this._db || !this._firestoreReady) return; // v259 (review F6)
     this._atomicInProgress = true;
     try {
       const before = {};

@@ -778,7 +778,12 @@ exports.initUserRole = onCall(async (request) => {
     const usersSnap = await db.collection('users').limit(1).get();
     const isFirstUser = usersSnap.empty && !alreadyBootstrapped;
 
-    const assignedRole = (isFirstUser || isFallbackAdmin) ? 'admin' : 'employee';
+    // v259 (review F2): re-creating a users doc for an allowlisted email used
+    // to default to 'employee' — a silent ESCALATION for a field rep whose
+    // doc was deleted (e.g. a botched revocation) while her email stayed on
+    // the allowlist. Default to the most restrictive working role; a real
+    // employee gets corrected by the owner in Team settings in one click.
+    const assignedRole = (isFirstUser || isFallbackAdmin) ? 'admin' : 'field';
     tx.set(userRef, {
       email,
       displayName: request.auth.token.name || email.split('@')[0] || '',
