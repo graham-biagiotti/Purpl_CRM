@@ -111,12 +111,22 @@ const deny = (p, m) => ok(p, m, true);
     'rep cannot forge a restock as already invoiced');
   await deny(fld.doc('field_logs/f5').set({ ...base, resolvedAt: '2026-11-10T12:00:00Z' }),
     'rep cannot forge resolution stamps');
-  await allow(fld.doc('field_logs/f1').update({ restock: { items: [{ brand: 'purpl', sku: 'classic', name: 'Classic', cases: 3 }], note: '' }, editedAt: 'x', updatedAt: 'x' }),
-    'rep fixes her own unreviewed restock');
+  // Gate F3 (v257): extras are CREATE-ONLY for the rep — the update tier had
+  // no value guards, so string amounts / non-list items were writable one
+  // update later (and crashed the owner's review page).
+  await deny(fld.doc('field_logs/f1').update({ restock: { items: 'boom' }, editedAt: 'x', updatedAt: 'x' }),
+    'rep cannot reshape a restock via update (create-only, gate F3)');
+  await deny(fld.doc('field_logs/f1').update({ payment: { amount: '<img onerror=x>', method: 'check' }, editedAt: 'x', updatedAt: 'x' }),
+    'rep cannot smuggle a string amount via update (gate F3)');
+  await deny(fld.doc('field_logs/f1').update({ problem: { a: 1 }, editedAt: 'x', updatedAt: 'x' }),
+    'rep cannot turn problem into a map via update (gate F3)');
+  // Gate F4: extras maps are key-locked at create
+  await deny(fld.doc('field_logs/f6').set({ ...base, restock: { items: [{ cases: 1 }], blob: 'x'.repeat(1000) } }),
+    'restock cannot smuggle extra keys (gate F4)');
+  await deny(fld.doc('field_logs/f7').set({ ...base, payment: { amount: 5, method: 'cash', extra: 'nope' } }),
+    'payment cannot smuggle extra keys (gate F4)');
   await allow(adm.doc('field_logs/f1').update({ restockStatus: 'invoiced', restockInvoiceId: 'inv9', resolvedBy: 'Graham', resolvedAt: 'now' }),
     'staff approval stamps the request');
-  await deny(fld.doc('field_logs/f1').update({ restock: { items: [{ brand: 'purpl', sku: 'classic', name: 'Classic', cases: 9 }] }, editedAt: 'y', updatedAt: 'y' }),
-    'an ACTED-ON restock is frozen to the rep');
   await deny(fld.doc('field_logs/f1').update({ restockStatus: 'dismissed' }),
     'rep cannot flip statuses herself');
 

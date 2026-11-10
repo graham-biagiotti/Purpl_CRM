@@ -2896,7 +2896,7 @@ function _ivRenderLineRows(existingItems) {
   IV_SKUS.forEach(sku => {
     const existing  = existingItems.find(x => x.skuId === sku.id);
     const ppc       = existing?.pricePerCase ?? basePrice;
-    const cases     = existing?.cases || 0;
+    const cases     = parseInt(existing?.cases, 10) || 0; // gate F2 (v257): shared renderer — coerce, attribute context
     const lineTotal = cases * ppc;
     const row = document.createElement('div');
     row.className     = `sku-row inv-sku-row ${SKU_MAP[sku.id]?.bg || ''}`;
@@ -3053,7 +3053,7 @@ function markRetailInvPaid(id) {
   const _inv = DB.a(_col).find(x => x.id === id);
   // v253: a voided invoice must not resurrect to paid (stock was restored by
   // the void — books and stock would disagree). Same guard markCombinedPaid has.
-  if (_inv?.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
+  if (_inv?.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return false; } // gate F5 (v257): callers gate stamps on this
   // v253: field-targeted flip (money-state changes never carry stale fields)
   DB.updateFields(_col, id, { status:'paid', paidDate:today(), paidAt:new Date().toISOString() });
   auditLog('paid', 'invoice', id, _inv?.number || _inv?.invoiceNumber || id);
@@ -3061,6 +3061,7 @@ function markRetailInvPaid(id) {
   renderInvoiceStatus();
   if (currentPage === 'invoices') renderInvoicesPage();
   toast('Marked as paid');
+  return true; // gate F5
 }
 
 async function deleteRetailInv(id) {
@@ -12675,13 +12676,14 @@ function renderLfInvoicesPage() {
 function markLfInvPaid(id) {
   const inv = DB.a('lf_invoices').find(x => x.id === id);
   if (!inv) return;
-  if (inv.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; } // v253
+  if (inv.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return false; } // v253 / gate F5
   const newStatus = inv.status === 'paid' ? 'sent' : 'paid';
   DB.updateFields('lf_invoices', id, { status: newStatus, paidDate: newStatus === 'paid' ? today() : null, paidAt: newStatus === 'paid' ? new Date().toISOString() : null }); // v253: field-targeted
   auditLog(newStatus === 'paid' ? 'paid' : 'unpaid', 'lf_invoice', id, inv.number || inv.invoiceNumber || id);
   _syncCombinedParentForChild(id); // M1
   renderInvoicesPage();
   toast(newStatus === 'paid' ? 'Marked paid ✓' : 'Marked unpaid');
+  return true; // gate F5
 }
 
 // ── LF Invoice modal ─────────────────────────────────────
@@ -13228,7 +13230,7 @@ function markCombinedPaid(combinedId) {
   if (!rec) return;
   // A voided invoice must not be resurrected to paid — inventory was already
   // restored by the void, so books and stock would disagree.
-  if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return; }
+  if (rec.status === 'void') { toast('This invoice is voided — recreate it instead of marking paid'); return false; } // gate F5
   const now = new Date().toISOString();
   const pd = today(); // local date (was UTC — tomorrow after 8pm ET)
   // v253: field-level — the paid stamp must never carry this tab's stale
@@ -13248,6 +13250,7 @@ function markCombinedPaid(combinedId) {
   auditLog('paid', 'combined_invoice', combinedId, rec.number || rec.invoiceNumber || combinedId); // v253
   renderInvoicesPage();
   toast('✓ Combined invoice marked as paid');
+  return true; // gate F5
 }
 
 // M1: when a combined-invoice CHILD changes paid status, recompute the parent
@@ -20159,7 +20162,7 @@ function _listenFieldLogs() {
         }
         // Snapshots refresh only the list — never the toolbar, so the
         // search box survives typing (same rule as the Sampling page).
-        if (currentPage === 'field-log') { _renderFlQueues(); _renderFieldLogList(); } // v257: queues live-update too
+        if (currentPage === 'field-log') { try { _renderFlQueues(); } catch (e2) { console.error('queue render failed:', e2); } _renderFieldLogList(); } // v257: queues live-update too (gate F3: crash-proof)
       }, err => console.warn('Field log listener error:', err));
   } catch (e) { console.warn('Could not start field log listener:', e); }
 }
@@ -20191,9 +20194,14 @@ function _renderFlQueues() {
     </div>` : '';
   const who = l => `${escHtml(l.repName || 'rep')} · ${escHtml((l.createdAt || '').slice(0, 10))}`;
   const restockRows = q.restocks.map(l => {
-    const items = (l.restock.items || []).map(i => `${i.cases}× ${escHtml(i.name || i.sku)}`).join(', ');
-    const hasLf = (l.restock.items || []).some(i => i.brand === 'lf');
-    const hasPurpl = (l.restock.items || []).some(i => i.brand !== 'lf');
+    // Gate F1 (v257): every field here is rep-device data rendered in the
+    // OWNER'S session — cases is coerced numeric (it was the one unescaped
+    // interpolation; rules can't shape list elements), items tolerated
+    // non-array (gate F3: a hostile update could make it anything).
+    const _items = Array.isArray(l.restock.items) ? l.restock.items : [];
+    const items = _items.map(i => `${parseInt(i.cases, 10) || 0}× ${escHtml(i.name || i.sku)}`).join(', ');
+    const hasLf = _items.some(i => i.brand === 'lf');
+    const hasPurpl = _items.some(i => i.brand !== 'lf');
     const warn = _flInvoicedToday(l.accountId) ? `<div style="font-size:12px;color:#b45309;margin-top:3px">⚠️ This account was already invoiced TODAY — check before creating another.</div>` : '';
     return `<div style="padding:8px 0;border-top:1px solid var(--line)">
       <strong>${escHtml(l.storeName || '')}</strong> — ${items}${l.restock.note ? ` <span style="color:var(--muted)">· “${escHtml(l.restock.note)}”</span>` : ''}
@@ -20245,7 +20253,7 @@ function _renderFlQueues() {
           const ac = DB.a('ac').find(x => x.id === l.accountId) || {};
           const tier = ac.pricePerCaseCustom ? 'custom' : (ac.fulfilledBy === 'dist' ? 'dist' : 'direct');
           openInvModal(null, l.accountId, tier, 'Restock requested by ' + (l.repName || 'rep') + (l.restock.note ? ' — ' + l.restock.note : ''));
-          _ivRenderLineRows((l.restock.items || []).filter(i => i.brand !== 'lf').map(i => ({ skuId: i.sku, cases: i.cases })));
+          _ivRenderLineRows((Array.isArray(l.restock.items) ? l.restock.items : []).filter(i => i.brand !== 'lf').map(i => ({ skuId: i.sku, cases: parseInt(i.cases, 10) || 0 }))); // gate F2: coerced — rep data must never reach value="" raw
           // Stamped only when the invoice actually SAVES (hook in _saveInvCore);
           // closing the modal leaves the request pending.
           window._pendingRestockLog = { logId, accountId: l.accountId, at: Date.now() };
@@ -20262,9 +20270,13 @@ function _renderFlQueues() {
         case 'pay-apply': {
           const col = b.dataset.col, invId = b.dataset.inv;
           if (!(await confirmDlg(`Mark ${invId && col ? 'that invoice' : 'it'} PAID with her ${l.payment.method || 'payment'} of ${fmtC(l.payment.amount)}?`))) return;
-          if (col === 'combined_invoices') markCombinedPaid(invId);
-          else if (col === 'lf_invoices') markLfInvPaid(invId);
-          else markRetailInvPaid(invId);
+          // Gate F5 (v257): stamp 'applied' only if the flip actually happened
+          // (a voided invoice refuses) — never record a payment as applied
+          // against an invoice that didn't change.
+          const _ok = col === 'combined_invoices' ? markCombinedPaid(invId)
+            : col === 'lf_invoices' ? markLfInvPaid(invId)
+            : markRetailInvPaid(invId);
+          if (_ok === false) return;
           await stamp({ paymentStatus: 'applied', paymentInvoiceId: invId });
           auditLog('field_payment', 'field_log', logId, l.storeName || '', { amount: l.payment.amount, invoiceId: invId });
           break;
@@ -20273,7 +20285,7 @@ function _renderFlQueues() {
           await stamp({ paymentStatus: 'dismissed' });
           break;
         case 'prob-resolve': {
-          const note = await promptDlg('Resolution note (she can see this was handled):', { okLabel: 'Resolve' });
+          const note = await promptDlg('Resolution note (kept on the entry):', { okLabel: 'Resolve' });
           if (note === null) return;
           await stamp({ problemStatus: 'resolved', problemResolution: String(note || '').slice(0, 500) });
           auditLog('field_problem', 'field_log', logId, l.storeName || '', { resolution: String(note || '').slice(0, 200) });
@@ -20304,7 +20316,7 @@ function renderFieldLog() {
     </div>
     <div id="fl-list"></div>
   `;
-  _renderFlQueues(); // v257
+  try { _renderFlQueues(); } catch (e) { console.error('queue render failed:', e); } // gate F3: one bad doc must never kill the review page
   _renderFieldLogList();
 }
 

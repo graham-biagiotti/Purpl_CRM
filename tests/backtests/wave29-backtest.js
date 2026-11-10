@@ -69,9 +69,14 @@ console.log('[C] rules — extras shaped at create, stamps staff-only (emulator-
   ok(cr.includes('request.resource.data.problem.size() <= 2000'), 'problem length guard');
   ["restockStatus", "paymentStatus", "problemStatus", "restockInvoiceId", "resolvedAt", "resolvedBy"]
     .forEach(k => ok(cr.includes(`!('${k}' in request.resource.data)`), `create cannot forge ${k}`));
-  ok(/'restock', 'payment', 'problem'\]\)/.test(cr), 'rep can still fix her own unreviewed extras');
-  ok(cr.includes("('restockStatus' in resource.data || 'paymentStatus' in resource.data"),
-    'an extra the owner acted on is frozen to the rep');
+  // Gate F3 CONTRACT CHANGE: extras are CREATE-ONLY for the rep — the update
+  // tier had no value guards, so create-time shapes were bypassable one write
+  // later (and a non-list items crashed the owner's review page).
+  ok(!/'restock', 'payment', 'problem'\]\)/.test(cr),
+    'extras are NOT in the rep update allowlist (create-only, gate F3)');
+  ok(cr.includes("restock.keys().hasOnly(['items', 'note'])")
+     && cr.includes("payment.keys().hasOnly(['amount', 'method', 'checkNum'])"),
+    'extras maps are key-locked (gate F4)');
   const emuRules = fs.readFileSync(path.join(__dirname, '../../tests/emu/firestore.rules'), 'utf8');
   ok(emuRules === rules, 'emulator rules copy in sync');
 }
@@ -105,7 +110,8 @@ console.log('[D] CRM queues — run the REAL pending filters');
   ok(qr.indexOf('openInvModal(null, l.accountId') < qr.indexOf('window._pendingRestockLog ='),
     'approve opens the modal FIRST, then arms the stamp flag (openInvModal clears stale flags)');
   ok(qr.includes(".filter(i => i.brand !== 'lf')"), 'prefill carries only purpl items into the purpl modal');
-  ok(/markCombinedPaid\(invId\);[\s\S]{0,120}markLfInvPaid\(invId\);[\s\S]{0,120}markRetailInvPaid\(invId\);/.test(qr),
+  // (gate F5 reshaped this into a result-capturing ternary)
+  ok(/markCombinedPaid\(invId\)[\s\S]{0,120}markLfInvPaid\(invId\)[\s\S]{0,120}markRetailInvPaid\(invId\)/.test(qr),
     'payment apply routes to the right mark-paid per collection');
   ok(qr.includes('already invoiced TODAY'), 'duplicate-invoice warning rendered');
 
@@ -117,6 +123,22 @@ console.log('[D] CRM queues — run the REAL pending filters');
   ok(src.includes("window._pendingRestockLog = null;\n  const isNew = !id;"),
     'any other modal open clears a stale approve flag');
   ok(idx.includes('Field <span id="nav-field-log-badge"'), "sidebar label shortened to 'Field'");
+
+  // Gate F1/F2: rep-device data rendered in the OWNER'S session — cases is
+  // numeric-coerced at BOTH sinks, items tolerated non-array.
+  ok(/parseInt\(i\.cases, 10\) \|\| 0\}× /.test(src), 'queue coerces cases numeric (gate F1)');
+  ok(src.includes('Array.isArray(l.restock.items)'), 'queue tolerates a hostile non-list (gate F3 crash-proofing)');
+  ok(/cases: parseInt\(i\.cases, 10\) \|\| 0 \}\)\)/.test(src), 'invoice prefill coerces cases (gate F2)');
+  ok(src.includes("parseInt(existing?.cases, 10) || 0; // gate F2"), 'shared line renderer coerces too');
+  ok((src.match(/try \{ _renderFlQueues\(\); \} catch/g) || []).length >= 2,
+    'one bad doc can never kill the review page (gate F3)');
+  // Gate F5: a refused mark-paid never stamps the payment applied.
+  ok(/const _ok = col === 'combined_invoices' \? markCombinedPaid\(invId\)/.test(src)
+     && src.includes('if (_ok === false) return;'),
+    'payment stamp gated on the flip actually happening (gate F5)');
+  ok((src.match(/return true; \/\/ gate F5/g) || []).length === 3
+     && (src.match(/return false; \} \/\/ (v253 \/ )?gate F5/g) || []).length >= 2,
+    'mark-paid helpers report success honestly');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -838,6 +838,7 @@
       const _pb = _gatherProblem(); if (_pb) entry.problem = _pb;
       if (xOpen.restock && !_rk) { toast('Restock is open but empty — pick items + cases, or close it.'); return; }
       if (xOpen.payment && !_pm) { toast('Payment is open but has no amount — enter it, or close it.'); return; }
+      if (xOpen.problem && !_pb) { toast('Problem is open but empty — describe it, or close it.'); return; } // gate F7
     }
     const id = uid();
     // Optimistic: clear immediately; persistence carries it if offline.

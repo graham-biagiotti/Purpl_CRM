@@ -112,14 +112,26 @@ service cloud.firestore {
         // discipline as the review flags above.
         && (!('restock' in request.resource.data) ||
              (request.resource.data.restock is map
+              // gate F4: key-locked — no smuggled blobs beside the items
+              && request.resource.data.restock.keys().hasOnly(['items', 'note'])
               && request.resource.data.restock.items is list
               && request.resource.data.restock.items.size() >= 1
-              && request.resource.data.restock.items.size() <= 20))
+              && request.resource.data.restock.items.size() <= 20
+              && (!('note' in request.resource.data.restock) ||
+                   (request.resource.data.restock.note is string
+                    && request.resource.data.restock.note.size() <= 300))))
         && (!('payment' in request.resource.data) ||
              (request.resource.data.payment is map
+              && request.resource.data.payment.keys().hasOnly(['amount', 'method', 'checkNum'])
               && request.resource.data.payment.amount is number
               && request.resource.data.payment.amount > 0
-              && request.resource.data.payment.amount < 100000))
+              && request.resource.data.payment.amount < 100000
+              && (!('method' in request.resource.data.payment) ||
+                   (request.resource.data.payment.method is string
+                    && request.resource.data.payment.method.size() <= 20))
+              && (!('checkNum' in request.resource.data.payment) ||
+                   (request.resource.data.payment.checkNum is string
+                    && request.resource.data.payment.checkNum.size() <= 40))))
         && (!('problem' in request.resource.data) ||
              (request.resource.data.problem is string && request.resource.data.problem.size() <= 2000))
         && !('restockStatus' in request.resource.data)
@@ -163,15 +175,13 @@ service cloud.firestore {
                   && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['notes', 'contactName', 'contactRole', 'contactPhone',
                                  'contactEmail', 'type', 'outcome', 'followUpDate',
-                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt',
-                                 'restock', 'payment', 'problem'])
-                  // v257: an extra the owner already ACTED on is frozen — the
-                  // rep can't reshape a restock that was already invoiced.
-                  && !(request.resource.data.diff(resource.data).affectedKeys()
-                         .hasAny(['restock', 'payment', 'problem'])
-                       && ('restockStatus' in resource.data || 'paymentStatus' in resource.data
-                           || 'problemStatus' in resource.data)))
+                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt']))
             ));
+      // v257 gate F3: the three road extras are CREATE-ONLY for the rep — the
+      // update tier had no value guards, so every create-time shape check was
+      // bypassable one write later (emulator-proven: string amounts, map
+      // problems, a non-list items that crashed the owner's review page).
+      // Her app never edits them anyway; a wrong extra means a new entry.
       allow delete: if isAdmin();
     }
 
