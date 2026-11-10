@@ -1059,6 +1059,78 @@ exports.fieldStoreList = onCall(async (request) => {
   return { stores };
 });
 
+// ── Demo list for the field app (v258) ────────────────────
+// The sampler's demos as data instead of inbox archaeology. Every button URL
+// is PRE-BUILT server-side from the request's own action token, so the app
+// just opens the existing hardened sampling-action pages (accept/decline/
+// run-sheet/report) — no new mutation surface, and the emails keep sending
+// in parallel as redundancy. One sampler per business (the Settings
+// samplerKey), so any field/staff login sees the same list.
+exports.fieldDemoList = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const db = admin.firestore();
+  const userSnap = await db.collection('users').doc(request.auth.uid).get();
+  const role = userSnap.exists ? userSnap.data().role : null;
+  if (!['field', 'employee', 'admin'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Not authorized');
+  }
+  const S = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const snap = await db.collection('sampling_requests')
+    .where('status', 'in', ['pending_sampler', 'proposed_alt', 'needs_reschedule', 'confirmed', 'completed'])
+    .get();
+  const todayET = _samplingTodayET();
+  const cutoff = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const demos = [];
+  snap.docs.forEach((d) => {
+    const r = d.data() || {};
+    if (!r.samplerActionToken) return;
+    const link = (a) => `${SAMPLING_ACTION_BASE}?r=${encodeURIComponent(d.id)}&k=${encodeURIComponent(r.samplerActionToken)}&a=${a}`;
+    const base = {
+      id: d.id, status: S(r.status, 30),
+      accountName: S(r.accountName, 200), address: S(r.storeAddress, 300),
+      window: S(_samplingWindowText(r), 200),
+      logistics: {
+        table: S(r.logistics && r.logistics.table, 120), power: S(r.logistics && r.logistics.power, 120),
+        parking: S(r.logistics && r.logistics.parking, 200), busyHours: S(r.logistics && r.logistics.busyHours, 120),
+        notes: S(r.logistics && r.logistics.notes, 400),
+      },
+    };
+    if (r.status === 'pending_sampler') {
+      demos.push({ ...base, kind: 'ask',
+        date1: S(r.date1, 10), date1Label: r.date1 ? _samplingFmtDate(r.date1) : '',
+        date2: S(r.date2, 10), date2Label: r.date2 ? _samplingFmtDate(r.date2) : '',
+        // Same actions the packet email's buttons carry (confirm1/confirm2/no)
+        accept1Url: link('confirm1'), accept2Url: r.date2 ? link('confirm2') : '',
+        declineUrl: link('no') });
+    } else if (r.status === 'confirmed') {
+      if ((r.confirmedDate || '') < cutoff) return;
+      demos.push({ ...base, kind: 'booked',
+        date: S(r.confirmedDate, 10),
+        dateLabel: r.confirmedDate ? _samplingFmtDate(r.confirmedDate) : '',
+        isToday: r.confirmedDate === todayET,
+        isPast: (r.confirmedDate || '') < todayET,
+        reported: !!(r.report && r.report.reportedAt),
+        sheetUrl: link('sheet'), reportUrl: link('report') });
+    } else if (r.status === 'completed') {
+      const reported = !!(r.report && r.report.reportedAt);
+      const when = S(r.confirmedDate, 10);
+      if (reported && when < cutoff) return;
+      demos.push({ ...base, kind: 'done', date: when,
+        dateLabel: when ? _samplingFmtDate(when) : '', reported,
+        reportUrl: link('report'),
+        reportSummary: reported ? S(`${r.report.vibe || ''} · used ${r.report.casesUsed || 0} · backstock ${r.report.casesBackstock || 0}`, 120) : '' });
+    } else {
+      // proposed_alt / needs_reschedule — the store is re-picking; nothing
+      // for her to do, but show it so the calendar hole makes sense.
+      demos.push({ ...base, kind: 'limbo', date: S(r.confirmedDate || r.date1, 10) });
+    }
+  });
+  demos.sort((a, b) => (a.date || a.date1 || '') < (b.date || b.date1 || '') ? -1 : 1);
+  const cfg = await _samplingConfig();
+  const calUrl = cfg.samplerKey ? `${SAMPLING_ACTION_BASE}?a=cal&k=${encodeURIComponent(cfg.samplerKey)}` : '';
+  return { demos, calUrl, generatedAt: new Date().toISOString() };
+});
+
 // ── Road cards for the field app (v257) ───────────────────
 // Owner's call 11/09, REVERSING the 8/28 prospects-only rule above: the rep
 // is the second user now — full visibility by design ("nothing is secret",
