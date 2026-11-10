@@ -35,6 +35,7 @@ const deny = (p, m) => ok(p, m, true);
     const db = ctx.firestore();
     await db.doc('users/admin1').set({ role: 'admin', email: 'g@x.com' });
     await db.doc('users/emp1').set({ role: 'employee', email: 'a@x.com' });
+    await db.doc('users/field1').set({ role: 'field', email: 'f@x.com' }); // v257
     await db.doc('workspace/main/ac/acc1').set({ id: 'acc1', name: 'Store One' });
     await db.doc('workspace/main/retail_invoices/inv1').set({ id: 'inv1', status: 'draft', total: 100 });
     await db.doc('workspace/main/lf_invoices/lfi1').set({ id: 'lfi1', status: 'sent' });
@@ -93,6 +94,31 @@ const deny = (p, m) => ok(p, m, true);
   await deny(emp.doc('users/admin1').get(), 'cannot read other users');
   await deny(emp.doc('app_config/access_control').set({ allowedEmails: ['x@y.z'] }, { merge: true }),
     'cannot touch the sign-in allowlist');
+
+  console.log('[C2] v257 — field road extras');
+  const fld = env.authenticatedContext('field1').firestore();
+  const base = { uid: 'field1', createdAt: '2026-11-10T12:00:00Z', storeName: 'A Market', reviewed: false };
+  await allow(fld.doc('field_logs/f1').set({ ...base,
+      restock: { items: [{ brand: 'purpl', sku: 'classic', name: 'Classic', cases: 2 }], note: 'by Friday' },
+      payment: { amount: 150.5, method: 'check', checkNum: '1234' },
+      problem: 'two dented cans' }),
+    'rep logs a visit with all three extras');
+  await deny(fld.doc('field_logs/f2').set({ ...base, restock: { items: [] } }),
+    'restock with NO items refused');
+  await deny(fld.doc('field_logs/f3').set({ ...base, payment: { amount: 0, method: 'cash' } }),
+    'zero-amount payment refused');
+  await deny(fld.doc('field_logs/f4').set({ ...base, restock: { items: [{ cases: 1 }] }, restockStatus: 'invoiced' }),
+    'rep cannot forge a restock as already invoiced');
+  await deny(fld.doc('field_logs/f5').set({ ...base, resolvedAt: '2026-11-10T12:00:00Z' }),
+    'rep cannot forge resolution stamps');
+  await allow(fld.doc('field_logs/f1').update({ restock: { items: [{ brand: 'purpl', sku: 'classic', name: 'Classic', cases: 3 }], note: '' }, editedAt: 'x', updatedAt: 'x' }),
+    'rep fixes her own unreviewed restock');
+  await allow(adm.doc('field_logs/f1').update({ restockStatus: 'invoiced', restockInvoiceId: 'inv9', resolvedBy: 'Graham', resolvedAt: 'now' }),
+    'staff approval stamps the request');
+  await deny(fld.doc('field_logs/f1').update({ restock: { items: [{ brand: 'purpl', sku: 'classic', name: 'Classic', cases: 9 }] }, editedAt: 'y', updatedAt: 'y' }),
+    'an ACTED-ON restock is frozen to the rep');
+  await deny(fld.doc('field_logs/f1').update({ restockStatus: 'dismissed' }),
+    'rep cannot flip statuses herself');
 
   console.log('[C] admin unaffected');
   await allow(adm.doc('workspace/main/config/main').set({ invoice_settings: { achRouting: '011000015' } }, { merge: true }),

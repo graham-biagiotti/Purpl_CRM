@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v256';
+const APP_VERSION = 'v257';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -2721,6 +2721,9 @@ function openAddInv(accountId=null, priceType='direct', cases=null, notesText=''
 }
 
 function openInvModal(id, prefillAccountId=null, prefillTier='direct', prefillNotes='') {
+  // v257: opening this modal through any path OTHER than a restock-approve
+  // clears a stale approve flag (approve sets it right AFTER this call).
+  window._pendingRestockLog = null;
   const isNew = !id;
   const inv   = id ? findInvoice(id) : null;
 
@@ -18824,6 +18827,21 @@ async function _saveInvCore(id, isNew) {
     }
   }
   auditLog(_isNew ? 'create' : 'update', 'invoice', saveId, rec.number || saveId);
+  // v257: a restock-approve opened this modal — stamp the field-log request
+  // as invoiced ONLY when the invoice really saved, and only if it's the
+  // same account and reasonably fresh (a cancelled modal must never let the
+  // flag leak onto an unrelated later invoice).
+  if (_isNew && window._pendingRestockLog) {
+    const p = window._pendingRestockLog;
+    window._pendingRestockLog = null;
+    if (p.accountId === accountId && (Date.now() - p.at) < 15 * 60000) {
+      firebase.firestore().collection('field_logs').doc(p.logId)
+        .update({ restockStatus: 'invoiced', restockInvoiceId: saveId, resolvedBy: _currentUserName(), resolvedAt: new Date().toISOString() })
+        .then(() => { try { _renderFlQueues(); } catch (_) {} })
+        .catch(e => console.warn('restock stamp failed:', e?.message));
+      auditLog('field_restock', 'field_log', p.logId, rec.accountName || '', { outcome: 'invoiced', invoiceId: saveId });
+    }
+  }
   if (!_isNew) _syncCombinedParentForChild(saveId); // M1: modal status edit on a combined child
   return rec;
 }
@@ -20141,15 +20159,137 @@ function _listenFieldLogs() {
         }
         // Snapshots refresh only the list — never the toolbar, so the
         // search box survives typing (same rule as the Sampling page).
-        if (currentPage === 'field-log') _renderFieldLogList();
+        if (currentPage === 'field-log') { _renderFlQueues(); _renderFieldLogList(); } // v257: queues live-update too
       }, err => console.warn('Field log listener error:', err));
   } catch (e) { console.warn('Could not start field log listener:', e); }
+}
+
+// ── v257: road-extra queues (restocks / payments / problems) ──────────────
+// Ashley's actionable entries surface here; everything is pending until
+// Graham's click stamps it (statuses are staff-only writes — rules-enforced).
+function _flPendingQueues() {
+  return {
+    restocks: _flLogs.filter(l => l.restock && !l.restockStatus),
+    payments: _flLogs.filter(l => l.payment && !l.paymentStatus),
+    problems: _flLogs.filter(l => l.problem && !l.problemStatus),
+  };
+}
+function _flInvoicedToday(accountId) {
+  if (!accountId) return false;
+  const t = today();
+  return ['retail_invoices', 'lf_invoices', 'combined_invoices', 'iv'].some(col =>
+    DB.a(col).some(x => x.accountId === accountId && (x.status || 'draft') !== 'void' && (x.date || x.issued || '').slice(0, 10) === t));
+}
+function _renderFlQueues() {
+  const el = qs('#fl-queues');
+  if (!el) return;
+  const q = _flPendingQueues();
+  const card = (tone, title, rows) => rows.length ? `
+    <div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:4px solid ${tone}">
+      <div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${title} (${rows.length})</div>
+      ${rows.join('')}
+    </div>` : '';
+  const who = l => `${escHtml(l.repName || 'rep')} · ${escHtml((l.createdAt || '').slice(0, 10))}`;
+  const restockRows = q.restocks.map(l => {
+    const items = (l.restock.items || []).map(i => `${i.cases}× ${escHtml(i.name || i.sku)}`).join(', ');
+    const hasLf = (l.restock.items || []).some(i => i.brand === 'lf');
+    const hasPurpl = (l.restock.items || []).some(i => i.brand !== 'lf');
+    const warn = _flInvoicedToday(l.accountId) ? `<div style="font-size:12px;color:#b45309;margin-top:3px">⚠️ This account was already invoiced TODAY — check before creating another.</div>` : '';
+    return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <strong>${escHtml(l.storeName || '')}</strong> — ${items}${l.restock.note ? ` <span style="color:var(--muted)">· “${escHtml(l.restock.note)}”</span>` : ''}
+      <div style="font-size:12px;color:var(--muted)">${who(l)}</div>${warn}
+      ${hasLf && hasPurpl ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">Mixed brands: the button prefills the purpl invoice — add the LF items to an LF invoice, then Mark handled.</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        ${hasPurpl ? `<button class="btn xs" data-qact="restock-inv" data-id="${escHtml(l.id)}">✓ Create invoice (prefilled)</button>` : ''}
+        <button class="btn xs secondary" data-qact="restock-handled" data-id="${escHtml(l.id)}">Mark handled</button>
+        <button class="btn xs ghost" data-qact="restock-dismiss" data-id="${escHtml(l.id)}">Dismiss</button>
+      </div></div>`;
+  });
+  const payRows = q.payments.map(l => {
+    const openInvs = l.accountId ? ['retail_invoices', 'lf_invoices', 'combined_invoices', 'iv'].flatMap(col =>
+      DB.a(col).filter(x => x.accountId === l.accountId && !['paid', 'void', 'draft'].includes(x.status || 'draft'))
+        .map(x => ({ col, id: x.id, num: x.number || x.invoiceNumber || x.id, amt: parseFloat(x.grandTotal != null ? x.grandTotal : (x.total != null ? x.total : x.amount)) || 0 }))) : [];
+    return `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <strong>${escHtml(l.storeName || '')}</strong> — ${fmtC(l.payment.amount)} ${escHtml(l.payment.method || '')}${l.payment.checkNum ? ' #' + escHtml(l.payment.checkNum) : ''}
+      <div style="font-size:12px;color:var(--muted)">${who(l)} · she has the ${escHtml(l.payment.method || 'payment')}</div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        ${openInvs.map(iv => `<button class="btn xs" data-qact="pay-apply" data-id="${escHtml(l.id)}" data-inv="${escHtml(iv.id)}" data-col="${escHtml(iv.col)}">✓ ${escHtml(iv.num)} (${fmtC(iv.amt)}) paid</button>`).join('')}
+        ${openInvs.length ? '' : '<span style="font-size:12px;color:var(--muted)">No open invoices on this account —</span>'}
+        <button class="btn xs ghost" data-qact="pay-dismiss" data-id="${escHtml(l.id)}">Dismiss</button>
+      </div></div>`;
+  });
+  const probRows = q.problems.map(l => `<div style="padding:8px 0;border-top:1px solid var(--line)">
+      <strong>${escHtml(l.storeName || '')}</strong> — ${escHtml(l.problem)}
+      <div style="font-size:12px;color:var(--muted)">${who(l)}</div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn xs" data-qact="prob-resolve" data-id="${escHtml(l.id)}">✓ Resolve…</button>
+      </div></div>`).join('');
+  el.innerHTML =
+    card('#dc2626', '⚠️ Problems from the road', q.problems.map(() => '').length ? [probRows] : []) +
+    card('#8B5FBF', '🔁 Restock requests', restockRows) +
+    card('#16a34a', '💵 Payments she collected', payRows);
+  if (!el._qWired) {
+    el._qWired = true;
+    el.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-qact]');
+      if (!b) return;
+      const logId = b.dataset.id;
+      const l = _flLogs.find(x => x.id === logId);
+      if (!l) return;
+      const stamp = (patch) => firebase.firestore().collection('field_logs').doc(logId)
+        .update({ ...patch, resolvedBy: _currentUserName(), resolvedAt: new Date().toISOString() })
+        .catch(err => toast('Update failed: ' + (err.message || err), 6000));
+      switch (b.dataset.qact) {
+        case 'restock-inv': {
+          if (!l.accountId) { toast('No matched account on this request — handle manually.'); return; }
+          const ac = DB.a('ac').find(x => x.id === l.accountId) || {};
+          const tier = ac.pricePerCaseCustom ? 'custom' : (ac.fulfilledBy === 'dist' ? 'dist' : 'direct');
+          openInvModal(null, l.accountId, tier, 'Restock requested by ' + (l.repName || 'rep') + (l.restock.note ? ' — ' + l.restock.note : ''));
+          _ivRenderLineRows((l.restock.items || []).filter(i => i.brand !== 'lf').map(i => ({ skuId: i.sku, cases: i.cases })));
+          // Stamped only when the invoice actually SAVES (hook in _saveInvCore);
+          // closing the modal leaves the request pending.
+          window._pendingRestockLog = { logId, accountId: l.accountId, at: Date.now() };
+          break;
+        }
+        case 'restock-handled':
+          await stamp({ restockStatus: 'handled' });
+          auditLog('field_restock', 'field_log', logId, l.storeName || '', { outcome: 'handled' });
+          break;
+        case 'restock-dismiss':
+          await stamp({ restockStatus: 'dismissed' });
+          auditLog('field_restock', 'field_log', logId, l.storeName || '', { outcome: 'dismissed' });
+          break;
+        case 'pay-apply': {
+          const col = b.dataset.col, invId = b.dataset.inv;
+          if (!(await confirmDlg(`Mark ${invId && col ? 'that invoice' : 'it'} PAID with her ${l.payment.method || 'payment'} of ${fmtC(l.payment.amount)}?`))) return;
+          if (col === 'combined_invoices') markCombinedPaid(invId);
+          else if (col === 'lf_invoices') markLfInvPaid(invId);
+          else markRetailInvPaid(invId);
+          await stamp({ paymentStatus: 'applied', paymentInvoiceId: invId });
+          auditLog('field_payment', 'field_log', logId, l.storeName || '', { amount: l.payment.amount, invoiceId: invId });
+          break;
+        }
+        case 'pay-dismiss':
+          await stamp({ paymentStatus: 'dismissed' });
+          break;
+        case 'prob-resolve': {
+          const note = await promptDlg('Resolution note (she can see this was handled):', { okLabel: 'Resolve' });
+          if (note === null) return;
+          await stamp({ problemStatus: 'resolved', problemResolution: String(note || '').slice(0, 500) });
+          auditLog('field_problem', 'field_log', logId, l.storeName || '', { resolution: String(note || '').slice(0, 200) });
+          break;
+        }
+      }
+      _renderFlQueues();
+    });
+  }
 }
 
 function renderFieldLog() {
   const el = qs('#fl-content');
   if (!el) return;
   el.innerHTML = `
+    <div id="fl-queues"></div>
     <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <select id="fl-filter" onchange="_renderFieldLogList()" style="padding:8px;font-size:13px">
         <option value="open">Needs review</option>
@@ -20164,6 +20304,7 @@ function renderFieldLog() {
     </div>
     <div id="fl-list"></div>
   `;
+  _renderFlQueues(); // v257
   _renderFieldLogList();
 }
 

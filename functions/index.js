@@ -1059,6 +1059,107 @@ exports.fieldStoreList = onCall(async (request) => {
   return { stores };
 });
 
+// ── Road cards for the field app (v257) ───────────────────
+// Owner's call 11/09, REVERSING the 8/28 prospects-only rule above: the rep
+// is the second user now — full visibility by design ("nothing is secret",
+// keep it simple). Cards are still server-CURATED (the app never reads the
+// database directly) and are cached on-device so the list works offline.
+// Also carries the full SKU catalog for the restock picker (owner: full
+// catalog, not just what the store stocks).
+exports.fieldRoadCards = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const db = admin.firestore();
+  const userSnap = await db.collection('users').doc(request.auth.uid).get();
+  const role = userSnap.exists ? userSnap.data().role : null;
+  if (!['field', 'employee', 'admin'].includes(role)) {
+    throw new HttpsError('permission-denied', 'Not authorized');
+  }
+  const S = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const [acSnap, prSnap, cfgSnap] = await Promise.all([
+    db.collection('workspace/main/ac').get(),
+    db.collection('workspace/main/pr').get(),
+    db.doc('workspace/main/config/main').get(),
+  ]);
+  const cfg = cfgSnap.exists ? (cfgSnap.data() || {}) : {};
+
+  // Last order + open-balance markers, derived from the invoice collections.
+  const last = {}; const open = {};
+  for (const col of ['retail_invoices', 'lf_invoices', 'combined_invoices', 'iv']) {
+    const snap = await db.collection('workspace/main/' + col).get();
+    snap.docs.forEach((d) => {
+      const x = d.data() || {};
+      if (!x.accountId) return;
+      const st = x.status || 'draft';
+      if (st === 'void') return;
+      const amt = parseFloat(x.grandTotal != null ? x.grandTotal : (x.total != null ? x.total : x.amount)) || 0;
+      if (!['paid', 'draft', 'void'].includes(st) && amt > 0) open[x.accountId] = true;
+      const date = S(x.date || x.issued, 10);
+      if (st !== 'draft' && date && (!last[x.accountId] || date > last[x.accountId].date)) {
+        const lines = (x.lineItems || x.items || [])
+          .filter((l) => l && !String(l.skuId || '').startsWith('__'))
+          .slice(0, 4)
+          .map((l) => `${l.cases || l.qty || 0}× ${S(l.skuName || l.name || l.skuId || l.sku, 40)}`);
+        last[x.accountId] = { date, summary: lines.join(', ') };
+      }
+    });
+  }
+
+  const _prim = (a) => (a.contacts || []).find((c) => c && c.isPrimary) || (a.contacts || [])[0] || {};
+  const cards = acSnap.docs.map((d) => {
+    const a = d.data() || {};
+    if (a.status === 'closed') return null;
+    const p = _prim(a);
+    return {
+      id: d.id, kind: 'account',
+      name: S(a.name, 200), type: S(a.type, 60), territory: S(a.territory, 60),
+      address: S(a.address, 300), lat: a.lat ?? null, lng: a.lng ?? null,
+      contact: S(p.name || a.contact, 120), phone: S(p.phone || a.phone, 40),
+      email: S(p.email || a.email, 160),
+      notes: S(a.dropOffRules, 500),
+      skus: Array.isArray(a.skus) ? a.skus.slice(0, 20) : [],
+      par: a.par && typeof a.par === 'object' ? a.par : {},
+      casePrice: a.pricePerCaseCustom ?? (a.fulfilledBy === 'dist' ? a.pricePerCaseDist : a.pricePerCaseDirect) ??
+        (cfg.invoice_settings && cfg.invoice_settings.defaultCasePrice) ?? null,
+      lastOrder: (last[d.id] && last[d.id].date) || S(a.lastOrder, 10) || null,
+      lastOrderSummary: (last[d.id] && last[d.id].summary) || '',
+      openInvoice: !!open[d.id],
+      locs: (a.locs || []).slice(0, 15).map((l) => ({ label: S(l.label, 120), address: S(l.address, 300) })),
+    };
+  }).filter((c) => c && c.name);
+
+  prSnap.docs.forEach((d) => {
+    const p = d.data() || {};
+    if (p.status === 'won' || p.status === 'lost') return;
+    if (!p.name) return;
+    const c = _prim(p);
+    cards.push({
+      id: d.id, kind: 'prospect',
+      name: S(p.name, 200), type: S(p.type, 60), territory: S(p.territory, 60),
+      address: S(p.address, 300), lat: p.lat ?? null, lng: p.lng ?? null,
+      contact: S(c.name || p.contact, 120), phone: S(c.phone || p.phone, 40),
+      email: S(c.email || p.email, 160),
+      notes: S(p.nextAction, 300), stage: S(p.status, 40),
+      lastContacted: S(p.lastContacted, 10) || null,
+    });
+  });
+  cards.sort((x, y) => x.name.localeCompare(y.name));
+
+  // Full catalog for the restock picker — purpl mirrors the CRM's hardcoded
+  // SKU list (cases of 12 cans); LF comes from the live config catalog.
+  const catalog = {
+    purpl: [
+      { id: 'classic', name: 'Classic Lavender Lemonade' },
+      { id: 'blueberry', name: 'Blueberry Lavender Lemonade' },
+      { id: 'peach', name: 'Peach Lavender Lemonade' },
+      { id: 'variety', name: 'Variety Pack' },
+    ],
+    lf: (cfg.lf_skus || []).filter((s) => s && !s.archived && s.name).slice(0, 50)
+      .map((s) => ({ id: S(s.id, 40), name: S(s.name, 120), caseSize: s.caseSize ?? null })),
+  };
+
+  return { cards, catalog, generatedAt: new Date().toISOString() };
+});
+
 // ── 8a. Stripe Diagnostic ────────────────────────────────
 // Returns a step-by-step report instead of throwing — so the CRM always
 // gets a readable answer even if require('stripe') itself crashes.

@@ -149,6 +149,30 @@
       <label>Notes</label>
       <textarea id="f-notes" rows="6" placeholder="What happened, what they said, prices seen, shelf situation — anything worth remembering…"></textarea>
 
+      <!-- v257: the three road extras — collapsed until needed, so the quick
+           log stays quick. Each becomes a queue item Graham approves. -->
+      <div class="chips" style="margin-top:14px">
+        <span class="chip" id="x-restock-btn">🔁 Needs restock</span>
+        <span class="chip" id="x-payment-btn">💵 Took a payment</span>
+        <span class="chip" id="x-problem-btn">⚠️ Problem</span>
+      </div>
+      <div id="x-restock" style="display:none;margin-top:10px;padding:12px;background:#f5f3f9;border-radius:10px">
+        <div style="font-weight:800;font-size:13px;margin-bottom:6px">Restock request <span class="lite">— Graham turns this into the invoice</span></div>
+        <div id="x-restock-rows"></div>
+        <button class="btn ghost" id="x-restock-add" style="margin:6px 0 0;width:auto;padding:8px 16px">+ add item</button>
+        <input id="x-restock-note" placeholder="Note (optional — e.g. 'by Friday')" style="margin-top:8px">
+      </div>
+      <div id="x-payment" style="display:none;margin-top:10px;padding:12px;background:#f0f7f1;border-radius:10px">
+        <div style="font-weight:800;font-size:13px;margin-bottom:6px">Payment collected <span class="lite">— give it to Graham; he marks the invoice paid</span></div>
+        <input id="x-pay-amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount ($)" style="margin-bottom:8px">
+        <div class="chips" id="chips-paymethod"></div>
+        <input id="x-pay-check" placeholder="Check # (if check)" style="margin-top:8px">
+      </div>
+      <div id="x-problem" style="display:none;margin-top:10px;padding:12px;background:#fdf2f2;border-radius:10px">
+        <div style="font-weight:800;font-size:13px;margin-bottom:6px">Problem <span class="lite">— flags loudly for Graham</span></div>
+        <textarea id="x-problem-text" rows="3" placeholder="What's wrong? (damaged cans, billing beef, wrong delivery…)"></textarea>
+      </div>
+
       <button class="btn" id="btn-submit">Log it</button>
     </div>
 
@@ -326,16 +350,23 @@
   });
 
   // ── Store list (callable; cached for offline mornings) ──
-  const STORE_CACHE_KEY = 'pcrm_field_stores';
+  // v257: fieldRoadCards replaces the prospects-only fieldStoreList — full
+  // customer + prospect cards (owner's call 11/09) plus the SKU catalog for
+  // the restock picker. Cached whole, so a zero-signal morning still has
+  // yesterday's book.
+  const STORE_CACHE_KEY = 'pcrm_field_cards_v1';
+  let catalog = { purpl: [], lf: [] };
   async function loadStores() {
     try {
-      const res = await firebase.functions().httpsCallable('fieldStoreList')({});
-      stores = (res.data && res.data.stores) || [];
-      try { localStorage.setItem(STORE_CACHE_KEY, JSON.stringify({ ts: Date.now(), stores })); } catch (_) {}
+      const res = await firebase.functions().httpsCallable('fieldRoadCards')({});
+      stores = (res.data && res.data.cards) || [];
+      catalog = (res.data && res.data.catalog) || catalog;
+      try { localStorage.setItem(STORE_CACHE_KEY, JSON.stringify({ ts: Date.now(), stores, catalog })); } catch (_) {}
     } catch (e) {
       try {
         const cached = JSON.parse(localStorage.getItem(STORE_CACHE_KEY) || 'null');
         stores = (cached && cached.stores) || [];
+        catalog = (cached && cached.catalog) || catalog;
       } catch (_) { stores = []; }
       if (!stores.length) toast('Could not load the store list — you can still log with "New place".', 5000);
     }
@@ -365,10 +396,10 @@
     // Empty search shows the whole (alphabetical) list so the page never
     // looks broken/empty; typing narrows it.
     const hits = q
-      ? all.filter((s) => (s.name + ' ' + (s.town || '')).toLowerCase().includes(q)).slice(0, 12)
+      ? all.filter((s) => (s.name + ' ' + (s.town || '') + ' ' + (s.territory || '') + ' ' + (s.address || '')).toLowerCase().includes(q)).slice(0, 12)
       : all.slice(0, 400);
     el.innerHTML = hits.length
-      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong>${s.mylog ? ' <span class="pill">your find</span>' : ''}<div class="muted">${esc(s.town || s.address || '')}</div></div>`).join('')
+      ? hits.map((s, i) => `<div class="store-hit" data-i="${i}"><strong>${esc(s.name)}</strong>${s.mylog ? ' <span class="pill">your find</span>' : (s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : '')}<div class="muted">${esc(s.address || s.town || s.territory || '')}</div></div>`).join('')
       : (q ? '<div class="muted" style="padding:8px 2px">No match — use "New place" below.</div>'
            : '<div class="muted" style="padding:8px 2px">No stores loaded — check signal, or use "New place" below.</div>');
     el.querySelectorAll('.store-hit').forEach((row) => {
@@ -385,7 +416,23 @@
     $('store-pick-wrap').style.display = 'none';
     $('newplace-wrap').style.display = 'none';
     $('store-picked').style.display = '';
-    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.town ? ' <span class="muted">· ' + esc(s.town) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>`;
+    // v257: the full road card — everything useful, nothing to configure.
+    const mapsHref = s.address ? 'https://maps.google.com/?q=' + encodeURIComponent(s.name + ' ' + s.address) : '';
+    const stocked = (s.skus || []).map((k) => {
+      const nm = (catalog.purpl.find((c) => c.id === k) || {}).name || k;
+      const pv = s.par && s.par[k] ? ` <span class="lite">(par ${s.par[k]})</span>` : '';
+      return esc(nm) + pv;
+    }).join(' · ');
+    const info = [
+      s.address ? `📍 <a href="${esc(mapsHref)}" target="_blank" style="color:inherit">${esc(s.address)}</a>` : '',
+      (s.contact || s.phone) ? `👤 ${esc(s.contact || '')}${s.phone ? ` · <a href="tel:${esc(s.phone)}" style="color:inherit">📞 ${esc(s.phone)}</a>` : ''}` : '',
+      s.notes ? `📝 ${esc(s.notes)}` : '',
+      stocked ? `🧃 ${stocked}` : '',
+      s.lastOrder ? `🧾 Last order ${esc(s.lastOrder)}${s.lastOrderSummary ? ' — ' + esc(s.lastOrderSummary) : ''}` : '',
+      s.openInvoice ? `💳 <strong>Has an open invoice</strong>` : '',
+      s.kind === 'prospect' ? `🌱 Prospect${s.stage ? ' · ' + esc(s.stage) : ''}${s.lastContacted ? ' · last contact ' + esc(s.lastContacted) : ''}` : '',
+    ].filter(Boolean).map((x) => `<div class="muted" style="margin-top:4px;font-size:13.5px">${x}</div>`).join('');
+    $('store-picked').innerHTML = `<div class="store-picked"><span>${esc(s.name)}${s.kind === 'prospect' ? ' <span class="pill">prospect</span>' : ''}${s.town || s.territory ? ' <span class="muted">· ' + esc(s.town || s.territory) + '</span>' : ''}</span><button id="btn-unpick">change</button></div>${info ? `<div style="padding:2px 4px 8px">${info}</div>` : ''}`;
     $('btn-unpick').onclick = unpickStore;
     renderStoreLast();
   }
@@ -658,6 +705,70 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  // ── v257: the three road extras ──────────────────────────
+  let xOpen = { restock: false, payment: false, problem: false };
+  let selPayMethod = 'check';
+  function _xToggle(which) {
+    xOpen[which] = !xOpen[which];
+    $('x-' + which).style.display = xOpen[which] ? '' : 'none';
+    $('x-' + which + '-btn').classList.toggle('on', xOpen[which]);
+    if (which === 'restock' && xOpen.restock && !$('x-restock-rows').children.length) _restockAddRow();
+    if (which === 'payment' && xOpen.payment) chipRow('chips-paymethod', [['check', 'Check'], ['cash', 'Cash']], selPayMethod, (v) => { selPayMethod = v; });
+  }
+  $('x-restock-btn').onclick = () => _xToggle('restock');
+  $('x-payment-btn').onclick = () => _xToggle('payment');
+  $('x-problem-btn').onclick = () => _xToggle('problem');
+
+  // Full catalog in the picker (owner's call) — purpl first, then LF.
+  function _catalogOptions(sel) {
+    const opt = (id, name, grp) => `<option value="${esc(grp + ':' + id)}"${sel === grp + ':' + id ? ' selected' : ''}>${esc(name)}</option>`;
+    return '<option value="">— pick item —</option>'
+      + catalog.purpl.map((s) => opt(s.id, s.name + ' (case of 12)', 'purpl')).join('')
+      + catalog.lf.map((s) => opt(s.id, s.name + (s.caseSize ? ` (case of ${s.caseSize})` : ''), 'lf')).join('');
+  }
+  function _restockAddRow(pre) {
+    const row = document.createElement('div');
+    row.className = 'x-restock-row';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+    row.innerHTML = `<select class="xr-sku" style="flex:1;min-width:0;padding:12px;font-size:15px;border:1.5px solid #d6cfe3;border-radius:10px;font-family:inherit">${_catalogOptions(pre ? pre.key : '')}</select>
+      <input class="xr-cases" type="number" inputmode="numeric" min="1" max="99" placeholder="cases" value="${pre ? pre.cases : ''}" style="width:84px;margin:0">
+      <button type="button" class="xr-del" style="background:none;border:none;color:#b91c1c;font-size:18px;cursor:pointer;padding:4px">✕</button>`;
+    row.querySelector('.xr-del').onclick = () => row.remove();
+    $('x-restock-rows').appendChild(row);
+  }
+  $('x-restock-add').onclick = () => _restockAddRow();
+  function _gatherRestock() {
+    if (!xOpen.restock) return null;
+    const items = [...document.querySelectorAll('.x-restock-row')].map((r) => {
+      const key = r.querySelector('.xr-sku').value;
+      const cases = parseInt(r.querySelector('.xr-cases').value, 10) || 0;
+      if (!key || cases < 1) return null;
+      const [brand, id] = key.split(':');
+      const cat = brand === 'lf' ? catalog.lf : catalog.purpl;
+      const name = (cat.find((s) => s.id === id) || {}).name || id;
+      return { brand, sku: id.slice(0, 40), name: String(name).slice(0, 120), cases: Math.min(cases, 99) };
+    }).filter(Boolean).slice(0, 20);
+    if (!items.length) return null;
+    return { items, note: $('x-restock-note').value.trim().slice(0, 300) };
+  }
+  function _gatherPayment() {
+    if (!xOpen.payment) return null;
+    const amount = Math.round((parseFloat($('x-pay-amount').value) || 0) * 100) / 100;
+    if (!(amount > 0)) return null;
+    return { amount, method: selPayMethod, checkNum: $('x-pay-check').value.trim().slice(0, 40) };
+  }
+  function _gatherProblem() {
+    if (!xOpen.problem) return '';
+    return $('x-problem-text').value.trim().slice(0, 2000);
+  }
+  function _resetExtras() {
+    xOpen = { restock: false, payment: false, problem: false };
+    ['restock', 'payment', 'problem'].forEach((w) => { $('x-' + w).style.display = 'none'; $('x-' + w + '-btn').classList.remove('on'); });
+    $('x-restock-rows').innerHTML = '';
+    $('x-restock-note').value = ''; $('x-pay-amount').value = ''; $('x-pay-check').value = ''; $('x-problem-text').value = '';
+    selPayMethod = 'check';
+  }
+
   function clearForm() {
     unpickStore();
     $('store-search').value = '';
@@ -666,6 +777,7 @@
     delete $('np-addr').dataset.addrParts; delete $('np-addr').dataset.lat; delete $('np-addr').dataset.lng;
     ['f-cname', 'f-crole', 'f-cphone', 'f-cemail', 'f-notes', 'f-followup'].forEach((id) => { $(id).value = ''; });
     $('f-followup').style.display = 'none';
+    _resetExtras(); // v257
     initForm();
     renderHits();
   }
@@ -716,6 +828,17 @@
       createdAt: new Date().toISOString(),
       reviewed: false,
     };
+    // v257: the three road extras — each becomes a pending item on Graham's
+    // Field page (he approves; nothing here touches invoices or money).
+    // Statuses are deliberately ABSENT at create (the rules reject forged
+    // ones, same as `reviewed`); Graham's approval stamps them.
+    if (mode !== 'place') {
+      const _rk = _gatherRestock(); if (_rk) entry.restock = _rk;
+      const _pm = _gatherPayment(); if (_pm) entry.payment = _pm;
+      const _pb = _gatherProblem(); if (_pb) entry.problem = _pb;
+      if (xOpen.restock && !_rk) { toast('Restock is open but empty — pick items + cases, or close it.'); return; }
+      if (xOpen.payment && !_pm) { toast('Payment is open but has no amount — enter it, or close it.'); return; }
+    }
     const id = uid();
     // Optimistic: clear immediately; persistence carries it if offline.
     db.collection('field_logs').doc(id).set({ ...entry, id })

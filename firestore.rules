@@ -107,6 +107,29 @@ service cloud.firestore {
         && !('historyAppliedAt' in request.resource.data)
         && !('contactSavedAt' in request.resource.data)
         && !('prospectId' in request.resource.data)
+        // v257: road extras — shape-guarded at create, and their RESOLUTION
+        // stamps (what the owner's approval writes) can never be forged, same
+        // discipline as the review flags above.
+        && (!('restock' in request.resource.data) ||
+             (request.resource.data.restock is map
+              && request.resource.data.restock.items is list
+              && request.resource.data.restock.items.size() >= 1
+              && request.resource.data.restock.items.size() <= 20))
+        && (!('payment' in request.resource.data) ||
+             (request.resource.data.payment is map
+              && request.resource.data.payment.amount is number
+              && request.resource.data.payment.amount > 0
+              && request.resource.data.payment.amount < 100000))
+        && (!('problem' in request.resource.data) ||
+             (request.resource.data.problem is string && request.resource.data.problem.size() <= 2000))
+        && !('restockStatus' in request.resource.data)
+        && !('paymentStatus' in request.resource.data)
+        && !('problemStatus' in request.resource.data)
+        && !('placeStatus' in request.resource.data)
+        && !('restockInvoiceId' in request.resource.data)
+        && !('paymentInvoiceId' in request.resource.data)
+        && !('resolvedAt' in request.resource.data)
+        && !('resolvedBy' in request.resource.data)
         && request.resource.data.size() < 40;
       // Field reps update their OWN docs in two tiers:
       //  - Planning tier (ALWAYS): follow-up scheduling only — their to-do
@@ -140,7 +163,14 @@ service cloud.firestore {
                   && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['notes', 'contactName', 'contactRole', 'contactPhone',
                                  'contactEmail', 'type', 'outcome', 'followUpDate',
-                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt']))
+                                 'followUpDone', 'followUpDoneAt', 'editedAt', 'updatedAt',
+                                 'restock', 'payment', 'problem'])
+                  // v257: an extra the owner already ACTED on is frozen — the
+                  // rep can't reshape a restock that was already invoiced.
+                  && !(request.resource.data.diff(resource.data).affectedKeys()
+                         .hasAny(['restock', 'payment', 'problem'])
+                       && ('restockStatus' in resource.data || 'paymentStatus' in resource.data
+                           || 'problemStatus' in resource.data)))
             ));
       allow delete: if isAdmin();
     }
