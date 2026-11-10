@@ -1103,7 +1103,9 @@ exports.fieldDemoList = onCall(async (request) => {
         accept1Url: link('confirm1'), accept2Url: r.date2 ? link('confirm2') : '',
         declineUrl: link('no') });
     } else if (r.status === 'confirmed') {
-      if ((r.confirmedDate || '') < cutoff) return;
+      // Gate F4 (v258): an UNREPORTED past demo must never age out of the
+      // owe-a-report list; only reported ones leave after 30 days.
+      if ((r.confirmedDate || '') < cutoff && r.report && r.report.reportedAt) return;
       demos.push({ ...base, kind: 'booked',
         date: S(r.confirmedDate, 10),
         dateLabel: r.confirmedDate ? _samplingFmtDate(r.confirmedDate) : '',

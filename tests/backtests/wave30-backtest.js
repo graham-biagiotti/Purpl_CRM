@@ -60,6 +60,21 @@ console.log('[B] field app — tab shell + demos views');
     'logistics fields all escaped; maps link URI-encoded');
 }
 
+console.log('[B2] v258 gate fixes');
+{
+  // F1: today/past recomputed at RENDER time (cached payloads age safely)
+  ok(/const _today = /.test(fld) && /isToday: d\.date === _today, isPast: \(d\.date \|\| ''\) < _today/.test(fld),
+    "yesterday's demo can never wear the TODAY pin off a cached payload (gate F1)");
+  // F2: sign-out clears the token-bearing caches
+  ok(/localStorage\.removeItem\(DEMO_CACHE_KEY\); localStorage\.removeItem\(STORE_CACHE_KEY\);/.test(fld)
+     && fld.includes("demoData = { demos: [], calUrl: '' }; demosLoaded = false;"),
+    'sign-out wipes demo/store caches + state (shared phone, gate F2)');
+  // F4: unreported past demos never age out of owe-a-report
+  const dl2 = slc(fnSrc, 'exports.fieldDemoList', '\n// ── Road cards');
+  ok(/cutoff && r\.report && r\.report\.reportedAt\) return;/.test(dl2),
+    'confirmed rows age out only once reported (gate F4)');
+}
+
 console.log('[C] gate-F6 closure — she sees outcomes');
 {
   const det = slc(fld, 'function _entryDetailHTML(l)', '\n  function _entryEditHTML');

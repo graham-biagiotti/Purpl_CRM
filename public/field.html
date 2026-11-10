@@ -323,6 +323,12 @@
       if (logsUnsub) { logsUnsub(); logsUnsub = null; }
       clearTimeout(window._logsResub);
       me = null; myLogs = [];
+      // Gate F2 (v258): the demo cache carries action-token URLs and the
+      // permanent samplerKey — a shared phone must not keep them past
+      // sign-out (same discipline as the listener cleanup above).
+      try { localStorage.removeItem(DEMO_CACHE_KEY); localStorage.removeItem(STORE_CACHE_KEY); } catch (_) {}
+      demoData = { demos: [], calUrl: '' }; demosLoaded = false;
+      stores = []; catalog = { purpl: [], lf: [] };
       const pb = $('pending-bar'); if (pb) pb.style.display = 'none';
       show('v-auth');
       return;
@@ -425,7 +431,13 @@
   const _demoBtn = (url, label, primary) => url
     ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="btn${primary ? '' : ' ghost'}" style="display:block;text-align:center;text-decoration:none;margin-top:8px">${label}</a>` : '';
   function renderDemos() {
-    const ds = demoData.demos || [];
+    // Gate F1 (v258): the server bakes isToday/isPast at FETCH time, but this
+    // render can run off a cached payload the next morning (dead zone, or a
+    // PWA kept alive overnight) — recompute from the date so yesterday's demo
+    // can never wear the TODAY pin.
+    const _today = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const ds = (demoData.demos || []).map((d) => d.kind === 'booked'
+      ? { ...d, isToday: d.date === _today, isPast: (d.date || '') < _today } : d);
     const asks = ds.filter((d) => d.kind === 'ask');
     const todays = ds.filter((d) => d.kind === 'booked' && d.isToday);
     const owe = ds.filter((d) => (d.kind === 'done' && !d.reported) || (d.kind === 'booked' && d.isPast && !d.reported));
@@ -449,7 +461,7 @@
     </div>`).join('');
     $('demo-booked').innerHTML = (booked.length || limbo.length)
       ? booked.map((d) => `<div style="padding:8px 0;border-bottom:1px solid #eee"><strong>${esc(d.dateLabel)}</strong> — ${esc(d.accountName)}${_demoLogi(d)}${_demoBtn(d.sheetUrl, '🖨 Run sheet')}</div>`).join('')
-        + limbo.map((d) => `<div style="padding:8px 0;border-bottom:1px solid #eee"><span class="muted">⏳ ${esc(d.accountName)} — store is re-picking a day; nothing to do.</span></div>`).join('')
+        + limbo.map((d) => `<div style="padding:8px 0;border-bottom:1px solid #eee"><span class="muted">⏳ ${esc(d.accountName)} — date fell through — Graham's finding a new day; nothing for you to do.</span></div>`).join('')
       : '<div class="muted">No demos booked right now.</div>';
     $('btn-demo-cal').onclick = () => { if (demoData.calUrl) window.open(demoData.calUrl, '_blank'); else toast('Calendar link not set up yet — tell Graham.'); };
   }
