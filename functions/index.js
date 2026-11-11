@@ -3351,6 +3351,9 @@ exports.samplingDailySweep = onSchedule(
 // Alina's address so alerts work before the doc is ever saved.
 const LF_INV_FALLBACK_EMAIL = 'alina@pumpkinblossomfarm.com';
 const _lfS = (v, n) => String(v == null ? '' : v).slice(0, n);
+// Gate F3: item names reach these emails from a client payload (alert) or
+// staff-entered catalog names (digest) — escape before HTML interpolation.
+const _lfEsc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function _lfInvConfig(db) {
   const snap = await db.collection('portal_settings').doc('lf_inventory').get();
@@ -3382,7 +3385,7 @@ exports.lfLowStockAlert = onCall({ secrets: [resendApiKey] }, async (request) =>
   const { Resend } = require('resend');
   const resend = new Resend(process.env.RESEND_API_KEY);
   const rows = fresh.map(i =>
-    `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${i.name}</td>
+    `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${_lfEsc(i.name)}</td>
      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:#b45309">${i.onHand}</td>
      <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;color:#6b7280">${i.threshold}</td></tr>`).join('');
   const _r = await resend.emails.send({
@@ -3461,9 +3464,9 @@ exports.lfWeeklyDigest = onSchedule(
     const REASON_LABEL = { wholesale: 'wholesale', wix: 'to Wix', samples: 'samples', shrink: 'shrink', adjust: 'adjusted', production: 'made', return: 'returned' };
     const movedKeys = [...new Set([...Object.keys(weekIn), ...Object.keys(weekOut)])];
     const weekRows = movedKeys.sort((a, b) => (nameOf[a] || '') < (nameOf[b] || '') ? -1 : 1).map(k => {
-      const outs = Object.entries(weekOut[k] || {}).map(([r, q]) => `−${q} ${REASON_LABEL[r] || r}`).join(', ');
+      const outs = Object.entries(weekOut[k] || {}).map(([r, q]) => `−${q} ${_lfEsc(REASON_LABEL[r] || r)}`).join(', ');
       const ins = weekIn[k] ? `+${weekIn[k]} in` : '';
-      return `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${nameOf[k] || k}</td>
+      return `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${_lfEsc(nameOf[k] || k)}</td>
         <td style="padding:5px 10px;border-bottom:1px solid #eee">${[ins, outs].filter(Boolean).join(' · ') || '—'}</td>
         <td style="padding:5px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${onHand[k] || 0}</td></tr>`;
     }).join('');
@@ -3471,9 +3474,9 @@ exports.lfWeeklyDigest = onSchedule(
     const ahead = [];
     leaves.forEach(l => {
       const oh = onHand[l.k] || 0;
-      if (l.th > 0 && oh <= l.th) { ahead.push(`<li><strong>${l.name}</strong> — ${oh} on hand (alert at ${l.th})</li>`); return; }
+      if (l.th > 0 && oh <= l.th) { ahead.push(`<li><strong>${_lfEsc(l.name)}</strong> — ${oh} on hand (alert at ${l.th})</li>`); return; }
       const rate = (monthOut[l.k] || 0) / 28;
-      if (rate > 0 && oh > 0 && oh / rate <= 14) ahead.push(`<li><strong>${l.name}</strong> — about ${Math.max(1, Math.round(oh / rate))} days left at the recent pace (${oh} on hand)</li>`);
+      if (rate > 0 && oh > 0 && oh / rate <= 14) ahead.push(`<li><strong>${_lfEsc(l.name)}</strong> — about ${Math.max(1, Math.round(oh / rate))} days left at the recent pace (${oh} on hand)</li>`);
     });
 
     if (!weekRows && !ahead.length) { console.log('lfWeeklyDigest: nothing to report, no email'); return; }

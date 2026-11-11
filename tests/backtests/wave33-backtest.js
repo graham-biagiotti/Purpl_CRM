@@ -158,6 +158,27 @@ console.log('[E] LF inventory pane');
     'freeze map covers the ledger the LF modal now writes');
 }
 
+console.log('[E2] gate fixes — stock-take concurrency + cosmetics');
+{
+  // Gate F1: an untouched prefill must never become a phantom adjustment
+  // when another user's deduction lands mid-count.
+  ok(src.includes('data-baseline="${v}"'), 'count inputs carry their render-time baseline');
+  const st2 = slc(src, 'function lfInvStockTakeSave()', '\nasync function lfInvSaveAlertEmail');
+  ok(st2.includes('if (inp.value === inp.dataset.baseline) return;'),
+    'untouched rows are skipped — edited rows diff against LIVE on-hand (gate F1)');
+  ok(st2.indexOf('inp.dataset.baseline') < st2.indexOf('const delta'),
+    'the untouched-skip runs before any delta math');
+  // Gate F2: a stock take on screen is never rebuilt by a background refresh.
+  const pane2 = slc(src, 'function _invLf()', '\n// Dashboard quick-action');
+  ok(pane2.includes("if (_lfStockTakeMode && el.querySelector('.lf-st-count')) return;"),
+    'stock-take grid survives remote snapshots even with focus outside an input (gate F2)');
+  // Gate F4/F5/F6 cosmetics that still matter:
+  ok(pane2.includes('class="card-grid grid-4"'), 'KPI row actually lays out as a grid (gate F4)');
+  ok(src.includes('function navLfInventory()') && src.includes('go:"navLfInventory()"'),
+    'dashboard low-stock card moves the tab highlight too (gate F5)');
+  ok(!idx.includes('LF stock lives on Wix'), 'stale "lives on Wix" copy gone (gate F6)');
+}
+
 console.log('[F] functions — instant alert + Monday digest');
 {
   const al = slc(fnSrc, 'exports.lfLowStockAlert', '\nexports.lfWeeklyDigest');
@@ -179,6 +200,11 @@ console.log('[F] functions — instant alert + Monday digest');
   ok(dg.includes('if (!weekRows && !ahead.length)'), 'nothing to report → no email at all');
   ok(dg.includes('oh / rate <= 14'), 'week-ahead flags items on pace to run out');
   ok(dg.includes("if (_r.error) console.error"), 'digest send failure logged');
+  // Gate F3: names reach these emails from client payloads / staff-entered
+  // catalog — both builders escape before HTML interpolation.
+  ok(fnSrc.includes('const _lfEsc = '), 'server-side HTML escape helper present');
+  ok(al.includes('_lfEsc(i.name)'), 'alert email escapes client-supplied names');
+  ok((dg.match(/_lfEsc\(/g) || []).length >= 3, 'digest escapes catalog names everywhere');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

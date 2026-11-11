@@ -1692,7 +1692,7 @@ function renderDashQuickActions() {
   const cards = [];
   if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
   if (drafts)        cards.push({n:drafts, label:'Draft invoice'+(drafts>1?'s':'')+' to send', cls:'qa-amber', go:"nav('invoices')"});
-  if (lfLow)         cards.push({n:lfLow, label:'LF item'+(lfLow>1?'s':'')+' low on stock', cls:'qa-amber', go:"nav('inventory');(_invTab='lf');_renderInvPane()"});
+  if (lfLow)         cards.push({n:lfLow, label:'LF item'+(lfLow>1?'s':'')+' low on stock', cls:'qa-amber', go:"navLfInventory()"});
   if (!cards.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = 'flex';
   el.innerHTML = cards.map(c => `<button class="qa-card ${c.cls}" onclick="${c.go}">
@@ -3238,7 +3238,7 @@ function renderProjectionsPage() {
   // ── Demand vs stock, next 30 days ──────────────────────
   // Cases per purpl SKU from invoice LINE ITEMS. Universe here INCLUDES
   // combined children (parents carry no line items) and EXCLUDES parents —
-  // each case counted exactly once. LF stock lives on Wix; purpl only.
+  // each case counted exactly once. purpl only (LF stock: lf_iv ledger, v261).
   const casesBySku = Object.fromEntries(SKUS.map(s => [s.id, 0]));
   const capDays = winDays === Infinity ? 365 : winDays;
   let earliestEver = null, legacySkipped = 0;
@@ -9043,6 +9043,12 @@ function _invLf() {
   // not rebuild the pane while someone is typing a threshold/count/qty.
   if (document.activeElement && el.contains(document.activeElement)
       && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  // v261 gate F2: the focus guard isn't enough for the stock-take grid — a
+  // counter who pauses between fields would lose every typed count to the
+  // next remote snapshot. While a stock take is on screen, never rebuild;
+  // Save/Cancel flip the mode off and re-render. (Entering the mode still
+  // renders: the toggle sets the flag BEFORE any .lf-st-count exists.)
+  if (_lfStockTakeMode && el.querySelector('.lf-st-count')) return;
 
   const rows = _lfLeafRows();
   const oh = _lfOnHandMap();
@@ -9071,7 +9077,7 @@ function _invLf() {
       const isLow = r.threshold > 0 && v <= r.threshold;
       const name = multi ? `<span style="padding-left:18px;color:var(--muted)">${escHtml(r.variantName || r.skuName)}</span>` : `<span style="font-weight:600">${escHtml(r.skuName)}</span>`;
       const ohCell = _lfStockTakeMode
-        ? `<input type="number" class="lf-st-count" data-key="${k}" value="${v}" min="0" style="width:80px;padding:4px 6px">`
+        ? `<input type="number" class="lf-st-count" data-key="${k}" data-baseline="${v}" value="${v}" min="0" style="width:80px;padding:4px 6px">`
         : `<span style="${v < 0 ? 'color:var(--red);font-weight:700' : (isLow ? 'color:#b45309;font-weight:700' : '')}">${fmt(v)}${isLow ? ' ⚠' : ''}</span>`;
       tbl += `<tr><td>${name}</td><td>${ohCell}</td>
         <td><input type="number" min="0" value="${r.threshold || ''}" placeholder="—" onchange="lfInvSaveThreshold('${r.skuId}','${r.variantId}',this.value)" style="width:70px;padding:4px 6px" title="Alert when stock falls to this level (blank = never)"></td></tr>`;
@@ -9092,7 +9098,7 @@ function _invLf() {
   }).join('');
 
   el.innerHTML = `
-    <div class="grid-4" style="margin-bottom:14px">
+    <div class="card-grid grid-4" style="margin-bottom:14px">
       <div>${kpiHtml('LF Units On Hand', fmt(totalUnits), 'purple')}</div>
       <div>${kpiHtml('Below Threshold', String(low.length), low.length ? 'red' : 'green')}</div>
     </div>
@@ -9161,6 +9167,16 @@ function _invLf() {
   }
 }
 
+// Dashboard quick-action target: land on the LF tab with the tab bar's
+// active highlight moved too (gate F5: assigning _invTab directly left
+// "Stock Summary" highlighted over the LF pane).
+function navLfInventory() {
+  nav('inventory');
+  const btn = document.querySelector('[data-inv-tab=lf]');
+  if (btn) btn.click();
+  else { _invTab = 'lf'; _renderInvPane(); }
+}
+
 function _lfLeafByKey(key) { return _lfLeafRows().find(r => _lfKey(r.skuId, r.variantId) === key) || null; }
 
 function _lfManualEntry(key, qty, type, reason, note) {
@@ -9204,6 +9220,13 @@ function lfInvStockTakeSave() {
   let changed = 0;
   document.querySelectorAll('#inv-pane-lf .lf-st-count').forEach(inp => {
     const key = inp.dataset.key;
+    // v261 gate F1: skip rows the counter never touched. The prefill is
+    // render-time on-hand, but the ledger can move mid-count (another user's
+    // invoice confirm) — a stale untouched prefill must never become a
+    // phantom adjustment that reverts a legitimate deduction. An EDITED row
+    // is the counter's statement of physical reality, so its delta is
+    // computed against the LIVE on-hand at save time.
+    if (inp.value === inp.dataset.baseline) return;
     const counted = Math.round(parseFloat(inp.value));
     if (isNaN(counted) || counted < 0) return;
     const cur = before[key] || 0;
@@ -15072,7 +15095,7 @@ async function openInvoicePreview(type, id) {
         const subject = 'Invoice from Pumpkin Blossom Farm — ' + (rec.accountName || account.name || '');
         const result = await callSendEmail(to, 'lavender@pbfwholesale.com', subject, html, undefined, cc);
         toast('Invoice sent ✓');
-        // purpl deducts inventory via markInvoiceSent; LF is Wix-managed; dist
+        // purpl deducts inventory via markInvoiceSent; LF deducts its own lf_iv ledger at create (v261); dist
         // stock already moved at Log Shipment — status flip only for both.
         if (type === 'lf' || type === 'dist') {
           // v253: field-targeted flip (whole-doc write from a frozen modal
