@@ -11986,7 +11986,13 @@ async function inviteEmployee() {
     const result = await fn({ email, displayName: name, role });
     if (resultEl) {
       resultEl.style.display = '';
-      resultEl.innerHTML = `<strong>✓ Invite email sent to ${escHtml(email)}.</strong> They'll get a link to set their password and sign in.<br>
+      // v259: a Resend-rejected invite email used to report 'sent ✓' — on a
+      // multi-invite day that strands people. The account always exists; a
+      // failed email promotes the backup link to the main instruction.
+      resultEl.innerHTML = result.data.emailFailed
+        ? `<strong>⚠️ Account created, but the invite EMAIL failed to send.</strong> Text or email them this sign-in link yourself:<br>
+          <a href="${escHtml(result.data.resetLink)}" target="_blank" style="word-break:break-all;font-size:12px">${escHtml(result.data.resetLink)}</a>`
+        : `<strong>✓ Invite email sent to ${escHtml(email)}.</strong> They'll get a link to set their password and sign in.<br>
         <details style="margin-top:6px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Backup link (if email doesn't arrive)</summary>
         <a href="${escHtml(result.data.resetLink)}" target="_blank" style="word-break:break-all;font-size:12px">${escHtml(result.data.resetLink)}</a></details>`;
     }

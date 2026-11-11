@@ -984,10 +984,11 @@ exports.inviteEmployee = onCall(
     const link = await admin.auth().generatePasswordResetLink(email);
 
     // Send invite email via Resend
+    let emailFailed = false; // v259: a Resend-rejected send must not report 'sent'
     try {
       const {Resend} = require('resend');
       const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
+      const _r = await resend.emails.send({
         from: 'lavender@pbfwholesale.com',
         to: email,
         subject: 'You\'re invited to purpl CRM — Pumpkin Blossom Farm',
@@ -1017,11 +1018,13 @@ exports.inviteEmployee = onCall(
 </td></tr></table>
 </body></html>`,
       });
+      if (_r.error) { console.warn('Invite email rejected by Resend:', JSON.stringify(_r.error)); emailFailed = true; }
     } catch (emailErr) {
       console.warn('Invite email failed (account still created):', emailErr.message);
+      emailFailed = true;
     }
 
-    return { success: true, uid: userRecord.uid, resetLink: link };
+    return { success: true, uid: userRecord.uid, resetLink: link, emailFailed };
   } catch (err) {
     console.error('inviteEmployee error:', err.message);
     throw new HttpsError('internal', 'Invite failed: ' + (err.message || 'unknown error'));
