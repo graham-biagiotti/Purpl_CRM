@@ -46,9 +46,12 @@ body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);mi
 <body>
 <div class="sp-header">
   <div style="display:flex;gap:24px;align-items:center;justify-content:center;margin-bottom:16px">
-    <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="150" height="57" style="display:block">
+    <!-- v260: margin:0 beats the .sp-header img { margin:0 auto } rule — in this
+         flex row the auto side-margins absorbed ALL free space and shoved the
+         two logos to opposite edges of the header. -->
+    <img src="https://purpl-crm.web.app/images/purpl-wordmark-white.png" alt="purpl" width="150" height="57" style="display:block;margin:0">
     <div style="width:1px;height:44px;background:rgba(255,255,255,0.5)"></div>
-    <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="74" height="69" style="display:block">
+    <img src="https://purpl-crm.web.app/images/lf-logo-white.png" alt="Lavender Fields" width="74" height="69" style="display:block;margin:0">
   </div>
   <h1>Schedule an In-Store Demo</h1>
   <div class="sp-header-sub">Pumpkin Blossom Farm · Wholesale</div>

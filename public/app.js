@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v259';
+const APP_VERSION = 'v260';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -3921,6 +3921,11 @@ function openAccount(id) {
   // Copy link button
   const copyLinkBtn = qs('#mac-copy-link-btn');
   if (copyLinkBtn) copyLinkBtn.onclick = () => copyOrderLink(id);
+
+  // v260: demo booking link straight from the account card — no more
+  // walking over to the Sampling page to fetch one store's link.
+  const demoLinkBtn = qs('#mac-demo-link-btn');
+  if (demoLinkBtn) demoLinkBtn.onclick = () => samplingCopyLink(id);
 
   // Tab switching
   document.querySelectorAll('#modal-account .tab').forEach(t=>{
@@ -19445,11 +19450,10 @@ async function renderSampling() {
     </div>
     <div class="card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input id="sampling-search" placeholder="Search stores…" oninput="_renderSamplingList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
-      <select id="sampling-copy-select" style="padding:8px;font-size:13px;max-width:220px">
-        <option value="">Copy a store's booking link…</option>
-        ${DB.a('ac').filter(a => a.status !== 'inactive').sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1).map(a => `<option value="${a.id}">${escHtml(a.name || '')}</option>`).join('')}
-      </select>
-      <button class="btn sm" onclick="samplingCopyLink()">Copy link</button>
+      <div style="position:relative;flex:1;min-width:200px">
+        <input id="sampling-link-search" placeholder="Get a booking link — type a store name…" autocomplete="off" oninput="_samplingLinkLookup()" style="width:100%;padding:8px 10px;font-size:13px">
+        <div id="sampling-link-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,0.12);max-height:260px;overflow-y:auto;margin-top:4px"></div>
+      </div>
     </div>
     <div id="sampling-list"></div>
   `;
@@ -19563,12 +19567,36 @@ function samplingCopyCalLink() {
     .catch(async () => { await promptDlg('Copy the calendar link', { initial: url, okLabel: 'Done' }); });
 }
 
-async function samplingCopyLink() {
-  const acId = qs('#sampling-copy-select')?.value;
+// v260: the booking-link picker was a native <select> of every account —
+// unsearchable past a couple hundred rows. Type-ahead instead: 2+ letters
+// matches on name, each hit carries its own Copy button.
+function _samplingLinkLookup() {
+  const box = qs('#sampling-link-results');
+  if (!box) return;
+  const q = (qs('#sampling-link-search')?.value || '').trim().toLowerCase();
+  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const hits = DB.a('ac')
+    .filter(a => a.status !== 'inactive' && (a.name || '').toLowerCase().includes(q))
+    .sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1)
+    .slice(0, 8);
+  box.innerHTML = hits.length ? hits.map(a => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name || '')}</span>
+      <button class="btn xs primary" onclick="samplingCopyLink('${a.id}')">Copy link</button>
+    </div>`).join('')
+    : '<div style="padding:10px;font-size:12.5px;color:var(--muted)">No store matches.</div>';
+  box.style.display = '';
+}
+
+async function samplingCopyLink(acId) {
   if (!acId) { toast('Pick a store first'); return; }
   try {
     const token = await _ensurePortalToken(acId);
     const link = 'https://pbfwholesale.com/sampling?t=' + token;
+    const box = qs('#sampling-link-results');
+    if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+    const inp = qs('#sampling-link-search');
+    if (inp) inp.value = '';
     try { await navigator.clipboard.writeText(link); toast('Booking link copied ✓'); }
     catch (e) { await promptDlg('Copy this link', { initial: link, okLabel: 'Done' }); }
   } catch (e) {
