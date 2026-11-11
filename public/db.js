@@ -24,6 +24,7 @@ const COLLECTION_KEYS = [
   'audit_log',
   'prod_hist','runs','shipments',
   'stockist_locations',
+  'lf_iv', // v261: Lavender Fields stock ledger (append-heavy, grows like iv)
 ];
 
 // Append-only collections: entries may be CREATED but never updated or

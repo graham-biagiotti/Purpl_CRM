@@ -389,7 +389,11 @@
         <button class="tab" data-inv-tab="supplies">Supplies</button>
         <button class="tab" data-inv-tab="log">Log</button>
         <button class="tab" data-inv-tab="returns">Returns</button>
+        <button class="tab" data-inv-tab="lf">🪻 Lavender Fields</button>
       </div>
+
+      <!-- v261: LF master stock — rendered entirely by _invLf() -->
+      <div id="inv-pane-lf" style="display:none"></div>
 
       <!-- Stock Summary -->
       <div id="inv-pane-summary">
@@ -1057,12 +1061,13 @@
             <div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Invoice</th><th>Due</th><th>Amount</th></tr></thead><tbody id="lf-rep-out-tbody"></tbody></table></div>
           </div>
         </div>
-        <!-- LF Deduction Log -->
+        <!-- LF Deduction Log (legacy Wix-pull records — read-only history) -->
         <div class="card">
           <div class="section-hdr">
             <h2>LF Deduction Log</h2>
             <button class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="exportLfReportCSV('wix')">⬇ CSV</button>
           </div>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Wix pull reminders were retired in v261 — this is the historical log. Ongoing stock movement lives in Inventory → Lavender Fields.</p>
           <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Run</th><th>SKU</th><th>Cases</th><th>Status</th></tr></thead><tbody id="lf-rep-wix-tbody"></tbody></table></div>
         </div>
       </div><!-- /rep-lf-section -->
@@ -2222,18 +2227,8 @@
 </div>
 
 <!-- LF inventory deduction alert -->
-<div class="overlay" id="modal-wix-pull">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-hdr"><h2>🔴 LF Inventory Deduction Required</h2><button class="modal-close btn sm" onclick="confirmWixPull(false)">✕</button></div>
-    <p style="font-size:13px;margin-bottom:12px">Deduct the following from LF inventory for <strong id="wix-pull-account"></strong>:</p>
-    <div id="wix-pull-items" style="margin-bottom:16px"></div>
-    <p style="font-size:12px;color:var(--muted)">Invoice: <strong id="wix-pull-inv-number"></strong></p>
-    <div class="modal-footer">
-      <button class="btn" onclick="confirmWixPull(false)">Remind me later</button>
-      <button class="btn primary" onclick="confirmWixPull(true)">✓ Mark as Deducted</button>
-    </div>
-  </div>
-</div>
+<!-- v261: the Wix-pull reminder modal is gone — the CRM is the LF stock
+     master now, and wholesale invoices deduct the lf_iv ledger directly. -->
 
 <!-- Prospect view -->
 <div class="overlay" id="modal-prospect">

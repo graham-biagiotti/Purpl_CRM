@@ -142,7 +142,11 @@ console.log('[G] B9 — post-sign-out save hygiene');
 
 console.log('[H] v254 nits + login form');
 {
-  const sweep = fnSrc.slice(fnSrc.indexOf('exports.samplingDailySweep'));
+  // v261 (wave33): bound the slice — the LF inventory functions appended
+  // after the sweep have their own `const _r = await resend.emails.send`
+  // captures, which inflated this count past three.
+  const _sweepEnd = fnSrc.indexOf('v261: LF INVENTORY');
+  const sweep = fnSrc.slice(fnSrc.indexOf('exports.samplingDailySweep'), _sweepEnd > 0 ? _sweepEnd : undefined);
   ok((sweep.match(/const _r = await resend\.emails\.send\(\{/g) || []).length === 3,
     'all three sweep sends capture the Resend result');
   ok((sweep.match(/if \(_r\.error\) \{ console\.error\('Sweep send rejected/g) || []).length === 3,

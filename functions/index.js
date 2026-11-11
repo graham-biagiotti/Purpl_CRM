@@ -3341,3 +3341,160 @@ exports.samplingDailySweep = onSchedule(
     } catch (e) { console.error('Nudge sweep failed:', e.message); }
   }
 );
+
+// ══════════════════════════════════════════════════════════
+//  v261: LF INVENTORY — low-stock alert + Monday digest
+// ══════════════════════════════════════════════════════════
+// The CRM's lf_iv ledger is the LF stock master (fresh start 11/2026 — no
+// backfill of past invoices). Config doc portal_settings/lf_inventory holds
+// {alertEmail, lastAlert:{itemKey: 'YYYY-MM-DD'}}; alertEmail falls back to
+// Alina's address so alerts work before the doc is ever saved.
+const LF_INV_FALLBACK_EMAIL = 'alina@pumpkinblossomfarm.com';
+const _lfS = (v, n) => String(v == null ? '' : v).slice(0, n);
+
+async function _lfInvConfig(db) {
+  const snap = await db.collection('portal_settings').doc('lf_inventory').get();
+  const cfg = snap.exists ? (snap.data() || {}) : {};
+  return { alertEmail: cfg.alertEmail || LF_INV_FALLBACK_EMAIL, lastAlert: cfg.lastAlert || {} };
+}
+
+// Instant alert: the client calls this when a deduction drops item(s) to or
+// below threshold. Deduped server-side to one email per item per ET day, so a
+// busy invoice afternoon can't spam the inbox.
+exports.lfLowStockAlert = onCall({ secrets: [resendApiKey] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required');
+  const db = admin.firestore();
+  const userSnap = await db.collection('users').doc(request.auth.uid).get();
+  const role = userSnap.exists ? userSnap.data().role : null;
+  if (!['employee', 'admin'].includes(role)) throw new HttpsError('permission-denied', 'Not authorized');
+
+  const items = Array.isArray(request.data?.items) ? request.data.items.slice(0, 30) : [];
+  if (!items.length) return { sent: 0, skipped: 0 };
+
+  const cfg = await _lfInvConfig(db);
+  const todayET = _samplingTodayET();
+  const fresh = items.map(i => ({
+    key: _lfS(i.key, 120), name: _lfS(i.name, 160),
+    onHand: Math.round(Number(i.onHand)) || 0, threshold: Math.round(Number(i.threshold)) || 0,
+  })).filter(i => i.key && i.name && cfg.lastAlert[i.key] !== todayET);
+  if (!fresh.length) return { sent: 0, skipped: items.length };
+
+  const { Resend } = require('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const rows = fresh.map(i =>
+    `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${i.name}</td>
+     <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:#b45309">${i.onHand}</td>
+     <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;color:#6b7280">${i.threshold}</td></tr>`).join('');
+  const _r = await resend.emails.send({
+    from: 'lavender@pbfwholesale.com',
+    to: cfg.alertEmail,
+    subject: `⚠️ Low stock: ${fresh[0].name}${fresh.length > 1 ? ` + ${fresh.length - 1} more` : ''}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px">
+      <h2 style="color:#4D2A6F">Lavender Fields — low stock</h2>
+      <p>These just fell to (or below) their alert level:</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px">
+        <tr><th style="text-align:left;padding:6px 10px">Item</th><th style="text-align:right;padding:6px 10px">On hand</th><th style="text-align:right;padding:6px 10px">Alert at</th></tr>
+        ${rows}
+      </table>
+      <p style="color:#6b7280;font-size:12px;margin-top:14px">One email per item per day. Thresholds live in the CRM: Inventory → Lavender Fields.</p>
+    </div>`,
+  });
+  if (_r.error) {
+    console.error('lfLowStockAlert send failed:', _r.error);
+    throw new HttpsError('internal', 'Alert email NOT sent — ' + (_r.error.message || 'send failed'));
+  }
+  // Map keys may contain '|' (illegal in update() field paths) — a merged set
+  // deep-merges the lastAlert map per key without clobbering other items.
+  const stamp = {};
+  fresh.forEach(i => { stamp[i.key] = todayET; });
+  await db.collection('portal_settings').doc('lf_inventory')
+    .set({ alertEmail: cfg.alertEmail, lastAlert: stamp }, { merge: true });
+  return { sent: fresh.length, skipped: items.length - fresh.length };
+});
+
+// Monday 7:23am ET digest: the week behind (movement by reason, per item) and
+// a week-ahead section ONLY when relevant (below threshold now, or on pace to
+// run out within ~14 days from the trailing-28-day usage rate). No movement
+// and nothing relevant ahead → no email at all.
+exports.lfWeeklyDigest = onSchedule(
+  { schedule: '23 7 * * 1', timeZone: 'America/New_York', secrets: [resendApiKey] },
+  async () => {
+    const db = admin.firestore();
+    const cfg = await _lfInvConfig(db);
+    const todayET = _samplingTodayET();
+    const dShift = (days) => new Date(new Date(todayET + 'T12:00:00Z').getTime() - days * 864e5).toISOString().slice(0, 10);
+    const weekAgo = dShift(7), fourWeeksAgo = dShift(28);
+
+    // Full ledger (on-hand needs every row; volume is small — hundreds/year).
+    const snap = await db.collection('workspace').doc('main').collection('lf_iv').get();
+    const entries = snap.docs.map(d => d.data() || {});
+    const key = e => (e.skuId || '') + '|' + (e.variantId || '');
+    const nameOf = {};
+    const onHand = {}, weekIn = {}, weekOut = {}, monthOut = {};
+    entries.forEach(e => {
+      const k = key(e);
+      const q = Math.round(Number(e.qty)) || 0;
+      if (!q) return;
+      nameOf[k] = e.variantName ? `${e.skuName} — ${e.variantName}` : (e.skuName || '—');
+      onHand[k] = (onHand[k] || 0) + (e.type === 'in' ? q : -q);
+      const d = String(e.date || '');
+      if (e.type === 'in' && d >= weekAgo) weekIn[k] = (weekIn[k] || 0) + q;
+      if (e.type === 'out' && d >= weekAgo) {
+        const w = weekOut[k] = weekOut[k] || {};
+        const r = _lfS(e.reason, 20) || 'other';
+        w[r] = (w[r] || 0) + q;
+      }
+      // Usage pace excludes count adjustments (they're corrections, not demand).
+      if (e.type === 'out' && d >= fourWeeksAgo && e.reason !== 'adjust') monthOut[k] = (monthOut[k] || 0) + q;
+    });
+
+    // Thresholds from the live catalog.
+    const cfgSnap = await db.doc('workspace/main/config/main').get();
+    const skus = cfgSnap.exists ? (cfgSnap.data().lf_skus || []) : [];
+    const leaves = [];
+    skus.filter(s => s && !s.archived).forEach(s => {
+      const vars = (s.variants || []).filter(v => !v.archived);
+      if (vars.length) vars.forEach(v => leaves.push({ k: s.id + '|' + v.id, name: `${s.name} — ${v.name}`, th: Math.round(Number(v.lowStock)) || 0 }));
+      else leaves.push({ k: s.id + '|', name: s.name || '', th: Math.round(Number(s.lowStock)) || 0 });
+    });
+
+    const REASON_LABEL = { wholesale: 'wholesale', wix: 'to Wix', samples: 'samples', shrink: 'shrink', adjust: 'adjusted', production: 'made', return: 'returned' };
+    const movedKeys = [...new Set([...Object.keys(weekIn), ...Object.keys(weekOut)])];
+    const weekRows = movedKeys.sort((a, b) => (nameOf[a] || '') < (nameOf[b] || '') ? -1 : 1).map(k => {
+      const outs = Object.entries(weekOut[k] || {}).map(([r, q]) => `−${q} ${REASON_LABEL[r] || r}`).join(', ');
+      const ins = weekIn[k] ? `+${weekIn[k]} in` : '';
+      return `<tr><td style="padding:5px 10px;border-bottom:1px solid #eee">${nameOf[k] || k}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid #eee">${[ins, outs].filter(Boolean).join(' · ') || '—'}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${onHand[k] || 0}</td></tr>`;
+    }).join('');
+
+    const ahead = [];
+    leaves.forEach(l => {
+      const oh = onHand[l.k] || 0;
+      if (l.th > 0 && oh <= l.th) { ahead.push(`<li><strong>${l.name}</strong> — ${oh} on hand (alert at ${l.th})</li>`); return; }
+      const rate = (monthOut[l.k] || 0) / 28;
+      if (rate > 0 && oh > 0 && oh / rate <= 14) ahead.push(`<li><strong>${l.name}</strong> — about ${Math.max(1, Math.round(oh / rate))} days left at the recent pace (${oh} on hand)</li>`);
+    });
+
+    if (!weekRows && !ahead.length) { console.log('lfWeeklyDigest: nothing to report, no email'); return; }
+
+    const { Resend } = require('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const _r = await resend.emails.send({
+      from: 'lavender@pbfwholesale.com',
+      to: cfg.alertEmail,
+      subject: `Lavender Fields stock — week of ${weekAgo}`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:620px">
+        <h2 style="color:#4D2A6F">Lavender Fields — weekly stock recap</h2>
+        ${weekRows ? `<h3 style="font-size:15px">Last 7 days</h3>
+        <table style="border-collapse:collapse;width:100%;font-size:13.5px">
+          <tr><th style="text-align:left;padding:5px 10px">Item</th><th style="text-align:left;padding:5px 10px">Movement</th><th style="text-align:right;padding:5px 10px">On hand</th></tr>
+          ${weekRows}
+        </table>` : '<p style="color:#6b7280">No stock movement this week.</p>'}
+        ${ahead.length ? `<h3 style="font-size:15px;margin-top:18px">⚠️ Week ahead</h3><ul style="font-size:13.5px;line-height:1.7">${ahead.join('')}</ul>` : ''}
+        <p style="color:#6b7280;font-size:12px;margin-top:14px">Full ledger: CRM → Inventory → Lavender Fields.</p>
+      </div>`,
+    });
+    if (_r.error) console.error('lfWeeklyDigest send failed:', _r.error);
+  }
+);

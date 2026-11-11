@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v260';
+const APP_VERSION = 'v261';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -114,6 +114,7 @@ function deleteInvoiceWithCleanup(id) {
       if (i >= 0) { cache[col].splice(i, 1); break; }
     }
     cache.iv = (cache.iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out'));
+    cache.lf_iv = (cache.lf_iv||[]).filter(e => !(e.invoiceId === id && e.type === 'out')); // v261: reverse the LF deduction too
     cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== id);
     // HIGH-5: if the deleted invoice is a child of a combined invoice, remove
     // the combined parent AND dissolve the combination on the surviving
@@ -1685,11 +1686,13 @@ function renderDashQuickActions() {
   const od = x => { const due = x.dueDate || x.due || ''; return !['paid','draft','void'].includes(x.status) && due && due < todayStr; };
   const overdue = _allInvoices({excludeChildren: true}).filter(od).length;
   const drafts = _allInvoices({status: 'draft', excludeChildren: true}).length;
-  const wix = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  // v261: the Wix-pending card is retired; low LF stock surfaces instead.
+  const _lfOh = _lfOnHandMap();
+  const lfLow = _lfLeafRows().filter(r => r.threshold > 0 && (_lfOh[_lfKey(r.skuId, r.variantId)] || 0) <= r.threshold).length;
   const cards = [];
   if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
   if (drafts)        cards.push({n:drafts, label:'Draft invoice'+(drafts>1?'s':'')+' to send', cls:'qa-amber', go:"nav('invoices')"});
-  if (wix)           cards.push({n:wix, label:'LF deduction'+(wix>1?'s':'')+' pending', cls:'qa-green', go:"nav('invoices')"});
+  if (lfLow)         cards.push({n:lfLow, label:'LF item'+(lfLow>1?'s':'')+' low on stock', cls:'qa-amber', go:"nav('inventory');(_invTab='lf');_renderInvPane()"});
   if (!cards.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = 'flex';
   el.innerHTML = cards.map(c => `<button class="qa-card ${c.cls}" onclick="${c.go}">
@@ -8906,6 +8909,334 @@ function renderDistDashKPIs() {
 // ── Inventory Tab State ───────────────────────────────────
 let _invTab = 'summary';
 
+// ── v261: Lavender Fields master stock (lf_iv ledger) ──────
+// The CRM is the LF inventory master from v261 on; Wix is just a destination
+// stock gets taken out TO. Fresh-start doctrine (owner, 11/11): the ledger
+// starts EMPTY, the first stock take sets the baseline, and only invoices
+// created after v261 deduct. Past invoices/money data are never touched.
+const LF_IV_REASONS = {
+  wholesale:  'Wholesale invoice',
+  wix:        'Wix pool (web + farm stand)',
+  samples:    'Samples / demos',
+  shrink:     'Shrink / damage',
+  production: 'Production / received',
+  return:     'Return',
+  adjust:     'Count adjustment',
+};
+function _lfKey(skuId, variantId) { return (skuId || '') + '|' + (variantId || ''); }
+
+function _lfOnHandMap() {
+  const m = {};
+  DB.a('lf_iv').forEach(e => {
+    const q = Math.round(parseFloat(e.qty)) || 0;
+    const k = _lfKey(e.skuId, e.variantId);
+    m[k] = (m[k] || 0) + (e.type === 'in' ? q : -q);
+  });
+  return m;
+}
+
+// Leaf = the unit everything is counted at: a variant when the product has
+// active variants, otherwise the product itself.
+function _lfLeafRows() {
+  const rows = [];
+  DB.a('lf_skus').filter(s => s && !s.archived).sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1).forEach(s => {
+    const vars = (s.variants || []).filter(v => !v.archived);
+    if (vars.length) vars.forEach(v => rows.push({ skuId: s.id, skuName: s.name || '', variantId: v.id, variantName: v.name || '', threshold: Math.round(parseFloat(v.lowStock)) || 0 }));
+    else rows.push({ skuId: s.id, skuName: s.name || '', variantId: '', variantName: '', threshold: Math.round(parseFloat(s.lowStock)) || 0 });
+  });
+  return rows;
+}
+function _lfLeafLabel(r) { return r.variantName ? `${r.skuName} — ${r.variantName}` : r.skuName; }
+
+// Ledger rows for one invoice's LF line items (shared by the LF modal, the
+// manual combined builder and both portal-confirm paths). Shipping/misc
+// pseudo-lines never touch stock.
+function _lfIvEntriesForInvoice(invId, invNumber, lineItems) {
+  const out = [];
+  const mk = (l, variantId, variantName, units) => {
+    const qty = Math.round(parseFloat(units)) || 0;
+    if (qty <= 0) return;
+    out.push({
+      id: uid(), date: today(), createdAt: new Date().toISOString(),
+      skuId: l.skuId || '', skuName: l.skuName || l.sku || '',
+      variantId: variantId || '', variantName: variantName || '',
+      type: 'out', qty, reason: 'wholesale',
+      invoiceId: invId, invoiceNumber: invNumber || '',
+      note: 'Invoice ' + (invNumber || ''), by: _currentUserName(),
+    });
+  };
+  (lineItems || []).forEach(l => {
+    if (!l || l.skuId === '__shipping__' || l.skuId === '__misc__') return;
+    if (l.hasVariants && Array.isArray(l.variantLines)) l.variantLines.forEach(vl => mk(l, vl.variantId, vl.variantName, vl.units));
+    else mk(l, '', '', l.units);
+  });
+  return out;
+}
+
+// Deduct a freshly-created LF invoice (push path — portal flows append the
+// same entries inside their own atomicUpdate instead).
+function _lfDeductForInvoice(rec) {
+  try {
+    const entries = _lfIvEntriesForInvoice(rec.id, rec.number || rec.invoiceNumber || '', rec.lineItems);
+    if (!entries.length) return;
+    const before = _lfOnHandMap();
+    entries.forEach(e => DB.push('lf_iv', e));
+    _lfLowStockCheck(before);
+  } catch (e) { console.error('LF deduction failed:', e); toast('⚠️ Invoice saved but the LF stock deduction failed — adjust it in Inventory → Lavender Fields.', 9000); }
+}
+
+// A post-v261 invoice edit that changes quantities does NOT silently re-math
+// stock (v1 contract, owner-approved): it reminds instead. Pre-v261 invoices
+// never deducted, so they never warn.
+function _lfIvEditWarn(invoiceId, oldLines, newLines) {
+  try {
+    if (!DB.a('lf_iv').some(e => e.invoiceId === invoiceId)) return;
+    const sig = ls => JSON.stringify((ls || []).filter(l => l && l.skuId !== '__shipping__' && l.skuId !== '__misc__')
+      .flatMap(l => l.hasVariants && Array.isArray(l.variantLines)
+        ? l.variantLines.map(vl => [l.skuId, vl.variantId || vl.variantName || '', Math.round(parseFloat(vl.units)) || 0])
+        : [[l.skuId, '', Math.round(parseFloat(l.units)) || 0]]).sort());
+    if (sig(oldLines) !== sig(newLines)) {
+      toast('⚠️ Quantities changed — stock was deducted at the ORIGINAL amounts. Adjust in Inventory → Lavender Fields if units really moved.', 10000);
+    }
+  } catch (e) { console.warn('LF edit-warn check failed', e); }
+}
+
+// After any stock-lowering write: items that just crossed AT or BELOW their
+// threshold fire the instant alert (server dedupes to one email per item per
+// day). Threshold 0/unset = never alerts.
+function _lfLowStockCheck(before) {
+  try {
+    const after = _lfOnHandMap();
+    const crossed = [];
+    _lfLeafRows().forEach(r => {
+      if (!r.threshold) return;
+      const k = _lfKey(r.skuId, r.variantId);
+      const a = after[k] || 0, b = before[k] || 0;
+      if (a <= r.threshold && b > r.threshold) {
+        crossed.push({ key: k, name: _lfLeafLabel(r), onHand: a, threshold: r.threshold });
+      }
+    });
+    if (crossed.length) {
+      firebase.functions().httpsCallable('lfLowStockAlert')({ items: crossed.slice(0, 30) })
+        .catch(e => console.warn('low-stock alert send failed', e));
+    }
+  } catch (e) { console.warn('low-stock check failed', e); }
+}
+
+// "Deducted" badge for LF invoice rows: ✓ when the ledger has rows for it,
+// ✓ (legacy) for pre-v261 invoices confirmed under the old Wix flow, — else.
+function _lfDeductedSet() { const s = new Set(); DB.a('lf_iv').forEach(e => { if (e.invoiceId) s.add(e.invoiceId); }); return s; }
+function _lfDeductedBadge(inv, dedSet) {
+  if (dedSet.has(inv.id)) return `<span style="color:var(--green,#16a34a);font-weight:600" title="Stock deducted automatically">✓</span>`;
+  if (inv.wixPulled) return `<span style="color:var(--muted)" title="Deducted under the old Wix flow">✓</span>`;
+  return `<span style="color:var(--muted)">—</span>`;
+}
+
+// ── LF inventory pane ──────────────────────────────────────
+let _lfStockTakeMode = false;
+let _lfInvCfg = null; // portal_settings/lf_inventory {alertEmail}
+
+function _invLf() {
+  const el = qs('#inv-pane-lf');
+  if (!el) return;
+  // Same doctrine as v260's renderSampling guard: background refreshes must
+  // not rebuild the pane while someone is typing a threshold/count/qty.
+  if (document.activeElement && el.contains(document.activeElement)
+      && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+
+  const rows = _lfLeafRows();
+  const oh = _lfOnHandMap();
+  const low = rows.filter(r => r.threshold > 0 && (oh[_lfKey(r.skuId, r.variantId)] || 0) <= r.threshold);
+  const totalUnits = rows.reduce((s, r) => s + (oh[_lfKey(r.skuId, r.variantId)] || 0), 0);
+  const knownKeys = new Set(rows.map(r => _lfKey(r.skuId, r.variantId)));
+  const unlinked = Object.keys(oh).filter(k => !knownKeys.has(k) && oh[k] !== 0);
+
+  const leafOptions = rows.map(r => `<option value="${_lfKey(r.skuId, r.variantId)}">${escHtml(_lfLeafLabel(r))}</option>`).join('');
+  const outReasons = ['wix', 'samples', 'shrink', 'adjust'].map(k => `<option value="${k}">${LF_IV_REASONS[k]}</option>`).join('');
+  const inReasons = ['production', 'return', 'adjust'].map(k => `<option value="${k}">${LF_IV_REASONS[k]}</option>`).join('');
+
+  // Group leaves under their product for the table
+  const bySku = {};
+  rows.forEach(r => { (bySku[r.skuId] = bySku[r.skuId] || []).push(r); });
+  let tbl = '';
+  Object.values(bySku).forEach(group => {
+    const multi = group.length > 1 || group[0].variantId;
+    if (multi) {
+      const tot = group.reduce((s, r) => s + (oh[_lfKey(r.skuId, r.variantId)] || 0), 0);
+      tbl += `<tr style="background:var(--surface,#f9fafb)"><td style="font-weight:600">${escHtml(group[0].skuName)}</td><td style="font-weight:600">${fmt(tot)}</td><td></td></tr>`;
+    }
+    group.forEach(r => {
+      const k = _lfKey(r.skuId, r.variantId);
+      const v = oh[k] || 0;
+      const isLow = r.threshold > 0 && v <= r.threshold;
+      const name = multi ? `<span style="padding-left:18px;color:var(--muted)">${escHtml(r.variantName || r.skuName)}</span>` : `<span style="font-weight:600">${escHtml(r.skuName)}</span>`;
+      const ohCell = _lfStockTakeMode
+        ? `<input type="number" class="lf-st-count" data-key="${k}" value="${v}" min="0" style="width:80px;padding:4px 6px">`
+        : `<span style="${v < 0 ? 'color:var(--red);font-weight:700' : (isLow ? 'color:#b45309;font-weight:700' : '')}">${fmt(v)}${isLow ? ' ⚠' : ''}</span>`;
+      tbl += `<tr><td>${name}</td><td>${ohCell}</td>
+        <td><input type="number" min="0" value="${r.threshold || ''}" placeholder="—" onchange="lfInvSaveThreshold('${r.skuId}','${r.variantId}',this.value)" style="width:70px;padding:4px 6px" title="Alert when stock falls to this level (blank = never)"></td></tr>`;
+    });
+  });
+
+  const log = DB.a('lf_iv').slice().sort((a, b) => (b.createdAt || '') < (a.createdAt || '') ? -1 : 1).slice(0, 60);
+  const logRows = log.map(e => {
+    const nm = e.variantName ? `${e.skuName} — ${e.variantName}` : (e.skuName || '—');
+    return `<tr>
+      <td style="white-space:nowrap">${fmtD(e.date)}</td>
+      <td>${escHtml(nm)}</td>
+      <td style="font-weight:600;color:${e.type === 'in' ? 'var(--green,#16a34a)' : 'var(--red)'}">${e.type === 'in' ? '+' : '−'}${fmt(Math.round(parseFloat(e.qty)) || 0)}</td>
+      <td>${escHtml(LF_IV_REASONS[e.reason] || e.reason || '—')}${e.invoiceNumber ? ' · ' + escHtml(String(e.invoiceNumber)) : ''}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(String(e.note || ''))}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(String(e.by || ''))}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="grid-4" style="margin-bottom:14px">
+      <div>${kpiHtml('LF Units On Hand', fmt(totalUnits), 'purple')}</div>
+      <div>${kpiHtml('Below Threshold', String(low.length), low.length ? 'red' : 'green')}</div>
+    </div>
+    ${unlinked.length ? `<div style="margin:0 0 12px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12.5px;color:#92400e">⚠️ ${unlinked.length} ledger entr${unlinked.length === 1 ? 'y references' : 'ies reference'} a product/variety that's been removed or renamed — the units are counted in the log below but not in the table.</div>` : ''}
+    <div class="card" style="padding:14px 16px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+        <div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">📥 Stock in</div>
+          <select id="lf-in-item" style="width:100%;margin-bottom:6px">${leafOptions}</select>
+          <div style="display:flex;gap:6px">
+            <input id="lf-in-qty" type="number" min="1" placeholder="Units" style="width:90px">
+            <select id="lf-in-reason" style="flex:1">${inReasons}</select>
+          </div>
+          <input id="lf-in-note" placeholder="Note (optional)" style="width:100%;margin-top:6px">
+          <button class="btn sm primary" style="margin-top:8px" onclick="lfInvReceive()">Add stock</button>
+        </div>
+        <div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">📤 Take out</div>
+          <select id="lf-out-item" style="width:100%;margin-bottom:6px">${leafOptions}</select>
+          <div style="display:flex;gap:6px">
+            <input id="lf-out-qty" type="number" min="1" placeholder="Units" style="width:90px">
+            <select id="lf-out-reason" style="flex:1">${outReasons}</select>
+          </div>
+          <input id="lf-out-note" placeholder="Note (optional)" style="width:100%;margin-top:6px">
+          <button class="btn sm primary" style="margin-top:8px" onclick="lfInvTakeOut()">Take out</button>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">Wholesale invoices deduct automatically — this is for everything else.</div>
+        </div>
+        <div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px">🔔 Low-stock alerts</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Instant email when an item falls to its threshold, plus the Monday recap.</div>
+          <input id="lf-alert-email" placeholder="alert email" value="${escHtml((_lfInvCfg && _lfInvCfg.alertEmail) || '')}" style="width:100%">
+          <button class="btn sm" style="margin-top:8px" onclick="lfInvSaveAlertEmail()">Save (admin)</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:600;font-size:14px">Stock on hand</div>
+        <div>
+          ${_lfStockTakeMode
+            ? `<button class="btn sm primary" onclick="lfInvStockTakeSave()">💾 Save stock take</button>
+               <button class="btn sm" onclick="lfInvStockTakeToggle(false)">Cancel</button>`
+            : `<button class="btn sm" onclick="lfInvStockTakeToggle(true)">📋 Stock take</button>`}
+        </div>
+      </div>
+      ${_lfStockTakeMode ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Type what you actually counted for each row — unchanged rows are left alone. Saving writes count adjustments to the log.</div>' : ''}
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Item</th><th>${_lfStockTakeMode ? 'Counted' : 'On hand'}</th><th>Alert at ≤</th></tr></thead>
+        <tbody>${tbl || '<tr><td colspan="3" style="color:var(--muted);text-align:center">No active LF products</td></tr>'}</tbody>
+      </table></div>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px">Movement log</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Item</th><th>Units</th><th>Why</th><th>Note</th><th>By</th></tr></thead>
+        <tbody>${logRows || '<tr><td colspan="6" style="color:var(--muted);text-align:center">No movement yet — run your first stock take to set the baseline.</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+
+  // Load the alert-email config once per session (staff-readable).
+  if (_lfInvCfg === null) {
+    _lfInvCfg = {};
+    firebase.firestore().collection('portal_settings').doc('lf_inventory').get()
+      .then(snap => { if (snap.exists) { _lfInvCfg = snap.data() || {}; const inp = qs('#lf-alert-email'); if (inp && !inp.value && document.activeElement !== inp) inp.value = _lfInvCfg.alertEmail || ''; } })
+      .catch(() => {});
+  }
+}
+
+function _lfLeafByKey(key) { return _lfLeafRows().find(r => _lfKey(r.skuId, r.variantId) === key) || null; }
+
+function _lfManualEntry(key, qty, type, reason, note) {
+  const r = _lfLeafByKey(key);
+  if (!r) { toast('Pick an item'); return false; }
+  const q = Math.round(parseFloat(qty)) || 0;
+  if (q <= 0) { toast('Enter a unit count'); return false; }
+  const before = _lfOnHandMap();
+  DB.push('lf_iv', {
+    id: uid(), date: today(), createdAt: new Date().toISOString(),
+    skuId: r.skuId, skuName: r.skuName, variantId: r.variantId, variantName: r.variantName,
+    type, qty: q, reason, note: String(note || '').slice(0, 300), by: _currentUserName(),
+  });
+  if (type === 'out') _lfLowStockCheck(before);
+  return true;
+}
+
+function lfInvReceive() {
+  if (_lfManualEntry(qs('#lf-in-item')?.value, qs('#lf-in-qty')?.value, 'in', qs('#lf-in-reason')?.value || 'production', qs('#lf-in-note')?.value)) {
+    toast('Stock added ✓'); _invLf();
+  }
+}
+function lfInvTakeOut() {
+  if (_lfManualEntry(qs('#lf-out-item')?.value, qs('#lf-out-qty')?.value, 'out', qs('#lf-out-reason')?.value || 'wix', qs('#lf-out-note')?.value)) {
+    toast('Stock taken out ✓'); _invLf();
+  }
+}
+
+function lfInvSaveThreshold(skuId, variantId, value) {
+  const th = Math.max(0, Math.round(parseFloat(value)) || 0);
+  DB.update('lf_skus', skuId, s => variantId
+    ? { ...s, variants: (s.variants || []).map(v => v.id === variantId ? { ...v, lowStock: th } : v) }
+    : { ...s, lowStock: th });
+  toast(th ? `Alert threshold set: ${th}` : 'Alert turned off for this item');
+}
+
+function lfInvStockTakeToggle(on) { _lfStockTakeMode = !!on; _invLf(); }
+
+function lfInvStockTakeSave() {
+  const before = _lfOnHandMap();
+  let changed = 0;
+  document.querySelectorAll('#inv-pane-lf .lf-st-count').forEach(inp => {
+    const key = inp.dataset.key;
+    const counted = Math.round(parseFloat(inp.value));
+    if (isNaN(counted) || counted < 0) return;
+    const cur = before[key] || 0;
+    const delta = counted - cur;
+    if (!delta) return;
+    const r = _lfLeafByKey(key);
+    if (!r) return;
+    DB.push('lf_iv', {
+      id: uid(), date: today(), createdAt: new Date().toISOString(),
+      skuId: r.skuId, skuName: r.skuName, variantId: r.variantId, variantName: r.variantName,
+      type: delta > 0 ? 'in' : 'out', qty: Math.abs(delta), reason: 'adjust',
+      note: 'Stock take', by: _currentUserName(),
+    });
+    changed++;
+  });
+  _lfStockTakeMode = false;
+  if (changed) { toast(`Stock take saved — ${changed} item${changed === 1 ? '' : 's'} adjusted ✓`); _lfLowStockCheck(before); }
+  else toast('Stock take saved — nothing changed');
+  _invLf();
+}
+
+async function lfInvSaveAlertEmail() {
+  const email = qs('#lf-alert-email')?.value?.trim() || '';
+  try {
+    await firebase.firestore().collection('portal_settings').doc('lf_inventory').set({ alertEmail: email }, { merge: true });
+    _lfInvCfg = { ...(_lfInvCfg || {}), alertEmail: email };
+    toast('Alert email saved ✓');
+  } catch (e) {
+    console.error(e);
+    toast('Save failed — only admins can change the alert email', 6000);
+  }
+}
+
 function renderInventory() {
   // Wire tabs once
   const tabBar = qs('#inv-tabs');
@@ -8930,7 +9261,7 @@ function renderInventory() {
 
 function _renderInvPane() {
   // Show/hide panes
-  ['summary','locations','receive','repack','pallets','supplies','log','returns'].forEach(t=>{
+  ['summary','locations','receive','repack','pallets','supplies','log','returns','lf'].forEach(t=>{
     const p = qs(`#inv-pane-${t}`);
     if (p) p.style.display = t===_invTab ? '' : 'none';
   });
@@ -8943,6 +9274,7 @@ function _renderInvPane() {
     supplies:  _invSupplies,
     log:       _invLog,
     returns:   _invReturns,
+    lf:        _invLf, // v261
   };
   (handlers[_invTab]||_invSummary)();
 }
@@ -10192,38 +10524,29 @@ function toggleStop(i) {
     };
     // Inventory deduction now happens at invoice creation, not delivery
 
-    // Build LF wix deduction record for this stop (if any LF items)
+    // v261: the Wix-pull reminder flow is retired (the CRM is the LF stock
+    // master). This tab is itself retired; if a run DOES carry LF items,
+    // point at the LF tab instead of writing half-shaped ledger rows (run
+    // stops have no skuId/variantId to deduct against).
     const stopLfItems = stop.lfItems || [];
-    const newWixDeduction = stopLfItems.length ? {
-      id: uid(), date: today(),
-      runName: (DB.obj('today_run',{}).date || today()) + ' run',
-      note: 'Delivery: ' + stop.name,
-      items: stopLfItems,
-      confirmed: false,
-    } : null;
 
     // Link the created records to THIS stop so un-toggling reverses exactly
     // these — the old account+date matching collided when one account had two
     // stops in a day and could sweep unrelated ledger entries.
     stop.ordId = newOrd.id;
-    if (newWixDeduction) stop.wixDeductionId = newWixDeduction.id;
 
     DB.atomicUpdate(cache => {
       cache['today_run'] = run;
       cache['ac'] = (cache['ac']||[]).map(a => a.id===ac2.id ? {...a, lastOrder:today()} : a);
       cache['orders'] = [...(cache['orders']||[]), newOrd];
-      if (newWixDeduction) {
-        cache['lf_wix_deductions'] = [...(cache['lf_wix_deductions']||[]), newWixDeduction];
-      }
     });
-    // Gate: `run` is the LIVE cache object mutated ABOVE (done/ordId/
-    // wixDeductionId), so atomicUpdate's pre-state diff can't see the change —
+    // Gate: `run` is the LIVE cache object mutated ABOVE (done/ordId),
+    // so atomicUpdate's pre-state diff can't see the change —
     // persist it explicitly or the stop reverts on reload and gets re-invoiced.
     DB.setObj('today_run', run);
 
-    // Show Wix pull reminder if this stop had LF items
-    if (newWixDeduction) {
-      setTimeout(()=>showWixPullModal(null, newWixDeduction.id), 300);
+    if (stopLfItems.length) {
+      toast('This stop had LF items — log the take-out in Inventory → Lavender Fields.', 8000);
     }
 
     // Offer invoice (non-blocking — renders after DB write)
@@ -12089,11 +12412,11 @@ const MODAL_FREEZE_KEYS = {
   'modal-add-dist-invoice': ['dist_invoices', 'iv'],
   'modal-add-chain':        ['dist_chains'],
   'modal-new-order':        ['orders', 'ac', 'iv'],
-  'modal-new-combined':     ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'lf_wix_deductions'],
+  'modal-new-combined':     ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'lf_iv'], // v261: writes the LF ledger now, not Wix records
   // v253: these two never matched the id patterns and were NEVER frozen —
   // their saves diffed against live data, the worst combination.
-  'modal-lf-invoice':       ['lf_invoices', 'lf_wix_deductions'],
-  'modal-combined-invoice': ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'dist_invoices'], // gate F4: the shell edits dist invoices too
+  'modal-lf-invoice':       ['lf_invoices', 'lf_iv'], // v261
+  'modal-combined-invoice': ['combined_invoices', 'retail_invoices', 'lf_invoices', 'iv', 'lf_iv', 'dist_invoices'], // gate F4 + v261: the shell's void reverses LF stock
 };
 
 function openModal(id) {
@@ -12598,8 +12921,6 @@ function toggleLfVariantArchive(skuId, variantId) {
 // ══════════════════════════════════════════════════════════
 
 let _lfInvStatusFilter = '';
-let _wixPullDeductionId = null;
-let _wixPullInvoiceId   = null;
 
 const LF_INV_STATUS = {
   draft:   {label:'Draft',   cls:'gray'},
@@ -12627,11 +12948,13 @@ function renderLfInvoicesPage() {
   });
   const outstanding = all.filter(_lfOpen).reduce((s,i) => s + (i.total||0), 0);
   const overdueAmt  = overdueList.reduce((s,i) => s + (i.total||0), 0);
-  const pendingWix  = DB.a('lf_wix_deductions').filter(d => !d.confirmed).length;
+  // v261: Wix-pending KPI retired — low-stock count from the master ledger instead.
+  const _lfOhK = _lfOnHandMap();
+  const lowCount = _lfLeafRows().filter(r => r.threshold > 0 && (_lfOhK[_lfKey(r.skuId, r.variantId)] || 0) <= r.threshold).length;
 
   if (qs('#lf-inv-kpi-outstanding')) qs('#lf-inv-kpi-outstanding').innerHTML = kpiHtml('Outstanding', fmtC(outstanding), 'blue');
   if (qs('#lf-inv-kpi-overdue'))     qs('#lf-inv-kpi-overdue').innerHTML     = kpiHtml('Overdue', fmtC(overdueAmt), overdueAmt > 0 ? 'red' : 'gray');
-  if (qs('#lf-inv-kpi-wix'))         qs('#lf-inv-kpi-wix').innerHTML         = kpiHtml('Pending LF Deductions', pendingWix, pendingWix > 0 ? 'amber' : 'gray');
+  if (qs('#lf-inv-kpi-wix'))         qs('#lf-inv-kpi-wix').innerHTML         = kpiHtml('LF Low Stock', lowCount, lowCount > 0 ? 'amber' : 'gray');
 
   // Overdue list
   const overdueCard = qs('#inv-lf-overdue-card');
@@ -12664,11 +12987,10 @@ function renderLfInvoicesPage() {
   const tbody = qs('#lf-inv-tbody');
   if (!tbody) return;
 
+  const _dedSet = _lfDeductedSet(); // v261
   tbody.innerHTML = list.map(inv => {
     const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
-    const wixHtml = inv.wixPulled
-      ? `<span style="color:var(--green,#16a34a);font-weight:600">✓</span>`
-      : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
+    const wixHtml = _lfDeductedBadge(inv, _dedSet);
     return `<tr>
       <td><strong>${escHtml(inv.number||'—')}</strong></td>
       <td>${escHtml(inv.accountName||'—')}${inv.deliverTo && (inv.deliverTo.label || inv.deliverTo.address) ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">📍 ${escHtml(inv.deliverTo.label || inv.deliverTo.address)}</div>` : ''}</td>
@@ -12795,7 +13117,6 @@ function openLfInvoiceModal(id) {
           toast('Saved — but no email address on file for this account');
           closeModal('modal-lf-invoice');
           if (currentPage === 'invoices') renderInvoicesPage();
-                  showWixPullModal(inv, out.deduction.id);
           return;
         }
         lfiSendBtn.textContent = 'Generating link…';
@@ -12825,7 +13146,6 @@ function openLfInvoiceModal(id) {
         if (currentPage === 'invoices') renderInvoicesPage();
               renderAccounts();
         toast('Invoice saved & sent ✓');
-        showWixPullModal(inv, out.deduction.id);
       } catch (e) {
         console.error('LF invoice send failed:', e);
         toast('Invoice saved, but the email failed' + (e?.message ? ' (' + e.message + ')' : '') + ' — open it and try Send again', 8000);
@@ -13005,7 +13325,6 @@ async function saveLfInvoice(id, isNew) {
   closeModal('modal-lf-invoice');
   if (currentPage === 'invoices') renderInvoicesPage();
   toast(`Invoice ${out.rec.number} saved ✓`);
-  showWixPullModal(out.rec, out.deduction.id);
 }
 
 // Validates + persists the LF invoice from the modal. Returns
@@ -13150,27 +13469,16 @@ function _saveLfInvoiceCore(id, isNew) {
     }
   }
 
-  // Generate or refresh Wix pull deduction record
-  const existingDeduction = !isNew ? DB.a('lf_wix_deductions').find(d => d.invoiceId === saveId) : null;
-  const deduction = {
-    id: existingDeduction?.id || uid(),
-    invoiceId:     saveId,
-    invoiceNumber: rec.number,
-    accountId:     rec.accountId,
-    accountName:   rec.accountName,
-    date:          existingDeduction?.date || today(),
-    items:         lineItems.filter(l => l.skuId !== '__shipping__' && l.skuId !== '__misc__').flatMap(l => l.hasVariants
-      ? l.variantLines.map(vl => ({skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units}))
-      : [{skuName: l.skuName, cases: l.cases, units: l.units}]),
-    confirmed:     existingDeduction?.confirmed || false,
-  };
-  if (isNew) DB.push('lf_wix_deductions', deduction);
-  else if (existingDeduction) DB.update('lf_wix_deductions', existingDeduction.id, () => deduction);
-  else DB.push('lf_wix_deductions', deduction);
+  // v261: the CRM is the LF stock master — a NEW invoice deducts the lf_iv
+  // ledger directly (the old Wix-pull reminder flow is retired). An EDIT never
+  // re-maths stock: it warns when quantities changed on an invoice that
+  // deducted (pre-v261 invoices never deducted, so they never warn).
+  if (isNew) _lfDeductForInvoice(rec);
+  else _lfIvEditWarn(saveId, existing?.lineItems, rec.lineItems);
 
   auditLog(isNew ? 'create' : 'update', 'lf_invoice', saveId, rec.number || saveId);
   if (!isNew) _syncCombinedParentForChild(saveId); // M1: keep combined parent status+dollars in step with LF child edits
-  return { rec, deduction };
+  return { rec };
 }
 
 async function deleteLfInvoice(id) {
@@ -13341,6 +13649,7 @@ async function deleteCombinedInvoice(combinedId) {
     }
     if (rec.lfInvoiceId) {
       cache.lf_invoices = (cache.lf_invoices||[]).filter(x => x.id !== rec.lfInvoiceId);
+      cache.lf_iv = (cache.lf_iv||[]).filter(e => !(e.type === 'out' && e.invoiceId === rec.lfInvoiceId)); // v261
       cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== rec.lfInvoiceId);
       cache.orders = (cache.orders||[]).filter(o => !(o.linkedPortalOrderId && o.accountId === rec.accountId && o.brand === 'lf'));
     }
@@ -13836,6 +14145,8 @@ async function saveNewCombinedInvoice() {
     const shared = { date: issued, dueDate: due, notes, deliveryMethod, fulfillmentSource, deliveryDate, trackingNumber };
     // Legacy purpl children live in 'iv' — write to where the child IS.
     const pcCol = rec.purplInvoiceId ? _invoiceCol(rec.purplInvoiceId) : null;
+    // v261: open-time LF lines, for the quantities-changed stock warning below.
+    const _lfOldLines = rec.lfInvoiceId ? (DB.a('lf_invoices').find(x => x.id === rec.lfInvoiceId)?.lineItems || []) : null;
     let abortReason = '';
     DB.atomicUpdate(cache => {
       const ci = (cache.combined_invoices||[]).findIndex(x => x.id === combId);
@@ -13886,6 +14197,7 @@ async function saveNewCombinedInvoice() {
       setTimeout(() => openCombinedInvoicePreview(combId), 300);
       return;
     }
+    if (rec.lfInvoiceId) _lfIvEditWarn(rec.lfInvoiceId, _lfOldLines, lfLines); // v261
     renderInvoicesPage();
     toast('Combined invoice updated — ' + (rec.number || rec.invoiceNumber || ''));
     setTimeout(() => openCombinedInvoicePreview(combId), 300);
@@ -13944,11 +14256,16 @@ async function saveNewCombinedInvoice() {
     ...(shipVal > 0 ? { lineItems: [{ skuId: '__shipping__', skuName: 'Shipping', description: 'Shipping', qty: 1, cases: 0, unitPrice: shipVal, lineTotal: shipVal, total: shipVal }] } : {}),
   };
 
+  const _lfBeforeComb = _lfOnHandMap(); // v261
   DB.atomicUpdate(cache => {
     cache.retail_invoices   = [...(cache.retail_invoices||[]),   purplInv];
     cache.lf_invoices       = [...(cache.lf_invoices||[]),      lfInv];
     cache.combined_invoices = [...(cache.combined_invoices||[]), combInv];
-    // Deduct purpl inventory for non-draft invoices (LF inventory managed on Wix)
+    // v261: the LF child deducts the master ledger at creation (one LF rule
+    // everywhere: created = deducted, void/delete reverses). This path never
+    // deducted ANYTHING before — not even a Wix reminder (legacy gap).
+    cache.lf_iv = [...(cache.lf_iv||[]), ..._lfIvEntriesForInvoice(lfId, lfNum, lfLines)];
+    // Deduct purpl inventory for non-draft invoices
     // Draft invoices get deducted when marked as sent via markInvoiceSent()
     if (status !== 'draft') {
       const purplIvEntries = purplLines.map(li => ({
@@ -13963,6 +14280,7 @@ async function saveNewCombinedInvoice() {
     }
   });
 
+  _lfLowStockCheck(_lfBeforeComb); // v261
   closeModal('modal-new-combined');
   renderInvoicesPage();
   toast('Combined invoice created — ' + combNum);
@@ -14802,6 +15120,7 @@ async function openInvoicePreview(type, id) {
         const i2 = arr.findIndex(x => x.id === id);
         if (i2 >= 0) arr[i2] = { ...arr[i2], status: 'void' };
         if (type !== 'lf' && type !== 'dist') cache.iv = (cache.iv || []).filter(x => !(x.type === 'out' && x.invoiceId === id)); // purpl only — dist deductions belong to the shipment PO
+        if (type === 'lf') cache.lf_iv = (cache.lf_iv || []).filter(x => !(x.type === 'out' && x.invoiceId === id)); // v261: void returns the stock
       });
       toast('Invoice voided');
       closeModal('modal-combined-invoice');
@@ -15200,6 +15519,7 @@ async function openCombinedInvoicePreview(combinedId) {
       if (rec.lfInvoiceId) {
         const li = (cache.lf_invoices||[]).findIndex(x => x.id === rec.lfInvoiceId);
         if (li >= 0) cache.lf_invoices[li] = { ...cache.lf_invoices[li], status: 'void', voidedAt: new Date().toISOString(), voidedBy: _currentUserName() };
+        cache.lf_iv = (cache.lf_iv||[]).filter(e => !(e.type === 'out' && e.invoiceId === rec.lfInvoiceId)); // v261: void returns the stock
         cache.lf_wix_deductions = (cache.lf_wix_deductions||[]).filter(d => d.invoiceId !== rec.lfInvoiceId);
       }
       // Reverse inventory deductions
@@ -15456,59 +15776,7 @@ async function manualCreateCombined(accountId) {
   openCombinedInvoicePreview(combinedId);
 }
 
-// ── Wix pull modal ────────────────────────────────────────
-
-function showWixPullModal(inv, deductionId) {
-  inv = inv || {};
-  _wixPullDeductionId = deductionId;
-  _wixPullInvoiceId   = inv.id || null;
-  // Delivery runs open this with inv=null — render from the deduction record
-  // itself (it carries the stop's items/note) instead of a blank "—/No items".
-  const ded = deductionId ? DB.a('lf_wix_deductions').find(d => d.id === deductionId) : null;
-  const acEl = qs('#wix-pull-account');
-  if (acEl) acEl.textContent = inv.accountName || ded?.accountName || (ded?.note || '').replace(/^Delivery: /,'') || '—';
-  const numEl = qs('#wix-pull-inv-number');
-  if (numEl) numEl.textContent = inv.number || ded?.invoiceNumber || ded?.runName || '—';
-  const itemsEl = qs('#wix-pull-items');
-  if (itemsEl) {
-    itemsEl.innerHTML = ((inv.lineItems && inv.lineItems.length ? inv.lineItems : ded?.items) || []).map(l => {
-      if (l.hasVariants && l.variantLines?.length) {
-        const varHtml = l.variantLines.map(vl => `
-          <div style="display:flex;justify-content:space-between;padding:3px 0 3px 24px;font-size:12px;color:var(--muted)">
-            <span>${escHtml(vl.variantName)}${_isRefillable(vl.variantName) ? ' (Refillable)' : ''}</span>
-            <span>${vl.cases} case${vl.cases!==1?'s':''} (${vl.units} units)</span>
-          </div>`).join('');
-        return `
-          <div style="padding:6px 0;border-bottom:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600">
-              <span>${escHtml(l.skuName)}</span>
-              <span>${l.cases} cases (${l.units} units)</span>
-            </div>${varHtml}
-          </div>`;
-      }
-      return `
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <span>${escHtml(l.skuName || l.sku || '')}${l.variantName ? ' — ' + escHtml(l.variantName) : ''}</span>
-          <span><strong>${l.cases ?? l.qty ?? 0}</strong> case${(l.cases ?? l.qty) !== 1 ? 's' : ''}${l.units ? ` (${l.units} units)` : ''}</span>
-        </div>`;
-    }).join('') || '<div style="color:var(--muted)">No items</div>';
-  }
-  openModal('modal-wix-pull');
-}
-
-function confirmWixPull(confirmed) {
-  if (_wixPullDeductionId) {
-    DB.update('lf_wix_deductions', _wixPullDeductionId, d => ({...d, confirmed}));
-  }
-  if (confirmed && _wixPullInvoiceId) {
-    DB.update('lf_invoices', _wixPullInvoiceId, inv => ({...inv, wixPulled: true, wixPulledAt: today()}));
-  }
-  closeModal('modal-wix-pull');
-  if (currentPage === 'invoices') renderInvoicesPage();
-  toast(confirmed ? '✓ Deduction confirmed' : 'Reminder set — deduct when ready');
-  _wixPullDeductionId = null;
-  _wixPullInvoiceId   = null;
-}
+// (v261: the Wix pull modal is retired — the lf_iv ledger deducts directly.)
 
 // ══════════════════════════════════════════════════════════
 //  ACCOUNT MIGRATIONS
@@ -17297,21 +17565,6 @@ function openConfirmPortalOrder(id) {
   openModal('modal-confirm-portal-order');
 }
 
-// Build a Wix pull-deduction record for an LF invoice, mirroring the shape
-// _saveLfInvoiceCore writes (~11980), so confirmed LF portal invoices generate
-// a Wix stock-pull instruction instead of silently deducting nothing. The LF
-// save path de-dupes by invoiceId, so editing/sending later won't double it.
-function _lfWixDeductionFor(invId, invNum, lfItems, accountId, accountName, dateStr) {
-  return {
-    id: uid(), invoiceId: invId, invoiceNumber: invNum,
-    accountId, accountName, date: dateStr,
-    items: (lfItems || []).flatMap(l => l.hasVariants
-      ? (l.variantLines || []).map(vl => ({ skuName: l.skuName, variantName: vl.variantName, cases: vl.cases, units: vl.units }))
-      : [{ skuName: l.skuName, cases: l.cases, units: l.units }]),
-    confirmed: false,
-  };
-}
-
 let _confirmPortalInFlight = false;
 async function confirmPortalOrder() {
   if (!_portalOrderId) return;
@@ -17506,6 +17759,9 @@ async function confirmPortalOrder() {
       ? d.notes + '\n— Auto-drafted from portal order.'
       : 'Auto-drafted from portal order.';
 
+    // v261: snapshot on-hand BEFORE the LF deductions land, for the
+    // low-stock crossing check after the write succeeds.
+    window._lfPortalBefore = _lfOnHandMap();
     // Single atomicUpdate for all writes — orders + invoices together.
     // (No markDirty/markClean here: atomicUpdate guards itself via
     // _atomicInProgress, and markClean's remote-reload could wipe the
@@ -17568,7 +17824,7 @@ async function confirmPortalOrder() {
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
-        cache.lf_wix_deductions = [...(cache.lf_wix_deductions || []), _lfWixDeductionFor(lfInvId, lfNum, lfItems, d.accountId, d.accountName, todayStr)];
+        cache.lf_iv = [...(cache.lf_iv || []), ..._lfIvEntriesForInvoice(lfInvId, lfNum, lfItems)]; // v261: deduct the master ledger
         cache.combined_invoices = [...(cache.combined_invoices||[]), {
           id: combId, number: combNum, invoiceNumber: combNum,
           purplInvoiceId: purplInvId, lfInvoiceId: lfInvId,
@@ -17619,7 +17875,7 @@ async function confirmPortalOrder() {
           notes: _invNotes,
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
-        cache.lf_wix_deductions = [...(cache.lf_wix_deductions || []), _lfWixDeductionFor(singleInvId, singleInvNum, lfItems, d.accountId, d.accountName, todayStr)];
+        cache.lf_iv = [...(cache.lf_iv || []), ..._lfIvEntriesForInvoice(singleInvId, singleInvNum, lfItems)]; // v261: deduct the master ledger
       }
     });
 
@@ -17644,6 +17900,9 @@ async function confirmPortalOrder() {
     }
 
     auditLog('portal_confirmed', 'portal_order', _portalOrderId, d.accountName || '', { invoiceId: isDual ? combId : singleInvId }); // v253
+    // v261: the atomicUpdate above appended the LF stock deductions — check
+    // thresholds against the pre-write snapshot taken before the transaction.
+    if (hasLf && window._lfPortalBefore) { _lfLowStockCheck(window._lfPortalBefore); window._lfPortalBefore = null; }
     closeModal('modal-confirm-portal-order');
     renderPreOrders(true);
     if (isDual) {
@@ -18429,6 +18688,7 @@ function renderInvColLf() {
   if (!qs('#inv-col-lf').classList.contains('expanded')) return;
 
   const sorted = all.slice().sort((a,b) => (b.issued||'') > (a.issued||'') ? 1 : -1);
+  const _dedSet2 = _lfDeductedSet(); // v261
   expandedEl.innerHTML = `
     <div style="overflow-x:auto">
     <table class="data-table" style="width:100%;font-size:13px">
@@ -18439,9 +18699,7 @@ function renderInvColLf() {
         ? '<tr><td colspan="7" class="empty">No LF invoices yet</td></tr>'
         : sorted.map(inv => {
             const sc = LF_INV_STATUS[inv.status] || {label: inv.status||'—', cls:'gray'};
-            const wixHtml = inv.wixPulled
-              ? `<span style="color:var(--green,#16a34a);font-weight:600">✓</span>`
-              : `<span style="color:#f59e0b;font-weight:600">⚠</span>`;
+            const wixHtml = _lfDeductedBadge(inv, _dedSet2);
             return `<tr>
               <td><strong>${escHtml(inv.number||'—')}</strong>${_invEmailBadge(inv)}</td>
               <td>${escHtml(inv.accountName||'—')}${inv.deliverTo && (inv.deliverTo.label || inv.deliverTo.address) ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">📍 ${escHtml(inv.deliverTo.label || inv.deliverTo.address)}</div>` : ''}</td>

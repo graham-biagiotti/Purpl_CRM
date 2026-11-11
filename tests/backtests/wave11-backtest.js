@@ -101,6 +101,13 @@ function loadCode(env, cache, hooks) {
     slice('function _miscLinesOf', 'function _readMiscRows'),
     slice('function _readMiscRows', '\n// '),
     'let _editingCombinedId = null;',
+    // v261 (wave33): the create path now deducts the LF master ledger and
+    // checks low-stock thresholds — stub the ledger plumbing (its own dynamic
+    // suite lives in wave33) but keep the cache append observable.
+    'const _lfOnHandMap = () => ({});',
+    'const _lfLowStockCheck = () => {};',
+    "const _lfIvEntriesForInvoice = (invId, invNum, lines) => (lines||[]).filter(l=>l&&l.skuId!=='__shipping__'&&l.skuId!=='__misc__').map(l=>({id:'e',invoiceId:invId,type:'out',qty:Math.round(l.units)||0}));",
+    'const _lfIvEditWarn = () => {};',
     slice('let _saveCombInFlight = false;', 'async function saveNewCombinedInvoice'),
     slice('async function saveNewCombinedInvoice()', '\n// Shared payment-options'),
   ].join('\n');

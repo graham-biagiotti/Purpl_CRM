@@ -91,7 +91,9 @@ console.log('[C] diff-based saves');
   ok(!pv.includes('updateInvoice(id, () => rec)') && pv.includes('This invoice no longer exists'),
     'refused edit of a deleted invoice is honest, not a dead fallback');
   // LF modal
-  const lf = slc(src, "if (isNew) DB.push('lf_invoices', rec);", '// Generate or refresh Wix pull deduction record');
+  // (v261 / wave33: the end anchor moved — the Wix deduction block was
+  // replaced by the lf_iv ledger hook.)
+  const lf = slc(src, "if (isNew) DB.push('lf_invoices', rec);", '// v261: the CRM is the LF stock master');
   ok(/DB\.updateFields\('lf_invoices', id, _patch\)/.test(lf),
     'LF modal edit writes only changed fields');
   // preview shell

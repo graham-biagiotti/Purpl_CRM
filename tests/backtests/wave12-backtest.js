@@ -59,6 +59,14 @@ function mkEnv(cache) {
     'function _invRangeChipsSync(){}',
     slice('function renderInvKpis()', '\nfunction renderInvColPurpl'),
     slice('function _lfRepPaid(cutoff)', '\nfunction renderLfReports'),
+    // v261 (wave33): the LF invoices page now derives its third KPI and the
+    // Deducted column from the lf_iv master ledger — stub the ledger helpers
+    // (their own dynamic suite lives in wave33).
+    'const _lfOnHandMap = () => ({});',
+    'const _lfLeafRows = () => [];',
+    'const _lfKey = (a,b) => (a||"")+"|"+(b||"");',
+    'const _lfDeductedSet = () => new Set();',
+    'const _lfDeductedBadge = () => "";',
     slice('function renderLfInvoicesPage()', '\n  // Overdue list') + '\n}',
   ].join('\n');
   return { els, run: () => eval(code + '\n;({ renderInvKpis, renderLfInvoicesPage, _lfRepPaid, _invRangeBounds, _setRange: (m,f,t)=>{_invRange={mode:m,from:f||"",to:t||""};} })') };
@@ -155,7 +163,10 @@ function mkEnv(cache) {
     const kv = Object.fromEntries(kpiCalls.map(k => [k.label, k.value]));
     ok(kv['Outstanding'] === '$100.00', `LF Outstanding excludes void+draft (${kv['Outstanding']}) — was $250 under the old rule`);
     ok(kv['Overdue'] === '$25.00', `portal LF invoice (dueDate-only) now shows overdue (${kv['Overdue']})`);
-    ok(kv['Pending LF Deductions'] === 1, 'Wix pending count intact');
+    // v261 (wave33) CONTRACT CHANGE: the Wix-pending KPI is retired — the
+    // third slot now shows the low-stock count from the lf_iv master ledger
+    // (0 here, since the ledger helpers are stubbed empty).
+    ok(kv['LF Low Stock'] === 0 && !('Pending LF Deductions' in kv), 'third KPI is LF Low Stock (Wix pending retired)');
   }
 
   // ── [E] LF report Collected (finding 4) ──
