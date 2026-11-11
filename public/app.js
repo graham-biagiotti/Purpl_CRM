@@ -19423,6 +19423,17 @@ function _samplingCard(r) {
 async function renderSampling() {
   const el = qs('#sampling-content');
   if (!el) return;
+  // v260 gate F1: this also runs via refreshCurrentPage() whenever ANY remote
+  // db change lands (not just sampling snapshots) — rebuilding the shell then
+  // would eat keystrokes in the search boxes and sampler-setup fields. If the
+  // user is mid-typing in a shell input, keep the shell and refresh only the
+  // request list (which is all a remote change affects anyway).
+  const _ae = document.activeElement;
+  if (_ae && el.contains(_ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(_ae.tagName)
+      && !qs('#sampling-list')?.contains(_ae)) {
+    _renderSamplingList();
+    return;
+  }
   _samplingMonthOffset = 0; // fresh page entry always shows the current month
   const cfg = _samplingCfg || await _loadSamplingCfg();
   const wd = Array.isArray(cfg.blockedWeekdays) ? cfg.blockedWeekdays.map(Number) : [];
@@ -19452,7 +19463,7 @@ async function renderSampling() {
       <input id="sampling-search" placeholder="Search stores…" oninput="_renderSamplingList()" style="flex:1;min-width:160px;padding:8px 10px;font-size:13px">
       <div style="position:relative;flex:1;min-width:200px">
         <input id="sampling-link-search" placeholder="Get a booking link — type a store name…" autocomplete="off" oninput="_samplingLinkLookup()" style="width:100%;padding:8px 10px;font-size:13px">
-        <div id="sampling-link-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:40;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,0.12);max-height:260px;overflow-y:auto;margin-top:4px"></div>
+        <div id="sampling-link-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:40;background:var(--card,#fff);color:var(--text,#1a1a2e);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,0.12);max-height:260px;overflow-y:auto;margin-top:4px"></div>
       </div>
     </div>
     <div id="sampling-list"></div>
