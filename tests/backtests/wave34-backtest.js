@@ -35,15 +35,17 @@ console.log('[B] helpers — run the REAL functions');
     obj: () => settings,
   });
   const H = mk(
-    [{ id: 'a1', name: 'Zed Market', status: 'active' }, { id: 'a2', name: 'Alpha Foods', status: 'closed' },
-     { id: 'a3', name: 'Beta Co', status: 'inactive' }, { id: 'a4', name: 'Apple Barn' }],
+    // (gate F1: real statuses are active|pending|paused|inactive — the first
+    // fixture used a non-existent 'closed' and so missed that pending leaked in)
+    [{ id: 'a1', name: 'Zed Market', status: 'active' }, { id: 'a2', name: 'Alpha Foods', status: 'pending' },
+     { id: 'a3', name: 'Beta Co', status: 'inactive' }, { id: 'a4', name: 'Apple Barn', status: 'paused' }],
     [{ accountId: 'a1', date: '2026-10-01', platform: 'instagram' },
      { accountId: 'a1', date: '2026-11-05', platform: 'other', platformOther: 'Pinterest' },
      { accountId: 'a4', date: '2026-09-09', platform: 'tiktok' }],
     { socialStaleDays: '45' });
   const acc = H._socialAccounts();
   ok(acc.length === 2 && acc[0].name === 'Apple Barn' && acc[1].name === 'Zed Market',
-    'customers only: closed + inactive excluded, sorted by name (prospects are a different collection)');
+    'customers only: pending (no order yet) + inactive excluded, paused kept, sorted by name');
   const l = H._socialLastFor('a1');
   ok(l.count === 2 && l.last.date === '2026-11-05', 'last post = newest date, with a total count');
   ok(H._socialLastFor('nope').count === 0 && H._socialLastFor('nope').last === null, 'no posts → empty, no crash');
@@ -74,6 +76,18 @@ console.log('[C] page behaviour contracts');
     'stale marker merges into settings (never replaces the settings object)');
   ok(slc(src, 'function _socialStoreLookup()', '\nfunction socialPick').includes("_socialPickId = '';"),
     'typing after a pick invalidates it (no stale-pick mislogging)');
+}
+
+console.log('[C2] gate fixes — draft survives rebuilds');
+{
+  const pg2 = slc(src, 'function renderSocials()', '\nfunction _socialStoreLookup');
+  ok(pg2.indexOf('const _draft = ') < pg2.indexOf('el.innerHTML = `') && pg2.includes("qs('#soc-date').value = _draft.date"),
+    'date/platform/note are captured before and restored after a rebuild (gate F2/F3)');
+  ok(pg2.includes("_draft.platform === 'other' ? '' : 'none'"), 'the Other text box visibility is restored too');
+  ok(pg2.includes('if (Number.isNaN(age)) age = null;'), 'malformed post date reads as never, not NaNd (gate F4)');
+  const lg2 = slc(src, 'function socialLogPost()', '\nasync function socialDelete');
+  ok(lg2.includes("_n.value = ''") && lg2.indexOf("_n.value = ''") < lg2.indexOf('renderSocials();'),
+    'note is cleared before the post-log rebuild (no carry-over into the next entry)');
 }
 
 console.log('[D] owner view — one quiet line on the account card');

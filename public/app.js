@@ -9281,10 +9281,12 @@ function _socialStaleDays() {
   const n = parseInt((DB.obj('settings', {}) || {}).socialStaleDays, 10);
   return n > 0 ? n : 60;
 }
-// Customers only: every account that isn't closed/inactive. Prospects live
-// in a different collection and are never listed.
+// Customers only — stores that actually carry product. Account statuses are
+// active | pending | paused | inactive (gate F1: 'pending' = no order yet, so
+// nothing on the shelf to post about; 'paused' stores still carry product).
+// Prospects live in a different collection and are never listed.
 function _socialAccounts() {
-  return DB.a('ac').filter(a => a && a.status !== 'closed' && a.status !== 'inactive')
+  return DB.a('ac').filter(a => a && a.status !== 'inactive' && a.status !== 'pending')
     .sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1);
 }
 function _socialLastFor(accountId) {
@@ -9317,7 +9319,8 @@ function renderSocials() {
   const dAgo = d => Math.max(0, Math.round((new Date(todayStr + 'T12:00:00') - new Date(String(d).slice(0, 10) + 'T12:00:00')) / 864e5));
   const rows = accts.map(a => {
     const l = lastBy[a.id];
-    const age = l ? dAgo(l.date) : null;
+    let age = l ? dAgo(l.date) : null;
+    if (Number.isNaN(age)) age = null; // gate F4: a malformed date reads as "never", not "NaNd"
     return { a, l, age, isStale: age === null || age > stale };
   }).sort((x, y) => (y.age === null ? 1e9 : y.age) - (x.age === null ? 1e9 : x.age));
   const staleCount = rows.filter(r => r.isStale).length;
@@ -9340,6 +9343,15 @@ function renderSocials() {
       <td style="font-size:12px;color:var(--muted)">${escHtml(String(p.by || ''))}</td>
       <td><button class="btn xs" onclick="socialDelete('${p.id}')" title="Remove this entry">✕</button></td>
     </tr>`).join('');
+
+  // Gate F2/F3: a rebuild (another user's save, or the stale-marker change)
+  // must not silently reset a half-filled form — the store name survived via
+  // _socialPickId while date/platform snapped back to today/Instagram, which
+  // would log a WRONG record. Carry the draft across the rebuild.
+  const _draft = qs('#soc-date') ? {
+    date: qs('#soc-date').value, platform: qs('#soc-platform')?.value,
+    other: qs('#soc-platform-other')?.value, note: qs('#soc-note')?.value,
+  } : null;
 
   el.innerHTML = `
     <div class="card-grid grid-4" style="margin-bottom:14px">
@@ -9382,6 +9394,14 @@ function renderSocials() {
         <tbody>${recentRows || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Nothing logged yet.</td></tr>'}</tbody>
       </table></div>
     </div>`;
+
+  if (_draft) {
+    if (_draft.date) qs('#soc-date').value = _draft.date;
+    if (_draft.platform) qs('#soc-platform').value = _draft.platform;
+    qs('#soc-platform-other').value = _draft.other || '';
+    qs('#soc-platform-other').style.display = _draft.platform === 'other' ? '' : 'none';
+    qs('#soc-note').value = _draft.note || '';
+  }
 }
 
 function _socialStoreLookup() {
@@ -9423,6 +9443,9 @@ function socialLogPost() {
     by: _currentUserName(),
   });
   _socialPickId = '';
+  // The draft carries across rebuilds (gate F2) — clear the per-post fields
+  // so the next entry starts clean; date + platform stay for batch logging.
+  { const _n = qs('#soc-note'); if (_n) _n.value = ''; const _o = qs('#soc-platform-other'); if (_o) _o.value = ''; }
   toast(`Post logged for ${a.name || 'store'} ✓`);
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   renderSocials();
