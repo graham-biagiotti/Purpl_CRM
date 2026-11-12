@@ -9503,6 +9503,9 @@ function renderSocials() {
     </div>`;
   } else if (_socTab === 'posts') {
     const months = [...new Set(DB.a('social_posts').map(p => String(p.date || '').slice(0, 7)).filter(m => /^\d{4}-\d{2}$/.test(m)))].sort().reverse();
+    // Gate F2: a month filter whose last post was deleted must not keep
+    // filtering invisibly (dropdown says "All months", table says none).
+    if (_socPostMonth && !months.includes(_socPostMonth)) _socPostMonth = '';
     const mLabel = m => new Date(m + '-15T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     pane = `
     <div class="card" style="padding:14px 16px">
@@ -9657,7 +9660,18 @@ function _socialStoreLookup() {
 function socialPick(accountId) {
   const a = _socialAccounts().find(x => x.id === accountId);
   if (!a) return;
+  // Gate F1: a half-typed note belongs to the store it was typed for. When
+  // the pick moves to a DIFFERENT store, or arrives from another tab (so the
+  // carried draft is from an earlier moment), drop the note — otherwise one
+  // click files store A's note against store B. A pick from another tab also
+  // resets the date to today.
+  const _prev = _socialPickId, _fromOtherTab = !qs('#soc-date');
   _socialPickId = a.id;
+  if ((_prev && _prev !== a.id) || _fromOtherTab) {
+    if (_socDraft) { _socDraft.note = ''; _socDraft.other = ''; if (_fromOtherTab) _socDraft.date = ''; }
+    const _n = qs('#soc-note'); if (_n) _n.value = '';
+    const _o = qs('#soc-platform-other'); if (_o) _o.value = '';
+  }
   _socTab = 'log'; // v264: "Log post" on a store row lands on the form with the store filled in
   _socRerender();
   qs('#soc-note')?.focus();
@@ -9699,7 +9713,9 @@ function socialSaveStale(value) {
   const n = Math.min(999, Math.max(1, parseInt(value, 10) || 60));
   DB.setObj('settings', { ...(DB.obj('settings', {}) || {}), socialStaleDays: n });
   toast(`Stores flag after ${n} days without a post`);
-  _socRerender();
+  // Gate F3: this runs on the input's change event, i.e. on the mousedown of
+  // whatever was clicked next — rebuilding synchronously swallowed that click.
+  setTimeout(_socRerender, 0);
 }
 
 function renderInventory() {

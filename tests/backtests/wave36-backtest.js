@@ -98,5 +98,37 @@ console.log('[B] page structure');
   ok(!/https?:\/\//.test(slc(src, 'let _socTab = ', '\nfunction renderInventory()')), 'still no post links anywhere');
 }
 
+console.log('[C] gate fixes — run the REAL socialPick');
+{
+  const pk = slc(src, 'function socialPick(', '\nfunction socialLogPost');
+  const run = (startPick, formOnScreen, pickId) => {
+    const note = { value: 'note for A', focus() {} }, other = { value: 'x' };
+    const env = new Function('qs', '_socialAccounts', '_socRerender',
+      "let _socialPickId = arguments[3]; let _socTab = 'stores'; let _socDraft = { note: 'note for A', other: 'x', date: '2026-10-01', platform: 'tiktok' };\n"
+      + pk + "\nsocialPick(arguments[4]);\nreturn { _socialPickId, _socTab, _socDraft };")(
+      sel => sel === '#soc-date' ? (formOnScreen ? {} : null) : sel === '#soc-note' ? note : sel === '#soc-platform-other' ? other : null,
+      () => [{ id: 'A', name: 'Store A' }, { id: 'B', name: 'Store B' }],
+      () => {}, startPick, pickId);
+    return { ...env, noteBox: note.value };
+  };
+  let r = run('A', true, 'B');
+  ok(r._socDraft.note === '' && r.noteBox === '' && r._socialPickId === 'B',
+    'picking a DIFFERENT store drops the note typed for the previous one (gate F1)');
+  ok(r._socDraft.date === '2026-10-01' && r._socDraft.platform === 'tiktok', 'on the form itself, date + platform stay for batch logging');
+  r = run('', false, 'B');
+  ok(r._socDraft.note === '' && r._socDraft.date === '' && r._socTab === 'log',
+    'a pick from the Stores tab starts clean: no carried note, date back to today');
+  r = run('', true, 'A');
+  ok(r._socDraft.note === 'note for A' && r.noteBox === 'note for A',
+    'typing a note first and THEN picking the store keeps the note');
+  r = run('A', true, 'A');
+  ok(r._socDraft.note === 'note for A', 're-picking the same store keeps the note');
+
+  ok(src.includes("if (_socPostMonth && !months.includes(_socPostMonth)) _socPostMonth = '';"),
+    'a month filter with no posts left resets itself (gate F2)');
+  ok(slc(src, 'function socialSaveStale(', '\nfunction renderInventory()').includes('setTimeout(_socRerender, 0);'),
+    'stale-marker save defers its rebuild so the click that triggered it still lands (gate F3)');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
