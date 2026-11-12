@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v261';
+const APP_VERSION = 'v262';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -427,7 +427,7 @@ function nav(page) {
     production:'Production', delivery:'Today\'s Run', projections:'Reorder Radar',
     reports:'Reports', integrations:'Integrations', settings:'Settings',
     'pre-orders':'Portal Orders', invoices:'Invoices', emails:'Emails',
-    sampling:'Sampling', 'purchase-orders':'Purchase Orders', 'field-log':'Field Log'
+    sampling:'Sampling', 'purchase-orders':'Purchase Orders', 'field-log':'Field Log', socials:'Socials'
   };
   const tb = document.getElementById('topbar-title');
   if (tb) {
@@ -467,6 +467,7 @@ const renders = {
   sampling:         renderSampling,
   'purchase-orders': renderPurchaseOrders,
   'field-log':      renderFieldLog,
+  socials:          renderSocials, // v262
 };
 
 // ── Audit Log ────────────────────────────────────────────
@@ -3833,6 +3834,9 @@ function openAccount(id) {
   qs('#mac-territory').textContent = a.territory||'—';
   qs('#mac-since').textContent = fmtD(a.since);
   qs('#mac-last-order').textContent = a.lastOrder ? `${fmtD(a.lastOrder)} (${daysAgo(a.lastOrder)}d ago)` : '—';
+  // v262: one quiet read-only line for the owner — Zoe's log lives on Socials.
+  { const _sp = _socialLastFor(id); const _se = qs('#mac-last-social');
+    if (_se) _se.textContent = _sp.last ? `${fmtD(_sp.last.date)} · ${_socialPlatformLabel(_sp.last)} (${_sp.count} total)` : '—'; }
   qs('#mac-skus').innerHTML = (a.skus||[]).map(skuBadge).join(' ');
   qs('#mac-par').innerHTML = Object.entries(a.par||{}).map(([k,v])=>`${skuBadge(k)} par: <strong>${escHtml(String(v))}</strong>`).join('&nbsp;&nbsp;');
 
@@ -9258,6 +9262,187 @@ async function lfInvSaveAlertEmail() {
     console.error(e);
     toast('Save failed — only admins can change the alert email', 6000);
   }
+}
+
+// ══════════════════════════════════════════════════════════
+//  v262: SOCIALS — per-account social post log (Zoe)
+// ══════════════════════════════════════════════════════════
+// Deliberately small (owner, 11/12): customer accounts only — no prospects,
+// no links, no approval flow. A post is {date, account, platform, note}.
+// The coverage list answers one question: who hasn't been posted about
+// lately? "Lately" is a number Zoe sets herself (settings.socialStaleDays).
+const SOCIAL_PLATFORMS = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', other: 'Other' };
+function _socialPlatformLabel(p) {
+  if (!p) return '—';
+  if (p.platform === 'other') return String(p.platformOther || 'Other');
+  return SOCIAL_PLATFORMS[p.platform] || String(p.platform || '—');
+}
+function _socialStaleDays() {
+  const n = parseInt((DB.obj('settings', {}) || {}).socialStaleDays, 10);
+  return n > 0 ? n : 60;
+}
+// Customers only: every account that isn't closed/inactive. Prospects live
+// in a different collection and are never listed.
+function _socialAccounts() {
+  return DB.a('ac').filter(a => a && a.status !== 'closed' && a.status !== 'inactive')
+    .sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1);
+}
+function _socialLastFor(accountId) {
+  let last = null, count = 0;
+  DB.a('social_posts').forEach(p => {
+    if (p.accountId !== accountId) return;
+    count++;
+    if (!last || String(p.date || '') > String(last.date || '')) last = p;
+  });
+  return { last, count };
+}
+
+let _socialPickId = '';
+
+function renderSocials() {
+  const el = qs('#socials-content');
+  if (!el) return;
+  // v260 doctrine: a background refresh never rebuilds a form mid-typing.
+  if (document.activeElement && el.contains(document.activeElement)
+      && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+
+  const stale = _socialStaleDays();
+  const todayStr = today();
+  const lastBy = {}, countBy = {};
+  DB.a('social_posts').forEach(p => {
+    countBy[p.accountId] = (countBy[p.accountId] || 0) + 1;
+    if (!lastBy[p.accountId] || String(p.date || '') > String(lastBy[p.accountId].date || '')) lastBy[p.accountId] = p;
+  });
+  const accts = _socialAccounts();
+  const dAgo = d => Math.max(0, Math.round((new Date(todayStr + 'T12:00:00') - new Date(String(d).slice(0, 10) + 'T12:00:00')) / 864e5));
+  const rows = accts.map(a => {
+    const l = lastBy[a.id];
+    const age = l ? dAgo(l.date) : null;
+    return { a, l, age, isStale: age === null || age > stale };
+  }).sort((x, y) => (y.age === null ? 1e9 : y.age) - (x.age === null ? 1e9 : x.age));
+  const staleCount = rows.filter(r => r.isStale).length;
+  const picked = _socialPickId ? accts.find(a => a.id === _socialPickId) : null;
+
+  const covRows = rows.map(r => `<tr>
+      <td>${escHtml(r.a.name || '—')}</td>
+      <td>${r.l ? `${fmtD(r.l.date)} <span style="color:var(--muted);font-size:12px">· ${escHtml(_socialPlatformLabel(r.l))}</span>` : '<span style="color:var(--muted)">never</span>'}</td>
+      <td style="${r.isStale ? 'color:#b45309;font-weight:700' : ''}">${r.age === null ? '—' : r.age + 'd'}${r.isStale ? ' ⚠' : ''}</td>
+      <td>${countBy[r.a.id] || 0}</td>
+      <td><button class="btn xs" onclick="socialPick('${r.a.id}')">Log post</button></td>
+    </tr>`).join('');
+
+  const recent = DB.a('social_posts').slice().sort((a, b) => (String(b.date || '') + (b.createdAt || '')) < (String(a.date || '') + (a.createdAt || '')) ? -1 : 1).slice(0, 40);
+  const recentRows = recent.map(p => `<tr>
+      <td style="white-space:nowrap">${fmtD(p.date)}</td>
+      <td>${escHtml(String(p.accountName || '—'))}</td>
+      <td>${escHtml(_socialPlatformLabel(p))}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(String(p.note || ''))}</td>
+      <td style="font-size:12px;color:var(--muted)">${escHtml(String(p.by || ''))}</td>
+      <td><button class="btn xs" onclick="socialDelete('${p.id}')" title="Remove this entry">✕</button></td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="card-grid grid-4" style="margin-bottom:14px">
+      <div>${kpiHtml('Posts Logged', String(DB.a('social_posts').length), 'purple')}</div>
+      <div>${kpiHtml('Stores Needing a Post', String(staleCount), staleCount ? 'amber' : 'green')}</div>
+    </div>
+    <div class="card" style="padding:14px 16px;margin-bottom:14px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px">📣 Log a post</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:start">
+        <div style="position:relative">
+          <input id="soc-store" placeholder="Store — type a name…" autocomplete="off" value="${escHtml(picked ? picked.name || '' : '')}" oninput="_socialStoreLookup()" style="width:100%">
+          <div id="soc-store-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:40;background:var(--card,#fff);color:var(--text,#1a1a2e);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,0.12);max-height:240px;overflow-y:auto;margin-top:4px"></div>
+        </div>
+        <input id="soc-date" type="date" value="${todayStr}" style="width:100%">
+        <div>
+          <select id="soc-platform" onchange="qs('#soc-platform-other').style.display = this.value === 'other' ? '' : 'none'" style="width:100%">
+            ${Object.entries(SOCIAL_PLATFORMS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+          </select>
+          <input id="soc-platform-other" placeholder="Which platform?" maxlength="40" style="display:none;width:100%;margin-top:6px">
+        </div>
+        <input id="soc-note" placeholder="Note (optional)" maxlength="300" style="width:100%">
+      </div>
+      <button class="btn sm primary" style="margin-top:10px" onclick="socialLogPost()">Log post</button>
+    </div>
+    <div class="card" style="padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div style="font-weight:600;font-size:14px">Store coverage <span style="font-weight:400;color:var(--muted);font-size:12px">· longest-waiting first</span></div>
+        <div style="font-size:12.5px;color:var(--muted)">Flag a store after
+          <input id="soc-stale-days" type="number" min="1" max="999" value="${stale}" onchange="socialSaveStale(this.value)" style="width:64px;padding:4px 6px"> days without a post</div>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Store</th><th>Last post</th><th>Age</th><th>Posts</th><th></th></tr></thead>
+        <tbody>${covRows || '<tr><td colspan="5" style="color:var(--muted);text-align:center">No customer accounts yet</td></tr>'}</tbody>
+      </table></div>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px">Recent posts</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Date</th><th>Store</th><th>Platform</th><th>Note</th><th>By</th><th></th></tr></thead>
+        <tbody>${recentRows || '<tr><td colspan="6" style="color:var(--muted);text-align:center">Nothing logged yet.</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+function _socialStoreLookup() {
+  const box = qs('#soc-store-results');
+  if (!box) return;
+  _socialPickId = ''; // typing invalidates a previous pick
+  const q = (qs('#soc-store')?.value || '').trim().toLowerCase();
+  if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const hits = _socialAccounts().filter(a => (a.name || '').toLowerCase().includes(q)).slice(0, 8);
+  box.innerHTML = hits.length
+    ? hits.map(a => `<div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="socialPick('${a.id}')">${escHtml(a.name || '')}</div>`).join('')
+    : '<div style="padding:10px;font-size:12.5px;color:var(--muted)">No customer account matches.</div>';
+  box.style.display = '';
+}
+
+function socialPick(accountId) {
+  const a = _socialAccounts().find(x => x.id === accountId);
+  if (!a) return;
+  _socialPickId = a.id;
+  const inp = qs('#soc-store'); if (inp) inp.value = a.name || '';
+  const box = qs('#soc-store-results'); if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+  qs('#soc-note')?.focus();
+  qs('#socials-content')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function socialLogPost() {
+  const a = _socialPickId ? _socialAccounts().find(x => x.id === _socialPickId) : null;
+  if (!a) { toast('Pick a store from the list first'); return; }
+  const date = qs('#soc-date')?.value || today();
+  if (date > today()) { toast('That date is in the future'); return; }
+  const platform = qs('#soc-platform')?.value || 'instagram';
+  const platformOther = platform === 'other' ? (qs('#soc-platform-other')?.value || '').trim().slice(0, 40) : '';
+  if (platform === 'other' && !platformOther) { toast('Type which platform'); return; }
+  DB.push('social_posts', {
+    id: uid(), date, createdAt: new Date().toISOString(),
+    accountId: a.id, accountName: a.name || '',
+    platform, platformOther,
+    note: (qs('#soc-note')?.value || '').trim().slice(0, 300),
+    by: _currentUserName(),
+  });
+  _socialPickId = '';
+  toast(`Post logged for ${a.name || 'store'} ✓`);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  renderSocials();
+}
+
+async function socialDelete(id) {
+  const p = DB.a('social_posts').find(x => x.id === id);
+  if (!p) return;
+  if (!(await confirmDlg(`Remove this logged post for ${p.accountName || 'this store'}?`))) return;
+  DB.remove('social_posts', id);
+  toast('Removed');
+  renderSocials();
+}
+
+function socialSaveStale(value) {
+  const n = Math.min(999, Math.max(1, parseInt(value, 10) || 60));
+  DB.setObj('settings', { ...(DB.obj('settings', {}) || {}), socialStaleDays: n });
+  toast(`Stores flag after ${n} days without a post`);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  renderSocials();
 }
 
 function renderInventory() {

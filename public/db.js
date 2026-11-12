@@ -25,6 +25,7 @@ const COLLECTION_KEYS = [
   'prod_hist','runs','shipments',
   'stockist_locations',
   'lf_iv', // v261: Lavender Fields stock ledger (append-heavy, grows like iv)
+  'social_posts', // v262: Zoe's per-account social post log
 ];
 
 // Append-only collections: entries may be CREATED but never updated or
