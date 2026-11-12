@@ -64,7 +64,8 @@ console.log('[C] page behaviour contracts');
   ok(!/https?:|soc-link|soc-url/.test(pg), 'no link field (owner: links not necessary)');
   ok(!/approve|pending/i.test(pg), 'no approval flow');
   ok(pg.includes("onchange=\"socialSaveStale(this.value)\""), 'stale marker editable inline by Zoe');
-  ok(pg.includes('age === null || age > stale'), 'never-posted and older-than-marker stores are flagged');
+  // (v264 / wave36: row building moved out of renderSocials into _socStoreRows)
+  ok(src.includes('isStale: age === null || age > stale'), 'never-posted and older-than-marker stores are flagged');
 
   const lg = slc(src, 'function socialLogPost()', '\nasync function socialDelete');
   ok(lg.includes('_socialAccounts().find(x => x.id === _socialPickId)') && lg.includes("toast('Pick a store from the list first')"),
@@ -84,9 +85,11 @@ console.log('[C2] gate fixes — draft survives rebuilds');
   ok(pg2.indexOf('const _draft = ') < pg2.indexOf('el.innerHTML = `') && pg2.includes("qs('#soc-date').value = _draft.date"),
     'date/platform/note are captured before and restored after a rebuild (gate F2/F3)');
   ok(pg2.includes("_draft.platform === 'other' ? '' : 'none'"), 'the Other text box visibility is restored too');
-  ok(pg2.includes('if (Number.isNaN(age)) age = null;'), 'malformed post date reads as never, not NaNd (gate F4)');
+  // (v264 / wave36: the NaN guard now lives in _socDaysAgo — run for real in wave36)
+  ok(src.includes('return Number.isNaN(n) ? null : Math.max(0, n);'), 'malformed post date reads as never, not NaNd (gate F4)');
   const lg2 = slc(src, 'function socialLogPost()', '\nasync function socialDelete');
-  ok(lg2.includes("_n.value = ''") && lg2.indexOf("_n.value = ''") < lg2.indexOf('renderSocials();'),
+  // (v264 / wave36: the rebuild goes through _socRerender)
+  ok(lg2.includes("_n.value = ''") && lg2.indexOf("_n.value = ''") < lg2.indexOf('_socRerender();'),
     'note is cleared before the post-log rebuild (no carry-over into the next entry)');
 }
 
