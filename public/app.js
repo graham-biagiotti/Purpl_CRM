@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v262';
+const APP_VERSION = 'v263';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -8945,10 +8945,34 @@ function _lfLeafRows() {
   const rows = [];
   DB.a('lf_skus').filter(s => s && !s.archived).sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1).forEach(s => {
     const vars = (s.variants || []).filter(v => !v.archived);
-    if (vars.length) vars.forEach(v => rows.push({ skuId: s.id, skuName: s.name || '', variantId: v.id, variantName: v.name || '', threshold: Math.round(parseFloat(v.lowStock)) || 0 }));
-    else rows.push({ skuId: s.id, skuName: s.name || '', variantId: '', variantName: '', threshold: Math.round(parseFloat(s.lowStock)) || 0 });
+    const caseSize = Math.round(parseFloat(s.caseSize)) || 0; // v263
+    if (vars.length) vars.forEach(v => rows.push({ skuId: s.id, skuName: s.name || '', variantId: v.id, variantName: v.name || '', caseSize, threshold: Math.round(parseFloat(v.lowStock)) || 0 }));
+    else rows.push({ skuId: s.id, skuName: s.name || '', variantId: '', variantName: '', caseSize, threshold: Math.round(parseFloat(s.lowStock)) || 0 });
   });
   return rows;
+}
+
+// v263: cases are a VIEW of the unit ledger, never a second pile — the
+// ledger stays in single units; these convert for display and entry using
+// the product's case size. A case size of 0/1 means "not sold by the case".
+function _lfCasesSplit(units, caseSize) {
+  const u = Math.round(parseFloat(units)) || 0;
+  const cs = Math.round(parseFloat(caseSize)) || 0;
+  if (cs <= 1 || u <= 0) return { cases: 0, loose: u };
+  return { cases: Math.floor(u / cs), loose: u % cs };
+}
+function _lfCasesText(units, caseSize) {
+  const cs = Math.round(parseFloat(caseSize)) || 0;
+  if (cs <= 1) return '—';
+  const { cases, loose } = _lfCasesSplit(units, cs);
+  if ((Math.round(parseFloat(units)) || 0) <= 0) return '0';
+  return cases + (loose ? ' + ' + loose : '');
+}
+function _lfToUnits(qty, unit, caseSize) {
+  const q = Math.round(parseFloat(qty)) || 0;
+  if (unit !== 'cases') return q;
+  const cs = Math.round(parseFloat(caseSize)) || 0;
+  return cs > 1 ? q * cs : 0;
 }
 function _lfLeafLabel(r) { return r.variantName ? `${r.skuName} — ${r.variantName}` : r.skuName; }
 
@@ -9073,17 +9097,26 @@ function _invLf() {
     const multi = group.length > 1 || group[0].variantId;
     if (multi) {
       const tot = group.reduce((s, r) => s + (oh[_lfKey(r.skuId, r.variantId)] || 0), 0);
-      tbl += `<tr style="background:var(--surface,#f9fafb)"><td style="font-weight:600">${escHtml(group[0].skuName)}</td><td style="font-weight:600">${fmt(tot)}</td><td></td></tr>`;
+      tbl += `<tr style="background:var(--surface,#f9fafb)"><td style="font-weight:600">${escHtml(group[0].skuName)}${group[0].caseSize > 1 ? ` <span style="font-weight:400;color:var(--muted);font-size:11px">· case of ${group[0].caseSize}</span>` : ''}</td><td style="font-weight:600">${fmt(tot)}</td><td style="font-weight:600">${_lfStockTakeMode ? '' : _lfCasesText(tot, group[0].caseSize)}</td><td></td></tr>`;
     }
     group.forEach(r => {
       const k = _lfKey(r.skuId, r.variantId);
       const v = oh[k] || 0;
       const isLow = r.threshold > 0 && v <= r.threshold;
-      const name = multi ? `<span style="padding-left:18px;color:var(--muted)">${escHtml(r.variantName || r.skuName)}</span>` : `<span style="font-weight:600">${escHtml(r.skuName)}</span>`;
+      const name = multi ? `<span style="padding-left:18px;color:var(--muted)">${escHtml(r.variantName || r.skuName)}</span>` : `<span style="font-weight:600">${escHtml(r.skuName)}${r.caseSize > 1 ? ` <span style="font-weight:400;color:var(--muted);font-size:11px">· case of ${r.caseSize}</span>` : ''}</span>`;
+      // v263: in stock-take mode a by-the-case product is counted as full
+      // cases + loose units (counted = cases × case size + loose); the unit
+      // input then holds only the LOOSE units. Each input carries its own
+      // render-time baseline so untouched rows are still skipped (gate F1).
+      const _sp = _lfCasesSplit(v, r.caseSize);
+      const _byCase = r.caseSize > 1;
       const ohCell = _lfStockTakeMode
-        ? `<input type="number" class="lf-st-count" data-key="${k}" data-baseline="${v}" value="${v}" min="0" style="width:80px;padding:4px 6px">`
+        ? `<input type="number" class="lf-st-count" data-key="${k}" data-baseline="${_byCase ? _sp.loose : v}" value="${_byCase ? _sp.loose : v}" min="0" style="width:80px;padding:4px 6px">`
         : `<span style="${v < 0 ? 'color:var(--red);font-weight:700' : (isLow ? 'color:#b45309;font-weight:700' : '')}">${fmt(v)}${isLow ? ' ⚠' : ''}</span>`;
-      tbl += `<tr><td>${name}</td><td>${ohCell}</td>
+      const csCell = _lfStockTakeMode
+        ? (_byCase ? `<input type="number" class="lf-st-cases" data-key="${k}" data-case-size="${r.caseSize}" data-baseline="${_sp.cases}" value="${_sp.cases}" min="0" style="width:70px;padding:4px 6px">` : '<span style="color:var(--muted)">—</span>')
+        : `<span style="color:var(--muted)">${_lfCasesText(v, r.caseSize)}</span>`;
+      tbl += `<tr><td>${name}</td><td>${ohCell}</td><td>${csCell}</td>
         <td><input type="number" min="0" value="${r.threshold || ''}" placeholder="—" onchange="lfInvSaveThreshold('${r.skuId}','${r.variantId}',this.value)" style="width:70px;padding:4px 6px" title="Alert when stock falls to this level (blank = never)"></td></tr>`;
     });
   });
@@ -9113,7 +9146,8 @@ function _invLf() {
           <div style="font-weight:600;font-size:13px;margin-bottom:8px">📥 Stock in</div>
           <select id="lf-in-item" style="width:100%;margin-bottom:6px">${leafOptions}</select>
           <div style="display:flex;gap:6px">
-            <input id="lf-in-qty" type="number" min="1" placeholder="Units" style="width:90px">
+            <input id="lf-in-qty" type="number" min="1" placeholder="Qty" style="width:70px">
+            <select id="lf-in-unit" style="width:84px"><option value="units">units</option><option value="cases">cases</option></select>
             <select id="lf-in-reason" style="flex:1">${inReasons}</select>
           </div>
           <input id="lf-in-note" placeholder="Note (optional)" style="width:100%;margin-top:6px">
@@ -9123,7 +9157,8 @@ function _invLf() {
           <div style="font-weight:600;font-size:13px;margin-bottom:8px">📤 Take out</div>
           <select id="lf-out-item" style="width:100%;margin-bottom:6px">${leafOptions}</select>
           <div style="display:flex;gap:6px">
-            <input id="lf-out-qty" type="number" min="1" placeholder="Units" style="width:90px">
+            <input id="lf-out-qty" type="number" min="1" placeholder="Qty" style="width:70px">
+            <select id="lf-out-unit" style="width:84px"><option value="units">units</option><option value="cases">cases</option></select>
             <select id="lf-out-reason" style="flex:1">${outReasons}</select>
           </div>
           <input id="lf-out-note" placeholder="Note (optional)" style="width:100%;margin-top:6px">
@@ -9148,10 +9183,10 @@ function _invLf() {
             : `<button class="btn sm" onclick="lfInvStockTakeToggle(true)">📋 Stock take</button>`}
         </div>
       </div>
-      ${_lfStockTakeMode ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Type what you actually counted for each row — unchanged rows are left alone. Saving writes count adjustments to the log.</div>' : ''}
+      ${_lfStockTakeMode ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Type what you actually counted for each row: full cases, plus any loose units. Unchanged rows are left alone. Saving writes count adjustments to the log.</div>' : ''}
       <div class="tbl-wrap"><table>
-        <thead><tr><th>Item</th><th>${_lfStockTakeMode ? 'Counted' : 'On hand'}</th><th>Alert at ≤</th></tr></thead>
-        <tbody>${tbl || '<tr><td colspan="3" style="color:var(--muted);text-align:center">No active LF products</td></tr>'}</tbody>
+        <thead><tr><th>Item</th><th>${_lfStockTakeMode ? 'Loose units' : 'Units'}</th><th title="Full cases + loose units">${_lfStockTakeMode ? 'Full cases' : 'Cases (+ loose)'}</th><th>Alert at ≤ (units)</th></tr></thead>
+        <tbody>${tbl || '<tr><td colspan="4" style="color:var(--muted);text-align:center">No active LF products</td></tr>'}</tbody>
       </table></div>
     </div>
     <div class="card" style="padding:14px 16px">
@@ -9183,11 +9218,13 @@ function navLfInventory() {
 
 function _lfLeafByKey(key) { return _lfLeafRows().find(r => _lfKey(r.skuId, r.variantId) === key) || null; }
 
-function _lfManualEntry(key, qty, type, reason, note) {
+function _lfManualEntry(key, qty, type, reason, note, unit) {
   const r = _lfLeafByKey(key);
   if (!r) { toast('Pick an item'); return false; }
-  const q = Math.round(parseFloat(qty)) || 0;
-  if (q <= 0) { toast('Enter a unit count'); return false; }
+  // v263: entry by the case converts to units — the ledger only stores units.
+  if (unit === 'cases' && !(r.caseSize > 1)) { toast(`${r.skuName} has no case size set — enter units instead`, 6000); return false; }
+  const q = _lfToUnits(qty, unit, r.caseSize);
+  if (q <= 0) { toast('Enter a quantity'); return false; }
   const before = _lfOnHandMap();
   DB.push('lf_iv', {
     id: uid(), date: today(), createdAt: new Date().toISOString(),
@@ -9195,18 +9232,16 @@ function _lfManualEntry(key, qty, type, reason, note) {
     type, qty: q, reason, note: String(note || '').slice(0, 300), by: _currentUserName(),
   });
   if (type === 'out') _lfLowStockCheck(before);
-  return true;
+  return unit === 'cases' ? `${q} units (${Math.round(parseFloat(qty)) || 0} case${(Math.round(parseFloat(qty)) || 0) === 1 ? '' : 's'})` : `${q} unit${q === 1 ? '' : 's'}`;
 }
 
 function lfInvReceive() {
-  if (_lfManualEntry(qs('#lf-in-item')?.value, qs('#lf-in-qty')?.value, 'in', qs('#lf-in-reason')?.value || 'production', qs('#lf-in-note')?.value)) {
-    toast('Stock added ✓'); _invLf();
-  }
+  const _did = _lfManualEntry(qs('#lf-in-item')?.value, qs('#lf-in-qty')?.value, 'in', qs('#lf-in-reason')?.value || 'production', qs('#lf-in-note')?.value, qs('#lf-in-unit')?.value);
+  if (_did) { toast(`Added ${_did} ✓`); _invLf(); }
 }
 function lfInvTakeOut() {
-  if (_lfManualEntry(qs('#lf-out-item')?.value, qs('#lf-out-qty')?.value, 'out', qs('#lf-out-reason')?.value || 'wix', qs('#lf-out-note')?.value)) {
-    toast('Stock taken out ✓'); _invLf();
-  }
+  const _did = _lfManualEntry(qs('#lf-out-item')?.value, qs('#lf-out-qty')?.value, 'out', qs('#lf-out-reason')?.value || 'wix', qs('#lf-out-note')?.value, qs('#lf-out-unit')?.value);
+  if (_did) { toast(`Took out ${_did} ✓`); _invLf(); }
 }
 
 function lfInvSaveThreshold(skuId, variantId, value) {
@@ -9222,17 +9257,23 @@ function lfInvStockTakeToggle(on) { _lfStockTakeMode = !!on; _invLf(); }
 function lfInvStockTakeSave() {
   const before = _lfOnHandMap();
   let changed = 0;
+  // v263: a by-the-case row has a second input (full cases) keyed the same.
+  const _caseInputs = {};
+  document.querySelectorAll('#inv-pane-lf .lf-st-cases').forEach(ci => { _caseInputs[ci.dataset.key] = ci; });
   document.querySelectorAll('#inv-pane-lf .lf-st-count').forEach(inp => {
     const key = inp.dataset.key;
+    const ci = _caseInputs[key] || null;
     // v261 gate F1: skip rows the counter never touched. The prefill is
     // render-time on-hand, but the ledger can move mid-count (another user's
     // invoice confirm) — a stale untouched prefill must never become a
     // phantom adjustment that reverts a legitimate deduction. An EDITED row
     // is the counter's statement of physical reality, so its delta is
     // computed against the LIVE on-hand at save time.
-    if (inp.value === inp.dataset.baseline) return;
-    const counted = Math.round(parseFloat(inp.value));
-    if (isNaN(counted) || counted < 0) return;
+    if (inp.value === inp.dataset.baseline && (!ci || ci.value === ci.dataset.baseline)) return;
+    const _loose = Math.round(parseFloat(inp.value));
+    const _cases = ci ? Math.round(parseFloat(ci.value)) : 0;
+    if (isNaN(_loose) || _loose < 0 || isNaN(_cases) || _cases < 0) return;
+    const counted = _loose + (ci ? _cases * (parseInt(ci.dataset.caseSize, 10) || 0) : 0);
     const cur = before[key] || 0;
     const delta = counted - cur;
     if (!delta) return;

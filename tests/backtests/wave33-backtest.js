@@ -162,9 +162,12 @@ console.log('[E2] gate fixes — stock-take concurrency + cosmetics');
 {
   // Gate F1: an untouched prefill must never become a phantom adjustment
   // when another user's deduction lands mid-count.
-  ok(src.includes('data-baseline="${v}"'), 'count inputs carry their render-time baseline');
+  // (v263 / wave35: the baseline is the LOOSE units for by-the-case rows,
+  // and a sibling full-cases input carries its own baseline.)
+  ok(src.includes('data-baseline="${_byCase ? _sp.loose : v}"') && src.includes('data-baseline="${_sp.cases}"'),
+    'count inputs carry their render-time baseline');
   const st2 = slc(src, 'function lfInvStockTakeSave()', '\nasync function lfInvSaveAlertEmail');
-  ok(st2.includes('if (inp.value === inp.dataset.baseline) return;'),
+  ok(st2.includes('if (inp.value === inp.dataset.baseline && (!ci || ci.value === ci.dataset.baseline)) return;'),
     'untouched rows are skipped — edited rows diff against LIVE on-hand (gate F1)');
   ok(st2.indexOf('inp.dataset.baseline') < st2.indexOf('const delta'),
     'the untouched-skip runs before any delta math');
