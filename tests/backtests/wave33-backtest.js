@@ -169,7 +169,7 @@ console.log('[E2] gate fixes — stock-take concurrency + cosmetics');
   const st2 = slc(src, 'function lfInvStockTakeSave()', '\nasync function lfInvSaveAlertEmail');
   ok(st2.includes('if (inp.value === inp.dataset.baseline && (!ci || ci.value === ci.dataset.baseline)) return;'),
     'untouched rows are skipped — edited rows diff against LIVE on-hand (gate F1)');
-  ok(st2.indexOf('inp.dataset.baseline') < st2.indexOf('const delta'),
+  ok(st2.indexOf('if (inp.value === inp.dataset.baseline') < st2.indexOf('const delta'),
     'the untouched-skip runs before any delta math');
   // Gate F2: a stock take on screen is never rebuilt by a background refresh.
   const pane2 = slc(src, 'function _invLf()', '\n// Dashboard quick-action');

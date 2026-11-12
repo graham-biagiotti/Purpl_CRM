@@ -57,11 +57,29 @@ console.log('[C] table + stock take');
   ok(pane.includes('class="lf-st-cases"') && pane.includes('data-case-size="${r.caseSize}"'),
     'stock take offers a full-cases input for by-the-case products');
   const st = slc(src, 'function lfInvStockTakeSave()', '\nasync function lfInvSaveAlertEmail');
-  ok(st.includes("const counted = _loose + (ci ? _cases * (parseInt(ci.dataset.caseSize, 10) || 0) : 0);"),
-    'counted = full cases × case size + loose units');
   ok(st.includes('(!ci || ci.value === ci.dataset.baseline)'), 'a row is untouched only if BOTH inputs are untouched');
-  ok(st.includes('isNaN(_cases) || _cases < 0'), 'blank/negative case counts are ignored, not written');
   ok(st.includes('const delta = counted - cur;'), 'delta still diffs against live on-hand');
+  ok(st.indexOf('if (bad.length)') < st.indexOf("DB.push('lf_iv'") && st.includes('Nothing saved'),
+    'an untrustworthy row aborts the WHOLE save before any write (gate F2: no silent skip under a "saved" toast)');
+  const _abort = st.slice(st.indexOf('if (bad.length) {'), st.indexOf('// Pass 2'));
+  ok(_abort.includes('return;') && !_abort.includes('_lfStockTakeMode = false'),
+    'an aborted save stays in stock-take mode so nothing typed is lost');
+}
+
+console.log('[D] stock-take row maths — run the REAL _lfStCounted');
+{
+  const fn = slc(src, 'function _lfStCounted(', '\nfunction lfInvStockTakeSave');
+  const C = new Function(fn + '\nreturn _lfStCounted;')();
+  ok(C('4', '4', '3', '12') === 40, '3 cases of 12 + 4 loose = 40');
+  ok(C('15', '4', '2', '12') === 39, 'loose units above a case size still add correctly');
+  ok(C('7', '5', null, 0) === 7, 'a product not sold by the case is just its units');
+  ok(C('', '4', '3', '12') === 36 && C('5', '4', '', '12') === 5, 'a blank box means none when the other box has a number (gate F2)');
+  ok(C('', '4', '', '12') === null && C('', '5', null, 0) === null, 'everything blank is invalid, never a silent zero');
+  ok(C('-5', '-5', '3', '12') === 36, 'over-deducted row edited via the cases box: untouched negative loose counts as 0 (gate F1)');
+  ok(C('-2', '-5', '3', '12') === null && C('4', '4', '-1', '12') === null, 'a negative the counter typed is invalid');
+  ok(C('abc', '4', '3', '12') === null, 'non-numbers are invalid');
+  const U = new Function(slc(src, 'function _lfToUnits(', '\nfunction _lfLeafLabel') + '\nreturn _lfToUnits;')();
+  ok(U(0.5, 'cases', 12) === 6 && U(1.5, 'cases', 12) === 18, 'half cases round the UNITS, not the cases (gate F3)');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

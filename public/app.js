@@ -8969,10 +8969,11 @@ function _lfCasesText(units, caseSize) {
   return cases + (loose ? ' + ' + loose : '');
 }
 function _lfToUnits(qty, unit, caseSize) {
-  const q = Math.round(parseFloat(qty)) || 0;
-  if (unit !== 'cases') return q;
+  if (unit !== 'cases') return Math.round(parseFloat(qty)) || 0;
   const cs = Math.round(parseFloat(caseSize)) || 0;
-  return cs > 1 ? q * cs : 0;
+  // gate F3: round the UNITS, not the cases — half a case of 12 is 6 units,
+  // not a whole case.
+  return cs > 1 ? (Math.round((parseFloat(qty) || 0) * cs) || 0) : 0;
 }
 function _lfLeafLabel(r) { return r.variantName ? `${r.skuName} — ${r.variantName}` : r.skuName; }
 
@@ -9232,7 +9233,7 @@ function _lfManualEntry(key, qty, type, reason, note, unit) {
     type, qty: q, reason, note: String(note || '').slice(0, 300), by: _currentUserName(),
   });
   if (type === 'out') _lfLowStockCheck(before);
-  return unit === 'cases' ? `${q} units (${Math.round(parseFloat(qty)) || 0} case${(Math.round(parseFloat(qty)) || 0) === 1 ? '' : 's'})` : `${q} unit${q === 1 ? '' : 's'}`;
+  return unit === 'cases' ? `${q} units (${parseFloat(qty) || 0} case${(parseFloat(qty) || 0) === 1 ? '' : 's'})` : `${q} unit${q === 1 ? '' : 's'}`;
 }
 
 function lfInvReceive() {
@@ -9254,12 +9255,32 @@ function lfInvSaveThreshold(skuId, variantId, value) {
 
 function lfInvStockTakeToggle(on) { _lfStockTakeMode = !!on; _invLf(); }
 
+// v263 gate F1/F2: what one stock-take row says was counted, in units —
+// or null when the entry can't be trusted. Pure, so wave35 runs it for real.
+//  - a blank box means "none" when the row's other box holds a number;
+//  - a NEGATIVE loose prefill the counter left alone (over-deducted row,
+//    edited via the cases box) counts as 0 loose, not as an invalid entry;
+//  - anything negative/non-numeric the counter actually typed is invalid.
+function _lfStCounted(looseStr, looseBaseline, casesStr, caseSize) {
+  const hasCases = casesStr !== null && casesStr !== undefined;
+  const blank = v => String(v == null ? '' : v).trim() === '';
+  if (blank(looseStr) && (!hasCases || blank(casesStr))) return null;
+  let loose = blank(looseStr) ? 0 : Math.round(parseFloat(looseStr));
+  const cases = hasCases ? (blank(casesStr) ? 0 : Math.round(parseFloat(casesStr))) : 0;
+  if (hasCases && looseStr === looseBaseline && loose < 0) loose = 0;
+  if (isNaN(loose) || isNaN(cases) || loose < 0 || cases < 0) return null;
+  return loose + cases * (hasCases ? (Math.round(parseFloat(caseSize)) || 0) : 0);
+}
+
 function lfInvStockTakeSave() {
   const before = _lfOnHandMap();
-  let changed = 0;
   // v263: a by-the-case row has a second input (full cases) keyed the same.
   const _caseInputs = {};
   document.querySelectorAll('#inv-pane-lf .lf-st-cases').forEach(ci => { _caseInputs[ci.dataset.key] = ci; });
+  // Pass 1 — read every EDITED row; if any can't be trusted, save NOTHING
+  // and stay in stock-take mode (gate F2: a silently skipped row under a
+  // "saved" toast is a lost count).
+  const edits = [], bad = [];
   document.querySelectorAll('#inv-pane-lf .lf-st-count').forEach(inp => {
     const key = inp.dataset.key;
     const ci = _caseInputs[key] || null;
@@ -9270,15 +9291,22 @@ function lfInvStockTakeSave() {
     // is the counter's statement of physical reality, so its delta is
     // computed against the LIVE on-hand at save time.
     if (inp.value === inp.dataset.baseline && (!ci || ci.value === ci.dataset.baseline)) return;
-    const _loose = Math.round(parseFloat(inp.value));
-    const _cases = ci ? Math.round(parseFloat(ci.value)) : 0;
-    if (isNaN(_loose) || _loose < 0 || isNaN(_cases) || _cases < 0) return;
-    const counted = _loose + (ci ? _cases * (parseInt(ci.dataset.caseSize, 10) || 0) : 0);
+    const r = _lfLeafByKey(key);
+    if (!r) return;
+    const counted = _lfStCounted(inp.value, inp.dataset.baseline, ci ? ci.value : null, ci ? ci.dataset.caseSize : 0);
+    if (counted === null) { bad.push(_lfLeafLabel(r)); return; }
+    edits.push({ key, r, counted });
+  });
+  if (bad.length) {
+    toast(`⚠️ Nothing saved — fix the count for: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? ` +${bad.length - 3} more` : ''} (numbers only, no negatives).`, 9000);
+    return;
+  }
+  // Pass 2 — write the adjustments.
+  let changed = 0;
+  edits.forEach(({ key, r, counted }) => {
     const cur = before[key] || 0;
     const delta = counted - cur;
     if (!delta) return;
-    const r = _lfLeafByKey(key);
-    if (!r) return;
     DB.push('lf_iv', {
       id: uid(), date: today(), createdAt: new Date().toISOString(),
       skuId: r.skuId, skuName: r.skuName, variantId: r.variantId, variantName: r.variantName,
