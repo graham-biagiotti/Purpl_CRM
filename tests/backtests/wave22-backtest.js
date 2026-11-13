@@ -38,7 +38,8 @@ console.log('[B] order form — fallback, banner, badges');
   ok(ord.includes("What's new:") && ord.includes('16&nbsp;oz glass bottle') && ord.includes('fresh new packaging'),
     'what\'s-new banner announces mask + 16oz + refresh packaging');
   ok(ord.includes('function lfNewBadge'), 'badge helper exists');
-  ok(ord.includes("s.name+lfNewBadge(s.name)") && ord.includes('s.name + lfNewBadge(s.name)'),
+  // (v269 / wave39: cards escape the name first — the badge still follows it in both renderers)
+  ok(ord.includes("name+lfNewBadge(s.name)") && ord.includes('name + lfNewBadge(s.name)'),
     'BOTH row renderers (variant + simple) show the badge');
   // Badge matcher truth table — run the REAL helper.
   const badge = new Function(slc(ord, 'function lfNewBadge', '\n    }') + '\n}\nreturn lfNewBadge;')();

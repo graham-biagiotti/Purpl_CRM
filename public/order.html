@@ -11,23 +11,23 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --purpl:#8B5FBF; --purpl-dark:#6B4F9A;
-  --purpl-mid:#6B3FA0; --purpl-soft:#F0EBF8;
-  --purpl-border:#D4B8F0;
+  --purpl:#4D2A6F; --purpl-dark:#3A1F55;
+  --purpl-mid:#3E2159; --purpl-soft:#EFEAF4;
+  --purpl-border:#CFC4DE;
   --lf-green:#4a7c59; --lf-soft:#f0f7f1; --lf-border:#b8d4c0;
   --cream:#faf9f6; --text:#1a1a2e; --muted:#6b7280; --border:#e5e7eb;
 }
 body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--text);margin:0;padding:0;min-height:100vh}
 
 /* ── HEADER ── */
-.op-header{background:linear-gradient(135deg,#6B4F9A 0%,#9B73C4 100%);padding:40px 24px 48px;text-align:center}
+.op-header{background:linear-gradient(135deg,#4D2A6F 0%,#7A5C9E 100%);padding:40px 24px 48px;text-align:center}
 .op-header-logos{display:flex;gap:32px;align-items:center;justify-content:center;margin-bottom:24px}
 .op-header-divider{width:1px;height:44px;background:rgba(255,255,255,0.5);flex-shrink:0}
 .op-header h1{font-family:'Playfair Display',serif;font-size:28px;color:white;font-weight:400;margin-bottom:8px}
 .op-header-sub{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,0.85);font-weight:300}
 
 /* ── CONTAINER ── */
-.container{max-width:600px;margin:0 auto;padding:32px 16px}
+.container{max-width:1080px;margin:0 auto;padding:32px 16px}
 
 /* ── PREORDER BANNER ── */
 .banner{background:linear-gradient(135deg,var(--purpl-soft),white);border:1px solid var(--purpl-border);border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:14px;color:var(--purpl-dark);display:none}
@@ -158,6 +158,87 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 /* ── SUBMIT AREA ── */
 .submit-area{margin-top:4px}
 
+/* ── v269 LAYOUT: form column + sticky order summary ── */
+.op-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+.op-main{min-width:0}
+.op-side{position:sticky;top:16px}
+.op-summary{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.op-summary h3{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;margin-bottom:12px}
+.os-brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4b5563;margin:12px 0 6px}
+.os-brand img{height:22px;width:auto}
+.os-line{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;padding:3px 0}
+.os-line span:first-child{min-width:0}
+.os-line span:last-child{white-space:nowrap}
+.os-sub{font-size:12px;color:#4b5563;padding:0 0 3px}
+.os-total{display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:10px;padding-top:10px;font-size:17px;font-weight:700}
+.os-note{border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5;margin-top:10px}
+.os-note.free{background:#EAF5EC;color:#14532D;font-weight:600}
+.os-note.charge{background:#FEF3C7;color:#78350F}
+.os-empty{font-size:13px;color:#4b5563}
+.os-btn{width:100%;height:48px;margin-top:12px;border:none;border-radius:8px;background:var(--purpl);color:#fff;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer}
+.os-btn:hover{background:var(--purpl-mid)}
+.op-summary-inline{display:none;margin-bottom:16px}
+#op-mobile-bar{display:none}
+.catalog-link{display:inline-block;padding:10px 18px;border:1px solid var(--purpl);border-radius:8px;color:var(--purpl);text-decoration:none;font-size:14px;font-weight:600;background:#fff}
+.catalog-link:hover{background:var(--purpl-soft)}
+
+/* ── v269 PRODUCT CARDS ── */
+.sec-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.sec-head img{height:44px;width:auto;flex-shrink:0}
+.sec-head h2{margin-bottom:2px}
+.sec-sub{font-size:12.5px;color:#4b5563;line-height:1.5}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-bottom:14px}
+.pcard{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.pcard.active{border-color:var(--purpl);box-shadow:0 0 0 1px var(--purpl)}
+.pcard.soon{opacity:.72}
+.pimg{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--purpl-soft);display:block}
+.pimg.tall{aspect-ratio:4/5}
+.pimg.pimg-fallback{object-fit:contain;padding:28px}
+.pbody{padding:12px;display:flex;flex-direction:column;gap:8px;flex-grow:1}
+.pprice{font-size:12.5px;color:#4b5563;line-height:1.5}
+.pvar-label{font-size:12px;font-weight:600;color:var(--purpl-dark)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:11.5px;background:var(--purpl-soft);color:var(--purpl-dark);border-radius:999px;padding:3px 9px}
+.stepper{display:flex;align-items:center;gap:8px;margin-top:auto}
+.stepper-box{display:flex;align-items:center;border:1px solid var(--purpl-border);border-radius:8px;overflow:hidden;background:#fff}
+.stepper-box button{width:44px;height:44px;border:none;background:#fff;font-size:20px;line-height:1;color:var(--purpl);cursor:pointer}
+.stepper-box button:hover{background:var(--purpl-soft)}
+.stepper-box input[type=number]{width:52px;height:44px;border:none;border-radius:0;padding:0;text-align:center;font-size:16px;font-weight:700;box-shadow:none;-moz-appearance:textfield}
+.stepper-box input[type=number]::-webkit-outer-spin-button,.stepper-box input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.stepper-unit{font-size:12.5px;color:#4b5563}
+.pbtn{height:44px;border:1px solid var(--purpl);border-radius:8px;background:var(--purpl);color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer;padding:0 16px;margin-top:auto}
+.pbtn.ghost{background:#fff;color:var(--purpl)}
+.pbtn:disabled{background:var(--purpl-border);border-color:var(--purpl-border);cursor:not-allowed}
+.lf-vsum{font-size:12.5px;line-height:1.5;border-radius:8px;padding:8px 10px}
+.lf-vsum.done{background:#EAF5EC;color:#14532D}
+.lf-vsum.todo{background:#FEF3C7;color:#78350F}
+.pcard .lf-line-total{min-width:0;text-align:left;font-size:13px}
+
+/* ── v269 VARIETY PICKER (pop-up; slides up from the bottom on phones) ── */
+.vmodal{position:fixed;inset:0;z-index:1000;background:rgba(26,26,46,0.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.vsheet{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden}
+.vhead{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)}
+.vhead img{width:64px;height:64px;border-radius:8px;object-fit:cover;background:var(--purpl-soft);flex-shrink:0}
+.vtitle{font-family:'Playfair Display',serif;font-size:19px}
+.vclose{width:44px;height:44px;border:none;background:none;font-size:20px;color:#4b5563;cursor:pointer;margin-left:auto;flex-shrink:0}
+.vbody{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.vcases{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;font-weight:600}
+.vgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vmodal .lf-vpicker{margin-top:0;padding:0;background:none;border:none}
+.vmodal .lf-vheader{background:var(--purpl-soft);color:var(--purpl-dark);border-radius:8px;padding:10px 12px;font-size:13.5px;margin-bottom:10px}
+.vmodal .lf-variant-row{border:1px solid var(--border);border-radius:8px;padding:0 2px 0 10px;gap:2px}
+.vmodal .lf-variant-row:last-child{border-bottom:1px solid var(--border)}
+.vmodal .lf-variant-row.picked{border-color:var(--purpl);background:var(--purpl-soft)}
+.vmodal .lf-variant-row button{width:44px;height:44px;border:none;background:none;font-size:18px;color:var(--purpl);cursor:pointer;flex-shrink:0}
+.vmodal .lf-variant-row input[type=number]{width:40px;height:44px;border:none;background:none;padding:0;text-align:center;font-weight:700;font-size:15px;box-shadow:none;-moz-appearance:textfield}
+.vmodal .lf-variant-row input[type=number]::-webkit-outer-spin-button,.vmodal .lf-variant-row input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.vmodal .lf-vtally{font-size:14px;border-top:none;padding:10px 12px;margin-top:10px;border-radius:8px;background:#EAF5EC;color:#14532D}
+.vmodal .lf-vtally.mismatch{background:#FEF3C7;color:#78350F}
+.vmodal .lf-verr{font-size:13px;margin-top:8px}
+.vfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:1px solid var(--border)}
+.vfoot .pbtn{margin-top:0}
+.vtotal{font-size:17px;font-weight:700}
+
 /* ── MOBILE ── */
 @media(max-width:768px){
   .op-header{padding:32px 16px 40px}
@@ -165,6 +246,21 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   .op-header-logos{gap:20px}
 }
 @media(max-width:480px){.container{padding:20px 16px}}
+@media(max-width:900px){
+  .op-layout{grid-template-columns:minmax(0,1fr)}
+  .op-side{display:none}
+  .op-summary-inline{display:block}
+  #op-mobile-bar.on{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:900;background:#fff;border-top:1px solid var(--border);padding:10px 16px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 12px rgba(0,0,0,0.08)}
+  #op-mobile-bar .mb-sub{font-size:12px;color:#4b5563}
+  #op-mobile-bar .mb-total{font-size:17px;font-weight:700}
+  #op-mobile-bar button{height:46px;padding:0 20px;border:none;border-radius:8px;background:var(--purpl);color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
+  body.has-mobile-bar{padding-bottom:76px}
+  .vmodal{align-items:flex-end;padding:0}
+  .vsheet{max-width:none;border-radius:16px 16px 0 0;max-height:92vh}
+}
+@media(max-width:420px){.pgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.vgrid{grid-template-columns:minmax(0,1fr)}}
+.thankyou{max-width:640px;margin-left:auto;margin-right:auto}
+#password-gate,#order-history,#preorder-banner{max-width:640px;margin-left:auto;margin-right:auto}
 @media print{button{display:none !important}body{background:white}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
@@ -212,6 +308,12 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
   <!-- Main form (hidden until password or token) -->
   <div id="order-form" style="display:none">
+   <div class="op-layout">
+    <div class="op-main">
+
+    <div style="text-align:center;margin-bottom:16px">
+      <a class="catalog-link" href="/images/wholesale-catalog.pdf" target="_blank" rel="noopener">View the 2026–27 wholesale catalog (PDF)</a>
+    </div>
 
     <!-- Brand selector -->
     <div id="brand-selector" style="margin-bottom:20px">
@@ -297,48 +399,63 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- Section 2: Order -->
     <div class="card" id="purpl-order-section">
-      <h2>💜 purpl Lemonade Order</h2>
-
-      <!-- Classic — active -->
-      <div class="product-card active">
-        <div class="product-name">Classic Lavender Lemonade</div>
-        <div class="product-desc">12 fl oz · 12 cans per case · shelf stable, 18-month shelf life</div>
-        <div class="price-display" id="price-display"></div>
-        <div class="form-group" style="margin-bottom:4px">
-          <label>Cases (12 cans per case)</label>
-          <input type="number" id="classic-cases" min="1" step="1" placeholder="0"
-            oninput="updateCans()">
-        </div>
-        <div class="cans-calc" id="cans-calc"></div>
-        <div id="purpl-prefill-note" style="display:none;font-size:11px;color:var(--purpl);margin-top:4px;font-style:italic">
-          Pre-filled from your last order — adjust as needed.
-        </div>
-        <div class="preorder-note" id="preorder-note">
-          Pricing and delivery details confirmed at launch.
+      <div class="sec-head">
+        <img src="/images/purpl-logo-top-sprig.png" alt="" onerror="this.style.display='none'">
+        <div>
+          <h2>purpl lavender lemonade</h2>
+          <div class="sec-sub">12 fl oz · 12 cans per case · shelf stable, 18-month shelf life</div>
         </div>
       </div>
 
-      <!-- Blueberry — coming soon -->
-      <div class="product-card coming-soon">
-        <div class="product-name">Blueberry Lavender Lemonade
-          <span class="coming-soon-badge">Coming Soon</span></div>
-        <div class="product-desc">12 fl oz · 12 cans per case</div>
-        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
-        <div class="notify-row">
-          <input type="checkbox" id="notify-blueberry" onchange="checkSubmitEnabled()">
-          <label for="notify-blueberry">Notify me when available</label>
+      <div class="pgrid">
+        <!-- Classic — active -->
+        <div class="pcard" id="purpl-classic-card">
+          <img class="pimg tall" src="/images/portal-can-classic.jpg" alt="Classic Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <div class="pbody">
+            <div class="product-name">Classic Lavender Lemonade</div>
+            <div class="price-display" id="price-display"></div>
+            <div class="stepper">
+              <div class="stepper-box">
+                <button type="button" aria-label="One less case of Classic" onclick="stepCases('classic-cases',-1)">&#8722;</button>
+                <input type="number" id="classic-cases" min="0" step="1" placeholder="0" aria-label="Cases of Classic Lavender Lemonade" oninput="updateCans()">
+                <button type="button" aria-label="One more case of Classic" onclick="stepCases('classic-cases',1)">+</button>
+              </div>
+              <span class="stepper-unit">cases</span>
+            </div>
+            <div class="cans-calc" id="cans-calc"></div>
+            <div id="purpl-prefill-note" style="display:none;font-size:11px;color:var(--purpl);font-style:italic">
+              Pre-filled from your last order — adjust as needed.
+            </div>
+            <div class="preorder-note" id="preorder-note">
+              Pricing and delivery details confirmed at launch.
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- Peach — coming soon -->
-      <div class="product-card coming-soon">
-        <div class="product-name">Peach Lavender Lemonade
-          <span class="coming-soon-badge">Coming Soon</span></div>
-        <div class="product-desc">12 fl oz · 12 cans per case</div>
-        <input type="number" disabled placeholder="Coming soon" style="background:#f3f4f6">
-        <div class="notify-row">
-          <input type="checkbox" id="notify-peach" onchange="checkSubmitEnabled()">
-          <label for="notify-peach">Notify me when available</label>
+        <!-- Blueberry — coming soon -->
+        <div class="pcard soon">
+          <img class="pimg tall" src="/images/portal-can-blueberry.jpg" alt="Blueberry Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <div class="pbody">
+            <div class="product-name">Blueberry Lavender Lemonade</div>
+            <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
+            <div class="notify-row" style="margin-top:auto">
+              <input type="checkbox" id="notify-blueberry" onchange="checkSubmitEnabled()">
+              <label for="notify-blueberry">Notify me when available</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Peach — coming soon -->
+        <div class="pcard soon">
+          <img class="pimg tall" src="/images/portal-can-peach.jpg" alt="Peach Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <div class="pbody">
+            <div class="product-name">Peach Lavender Lemonade</div>
+            <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
+            <div class="notify-row" style="margin-top:auto">
+              <input type="checkbox" id="notify-peach" onchange="checkSubmitEnabled()">
+              <label for="notify-peach">Notify me when available</label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -364,14 +481,19 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
     <!-- LF Order Section -->
     <div class="card" id="lf-order-section" style="display:none">
-      <h2>🪻 Lavender Fields</h2>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6">Handcrafted farm goods &nbsp;·&nbsp; Minimum order per item noted below &nbsp;·&nbsp; Net 30</p>
+      <div class="sec-head">
+        <img src="/images/lf-logo-circle-transparent.png" alt="" style="height:48px" onerror="this.style.display='none'">
+        <div>
+          <h2>Lavender Fields</h2>
+          <div class="sec-sub">Handcrafted farm goods · sold by the case · mix varieties within a case · Net 30</div>
+        </div>
+      </div>
       <!-- v249: packaging/product announcements -->
       <div style="background:#f6fdf8;border:1px solid #bbe3c8;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#14532d;line-height:1.7">
         <strong>What's new:</strong> 🆕 Aromatherapy Eye Pillow &nbsp;·&nbsp; Simple Syrup now in a <strong>16&nbsp;oz glass bottle</strong> &nbsp;·&nbsp; Refresh Powder has <strong>fresh new packaging</strong>
       </div>
-      <div id="lf-sku-list">
-        <div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">Loading products…</div>
+      <div id="lf-sku-list" class="pgrid">
+        <div style="grid-column:1/-1;text-align:center;padding:20px;color:#6b7280;font-size:13px">Loading products…</div>
       </div>
       <div class="lf-subtotal-row">
         <span>Subtotal</span>
@@ -429,8 +551,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
     </div>
 
+    <!-- v269: order summary, in the flow on phones (the side panel covers computers) -->
+    <div class="op-summary op-summary-inline" id="order-summary-inline"></div>
+
     <!-- Terms & Agreement -->
-    <div class="terms-block">
+    <div class="terms-block" id="terms-block">
       <strong>Wholesale Terms</strong>
       <div style="font-size:12px;color:#374151;line-height:1.8;margin-top:6px">
         <strong>Payment:</strong> Net 30 days from invoice date. A 2% monthly finance charge may apply to late payments.<br>
@@ -469,6 +594,11 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       </div>
     </div>
 
+    </div><!-- /.op-main -->
+    <aside class="op-side" aria-label="Your order">
+      <div class="op-summary" id="order-summary"></div>
+    </aside>
+   </div><!-- /.op-layout -->
   </div><!-- /#order-form -->
 
   <!-- Thank You state -->
@@ -500,6 +630,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
   </div>
 
 </div><!-- /.container -->
+
+<!-- v269: phone order bar + variety pop-ups (filled by script) -->
+<div id="op-mobile-bar"></div>
+<div id="lf-vmodal-host"></div>
 
 <!-- Footer -->
 <div class="op-footer">
@@ -604,88 +738,339 @@ function updateBrandVisibility() {
   if (badge) badge.style.display = both ? '' : 'none';
 }
 
+// v269: each product's photo. An explicit `image` on the SKU wins (only
+// same-site /images/ paths are honoured); otherwise match on the live name
+// so the owner's renames in Settings keep their photo. No match → the
+// Lavender Fields logo as a placeholder.
+function lfSkuImage(s) {
+  var img = String((s && s.image) || '');
+  if (/^\/images\/[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp)$/i.test(img)) return img;
+  var n = String((s && s.name) || '').toLowerCase();
+  if (/syrup/.test(n) && /gal/.test(n)) return '/images/portal-lf-syrup-gallon.jpg';
+  if (/syrup/.test(n)) return '/images/portal-lf-syrup.jpg';
+  if (/scrunchie/.test(n)) return '/images/portal-lf-scrunchies.jpg';
+  if (/dryer/.test(n)) return '/images/portal-lf-dryer-sachet.jpg';
+  if (/sachet/.test(n)) return '/images/portal-lf-sachets.jpg';
+  if (/candle/.test(n)) return '/images/portal-lf-candles.jpg';
+  if (/refresh/.test(n)) return '/images/portal-lf-refresh-powder.jpg';
+  if (/roll/.test(n)) return '/images/portal-lf-rollon.jpg';
+  if (/eye pillow|sleep/.test(n)) return '/images/portal-lf-sleepmask.jpg';
+  return '/images/lf-logo-circle-transparent.png';
+}
+var LF_IMG_FALLBACK = "this.onerror=null;this.src='/images/lf-logo-circle-transparent.png';this.classList.add('pimg-fallback')";
+
+// Card face shows the first few varieties and "+N more" so every card in a
+// row stays about the same height; the pop-up lists them all.
+var LF_CHIPS_SHOWN = 5;
+function lfChipsHtml(variants) {
+  var shown = variants.slice(0, LF_CHIPS_SHOWN).map(function(v){ return '<span class="chip">'+escHtml(v.name||'')+'</span>'; }).join('');
+  var more = variants.length - LF_CHIPS_SHOWN;
+  return shown + (more > 0 ? '<span class="chip" style="background:#fff;border:1px solid var(--purpl-border)">+'+more+' more</span>' : '');
+}
+
+function lfPriceLine(s) {
+  var each = parseFloat(s.wholesalePrice) || 0;
+  var cs = parseInt(s.caseSize) || 1;
+  var line = '$' + each.toFixed(2) + ' each · ' + (cs > 1 ? 'case of ' + cs : 'sold singly') + ' · $' + (each * cs).toFixed(2) + (cs > 1 ? '/case' : '');
+  if (s.msrp) line += ' · sells for $' + parseFloat(s.msrp).toFixed(2);
+  return line;
+}
+
+// v269: products render as photo cards. The inputs every other function
+// reads keep their ids (lf-qty-<sku>, lf-vqty-<sku>-<variant>), so the order
+// that gets submitted is built exactly as before — only where the inputs
+// SIT changed: a product with varieties keeps its inputs in a pop-up.
 function renderLfSkus(skus, prevOrder) {
   _lfSkus = skus;
   _lfSkusLoaded = true;
   var container = document.getElementById('lf-sku-list');
+  var host = document.getElementById('lf-vmodal-host');
   if (!container) return;
+  if (host) host.innerHTML = '';
+  document.body.style.overflow = '';
   if (!skus.length) {
-    container.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:8px">No products available at this time.</div>';
+    container.innerHTML = '<div style="grid-column:1/-1;color:#6b7280;font-size:13px;padding:8px">No products available at this time.</div>';
     return;
   }
+  var modals = '';
   container.innerHTML = skus.map(function(s) {
-    var msrpText = s.msrp ? ' · MSRP $' + parseFloat(s.msrp).toFixed(2) : '';
+    var name = escHtml(s.name || '');
+    var img = lfSkuImage(s);
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
 
     if (activeVariants.length > 0) {
       var prevVariants = prevOrder ? (prevOrder['variants_'+s.id] || {}) : {};
       var totalPrevUnits = activeVariants.reduce(function(sum,v){return sum+(prevVariants[v.id]||0)*s.caseSize;},0);
       var totalPrevCases = totalPrevUnits / s.caseSize;
-      var initRequiredUnits = totalPrevCases * s.caseSize;
 
       var variantHtml = activeVariants.map(function(v) {
         var prevUnits = (prevVariants[v.id] || 0) * s.caseSize;
+        var vn = escHtml(v.name || '');
         return '<div class="lf-variant-row" id="lf-vrow-'+s.id+'-'+v.id+'">' +
-          '<span style="flex:1;min-width:0;font-size:13px">'+v.name+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#6B4F9A">(Refillable)</span>' : '')+'</span>' +
-          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">&#8722;</button>' +
-          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" style="width:52px;text-align:center" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
-          '<button type="button" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)" style="width:28px;height:28px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;line-height:1">+</button>' +
+          '<span style="flex:1;min-width:0;font-size:13.5px">'+vn+(_isRefillable(v.name) ? ' <span style="font-size:11px;color:#3A1F55">(Refillable)</span>' : '')+'</span>' +
+          '<button type="button" aria-label="One less '+vn+'" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',-1)">&#8722;</button>' +
+          '<input type="number" id="lf-vqty-'+s.id+'-'+v.id+'" min="0" step="1" value="'+(prevUnits||0)+'" placeholder="0" aria-label="'+vn+' quantity" oninput="updateLfVariantCalc(\''+s.id+'\')">' +
+          '<button type="button" aria-label="One more '+vn+'" onclick="stepLfUnit(\''+s.id+'\',\''+v.id+'\',1)">+</button>' +
         '</div>';
       }).join('');
 
-      var initTallyText = totalPrevCases > 0
-        ? totalPrevUnits+' of '+initRequiredUnits+' units assigned'
-        : '0 of 0 units assigned';
-      var initTallyCls = (totalPrevCases > 0 && totalPrevUnits === initRequiredUnits)
-        ? 'lf-vtally' : 'lf-vtally mismatch';
-      var initLineTotal = totalPrevCases > 0
-        ? '$'+(totalPrevCases*s.caseSize*parseFloat(s.wholesalePrice)).toFixed(2) : '';
-      var pickerDisplay = totalPrevCases > 0 ? 'block' : 'none';
-      var prevNoteHtml = totalPrevCases > 0
-        ? '<div class="lf-prev-note">Last order: '+totalPrevCases+' case'+(totalPrevCases!==1?'s':'')+'</div>' : '';
+      modals += '<div class="vmodal" id="lf-vmodal-'+s.id+'" style="display:none" onclick="if(event.target===this)closeLfPicker(\''+s.id+'\')">' +
+        '<div class="vsheet" role="dialog" aria-modal="true" aria-label="Choose varieties: '+name+'">' +
+          '<div class="vhead">' +
+            '<img src="'+img+'" alt="" onerror="'+LF_IMG_FALLBACK+'">' +
+            '<div style="min-width:0"><div class="vtitle">'+name+'</div><div class="pprice">'+lfPriceLine(s)+'</div></div>' +
+            '<button type="button" class="vclose" aria-label="Close" onclick="closeLfPicker(\''+s.id+'\')">&#10005;</button>' +
+          '</div>' +
+          '<div class="vbody">' +
+            '<div class="vcases"><span>How many cases?</span>' +
+              '<div class="stepper-box">' +
+                '<button type="button" aria-label="One less case" onclick="stepLfCases(\''+s.id+'\',-1)">&#8722;</button>' +
+                '<input type="number" id="lf-qty-'+s.id+'" min="0" step="1" value="'+(totalPrevCases||0)+'" placeholder="0" aria-label="Cases of '+name+'" oninput="updateLfVariantCases(\''+s.id+'\')">' +
+                '<button type="button" aria-label="One more case" onclick="stepLfCases(\''+s.id+'\',1)">+</button>' +
+              '</div>' +
+            '</div>' +
+            '<div id="lf-vpicker-'+s.id+'" class="lf-vpicker" style="display:none">' +
+              '<div class="lf-vheader" id="lf-vheader-'+s.id+'"></div>' +
+              '<div class="vgrid">'+variantHtml+'</div>' +
+              '<div class="lf-vtally mismatch" id="lf-vtally-'+s.id+'">0 of 0 chosen</div>' +
+              '<div class="lf-verr" id="lf-verr-'+s.id+'"></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="vfoot">' +
+            '<div class="vtotal" id="lf-vtotal-'+s.id+'"></div>' +
+            '<div style="display:flex;gap:8px">' +
+              '<button type="button" class="pbtn ghost" onclick="removeLfSku(\''+s.id+'\')">Remove</button>' +
+              '<button type="button" class="pbtn" id="lf-vdone-'+s.id+'" onclick="closeLfPicker(\''+s.id+'\')">Add to order</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
 
-      return '<div class="lf-sku-row lf-sku-has-variants" id="lf-row-'+s.id+'">' +
-        '<div class="lf-sku-info">' +
-          '<div class="lf-sku-name">'+s.name+lfNewBadge(s.name)+'</div>' +
-          '<div class="lf-sku-meta">Case of '+s.caseSize+' · '+activeVariants.length+' variants'+msrpText+'</div>' +
-          '<div class="lf-sku-price">$'+parseFloat(s.wholesalePrice).toFixed(2)+'/unit · $'+(parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2)+'/case</div>' +
-          prevNoteHtml +
-        '</div>' +
-        '<div class="lf-sku-qty">' +
-          '<input type="number" id="lf-qty-'+s.id+'" min="0" step="1" value="'+(totalPrevCases||0)+'" placeholder="0" oninput="updateLfVariantCases(\''+s.id+'\')">' +
-          '<span>cases</span>' +
-        '</div>' +
-        '<div class="lf-line-total" id="lf-total-'+s.id+'">'+initLineTotal+'</div>' +
-        '<div id="lf-vpicker-'+s.id+'" class="lf-vpicker" style="display:'+pickerDisplay+'">' +
-          '<div class="lf-vheader" id="lf-vheader-'+s.id+'">Assign '+initRequiredUnits+' units across variants:</div>' +
-          variantHtml +
-          '<div class="'+initTallyCls+'" id="lf-vtally-'+s.id+'">'+initTallyText+'</div>' +
-          '<div class="lf-verr" id="lf-verr-'+s.id+'">Please assign all '+initRequiredUnits+' units before submitting.</div>' +
+      return '<div class="pcard" id="lf-row-'+s.id+'">' +
+        '<img class="pimg" src="'+img+'" alt="'+name+'" loading="lazy" onerror="'+LF_IMG_FALLBACK+'">' +
+        '<div class="pbody">' +
+          '<div class="product-name">'+name+lfNewBadge(s.name)+'</div>' +
+          '<div class="pprice">'+lfPriceLine(s)+'</div>' +
+          '<div class="pvar-label">'+activeVariants.length+' varieties</div>' +
+          '<div class="chips">'+lfChipsHtml(activeVariants)+'</div>' +
+          '<div class="lf-vsum" id="lf-vsum-'+s.id+'" style="display:none"></div>' +
+          '<div class="lf-line-total" id="lf-total-'+s.id+'"></div>' +
+          '<button type="button" class="pbtn" id="lf-vbtn-'+s.id+'" onclick="openLfPicker(\''+s.id+'\')">Choose varieties</button>' +
         '</div>' +
       '</div>';
     }
 
     // Non-variant SKU
     var prev = prevOrder ? (prevOrder[s.id] || 0) : 0;
-    var prevNote = prev > 0 ? '<div class="lf-prev-note">Last order: ' + prev + ' case' + (prev!==1?'s':'') + '</div>' : '';
-    return '<div class="lf-sku-row" id="lf-row-' + s.id + '">' +
-      '<div class="lf-sku-info">' +
-        '<div class="lf-sku-name">' + s.name + lfNewBadge(s.name) + '</div>' +
-        '<div class="lf-sku-meta">Case of ' + s.caseSize + msrpText + '</div>' +
-        '<div class="lf-sku-price">$' + parseFloat(s.wholesalePrice).toFixed(2) + '/unit · $' + (parseFloat(s.wholesalePrice)*s.caseSize).toFixed(2) + '/case</div>' +
-        prevNote +
-      '</div>' +
-      '<div class="lf-sku-qty">' +
-        '<input type="number" id="lf-qty-' + s.id + '" min="0" step="1" value="' + (prev||0) + '" ' +
-          'placeholder="0" oninput="updateLfCalc(\'' + s.id + '\')">' +
-        '<span>cases</span>' +
-      '</div>' +
-      '<div class="lf-line-total" id="lf-total-' + s.id + '">' +
-        (prev > 0 ? '$' + (prev * s.caseSize * parseFloat(s.wholesalePrice)).toFixed(2) : '') +
+    return '<div class="pcard" id="lf-row-' + s.id + '">' +
+      '<img class="pimg" src="'+img+'" alt="'+name+'" loading="lazy" onerror="'+LF_IMG_FALLBACK+'">' +
+      '<div class="pbody">' +
+        '<div class="product-name">' + name + lfNewBadge(s.name) + '</div>' +
+        '<div class="pprice">'+lfPriceLine(s)+'</div>' +
+        '<div class="lf-line-total" id="lf-total-' + s.id + '">' +
+          (prev > 0 ? '$' + (prev * s.caseSize * parseFloat(s.wholesalePrice)).toFixed(2) : '') +
+        '</div>' +
+        '<div class="stepper">' +
+          '<div class="stepper-box">' +
+            '<button type="button" aria-label="One less case of '+name+'" onclick="stepLfQty(\''+s.id+'\',-1)">&#8722;</button>' +
+            '<input type="number" id="lf-qty-' + s.id + '" min="0" step="1" value="' + (prev||0) + '" placeholder="0" aria-label="Cases of '+name+'" oninput="updateLfCalc(\'' + s.id + '\')">' +
+            '<button type="button" aria-label="One more case of '+name+'" onclick="stepLfQty(\''+s.id+'\',1)">+</button>' +
+          '</div>' +
+          '<span class="stepper-unit">cases</span>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');
+  if (host) host.innerHTML = modals;
+  // Bring every card/pop-up in line with its (possibly prefilled) inputs.
+  skus.forEach(function(s) {
+    var hasVar = (s.variants||[]).some(function(v){return !v.archived;});
+    if (hasVar) updateLfVariantCases(s.id); else updateLfCardState(s.id);
+  });
   updateLfSubtotal();
+}
+
+// ── v269 steppers + variety pop-up ──
+function stepCases(inputId, delta) {
+  var el = document.getElementById(inputId);
+  if (!el) return;
+  el.value = Math.max(0, (parseInt(el.value) || 0) + delta);
+  if (inputId === 'classic-cases') updateCans();
+}
+function stepLfQty(skuId, delta) {
+  var el = document.getElementById('lf-qty-'+skuId);
+  if (!el) return;
+  el.value = Math.max(0, (parseInt(el.value) || 0) + delta);
+  updateLfCalc(skuId);
+}
+function stepLfCases(skuId, delta) {
+  var el = document.getElementById('lf-qty-'+skuId);
+  if (!el) return;
+  el.value = Math.max(0, (parseInt(el.value) || 0) + delta);
+  updateLfVariantCases(skuId);
+}
+// {cases, required, assigned, matched, lines} for a product with varieties.
+function lfVariantState(skuId) {
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!sku) return null;
+  var act = (sku.variants||[]).filter(function(v){return !v.archived;});
+  var cases = parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0;
+  var required = cases * sku.caseSize;
+  var lines = [];
+  var assigned = act.reduce(function(sum,v){
+    var u = parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0;
+    if (u > 0) lines.push({ name: v.name, units: u, id: v.id });
+    return sum + u;
+  },0);
+  return { sku: sku, variants: act, cases: cases, required: required, assigned: assigned, matched: cases > 0 && assigned === required, lines: lines };
+}
+var _lfPickerOpen = null;
+function openLfPicker(skuId) {
+  var m = document.getElementById('lf-vmodal-'+skuId);
+  if (!m) return;
+  var q = document.getElementById('lf-qty-'+skuId);
+  if (q && (parseInt(q.value)||0) <= 0) { q.value = 1; updateLfVariantCases(skuId); }
+  m.style.display = 'flex';
+  _lfPickerOpen = skuId;
+  document.body.style.overflow = 'hidden';
+  var c = m.querySelector('.vclose'); if (c) c.focus();
+}
+function _hideLfPicker(skuId) {
+  var m = document.getElementById('lf-vmodal-'+skuId);
+  if (m) m.style.display = 'none';
+  if (_lfPickerOpen === skuId) _lfPickerOpen = null;
+  document.body.style.overflow = '';
+  var b = document.getElementById('lf-vbtn-'+skuId); if (b) b.focus();
+}
+// Full cases only (owner): the pop-up will not close on a half-chosen case.
+// Finish the case, or Remove the product.
+function closeLfPicker(skuId) {
+  var st = lfVariantState(skuId);
+  if (st && st.cases > 0 && !st.matched) {
+    var errEl = document.getElementById('lf-verr-'+skuId);
+    if (errEl) {
+      var left = st.required - st.assigned;
+      errEl.textContent = left > 0
+        ? 'Choose ' + left + ' more to fill the case' + (st.cases > 1 ? 's' : '') + ', or tap Remove.'
+        : 'That is ' + (-left) + ' too many — take some off, add a case, or tap Remove.';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+  _hideLfPicker(skuId);
+}
+function removeLfSku(skuId) {
+  var q = document.getElementById('lf-qty-'+skuId);
+  if (q) q.value = 0;
+  updateLfVariantCases(skuId); // zeroes every variety
+  _hideLfPicker(skuId);
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && _lfPickerOpen) closeLfPicker(_lfPickerOpen);
+});
+// Card face: what is chosen, whether it is finished, and the highlight.
+function updateLfCardState(skuId) {
+  var card = document.getElementById('lf-row-'+skuId);
+  var sku = _lfSkus.find(function(s){return s.id===skuId;});
+  if (!card || !sku) return;
+  var hasVar = (sku.variants||[]).some(function(v){return !v.archived;});
+  if (!hasVar) {
+    card.classList.toggle('active', (parseInt(document.getElementById('lf-qty-'+skuId)?.value)||0) > 0);
+    return;
+  }
+  var st = lfVariantState(skuId);
+  var sum = document.getElementById('lf-vsum-'+skuId);
+  var btn = document.getElementById('lf-vbtn-'+skuId);
+  var done = document.getElementById('lf-vdone-'+skuId);
+  var vt = document.getElementById('lf-vtotal-'+skuId);
+  card.classList.toggle('active', st.cases > 0);
+  if (sum) {
+    if (st.cases <= 0) { sum.style.display = 'none'; sum.textContent = ''; }
+    else if (st.matched) {
+      sum.className = 'lf-vsum done'; sum.style.display = '';
+      sum.textContent = st.cases + ' case' + (st.cases !== 1 ? 's' : '') + ': ' + st.lines.map(function(l){ return l.units + ' ' + l.name; }).join(', ');
+    } else {
+      sum.className = 'lf-vsum todo'; sum.style.display = '';
+      sum.textContent = 'Not finished — ' + st.assigned + ' of ' + st.required + ' chosen. Tap below to complete.';
+    }
+  }
+  if (btn) { btn.textContent = st.cases > 0 ? 'Change varieties' : 'Choose varieties'; btn.classList.toggle('ghost', st.cases > 0 && st.matched); }
+  if (done) done.textContent = st.matched ? 'Add to order' : 'Add to order';
+  if (vt) vt.textContent = st.cases > 0 ? '$' + (st.cases * sku.caseSize * parseFloat(sku.wholesalePrice)).toFixed(2) : '';
+  st.variants.forEach(function(v) {
+    var row = document.getElementById('lf-vrow-'+skuId+'-'+v.id);
+    var u = parseInt(document.getElementById('lf-vqty-'+skuId+'-'+v.id)?.value)||0;
+    if (row) row.classList.toggle('picked', u > 0);
+  });
+}
+
+// ── v269 order summary (side panel on computers, bar + inline card on phones) ──
+var FREE_DELIVERY_CASES = 8, FREE_DELIVERY_DOLLARS = 250;
+function orderSummaryData() {
+  var cases = _brandPurpl ? (parseInt(document.getElementById('classic-cases')?.value) || 0) : 0;
+  var price = pricePerCase ? parseFloat(pricePerCase) : null;
+  var purplTotal = (cases > 0 && price) ? cases * price : null;
+  var lfItems = _brandLf ? getLfItems() : [];
+  var lfTotal = _brandLf ? getLfTotal() : 0;
+  var known = (purplTotal || 0) + lfTotal;
+  var priceUnknown = cases > 0 && !price;
+  return { cases: cases, price: price, purplTotal: purplTotal, lfItems: lfItems, lfTotal: lfTotal, known: known,
+           priceUnknown: priceUnknown, empty: cases <= 0 && !lfItems.length,
+           free: cases >= FREE_DELIVERY_CASES || known >= FREE_DELIVERY_DOLLARS };
+}
+function renderOrderSummary() {
+  var d;
+  try { d = orderSummaryData(); } catch (e) { return; } // never let the summary break ordering
+  var h = '<h3>Your order</h3>';
+  if (d.empty) {
+    h += '<div class="os-empty">Nothing added yet. Use the + buttons on a product to start.</div>';
+  } else {
+    if (d.cases > 0) {
+      h += '<div class="os-brand"><img src="/images/purpl-logo-top-sprig.png" alt="">purpl</div>';
+      h += '<div class="os-line"><span>Classic · ' + d.cases + ' case' + (d.cases !== 1 ? 's' : '') + '</span><span>' + (d.purplTotal != null ? '$' + d.purplTotal.toFixed(2) : 'price at launch') + '</span></div>';
+    }
+    if (d.lfItems.length) {
+      h += '<div class="os-brand"><img src="/images/lf-logo-circle-transparent.png" alt="">Lavender Fields</div>';
+      d.lfItems.forEach(function(it) {
+        var c = it.cases;
+        var cTxt = (Math.round(c * 100) / 100) + ' case' + (c !== 1 ? 's' : '');
+        h += '<div class="os-line"><span>' + escHtml(it.skuName) + ' · ' + cTxt + '</span><span>$' + it.lineTotal.toFixed(2) + '</span></div>';
+        if (it.hasVariants && it.variantLines) {
+          h += '<div class="os-sub">' + it.variantLines.map(function(vl){ return vl.units + ' ' + escHtml(vl.variantName); }).join(', ') + '</div>';
+        }
+      });
+    }
+    h += '<div class="os-total"><span>Total</span><span>$' + d.known.toFixed(2) + (d.priceUnknown ? ' + purpl' : '') + '</span></div>';
+    h += d.free
+      ? '<div class="os-note free">Free delivery in NH, MA, Southern ME and Southern VT.</div>'
+      : '<div class="os-note charge">Under ' + FREE_DELIVERY_CASES + ' cases of purpl or $' + FREE_DELIVERY_DOLLARS + ': a delivery or shipping charge applies. We will confirm the amount with you before invoicing.</div>';
+    h += '<div class="os-sub" style="margin-top:10px">You will get an invoice by email. Nothing is charged today.</div>';
+  }
+  var goBtn = '<button type="button" class="os-btn" onclick="goToCheckout()">Review and place order</button>';
+  var side = document.getElementById('order-summary');
+  var inline = document.getElementById('order-summary-inline');
+  if (side) side.innerHTML = h + (d.empty ? '' : goBtn);
+  if (inline) inline.innerHTML = h;
+  var cc = document.getElementById('purpl-classic-card');
+  if (cc) cc.classList.toggle('active', d.cases > 0);
+  // Phone bar: only while the order form is on screen and something is in it.
+  var bar = document.getElementById('op-mobile-bar');
+  var formShown = document.getElementById('order-form') && document.getElementById('order-form').style.display !== 'none';
+  var on = !!bar && formShown && !d.empty;
+  if (bar) {
+    bar.classList.toggle('on', on);
+    if (on) {
+      var n = (d.cases > 0 ? 1 : 0) + d.lfItems.length;
+      bar.innerHTML = '<div><div class="mb-sub">' + n + ' item' + (n !== 1 ? 's' : '') + ' · ' + (d.free ? 'free delivery' : 'delivery charge applies') + '</div>' +
+        '<div class="mb-total">$' + d.known.toFixed(2) + (d.priceUnknown ? ' + purpl' : '') + '</div></div>' + '<button type="button" onclick="goToCheckout()">Review order</button>';
+    } else bar.innerHTML = '';
+  }
+  document.body.classList.toggle('has-mobile-bar', on);
+}
+function goToCheckout() {
+  var t = document.getElementById('order-summary-inline');
+  var target = (t && t.offsetParent !== null) ? t : document.getElementById('terms-block');
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 
@@ -706,6 +1091,7 @@ function renderLfSkus(skus, prevOrder) {
   var total = cases * sku.caseSize * parseFloat(sku.wholesalePrice);
   var el = document.getElementById('lf-total-'+skuId);
   if (el) el.textContent = cases > 0 ? '$'+total.toFixed(2) : '';
+  updateLfCardState(skuId);
   updateLfSubtotal();
   checkSubmitEnabled();
 }
@@ -733,6 +1119,7 @@ function updateLfVariantCases(skuId) {
       if (el) el.value = 0;
     });
     if (ltEl) ltEl.textContent = '';
+    updateLfCardState(skuId);
     updateLfSubtotal();
     checkSubmitEnabled();
     return;
@@ -740,7 +1127,7 @@ function updateLfVariantCases(skuId) {
 
   var requiredUnits = cases * sku.caseSize;
   if (picker) picker.style.display = 'block';
-  if (header) header.textContent = 'Assign '+requiredUnits+' units across variants:';
+  if (header) header.textContent = cases+' case'+(cases!==1?'s':'')+' = '+requiredUnits+'. Pick any mix of varieties.';
   if (ltEl) ltEl.textContent = '$'+(cases*sku.caseSize*parseFloat(sku.wholesalePrice)).toFixed(2);
   updateLfVariantCalc(skuId);
 }
@@ -781,14 +1168,14 @@ function updateLfVariantCalc(skuId) {
   var matched = requiredUnits > 0 && assignedUnits === requiredUnits;
 
   if (tallyEl) {
-    tallyEl.textContent = assignedUnits+' of '+requiredUnits+' units assigned';
+    tallyEl.textContent = assignedUnits+' of '+requiredUnits+' chosen';
     tallyEl.className = matched ? 'lf-vtally' : 'lf-vtally mismatch';
   }
-  if (errEl) {
-    errEl.style.display = (requiredUnits > 0 && !matched) ? 'block' : 'none';
-    errEl.textContent = 'Please assign all '+requiredUnits+' units before submitting.';
-  }
+  // v269: the "finish the case" message only appears when the customer tries
+  // to close the pop-up early (closeLfPicker); it clears as soon as they edit.
+  if (errEl) errEl.style.display = 'none';
 
+  updateLfCardState(skuId);
   updateLfSubtotal();
   checkSubmitEnabled();
 }
@@ -898,6 +1285,7 @@ function init() {
       document.getElementById('price-display').textContent = '$' + parseFloat(pricePerCase).toFixed(2) + ' per case';
       document.getElementById('price-display').style.display = 'block';
     }
+    renderOrderSummary(); // v269: the price can arrive after quantities were typed
   }).catch(function() {});
 
   if (token) {
@@ -1055,6 +1443,7 @@ document.getElementById('request-sample')?.addEventListener('change', function()
 });
 
 function checkSubmitEnabled() {
+  renderOrderSummary(); // v269: every quantity/brand/terms change funnels through here
   var agreeEl = document.getElementById('agree-terms');
   if (agreeEl && !agreeEl.checked) {
     document.getElementById('submit-btn').disabled = true;
@@ -1100,6 +1489,7 @@ function showError(msg) {
 
 function showThankYou(data) {
   document.getElementById('order-form').style.display = 'none';
+  renderOrderSummary(); // v269: hides the phone order bar once the order is in
   var ty = document.getElementById('thankyou');
   ty.style.display = 'block';
   document.getElementById('ty-heading').textContent = 'Thank you, ' + data.accountName + '!';
