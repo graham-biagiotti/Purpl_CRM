@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v266';
+const APP_VERSION = 'v267';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1415,12 +1415,13 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
         <p style="line-height:1.7">Following up on your first order with us. How ${_foVerb} ${escHtml(_foBp)} doing at <strong>${businessName}</strong> so far?</p>
         <p style="line-height:1.7">If there's anything that would help it sell, I'm happy to do it. That could be shelf signage, a free tasting day, or adjusting what you carry next time.</p>
-        <p style="line-height:1.7;margin-bottom:14px">When you're ready for more, or want to book a tasting:</p>
-        <table cellpadding="0" cellspacing="0" style="margin:0 0 26px">
-          <tr>
-            <td style="padding:0 10px 8px 0"><a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 24px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Reorder</a></td>
-            <td style="padding:0 0 8px 0"><a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:inline-block;background:#ffffff;color:${accentColor};border:1px solid ${accentColor};padding:11px 22px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Book a free tasting</a></td>
-          </tr>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 14px">
+          <tr><td style="font-size:14px;font-weight:600;color:#1a1a2e;padding:0 0 8px">Ready for more?</td></tr>
+          <tr><td><a href="${portalLink}" style="display:block;background:${accentColor};color:#ffffff;padding:14px 20px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:600;text-align:center">Place a reorder &rarr;</a></td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 28px">
+          <tr><td style="font-size:14px;font-weight:600;color:#1a1a2e;padding:0 0 8px">Want a free tasting day at your store?</td></tr>
+          <tr><td><a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:block;background:${accentColor};color:#ffffff;padding:14px 20px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:600;text-align:center">Pick a tasting day &rarr;</a></td></tr>
         </table>
         <p style="line-height:1.7">Thank you for carrying us at ${businessName}. If you need anything at all, just reply to this email.</p>
 `, account.id)

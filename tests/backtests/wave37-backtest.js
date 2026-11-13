@@ -109,7 +109,9 @@ console.log('[C] the email + send path');
   const tpl = slc(src, "'first-order-checkin': {", "'delivery-followup': {");
   // (v266: wording rewritten with the owner — subject + first/last paragraphs)
   ok(tpl.includes('subject: `Checking in from Pumpkin Blossom Farm`') && tpl.includes('Following up on your first order with us.')
-     && tpl.includes('>Reorder</a>') && tpl.includes('>Book a free tasting</a>')
+     && tpl.includes('Ready for more?') && tpl.includes('>Place a reorder &rarr;</a>')
+     && tpl.includes('Want a free tasting day at your store?') && tpl.includes('>Pick a tasting day &rarr;</a>')
+     && (tpl.match(/display:block;background:\$\{accentColor\}/g) || []).length === 2 // v267: two full-width buttons, each under its own question
      && tpl.includes('Thank you for carrying us at ${businessName}.'),
     'owner-approved wording: check-in + reorder link + tasting link');
   ok(!/no rush/i.test(tpl), 'no "no rush" line (owner)');
