@@ -4838,6 +4838,7 @@ function emailsPreviewFullscreen() {
   ov.addEventListener('click', e => { if (e.target === ov) close(); });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(ov);
+  btn.focus(); // so Enter/Space act on Close, not on the button behind the overlay
 }
 
 function selectEmailTemplate(templateId) {
@@ -5669,14 +5670,32 @@ function _updateMeCount() {
   // v268: a send goes to EVERY selected store, including ones the search or
   // filters are currently hiding — say so, so a narrowed list can't mislead.
   let hidden = 0;
-  try {
-    const shown = new Set(_meMainFilteredList(_meBuildInvoiceIndex()).map(a => a.id));
-    _meSelectedIds.forEach(id => { if (!shown.has(id)) hidden++; });
-  } catch (e) { hidden = 0; }
+  try { hidden = _meHiddenCount(_meSelectedIds, _meMainFilteredList(_meBuildInvoiceIndex()).map(a => a.id)); }
+  catch (e) { hidden = 0; }
   const countEl = qs('#me-selected-count');
-  if (countEl) countEl.textContent = hidden ? `${n} selected — ${hidden} of them not shown by the current search/filters` : `${n} selected`;
+  if (countEl) {
+    countEl.textContent = hidden ? `${n} selected — ${hidden} of them NOT shown by the current search/filters (they will still be sent to)` : `${n} selected`;
+    countEl.style.color = hidden ? 'var(--red)' : '';
+    countEl.style.fontWeight = hidden ? '600' : '';
+  }
+  // Gate F3: Deselect All only clears the stores on screen. When some of the
+  // selection is hidden, offer one click that clears everything.
+  const clr = qs('#me-clear-all');
+  if (clr) { clr.style.display = n ? '' : 'none'; clr.textContent = `Clear all ${n}`; }
   const sendEl  = qs('#me-send-count');     if (sendEl)  sendEl.textContent  = n;
   const tplEl   = qs('#me-template-send-count'); if (tplEl)  tplEl.textContent = n;
+}
+// Pure: how many selected ids are absent from the list on screen.
+function _meHiddenCount(selectedIds, shownIds) {
+  const shown = new Set(shownIds);
+  let hidden = 0;
+  selectedIds.forEach(id => { if (!shown.has(id)) hidden++; });
+  return hidden;
+}
+function meClearAllSelected() {
+  _meSelectedIds.clear();
+  renderMeAccountList();
+  renderMeBatchList();
 }
 function _updateMeBatchCount() {
   const el = qs('#me-batch-count'); if (el) el.textContent = `${_meSelectedIds.size} selected`;

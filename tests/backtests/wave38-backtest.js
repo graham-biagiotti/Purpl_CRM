@@ -28,7 +28,6 @@ console.log('[A] template groups — run the REAL data + filter');
   ok(REQUIRED.every(id => ids.includes(id)), 'no template was dropped by the regroup (all 18 still listed)');
   ok(new Set(ids).size === ids.length, 'no template listed twice');
   // ...and each one is a template the builder actually knows.
-  const tplSrc = slc(src, 'function getCadenceEmailTemplate(', '\nfunction ');
   const body = src.slice(src.indexOf('function getCadenceEmailTemplate('), src.indexOf("function getCadenceEmailTemplate(") + 60000);
   ok(ids.filter(id => id !== 'custom').every(id => body.includes(`'${id}': {`)), 'every listed id has a real template behind it');
 
@@ -36,9 +35,10 @@ console.log('[A] template groups — run the REAL data + filter');
   ok(r.find(g => g.older).collapsed === true && r.filter(g => !g.older).every(g => !g.collapsed), '"Older" starts collapsed; everything else open');
   ok(vis(G, '', true, null).find(g => g.older).collapsed === false, 'clicking "Older" opens it');
   ok(vis(G, '', false, 'launch-announcement').find(g => g.older).collapsed === false, 'a selected Older template keeps its group open');
-  r = vis(G, 'reorder', false, null);
-  ok(r.length === 1 && r[0].items.map(t => t.id).join() === 'reorder-reminder' || r.flatMap(g => g.items).some(t => t.id === 'reorder-reminder'),
-    'search finds a template by name');
+  r = vis(G, 'restock', false, null);
+  ok(r.length === 1 && r[0].items.map(t => t.id).join() === 'reorder-reminder', 'search narrows to exactly the matching template');
+  ok(vis(G, 'reorder', false, null).flatMap(g => g.items).map(t => t.id).sort().join() === 'first-order-checkin,reorder-reminder',
+    'a word in two templates returns both, across groups');
   r = vis(G, 'LAUNCH', false, null);
   ok(r.some(g => g.older && !g.collapsed && g.items.some(t => t.id === 'launch-announcement')), 'search is case-insensitive and reaches into "Older"');
   ok(vis(G, 'zzzz', false, null).length === 0, 'no match → no groups (empty-state message shows)');
@@ -48,15 +48,19 @@ console.log('[A] template groups — run the REAL data + filter');
 console.log('[B] less scrolling');
 {
   ok(/\.emails-preview-frame\{[^}]*height:calc\(100vh - 330px\);min-height:480px/.test(css), 'preview pane grows with the window (never smaller than before)');
-  ok(/\.emails-templates-col\{[^}]*position:sticky[^}]*max-height:calc\(100vh - 150px\);overflow-y:auto/.test(css),
-    'template list stays in view while the preview scrolls');
+  // (gate F1: the app topbar is sticky at top:0 and 56px tall — pin BELOW it)
+  ok(/\.emails-templates-col\{[^}]*position:sticky;top:68px;max-height:calc\(100vh - 84px\);overflow-y:auto/.test(css)
+     && /\.topbar\{[^}]*height:56px/.test(css),
+    'template list stays in view while the preview scrolls, clear of the 56px top bar');
   ok(css.includes('.emails-templates-col{position:static;max-height:none}'), 'on narrow screens the template list stacks normally');
   ok(idx.includes('onclick="emailsPreviewFullscreen()"'), 'full-screen preview button on the Compose tab');
   const fs_ = slc(src, 'function emailsPreviewFullscreen()', '\nfunction selectEmailTemplate');
   ok(fs_.includes("big.srcdoc = frame.srcdoc") && fs_.includes("e.key === 'Escape'") && fs_.includes('Pick an email and a store first'),
     'full screen shows the same email, closes on Esc, and explains itself when nothing is selected');
   ok(!/innerHTML\s*=/.test(fs_), 'the overlay is built with DOM nodes — the email HTML only ever goes into an iframe');
-  ok(idx.includes('id="email-preview-frame" style="width:100%;height:60vh;min-height:420px'), 'send-preview window is taller too');
+  // (gate F2: only as tall as leaves the Send button on screen — never below the old 420px)
+  ok(idx.includes('id="email-preview-frame" style="width:100%;height:max(420px, min(60vh, calc(90vh - 330px)))'),
+    'send-preview window is taller only when the window has room for the Send button');
   ok(idx.includes('id="me-account-list" style="max-height:max(340px, calc(100vh - 470px))')
      && idx.includes('id="me-batch-list" style="max-height:max(300px, calc(100vh - 430px))'), 'mass-send store lists use the window height');
   const tl = slc(src, 'function _renderEmailsTplList()', '\n// Full-screen read');
@@ -74,8 +78,16 @@ console.log('[C] mass-send search can never widen a send');
   ok((sa.match(/_meMainFilteredList\(_meBuildInvoiceIndex\(\)\)/g) || []).length === 2,
     'Select All / Deselect All still use that same list — so they act only on the stores on screen');
   const uc = slc(src, 'function _updateMeCount()', '\nfunction _updateMeBatchCount');
-  ok(uc.includes('not shown by the current search/filters') && uc.includes('if (!shown.has(id)) hidden++'),
-    'the count line warns when selected stores are hidden by the search/filters');
+  ok(uc.includes('NOT shown by the current search/filters (they will still be sent to)') && uc.includes("countEl.style.color = hidden ? 'var(--red)' : ''"),
+    'the count line warns in red when selected stores are hidden by the search/filters');
+  const HC = new Function(slc(src, 'function _meHiddenCount(', '\nfunction meClearAllSelected') + '\nreturn _meHiddenCount;')();
+  ok(HC(new Set(['a', 'b', 'c']), ['a']) === 2 && HC(new Set(['a']), ['a', 'z']) === 0 && HC(new Set(), []) === 0,
+    'hidden-selection count is right (run for real)');
+  const ca = slc(src, 'function meClearAllSelected()', '\nfunction _updateMeBatchCount');
+  ok(ca.includes('_meSelectedIds.clear();') && idx.includes('onclick="meClearAllSelected();return false"'),
+    '"Clear all N" empties the whole selection, hidden stores included (gate F3)');
+  ok(slc(src, 'function emailsPreviewFullscreen()', '\nfunction selectEmailTemplate').includes('btn.focus();'),
+    'full-screen overlay takes focus so the button behind it cannot re-open it');
   // Send paths untouched: they still read the selection set, not the visible list.
   ok(src.includes("const accounts = DB.a('ac').filter(a=>_meSelectedIds.has(a.id));")
      && src.includes("let accounts = DB.a('ac').filter(a => _meSelectedIds.has(a.id));"), 'both mass-send paths unchanged');

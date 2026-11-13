@@ -626,7 +626,7 @@ th{padding:11px 14px}
 
 /* ── Emails page layout ──────────────────────────────────── */
 .emails-layout{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
-.emails-templates-col{display:flex;flex-direction:column;gap:8px;position:sticky;top:12px;max-height:calc(100vh - 150px);overflow-y:auto;padding-right:4px}
+.emails-templates-col{display:flex;flex-direction:column;gap:8px;position:sticky;top:68px;max-height:calc(100vh - 84px);overflow-y:auto;padding-right:4px}
 .etc-group{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:8px 0 0}
 .email-template-card{padding:7px 12px;border:2px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s;background:#fff;flex:0 0 auto}
 .email-template-card:hover{border-color:var(--purple);background:var(--purple-light)}

@@ -1677,7 +1677,8 @@
               <button class="btn sm secondary" onclick="meDeselectAll()">Deselect All</button>
             </div>
             <div id="me-account-list" style="max-height:max(340px, calc(100vh - 470px));overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px"></div>
-            <div style="font-size:12px;color:var(--muted);margin-top:6px" id="me-selected-count">0 selected</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px"><span id="me-selected-count">0 selected</span>
+              <a href="#" id="me-clear-all" onclick="meClearAllSelected();return false" style="display:none;margin-left:8px">Clear all</a></div>
           </div>
           <!-- Right: composer -->
           <div class="card" style="padding:16px">
@@ -3213,7 +3214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <span style="font-size:12px;color:var(--muted)">Preview</span>
         <button class="btn xs" onclick="openEmailPreviewTab()">Open in new tab ↗</button>
       </div>
-      <iframe id="email-preview-frame" style="width:100%;height:60vh;min-height:420px;border:none"></iframe>
+      <iframe id="email-preview-frame" style="width:100%;height:max(420px, min(60vh, calc(90vh - 330px)));border:none"></iframe>
     </div>
     <div id="email-preview-body-edit" style="display:none;margin-bottom:14px">
       <label style="font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:4px">Edit Body HTML</label>
