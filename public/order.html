@@ -413,7 +413,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <div class="pgrid">
         <!-- Classic — active -->
         <div class="pcard" id="purpl-classic-card">
-          <img class="pimg tall" src="/images/portal-can-classic.jpg" alt="Classic Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-classic.jpg?v=271" alt="Classic Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Classic Lavender Lemonade</div>
             <div class="price-display" id="price-display"></div>
@@ -437,7 +437,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
         <!-- Blueberry — coming soon -->
         <div class="pcard soon">
-          <img class="pimg tall" src="/images/portal-can-blueberry.jpg" alt="Blueberry Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-blueberry.jpg?v=271" alt="Blueberry Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Blueberry Lavender Lemonade</div>
             <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
@@ -450,7 +450,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
         <!-- Peach — coming soon -->
         <div class="pcard soon">
-          <img class="pimg tall" src="/images/portal-can-peach.jpg" alt="Peach Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-peach.jpg?v=271" alt="Peach Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Peach Lavender Lemonade</div>
             <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
@@ -760,6 +760,14 @@ function lfSkuImage(s) {
   if (/eye pillow|sleep/.test(n)) return '/images/portal-lf-sleepmask.jpg';
   return '/images/lf-logo-circle-transparent.png';
 }
+// v271: photos keep their file names when they are replaced, and browsers
+// hold images for a while — so a replaced photo kept showing the old one.
+// Bump this whenever product photos change.
+var LF_IMG_VERSION = '?v=271';
+function lfSkuImageUrl(s) {
+  var u = lfSkuImage(s);
+  return /^\/images\/portal-/.test(u) ? u + LF_IMG_VERSION : u;
+}
 var LF_IMG_FALLBACK = "this.onerror=null;this.src='/images/lf-logo-circle-transparent.png';this.classList.add('pimg-fallback')";
 
 // Card face shows the first few varieties and "+N more" so every card in a
@@ -798,7 +806,7 @@ function renderLfSkus(skus, prevOrder) {
   var modals = '';
   container.innerHTML = skus.map(function(s) {
     var name = escHtml(s.name || '');
-    var img = lfSkuImage(s);
+    var img = lfSkuImageUrl(s);
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
 
     if (activeVariants.length > 0) {

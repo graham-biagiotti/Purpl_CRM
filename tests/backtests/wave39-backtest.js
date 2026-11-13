@@ -63,6 +63,10 @@ console.log('[C] photos, summary, catalog');
     'eye pillow matched; an unknown product falls back to the logo');
   ok(F({ name: 'X', image: 'https://evil.example/x.jpg' }) === '/images/lf-logo-circle-transparent.png' && F({ name: 'X', image: '/images/new-thing.jpg' }) === '/images/new-thing.jpg',
     'off-site photo URLs are ignored; same-site ones are used');
+  // v271: replaced photos must not be served from a browser's old copy.
+  ok(ord.includes("var LF_IMG_VERSION = '?v=") && ord.includes('var img = lfSkuImageUrl(s);')
+     && (ord.match(/src="\/images\/portal-can-[a-z]+\.jpg\?v=\d+"/g) || []).length === 3,
+    'every product photo URL carries a version tag');
   const used = [...new Set((ord.match(/\/images\/portal-[a-z0-9-]+\.jpg/g) || []))];
   ok(used.length >= 12 && used.every(u => fs.existsSync(path.join(root, 'public', u))), `every product photo the page names exists (${used.length})`);
   ok(fs.statSync(path.join(root, 'public/images/wholesale-catalog.pdf')).size < 3e6 && ord.includes('href="/images/wholesale-catalog.pdf"'),
