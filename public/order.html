@@ -161,7 +161,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 /* ── v269 LAYOUT: form column + sticky order summary ── */
 .op-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
 .op-main{min-width:0}
-.op-side{position:sticky;top:16px}
+.op-side{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
 .op-summary{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
 .op-summary h3{font-family:'Playfair Display',serif;font-size:20px;font-weight:500;margin-bottom:12px}
 .os-brand{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4b5563;margin:12px 0 6px}
@@ -213,6 +213,9 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 .lf-vsum.done{background:#EAF5EC;color:#14532D}
 .lf-vsum.todo{background:#FEF3C7;color:#78350F}
 .pcard .lf-line-total{min-width:0;text-align:left;font-size:13px}
+
+.stepper-box input[type=number]:focus,.vmodal .lf-variant-row input[type=number]:focus{box-shadow:inset 0 0 0 2px var(--purpl)}
+.stepper-box button:focus-visible,.vmodal button:focus-visible,.pbtn:focus-visible,.os-btn:focus-visible{outline:2px solid var(--purpl);outline-offset:2px}
 
 /* ── v269 VARIETY PICKER (pop-up; slides up from the bottom on phones) ── */
 .vmodal{position:fixed;inset:0;z-index:1000;background:rgba(26,26,46,0.6);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -946,6 +949,10 @@ function _hideLfPicker(skuId) {
 // Finish the case, or Remove the product.
 function closeLfPicker(skuId) {
   var st = lfVariantState(skuId);
+  // Gate F2: opening the pop-up starts it at 1 case — someone who only wanted
+  // a look and picked nothing must be able to close it. Nothing chosen =
+  // nothing ordered.
+  if (st && st.assigned === 0) return removeLfSku(skuId);
   if (st && st.cases > 0 && !st.matched) {
     var errEl = document.getElementById('lf-verr-'+skuId);
     if (errEl) {
@@ -1011,12 +1018,18 @@ function orderSummaryData() {
   var price = pricePerCase ? parseFloat(pricePerCase) : null;
   var purplTotal = (cases > 0 && price) ? cases * price : null;
   var lfItems = _brandLf ? getLfItems() : [];
-  var lfTotal = _brandLf ? getLfTotal() : 0;
+  // Gate F3: total the LINES shown (variety units), not the cases box, so the
+  // summary always adds up — even while a case is still being chosen.
+  var lfTotal = lfItems.reduce(function(sum, it){ return sum + (it.lineTotal || 0); }, 0);
   var known = (purplTotal || 0) + lfTotal;
   var priceUnknown = cases > 0 && !price;
+  // Gate F1 — exactly the written terms: purpl alone is free at 8+ cases;
+  // the $250 rule applies once Lavender Fields is on the order (LF alone, or
+  // both brands together). A purpl-only order under 8 cases is never "free",
+  // whatever its dollar value.
+  var free = cases >= FREE_DELIVERY_CASES || (lfTotal > 0 && known >= FREE_DELIVERY_DOLLARS);
   return { cases: cases, price: price, purplTotal: purplTotal, lfItems: lfItems, lfTotal: lfTotal, known: known,
-           priceUnknown: priceUnknown, empty: cases <= 0 && !lfItems.length,
-           free: cases >= FREE_DELIVERY_CASES || known >= FREE_DELIVERY_DOLLARS };
+           priceUnknown: priceUnknown, empty: cases <= 0 && !lfItems.length, free: free };
 }
 function renderOrderSummary() {
   var d;
@@ -1061,7 +1074,7 @@ function renderOrderSummary() {
     bar.classList.toggle('on', on);
     if (on) {
       var n = (d.cases > 0 ? 1 : 0) + d.lfItems.length;
-      bar.innerHTML = '<div><div class="mb-sub">' + n + ' item' + (n !== 1 ? 's' : '') + ' · ' + (d.free ? 'free delivery' : 'delivery charge applies') + '</div>' +
+      bar.innerHTML = '<div><div class="mb-sub">' + n + ' item' + (n !== 1 ? 's' : '') + ' · ' + (d.free ? 'free delivery in our area' : 'delivery charge applies') + '</div>' +
         '<div class="mb-total">$' + d.known.toFixed(2) + (d.priceUnknown ? ' + purpl' : '') + '</div></div>' + '<button type="button" onclick="goToCheckout()">Review order</button>';
     } else bar.innerHTML = '';
   }
@@ -2246,7 +2259,8 @@ function checkPortalPassword() {
       if (result.data && result.data.valid) {
         document.getElementById('password-gate').style.display = 'none';
         document.getElementById('order-form').style.display = '';
-        _brandPurpl = true; _brandLf = false; updateBrandVisibility(); loadLfSkus(null);
+        _brandPurpl = true; _brandLf = false; updateBrandVisibility();
+        if (!_lfSkusLoaded) loadLfSkus(null); // gate F5: a second load re-rendered the catalog and wiped typed quantities
       } else {
         document.getElementById('pw-error').style.display = '';
       }

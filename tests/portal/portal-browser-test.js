@@ -57,6 +57,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail
     await page.click('#lf-row-lf-roll-on button[aria-label^="One more"]');
     ok((await page.inputValue('#lf-qty-lf-roll-on')) === '1', 'plain product + adds a case');
 
+    // gate F2: a pop-up opened just to look closes with X and orders nothing
+    await page.click('#lf-vbtn-lf-candle');
+    await page.click('#lf-vmodal-lf-candle .vclose');
+    ok(!(await page.locator('#lf-vmodal-lf-candle').isVisible()) && (await page.inputValue('#lf-qty-lf-candle')) === '0', 'opening a pop-up and closing it with X orders nothing');
+
     // variety pop-up
     await page.click('#lf-vbtn-lf-scrunchie');
     ok(await page.locator('#lf-vmodal-lf-scrunchie').isVisible(), 'Choose varieties opens the pop-up');
@@ -102,6 +107,10 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail
     ok((await page.textContent(sumSel)).includes('charge applies'), 'under 8 cases and under $250 → delivery charge note');
     await page.fill('#classic-cases', '8');
     ok((await page.textContent(sumSel)).includes('Free delivery'), '8 cases of purpl → free delivery');
+    // gate F1: purpl ALONE under 8 cases is never free, even above $250
+    await page.evaluate(() => { removeLfSku('lf-scrunchie'); pricePerCase = 60; document.getElementById('classic-cases').value = 5; updateCans(); });
+    ok((await page.textContent(sumSel)).includes('$300.00') && (await page.textContent(sumSel)).includes('charge applies'), 'purpl-only, 5 cases worth $300 → still a delivery charge (matches the written terms)');
+    await page.evaluate(() => { pricePerCase = 27.6; document.getElementById('classic-cases').value = 8; updateCans(); });
 
     // submit gating unchanged
     ok(await page.locator('#submit-btn').isDisabled(), 'submit still disabled until terms are agreed');

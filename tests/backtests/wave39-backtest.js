@@ -73,8 +73,12 @@ console.log('[C] photos, summary, catalog');
      && fs.readdirSync(path.join(root, 'public/images')).every(f => !fs.statSync(path.join(root, 'public/images', f)).isDirectory()),
     'no folders inside public/images (the deploy sync cannot copy them)');
   const sd = slc(ord, 'function orderSummaryData()', '\nfunction renderOrderSummary');
-  ok(sd.includes('free: cases >= FREE_DELIVERY_CASES || known >= FREE_DELIVERY_DOLLARS') && ord.includes('var FREE_DELIVERY_CASES = 8, FREE_DELIVERY_DOLLARS = 250;'),
-    'free delivery at 8 cases of purpl or $250');
+  // (gate F1: must match the written terms — $250 only counts once LF is on the order)
+  ok(sd.includes('var free = cases >= FREE_DELIVERY_CASES || (lfTotal > 0 && known >= FREE_DELIVERY_DOLLARS);') && ord.includes('var FREE_DELIVERY_CASES = 8, FREE_DELIVERY_DOLLARS = 250;'),
+    'free delivery: 8 cases of purpl, or $250 once Lavender Fields is on the order');
+  ok(sd.includes('lfItems.reduce(function(sum, it){ return sum + (it.lineTotal || 0); }, 0)'), 'summary total adds up from the lines shown (gate F3)');
+  ok(ord.includes("if (st && st.assigned === 0) return removeLfSku(skuId);"), 'a pop-up opened just to look can be closed (gate F2)');
+  ok(ord.includes('if (!_lfSkusLoaded) loadLfSkus(null);'), 'the catalog is not re-rendered over typed quantities after the password (gate F5)');
   const rs = slc(ord, 'function renderOrderSummary()', '\nfunction goToCheckout');
   ok(rs.includes('a delivery or shipping charge applies. We will confirm the amount'), 'under the threshold: a charge applies, amount to be confirmed (no figure shown)');
   ok(rs.includes('try { d = orderSummaryData(); } catch (e) { return; }'), 'a summary error can never block ordering');
