@@ -107,12 +107,18 @@ console.log('[B] dashboard section + alert card');
 console.log('[C] the email + send path');
 {
   const tpl = slc(src, "'first-order-checkin': {", "'delivery-followup': {");
-  ok(tpl.includes('How is it selling so far?') && tpl.includes('Place a Reorder') && tpl.includes('Pick a Demo Day'),
-    'check-in + reorder link + demo link');
+  // (v266: wording rewritten with the owner — subject + first/last paragraphs)
+  ok(tpl.includes('subject: `Checking in from Pumpkin Blossom Farm`') && tpl.includes('Following up on your first order with us.')
+     && tpl.includes('>Reorder</a>') && tpl.includes('>Book a free tasting</a>')
+     && tpl.includes('Thank you for carrying us at ${businessName}.'),
+    'owner-approved wording: check-in + reorder link + tasting link');
+  ok(!/no rush/i.test(tpl), 'no "no rush" line (owner)');
   ok(tpl.includes('${portalLink}') && tpl.includes('pbfwholesale.com/sampling?t=${account.orderPortalToken}'),
     'links are the store\'s personal reorder + booking links');
   ok(tpl.includes('`, account.id)'), 'carries the unsubscribe footer');
-  ok(tpl.includes("escHtml(extra.brandPhrase || (stage === 'first-order-checkin' ? _foBrandPhrase(account.id) : ''))"),
+  ok(tpl.includes('How ${_foVerb} ${escHtml(_foBp)} doing at')
+     && src.includes("const _foBp = stage === 'first-order-checkin' ? (extra.brandPhrase || _foBrandPhrase(account.id)) : '';")
+     && src.includes("const _foVerb = / and |products/.test(_foBp) ? 'are' : 'is';"),
     'wording names what they ordered — computed only for THIS template (every template is built on every call)');
   ok(slc(src, 'function _foBrandPhrase(', '\nfunction renderDashFirstOrders').includes('catch (e) { return \'our products\'; }'),
     'brand lookup can never throw into another email\'s build');

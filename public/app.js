@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v265';
+const APP_VERSION = 'v266';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1115,6 +1115,11 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
     catch(_) { return 'July 27'; }
   })();
 
+  // v265/v266: wording for the first-order check-in — what the store actually
+  // ordered. Computed ONLY for that template (every template in this map is
+  // built on every call, and the lookup scans the invoice collections).
+  const _foBp = stage === 'first-order-checkin' ? (extra.brandPhrase || _foBrandPhrase(account.id)) : '';
+  const _foVerb = / and |products/.test(_foBp) ? 'are' : 'is';
   const templates = {
     'application-received': {
       subject: `Thank you for your wholesale application — Pumpkin Blossom Farm`,
@@ -1404,25 +1409,20 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
     // v265: the ~10-day check-in after a store's FIRST order (distinct from
     // 'first-order', which is the same-day "thanks, we're on it" note).
     'first-order-checkin': {
-      subject: `How's everything going at ${businessNameRaw}?`,
+      subject: `Checking in from Pumpkin Blossom Farm`,
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">It's been a little while since your first order of ${escHtml(extra.brandPhrase || (stage === 'first-order-checkin' ? _foBrandPhrase(account.id) : ''))} arrived at <strong>${businessName}</strong>, so I wanted to check in. How is it selling so far?</p>
-        <p style="line-height:1.7">If anything arrived damaged or isn't moving the way you hoped, tell me and we'll sort it out.</p>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 10px">
-          <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <div style="font-size:14px;color:#374151;margin-bottom:12px"><strong>Ready for more?</strong> Reordering takes about a minute.</div>
-            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Reorder →</a>
-          </td></tr>
+        <p style="line-height:1.7">Following up on your first order with us. How ${_foVerb} ${escHtml(_foBp)} doing at <strong>${businessName}</strong> so far?</p>
+        <p style="line-height:1.7">If there's anything that would help it sell, I'm happy to do it. That could be shelf signage, a free tasting day, or adjusting what you carry next time.</p>
+        <p style="line-height:1.7;margin-bottom:14px">When you're ready for more, or want to book a tasting:</p>
+        <table cellpadding="0" cellspacing="0" style="margin:0 0 26px">
+          <tr>
+            <td style="padding:0 10px 8px 0"><a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 24px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Reorder</a></td>
+            <td style="padding:0 0 8px 0"><a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:inline-block;background:#ffffff;color:${accentColor};border:1px solid ${accentColor};padding:11px 22px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Book a free tasting</a></td>
+          </tr>
         </table>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin:10px 0 26px">
-          <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
-            <div style="font-size:14px;color:#374151;margin-bottom:12px"><strong>Want help getting it noticed?</strong> We'll come in and run a free tasting demo for your customers.</div>
-            <a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:inline-block;background:#ffffff;color:${accentColor};border:1px solid ${accentColor};padding:11px 26px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pick a Demo Day →</a>
-          </td></tr>
-        </table>
-        <p style="line-height:1.7">Thanks again for carrying us. Just reply to this email if you need anything.</p>
+        <p style="line-height:1.7">Thank you for carrying us at ${businessName}. If you need anything at all, just reply to this email.</p>
 `, account.id)
     },
     'delivery-followup': {
@@ -1805,7 +1805,7 @@ function _foBrandPhrase(accountId) {
     const invs = _allInvoices({ excludeChildren: true, accountId }).filter(i => i.status !== 'void' && i._brand !== 'dist')
       .sort((a, b) => String(a.date || a.issued || a.created || '') < String(b.date || b.issued || b.created || '') ? -1 : 1);
     const b = invs[0] ? invs[0]._brand : '';
-    return b === 'combined' ? 'purpl and Lavender Fields' : b === 'lf' ? 'Lavender Fields products' : b === 'purpl' ? 'purpl' : 'our products';
+    return b === 'combined' ? 'purpl and Lavender Fields' : b === 'lf' ? 'Lavender Fields' : b === 'purpl' ? 'purpl' : 'our products';
   } catch (e) { return 'our products'; }
 }
 
