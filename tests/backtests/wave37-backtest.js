@@ -30,7 +30,8 @@ console.log('[A] who is on the list — run the REAL _firstOrderRows');
   ok(r.length === 1 && r[0].day === 6 && r[0].due === false, 'first invoice sent 6 days ago → listed, Day 6, not yet due');
   r = run([ac('a')], [inv('a', '2026-11-21')]);
   ok(r[0].day === 10 && r[0].due === true, 'day 10 exactly → flagged due');
-  r = run([ac('a')], [inv('a', '2026-11-20T15:04:05.000Z')]);
+  // (built from a LOCAL time so the expectation holds in any time zone)
+  r = run([ac('a')], [inv('a', new Date(2026, 10, 20, 15, 4, 5).toISOString(), { date: '2026-11-20' })]);
   ok(r[0].day === 11 && r[0].due, 'ISO timestamp sent-dates count the same as plain dates');
 
   ok(run([ac('a')], [inv('a', '2026-11-20'), inv('a', '2026-11-28')]).length === 0, 'a second invoice = reordered → drops off');
