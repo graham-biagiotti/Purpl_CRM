@@ -1408,7 +1408,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
       from: 'lavender@pbfwholesale.com',
       body: buildEmailHTML(header, accentColor, `
         <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
-        <p style="line-height:1.7">It's been a little while since your first order of ${escHtml(extra.brandPhrase || _foBrandPhrase(account.id))} arrived at <strong>${businessName}</strong>, so I wanted to check in. How is it selling so far?</p>
+        <p style="line-height:1.7">It's been a little while since your first order of ${escHtml(extra.brandPhrase || (stage === 'first-order-checkin' ? _foBrandPhrase(account.id) : ''))} arrived at <strong>${businessName}</strong>, so I wanted to check in. How is it selling so far?</p>
         <p style="line-height:1.7">If anything arrived damaged or isn't moving the way you hoped, tell me and we'll sort it out.</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 10px">
           <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
@@ -1749,13 +1749,36 @@ function _firstOrderRows(accounts, invoices, todayStr, startDate, dueDay) {
     if (!inv || !inv.accountId || inv.status === 'void' || inv._brand === 'dist') return;
     (byAcct[inv.accountId] = byAcct[inv.accountId] || []).push(inv);
   });
+  // Timestamps are stored as UTC ISO but "today" is local: an evening send
+  // would otherwise be dated tomorrow, hiding the row and running the
+  // counter a day behind (gate F4).
+  const localDate = v => {
+    const str = String(v || '');
+    if (!str) return '';
+    if (!str.includes('T')) return str.slice(0, 10);
+    const d = new Date(str);
+    if (isNaN(d)) return '';
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
   const rows = [];
   accounts.forEach(a => {
     if (!a || a.status === 'inactive' || a.foFollowupSkip) return;
+    // Gate F2: one invoice on file is not proof of a first-time customer —
+    // earlier invoices may have been deleted or pre-date the CRM. Any order
+    // history before go-live rules the store out.
+    if (a.lastOrder && String(a.lastOrder).slice(0, 10) < startDate) return;
     const invs = byAcct[a.id] || [];
     if (invs.length !== 1) return;                 // none yet, or already reordered
     const inv = invs[0];
-    const sent = String(inv.sentAt || '').slice(0, 10);
+    // Gate F1: sentAt is rewritten on every RE-send, so an old invoice sent
+    // again next week would look like a new first order. The invoice itself
+    // must have been raised on/after go-live.
+    const raised = localDate(inv.date || inv.issued || inv.created || inv.createdAt);
+    if (!raised || raised < startDate) return;
+    // Gate F5: some paths mark an invoice sent/paid without stamping sentAt
+    // (status set in the edit window, paid by card). A non-draft invoice then
+    // counts from its paid date, else the day it was raised.
+    const sent = localDate(inv.sentAt) || ((inv.status && inv.status !== 'draft') ? (localDate(inv.paidAt) || raised) : '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(sent) || sent < startDate || sent > todayStr) return; // not sent to the customer yet / before go-live
     if ((a.cadence || []).some(c => c && c.stage === 'first_order_checkin')) return;       // already followed up
     const day = Math.max(0, Math.round((new Date(todayStr + 'T12:00:00') - new Date(sent + 'T12:00:00')) / 864e5));
@@ -1777,10 +1800,13 @@ function _firstOrderRowsLive() {
 const _FO_BRAND_LABEL = { purpl: 'purpl', lf: 'Lavender Fields', both: 'purpl + Lavender Fields' };
 // Wording for the email: what the store's first order actually was.
 function _foBrandPhrase(accountId) {
-  const invs = _allInvoices({ excludeChildren: true, accountId }).filter(i => i.status !== 'void' && i._brand !== 'dist')
-    .sort((a, b) => String(a.date || a.issued || a.created || '') < String(b.date || b.issued || b.created || '') ? -1 : 1);
-  const b = invs[0] ? invs[0]._brand : '';
-  return b === 'combined' ? 'purpl and Lavender Fields' : b === 'lf' ? 'Lavender Fields products' : b === 'purpl' ? 'purpl' : 'our products';
+  try {
+    if (!accountId) return 'our products';
+    const invs = _allInvoices({ excludeChildren: true, accountId }).filter(i => i.status !== 'void' && i._brand !== 'dist')
+      .sort((a, b) => String(a.date || a.issued || a.created || '') < String(b.date || b.issued || b.created || '') ? -1 : 1);
+    const b = invs[0] ? invs[0]._brand : '';
+    return b === 'combined' ? 'purpl and Lavender Fields' : b === 'lf' ? 'Lavender Fields products' : b === 'purpl' ? 'purpl' : 'our products';
+  } catch (e) { return 'our products'; }
 }
 
 function renderDashFirstOrders() {
@@ -4267,6 +4293,13 @@ async function sendEmailViaResend() {
       markCadenceEmailSent(result?.id);
     })
     .catch(() => {
+      // v265 gate F3: for the first-order check-in, logging a failed send as
+      // "sent" would drop the store off the dashboard list for good with no
+      // email delivered. Say so and leave the row where it is.
+      if (_currentEmailPreview && _currentEmailPreview.stage === 'first-order-checkin') {
+        toast('⚠️ Email NOT sent — nothing was logged. Try again in a minute.', 8000);
+        return;
+      }
       toast('Resend unavailable — opening Gmail');
       window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`, '_blank');
       markCadenceEmailSent(null);

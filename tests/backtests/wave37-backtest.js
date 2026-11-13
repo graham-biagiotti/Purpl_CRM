@@ -21,7 +21,9 @@ console.log('[A] who is on the list — run the REAL _firstOrderRows');
   const F = new Function(slc(src, 'function _firstOrderRows(', '\nfunction _firstOrderRowsLive') + '\nreturn _firstOrderRows;')();
   const T = '2026-12-01', START = '2026-11-13';
   const ac = (id, extra) => ({ id, name: 'Store ' + id, email: id + '@x.com', status: 'active', ...extra });
-  const inv = (accountId, sentAt, extra) => ({ accountId, status: 'sent', sentAt, _brand: 'purpl', number: 'N' + accountId, ...extra });
+  // (gate F1: the invoice must itself be raised on/after go-live — default the
+  // raised date to the sent date so each case states only what it varies)
+  const inv = (accountId, sentAt, extra) => ({ accountId, status: 'sent', sentAt, date: String(sentAt || '2026-11-20').slice(0, 10), _brand: 'purpl', number: 'N' + accountId, ...extra });
   const run = (accounts, invoices) => F(accounts, invoices, T, START, 10);
 
   let r = run([ac('a')], [inv('a', '2026-11-25')]);
@@ -39,6 +41,25 @@ console.log('[A] who is on the list — run the REAL _firstOrderRows');
     'a voided invoice does not count as an order (the real first order still lists)');
   ok(run([ac('a')], [inv('a', null, { status: 'draft' })]).length === 0, 'invoice not sent to the customer yet → clock has not started');
   ok(run([ac('a')], [inv('a', '2026-11-12')]).length === 0, 'first invoice sent BEFORE go-live → never listed (existing stores)');
+  // Gate F1: an OLD invoice re-sent after go-live gets a fresh sentAt.
+  ok(run([ac('a')], [inv('a', '2026-11-25', { date: '2026-08-04' })]).length === 0,
+    're-sending an August invoice does NOT make an existing store a "first order"');
+  // Gate F2: one invoice on file but order history before go-live.
+  ok(run([ac('a', { lastOrder: '2026-06-01' })], [inv('a', '2026-11-25')]).length === 0,
+    'a store with order history before go-live is never listed, even with one invoice on file');
+  ok(run([ac('a', { lastOrder: '2026-11-25' })], [inv('a', '2026-11-25')]).length === 1,
+    'lastOrder stamped by the first order itself does not rule it out');
+  // Gate F4: an evening send is stored as next-day UTC — must count as the local day.
+  {
+    const eve = new Date(2026, 10, 21, 21, 30).toISOString(); // 9:30pm local, Nov 21
+    const rr = run([ac('a')], [inv('a', eve, { date: '2026-11-21' })]);
+    ok(rr.length === 1 && rr[0].sent === '2026-11-21' && rr[0].day === 10, 'evening send is dated by the LOCAL day (no off-by-one)');
+  }
+  // Gate F5: marked sent/paid without a sentAt stamp.
+  let f5 = run([ac('a')], [inv('a', null, { status: 'paid', paidAt: '2026-11-24', date: '2026-11-22' })]);
+  ok(f5.length === 1 && f5[0].sent === '2026-11-24', 'paid with no sent stamp → counts from the paid date');
+  f5 = run([ac('a')], [inv('a', null, { status: 'sent', date: '2026-11-22' })]);
+  ok(f5.length === 1 && f5[0].sent === '2026-11-22', 'status sent with no stamp → counts from the day it was raised');
   ok(run([ac('a')], [inv('a', '2026-11-13')]).length === 1, 'sent on go-live day → listed');
   ok(run([ac('a')], [inv('a', '2026-12-05')]).length === 0, 'a future sent-date is ignored');
   ok(run([ac('a', { cadence: [{ stage: 'first_order_checkin', sentAt: 'x' }] })], [inv('a', '2026-11-20')]).length === 0,
@@ -90,7 +111,14 @@ console.log('[C] the email + send path');
   ok(tpl.includes('${portalLink}') && tpl.includes('pbfwholesale.com/sampling?t=${account.orderPortalToken}'),
     'links are the store\'s personal reorder + booking links');
   ok(tpl.includes('`, account.id)'), 'carries the unsubscribe footer');
-  ok(tpl.includes('escHtml(extra.brandPhrase || _foBrandPhrase(account.id))'), 'wording names what they actually ordered');
+  ok(tpl.includes("escHtml(extra.brandPhrase || (stage === 'first-order-checkin' ? _foBrandPhrase(account.id) : ''))"),
+    'wording names what they ordered — computed only for THIS template (every template is built on every call)');
+  ok(slc(src, 'function _foBrandPhrase(', '\nfunction renderDashFirstOrders').includes('catch (e) { return \'our products\'; }'),
+    'brand lookup can never throw into another email\'s build');
+  const sv = slc(src, 'async function sendEmailViaResend()', '\nfunction markCadenceEmailSent');
+  ok(sv.includes("_currentEmailPreview.stage === 'first-order-checkin'") && sv.includes('Email NOT sent')
+     && sv.indexOf('Email NOT sent') < sv.indexOf('markCadenceEmailSent(null)'),
+    'a failed send is NOT logged as sent — the store stays on the list (gate F3)');
   ok(src.includes("first_order_checkin:   'first-order-checkin'"), 'stage id maps to the template (history + dedupe)');
   ok(src.includes("{id:'first-order-checkin',  name:'First Order Check-In (10 days)'"), 'template available on the Emails tab');
   ok(src.includes("'first_order_checkin':  'First Order Check-In'"), 'email history shows a readable name');
