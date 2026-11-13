@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v264';
+const APP_VERSION = 'v265';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1401,6 +1401,30 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
         <p>If you need anything adjusted (quantities, delivery schedule, or product mix) just let us know.</p>
 `, account.id)
     },
+    // v265: the ~10-day check-in after a store's FIRST order (distinct from
+    // 'first-order', which is the same-day "thanks, we're on it" note).
+    'first-order-checkin': {
+      subject: `How's everything going at ${businessNameRaw}?`,
+      from: 'lavender@pbfwholesale.com',
+      body: buildEmailHTML(header, accentColor, `
+        <p style="font-size:17px;font-weight:500;color:#1a1a2e;margin:0 0 20px">Hi ${contactName},</p>
+        <p style="line-height:1.7">It's been a little while since your first order of ${escHtml(extra.brandPhrase || _foBrandPhrase(account.id))} arrived at <strong>${businessName}</strong>, so I wanted to check in. How is it selling so far?</p>
+        <p style="line-height:1.7">If anything arrived damaged or isn't moving the way you hoped, tell me and we'll sort it out.</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:26px 0 10px">
+          <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:14px;color:#374151;margin-bottom:12px"><strong>Ready for more?</strong> Reordering takes about a minute.</div>
+            <a href="${portalLink}" style="display:inline-block;background:${accentColor};color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Place a Reorder →</a>
+          </td></tr>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin:10px 0 26px">
+          <tr><td align="center" style="padding:20px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb">
+            <div style="font-size:14px;color:#374151;margin-bottom:12px"><strong>Want help getting it noticed?</strong> We'll come in and run a free tasting demo for your customers.</div>
+            <a href="${account.orderPortalToken ? `https://pbfwholesale.com/sampling?t=${account.orderPortalToken}` : 'https://pbfwholesale.com/sampling'}" style="display:inline-block;background:#ffffff;color:${accentColor};border:1px solid ${accentColor};padding:11px 26px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:500">Pick a Demo Day →</a>
+          </td></tr>
+        </table>
+        <p style="line-height:1.7">Thanks again for carrying us. Just reply to this email if you need anything.</p>
+`, account.id)
+    },
     'delivery-followup': {
       subject: `How did your delivery go? — ${businessNameRaw}`,
       from: 'lavender@pbfwholesale.com',
@@ -1694,11 +1718,114 @@ function renderDashQuickActions() {
   if (overdue)       cards.push({n:overdue, label:'Overdue invoice'+(overdue>1?'s':''), cls:'qa-red', go:"nav('invoices')"});
   if (drafts)        cards.push({n:drafts, label:'Draft invoice'+(drafts>1?'s':'')+' to send', cls:'qa-amber', go:"nav('invoices')"});
   if (lfLow)         cards.push({n:lfLow, label:'LF item'+(lfLow>1?'s':'')+' low on stock', cls:'qa-amber', go:"navLfInventory()"});
+  // v265: stores at day 10+ since their first invoice, not yet followed up.
+  const foDue = _firstOrderRowsLive().filter(r => r.due).length;
+  if (foDue)         cards.push({n:foDue, label:'First-order follow-up'+(foDue>1?'s':'')+' due', cls:'qa-amber', go:"document.getElementById('dash-first-orders').scrollIntoView({behavior:'smooth',block:'center'})"});
   if (!cards.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = 'flex';
   el.innerHTML = cards.map(c => `<button class="qa-card ${c.cls}" onclick="${c.go}">
     <span class="qa-num">${c.n}</span><span class="qa-label">${c.label}</span><span class="qa-go">→</span>
   </button>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+//  v265: FIRST-ORDER FOLLOW-UP (dashboard section)
+// ══════════════════════════════════════════════════════════
+// A store that has placed exactly ONE order shows on the dashboard from the
+// day that invoice was sent, with a day counter; at day 10 the row flags
+// "Send follow-up". It leaves the list when the check-in email is sent, the
+// row is skipped, the store reorders (a second invoice), or the invoice is
+// voided. Counting starts at go-live — existing stores never appear here
+// (owner, 11/13); the same email is a normal template on the Emails tab for
+// anyone older.
+const FIRST_ORDER_FOLLOWUP_START = '2026-11-13';
+const FIRST_ORDER_FOLLOWUP_DAY = 10;
+
+// Pure (wave37 runs it for real). `invoices` = top-level invoices carrying
+// {accountId, status, sentAt, _brand, number|invoiceNumber}.
+function _firstOrderRows(accounts, invoices, todayStr, startDate, dueDay) {
+  const byAcct = {};
+  invoices.forEach(inv => {
+    if (!inv || !inv.accountId || inv.status === 'void' || inv._brand === 'dist') return;
+    (byAcct[inv.accountId] = byAcct[inv.accountId] || []).push(inv);
+  });
+  const rows = [];
+  accounts.forEach(a => {
+    if (!a || a.status === 'inactive' || a.foFollowupSkip) return;
+    const invs = byAcct[a.id] || [];
+    if (invs.length !== 1) return;                 // none yet, or already reordered
+    const inv = invs[0];
+    const sent = String(inv.sentAt || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sent) || sent < startDate || sent > todayStr) return; // not sent to the customer yet / before go-live
+    if ((a.cadence || []).some(c => c && c.stage === 'first_order_checkin')) return;       // already followed up
+    const day = Math.max(0, Math.round((new Date(todayStr + 'T12:00:00') - new Date(sent + 'T12:00:00')) / 864e5));
+    const primary = (a.contacts || []).find(c => c.isPrimary) || (a.contacts || [])[0] || {};
+    rows.push({
+      accountId: a.id, name: a.name || '', day, due: day >= dueDay, sent,
+      brand: inv._brand === 'combined' ? 'both' : (inv._brand === 'lf' ? 'lf' : 'purpl'),
+      invoiceNumber: String(inv.number || inv.invoiceNumber || ''),
+      hasEmail: !!(primary.email || a.email), optedOut: !!a.emailOptOut,
+    });
+  });
+  return rows.sort((x, y) => y.day - x.day || (x.name < y.name ? -1 : 1));
+}
+function _firstOrderRowsLive() {
+  try {
+    return _firstOrderRows(DB.a('ac'), _allInvoices({ excludeChildren: true }), today(), FIRST_ORDER_FOLLOWUP_START, FIRST_ORDER_FOLLOWUP_DAY);
+  } catch (e) { console.warn('first-order rows failed', e); return []; }
+}
+const _FO_BRAND_LABEL = { purpl: 'purpl', lf: 'Lavender Fields', both: 'purpl + Lavender Fields' };
+// Wording for the email: what the store's first order actually was.
+function _foBrandPhrase(accountId) {
+  const invs = _allInvoices({ excludeChildren: true, accountId }).filter(i => i.status !== 'void' && i._brand !== 'dist')
+    .sort((a, b) => String(a.date || a.issued || a.created || '') < String(b.date || b.issued || b.created || '') ? -1 : 1);
+  const b = invs[0] ? invs[0]._brand : '';
+  return b === 'combined' ? 'purpl and Lavender Fields' : b === 'lf' ? 'Lavender Fields products' : b === 'purpl' ? 'purpl' : 'our products';
+}
+
+function renderDashFirstOrders() {
+  const el = document.getElementById('dash-first-orders');
+  if (!el) return;
+  const rows = _firstOrderRowsLive();
+  if (!rows.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = `<div class="card" style="padding:14px 16px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+      <div style="font-weight:600;font-size:14px">First orders — follow-up</div>
+      <div style="font-size:12px;color:var(--muted)">Days since the first invoice was sent · follow up at day ${FIRST_ORDER_FOLLOWUP_DAY}</div>
+    </div>
+    ${rows.map(r => `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)${r.due ? ';background:#fffbeb' : ''}">
+      <a href="#" onclick="openAccount('${r.accountId}');return false" style="font-weight:600;min-width:160px;flex:1">${escHtml(r.name || '—')}</a>
+      <span style="font-size:12px;color:var(--muted);min-width:170px">${r.invoiceNumber ? 'Invoice ' + escHtml(r.invoiceNumber) + ' · ' : ''}${_FO_BRAND_LABEL[r.brand]}</span>
+      <span style="font-weight:700;min-width:60px;${r.due ? 'color:#b45309' : ''}">Day ${r.day}</span>
+      <span style="font-size:12px;min-width:120px;color:#b45309;font-weight:600">${r.due ? '⚠ Send follow-up' : ''}</span>
+      ${r.optedOut ? '<span style="font-size:12px;color:var(--muted)">Unsubscribed</span>'
+        : !r.hasEmail ? '<span style="font-size:12px;color:var(--muted)">No email on file</span>'
+        : `<button class="btn xs${r.due ? ' primary' : ''}" onclick="foPreview('${r.accountId}')">Preview &amp; send</button>`}
+      <button class="btn xs" onclick="foSkip('${r.accountId}')">Skip</button>
+    </div>`).join('')}
+  </div>`;
+}
+
+// Opens the standard email preview (editable) with the check-in template.
+// The personal reorder/demo links need the account's portal token, so mint
+// it first if this store has never had one.
+async function foPreview(accountId) {
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) return;
+  try { await _ensurePortalToken(accountId); }
+  catch (e) { console.warn('portal token unavailable — email will use the general links', e); }
+  openEmailPreview('first-order-checkin', accountId);
+}
+
+async function foSkip(accountId) {
+  const a = DB.a('ac').find(x => x.id === accountId);
+  if (!a) return;
+  if (!(await confirmDlg(`Skip the first-order follow-up for ${a.name || 'this store'}? It won't be suggested again.`))) return;
+  DB.updateFields('ac', accountId, { foFollowupSkip: today() });
+  toast('Skipped');
+  renderDashFirstOrders();
+  renderDashQuickActions();
 }
 
 function _timeAgo(iso) {
@@ -1790,6 +1917,7 @@ function _macGoToEmailsTab() {
 function renderDash() {
   if (!DB._firestoreReady) return;
   renderDashQuickActions();
+  renderDashFirstOrders(); // v265
   renderDashPayments();
   renderDashActivity();
   const ac  = DB.a('ac').filter(x=>x.status==='active');
@@ -4033,6 +4161,7 @@ const _STAGE_TEMPLATE_IDS = {
   invoice_reminder:      'invoice-reminder',
   payment_overdue:       'payment-overdue',
   first_order_followup:  'first-order',
+  first_order_checkin:   'first-order-checkin', // v265
   reorder_reminder:      'reorder-reminder',
   delivery_followup:     'delivery-followup',
   new_product:           'new-product',
@@ -4167,6 +4296,7 @@ function markCadenceEmailSent(sentMessageId) {
   const stamp = _TRANSACTIONAL_STAGES.includes(stageId) ? {} : {lastContacted: today()};
   DB.update('ac', accountId, a => ({...a, ...stamp, cadence: _pushCadence(a.cadence, entry)}));
   closeModal('modal-email-preview');
+  if (currentPage === 'dashboard') { renderDashFirstOrders(); renderDashQuickActions(); } // v265: the followed-up store drops off
   openAccountToEmailsTab(accountId);
   toast('Email marked as sent');
 }
@@ -4584,6 +4714,7 @@ function _renderEmailsTemplatesCol() {
     {id:'invoice-reminder',     name:'Invoice Reminder',        desc:'Payment due soon'},
     {id:'payment-overdue',      name:'Payment Overdue',         desc:'Past-due follow-up'},
     {id:'first-order',          name:'First Order Follow-Up',   desc:'Thanks for first order'},
+    {id:'first-order-checkin',  name:'First Order Check-In (10 days)', desc:'How is it selling? Reorder + demo links'},
     {id:'reorder-reminder',     name:'Reorder Reminder',        desc:'Time to restock?'},
     {id:'delivery-followup',    name:'Post-Delivery Check-In',  desc:'How did delivery go?'},
     {id:'new-product',          name:'New Product Announcement', desc:'Announce new product'},
@@ -5147,6 +5278,8 @@ function renderEmailsTabHistory(accounts) {
     'order_confirmation':   'Order Confirmation',
     'first-order':          'First Order Follow-up',
     'first_order_followup': 'First Order Follow-up',
+    'first-order-checkin':  'First Order Check-In',
+    'first_order_checkin':  'First Order Check-In',
     'sampling-invite':      'Demo Day Invite',
     'sampling_invite':      'Demo Day Invite',
     'sampling_requested':   'Demo Day Requested',
