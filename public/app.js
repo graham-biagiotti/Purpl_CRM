@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v271';
+const APP_VERSION = 'v272';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -1266,7 +1266,7 @@ function getCadenceEmailTemplate(stage, account, extra={}) {
               <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
               <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you hit 8 cases of purpl or $250 total, in one drop.<br>
               <strong>Payment:</strong> Net 30 from invoice date. Invoices from lavender@pbfwholesale.com.<br>
-              <strong>Lead time:</strong> Please allow 7 business days.
+              <strong>Lead time:</strong> Please allow 10 business days.
             </div>
           </td></tr>
         </table>

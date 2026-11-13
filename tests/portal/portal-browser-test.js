@@ -41,6 +41,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail
     await page.waitForSelector('#lf-sku-list .pcard');
     ok((await page.locator('#lf-sku-list .pcard').count()) === 8, 'fallback catalog renders 8 product cards');
     ok((await page.locator('#lf-vmodal-host .vmodal').count()) === 3, 'three products have a variety pop-up');
+    const firstThree = await page.evaluate(() => [...document.querySelectorAll('#lf-sku-list .pcard')].slice(0, 3).map(c => !!c.querySelector('.pbtn')));
+    ok(firstThree.every(Boolean), 'the three products with varieties are listed first');
     ok(await page.locator('#submit-btn').isDisabled(), 'submit starts disabled');
 
     // purpl stepper

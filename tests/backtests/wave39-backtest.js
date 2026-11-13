@@ -91,5 +91,13 @@ console.log('[C] photos, summary, catalog');
   ok(rl.includes("var name = escHtml(s.name || '');") && rl.includes("var vn = escHtml(v.name || '');"), 'cards and pop-ups escape product and variety names');
 }
 
+console.log('[D] v272 owner changes');
+{
+  ok(ord.includes('var ordered = skus.filter(_hasVar).concat(skus.filter(function(s){ return !_hasVar(s); }));') && ord.includes('container.innerHTML = ordered.map('),
+    'products with varieties render first; catalog order (_lfSkus) is left alone');
+  ok((ord.match(/10 business days/g) || []).length === 2 && !/7 business days/.test(ord) && !/7 business days/.test(src) && src.includes('Please allow 10 business days.'),
+    'lead time is 10 business days on the order page and in the welcome email');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

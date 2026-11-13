@@ -413,7 +413,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
       <div class="pgrid">
         <!-- Classic — active -->
         <div class="pcard" id="purpl-classic-card">
-          <img class="pimg tall" src="/images/portal-can-classic.jpg?v=271" alt="Classic Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-classic.jpg?v=272" alt="Classic Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Classic Lavender Lemonade</div>
             <div class="price-display" id="price-display"></div>
@@ -437,7 +437,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
         <!-- Blueberry — coming soon -->
         <div class="pcard soon">
-          <img class="pimg tall" src="/images/portal-can-blueberry.jpg?v=271" alt="Blueberry Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-blueberry.jpg?v=272" alt="Blueberry Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Blueberry Lavender Lemonade</div>
             <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
@@ -450,7 +450,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
 
         <!-- Peach — coming soon -->
         <div class="pcard soon">
-          <img class="pimg tall" src="/images/portal-can-peach.jpg?v=271" alt="Peach Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
+          <img class="pimg tall" src="/images/portal-can-peach.jpg?v=272" alt="Peach Lavender Lemonade" onerror="this.src='/images/purpl-logo-top-sprig.png';this.classList.add('pimg-fallback')">
           <div class="pbody">
             <div class="product-name">Peach Lavender Lemonade</div>
             <div><span class="coming-soon-badge" style="margin-left:0">Coming Soon</span></div>
@@ -512,7 +512,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         <strong>purpl orders:</strong> Free delivery on 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont. Smaller orders — warehouse pickup or parcel shipment (USPS, UPS, FedEx), billed at cost.<br>
         <strong>Lavender Fields orders:</strong> Free delivery on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
         <strong>Ordering both:</strong> purpl and Lavender Fields combine — free delivery once you reach 8 cases of purpl or $250 total, in one drop.<br>
-        Other areas are served via scheduled routes or parcel shipping. Please allow 7 business days lead time for delivery.<br><br>
+        Other areas are served via scheduled routes or parcel shipping. Please allow 10 business days lead time for delivery.<br><br>
         Questions? Contact Graham directly — <a href="mailto:graham@pumpkinblossomfarm.com">graham@pumpkinblossomfarm.com</a> · <a href="tel:6037483038">603-748-3038</a>
       </div>
 
@@ -565,7 +565,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--purpl);b
         <strong>Delivery — purpl:</strong> Free on 8+ cases throughout New Hampshire, Massachusetts, Southern Maine, and Southern Vermont; smaller orders by warehouse pickup or parcel (billed at cost).<br>
         <strong>Delivery — Lavender Fields:</strong> Free on orders of $250 or more in those areas; smaller orders by pickup or parcel.<br>
         <strong>Delivery — both together:</strong> purpl and Lavender Fields combine — free once you reach 8 cases of purpl or $250 total. Other areas served via scheduled routes or parcel.<br>
-        <strong>Lead Time:</strong> Please allow 7 business days for delivery.<br>
+        <strong>Lead Time:</strong> Please allow 10 business days for delivery.<br>
         <strong>Damaged/Short Shipments:</strong> Please inspect your shipment upon arrival and report any issues within 48 hours of receipt.<br>
         <strong>Pricing:</strong> We reserve the right to update pricing with 30 days' notice.
       </div>
@@ -763,7 +763,7 @@ function lfSkuImage(s) {
 // v271: photos keep their file names when they are replaced, and browsers
 // hold images for a while — so a replaced photo kept showing the old one.
 // Bump this whenever product photos change.
-var LF_IMG_VERSION = '?v=271';
+var LF_IMG_VERSION = '?v=272';
 function lfSkuImageUrl(s) {
   var u = lfSkuImage(s);
   return /^\/images\/portal-/.test(u) ? u + LF_IMG_VERSION : u;
@@ -804,7 +804,12 @@ function renderLfSkus(skus, prevOrder) {
     return;
   }
   var modals = '';
-  container.innerHTML = skus.map(function(s) {
+  // v272 (owner): products with varieties come first so the top row is the
+  // "Choose varieties" cards and the rows look even. Display order only —
+  // _lfSkus keeps the catalog order, so the submitted order is unchanged.
+  var _hasVar = function(s){ return (s.variants||[]).some(function(v){return !v.archived;}); };
+  var ordered = skus.filter(_hasVar).concat(skus.filter(function(s){ return !_hasVar(s); }));
+  container.innerHTML = ordered.map(function(s) {
     var name = escHtml(s.name || '');
     var img = lfSkuImageUrl(s);
     var activeVariants = (s.variants||[]).filter(function(v){return !v.archived;});
