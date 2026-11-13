@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v267';
+const APP_VERSION = 'v268';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -4734,41 +4734,110 @@ function _renderEmailsAutoSends(accounts) {
     </div>`;
 }
 
-function _renderEmailsTemplatesCol() {
-  const el = document.getElementById('emails-templates-col');
-  if (!el) return;
-  const TEMPLATES = [
-    {id:'preorder-announcement', name:'Pre-Order Announcement', desc:'Introduce purpl + personalized order link'},
-    {id:'launch-announcement', name:'purpl Is Here — Launch', desc:'purpl is live: get orders in + personalized link'},
+// v268: the template list was 18 cards in one unordered column. Grouped by
+// purpose, searchable, and the two launch-era announcements sit under a
+// collapsed "Older" group (still there, just out of the way).
+const EMAIL_TEMPLATE_GROUPS = [
+  { label: 'New stores', items: [
     {id:'application-received', name:'Application Received',    desc:'Thank you for applying'},
     {id:'approved',             name:'Approved — Welcome',      desc:'Portal link + password + catalog'},
     {id:'rejected',             name:'Rejected — Decline',      desc:'Polite decline email'},
+  ]},
+  { label: 'Orders & invoices', items: [
     {id:'order-confirmation',   name:'Order Confirmation',      desc:'Order received, delivery coming'},
     {id:'invoice-sent',         name:'Invoice Sent',            desc:'Invoice notification'},
     {id:'invoice-reminder',     name:'Invoice Reminder',        desc:'Payment due soon'},
     {id:'payment-overdue',      name:'Payment Overdue',         desc:'Past-due follow-up'},
+  ]},
+  { label: 'Follow-ups', items: [
     {id:'first-order',          name:'First Order Follow-Up',   desc:'Thanks for first order'},
     {id:'first-order-checkin',  name:'First Order Check-In (10 days)', desc:'How is it selling? Reorder + demo links'},
     {id:'reorder-reminder',     name:'Reorder Reminder',        desc:'Time to restock?'},
     {id:'delivery-followup',    name:'Post-Delivery Check-In',  desc:'How did delivery go?'},
+    {id:'thank-you',            name:'General Thank You',       desc:'Thank a retailer'},
+  ]},
+  { label: 'Announcements', items: [
     {id:'new-product',          name:'New Product Announcement', desc:'Announce new product'},
     {id:'lf-whats-new',         name:'LF What\'s New (Oct 2026)', desc:'Eye pillow · 16oz syrup · refresh packaging'},
     {id:'sampling-invite',      name:'Demo Day Invite',         desc:'Book an in-store purpl sampling'},
-    {id:'thank-you',            name:'General Thank You',       desc:'Thank a retailer'},
+  ]},
+  { label: 'Write your own', items: [
     {id:'custom',               name:'Custom Email',            desc:'Write your own'},
-  ];
-  const cards = TEMPLATES.map(t => `
-    <div class="email-template-card${_emailsSelectedTemplate === t.id ? ' active' : ''}"
-         onclick="selectEmailTemplate('${t.id}')">
-      <div class="etc-name">${t.name}</div>
-      <div class="etc-desc">${t.desc}</div>
-      <div class="etc-from">lavender@pbfwholesale.com</div>
-    </div>`).join('');
-  el.innerHTML = cards + `
+  ]},
+  { label: 'Older', older: true, items: [
+    {id:'preorder-announcement', name:'Pre-Order Announcement', desc:'Introduce purpl + personalized order link'},
+    {id:'launch-announcement', name:'purpl Is Here — Launch', desc:'purpl is live: get orders in + personalized link'},
+  ]},
+];
+let _emailsTplQ = '';
+let _emailsTplOlderOpen = false;
+
+// Pure: which groups/items to show for a search (wave38 runs it for real).
+function _emailsTplVisible(groups, q, olderOpen, selectedId) {
+  const s = String(q || '').trim().toLowerCase();
+  return groups.map(g => {
+    const items = g.items.filter(t => !s || (t.name + ' ' + t.desc).toLowerCase().includes(s));
+    // A search opens every group; otherwise "Older" stays shut unless it was
+    // opened or holds the template currently selected.
+    const collapsed = !!g.older && !s && !olderOpen && !g.items.some(t => t.id === selectedId);
+    return { label: g.label, older: !!g.older, collapsed, items };
+  }).filter(g => g.items.length);
+}
+
+function _renderEmailsTemplatesCol() {
+  const el = document.getElementById('emails-templates-col');
+  if (!el) return;
+  el.innerHTML = `
+    <input id="emails-tpl-search" placeholder="Search emails…" autocomplete="off" value="${escHtml(_emailsTplQ)}"
+      oninput="_emailsTplQ = this.value; _renderEmailsTplList()" style="width:100%;padding:8px 10px;font-size:13px">
+    <div id="emails-tpl-list" style="display:flex;flex-direction:column;gap:6px"></div>
     <div class="email-template-card" onclick="switchEmailsTab('mass')" style="border-style:dashed;margin-top:4px">
       <div class="etc-name">📢 Mass Email</div>
-      <div class="etc-desc">Broadcast to all accounts</div>
+      <div class="etc-desc">Send one email to many stores</div>
     </div>`;
+  _renderEmailsTplList();
+}
+
+// The list renders separately so typing in the search box never rebuilds it.
+function _renderEmailsTplList() {
+  const el = document.getElementById('emails-tpl-list');
+  if (!el) return;
+  const groups = _emailsTplVisible(EMAIL_TEMPLATE_GROUPS, _emailsTplQ, _emailsTplOlderOpen, _emailsSelectedTemplate);
+  el.innerHTML = groups.map(g => `
+    <div class="etc-group"${g.older ? ` style="cursor:pointer" onclick="_emailsTplOlderOpen = !_emailsTplOlderOpen; _renderEmailsTplList()"` : ''}>${escHtml(g.label)}${g.older ? ` <span style="font-weight:400">(${g.items.length}) ${g.collapsed ? '▸' : '▾'}</span>` : ''}</div>
+    ${g.collapsed ? '' : g.items.map(t => `
+    <div class="email-template-card${_emailsSelectedTemplate === t.id ? ' active' : ''}"
+         onclick="selectEmailTemplate('${t.id}')">
+      <div class="etc-name">${escHtml(t.name)}</div>
+      <div class="etc-desc">${escHtml(t.desc)}</div>
+    </div>`).join('')}`).join('')
+    || '<div style="font-size:12.5px;color:var(--muted);padding:8px 2px">No email matches that search.</div>';
+}
+
+// Full-screen read of whatever the preview pane is showing.
+function emailsPreviewFullscreen() {
+  const frame = document.querySelector('#emails-preview-col iframe.emails-preview-frame');
+  if (!frame) { toast('Pick an email and a store first — then there is something to preview'); return; }
+  document.getElementById('emails-fs-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'emails-fs-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(20,16,28,0.72);display:flex;flex-direction:column;padding:16px';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:8px';
+  const btn = document.createElement('button');
+  btn.className = 'btn sm';
+  btn.textContent = '✕ Close preview';
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  btn.onclick = close;
+  bar.appendChild(btn);
+  const big = document.createElement('iframe');
+  big.style.cssText = 'flex:1;width:100%;max-width:820px;margin:0 auto;border:none;border-radius:8px;background:#fff';
+  big.srcdoc = frame.srcdoc; // same HTML the pane shows — read-only copy
+  ov.appendChild(bar); ov.appendChild(big);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(ov);
 }
 
 function selectEmailTemplate(templateId) {
@@ -5527,6 +5596,10 @@ function _meMainFilteredList(invIdx) {
   const loF = qs('#me-last-order-filter')?.value || '';
   if (loF === 'never') list = list.filter(a => !a.lastOrder);
   else if (loF) { const d = parseInt(loF); list = list.filter(a => a.lastOrder && daysAgo(a.lastOrder) >= d); }
+  // v268: name search. It lives HERE, in the one list every caller shares, so
+  // "Select All" selects exactly the stores on screen — never hidden ones.
+  const nameQ = (qs('#me-search')?.value || '').trim().toLowerCase();
+  if (nameQ) list = list.filter(a => String(a.name || '').toLowerCase().includes(nameQ));
   return list;
 }
 
@@ -5593,7 +5666,15 @@ function meBatchDeselectAll() {
 
 function _updateMeCount() {
   const n = _meSelectedIds.size;
-  const countEl = qs('#me-selected-count'); if (countEl) countEl.textContent = `${n} selected`;
+  // v268: a send goes to EVERY selected store, including ones the search or
+  // filters are currently hiding — say so, so a narrowed list can't mislead.
+  let hidden = 0;
+  try {
+    const shown = new Set(_meMainFilteredList(_meBuildInvoiceIndex()).map(a => a.id));
+    _meSelectedIds.forEach(id => { if (!shown.has(id)) hidden++; });
+  } catch (e) { hidden = 0; }
+  const countEl = qs('#me-selected-count');
+  if (countEl) countEl.textContent = hidden ? `${n} selected — ${hidden} of them not shown by the current search/filters` : `${n} selected`;
   const sendEl  = qs('#me-send-count');     if (sendEl)  sendEl.textContent  = n;
   const tplEl   = qs('#me-template-send-count'); if (tplEl)  tplEl.textContent = n;
 }
