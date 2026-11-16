@@ -585,6 +585,32 @@ exports.verifyPortalPassword = onCall(async (request) => {
 // Public callable — takes a token, returns account info for the portal.
 // Queries Firestore server-side so accounts/prospects collections can
 // have restricted read rules (no PII exposed to unauthenticated clients).
+// v273: remember a store's delivery preferences between orders. The order
+// page cannot write account records (rules: staff only), so it calls this
+// with its personal-link token; only two short text fields are accepted and
+// only the account that owns the token is touched.
+exports.savePortalPrefs = onCall(async (request) => {
+  const token = request.data?.token;
+  if (!token || typeof token !== 'string' || token.length < 5 || token.length > 200) {
+    throw new HttpsError('invalid-argument', 'Invalid token');
+  }
+  const LEAD = ['', 'asap', '1week', '2weeks', 'month', 'flexible'];
+  const lead = LEAD.includes(request.data?.leadTimeNeeded) ? request.data.leadTimeNeeded : '';
+  const notes = String(request.data?.deliveryNotes == null ? '' : request.data.deliveryNotes).slice(0, 300);
+  const db = admin.firestore();
+  const acSnap = await db.collection('accounts').where('orderPortalToken', '==', token).limit(1).get();
+  if (acSnap.empty) return { saved: false };
+  const ref = db.collection('workspace/main/ac').doc(acSnap.docs[0].id);
+  const ws = await ref.get();
+  if (!ws.exists) return { saved: false };
+  await ref.update({
+    'portalPrefs.leadTimeNeeded': lead,
+    'portalPrefs.deliveryNotes': notes,
+    'portalPrefs.lastUpdated': admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { saved: true };
+});
+
 exports.lookupPortalToken = onCall(async (request) => {
   const token = request.data?.token;
   if (!token || typeof token !== 'string' || token.length < 5) {
@@ -608,7 +634,11 @@ exports.lookupPortalToken = onCall(async (request) => {
       found: true, isProspect: false, accountId: acId,
       accountName: d.name || '', accountEmail: d.email || '',
       isPbf: d.isPbf || false,
-      address: d.address || d.shipAddress || '',
+      // v273: structured address when the account has one (the order page
+      // fills street/city/state/zip straight from it), and the account's
+      // Billing / AP email so a returning store sees the right one.
+      address: (d.addrParts && d.addrParts.street1) ? d.addrParts : (d.address || d.shipAddress || ''),
+      billingEmail: d.billingEmail || '',
       portalPrefs: d.portalPrefs || {},
     };
   }
@@ -638,7 +668,8 @@ exports.lookupPortalToken = onCall(async (request) => {
         accountId: wsSnap.docs[0].id,
         accountName: d.name || '', accountEmail: d.email || '',
         isPbf: d.isPbf || false,
-        address: d.address || d.shipAddress || '',
+        address: (d.addrParts && d.addrParts.street1) ? d.addrParts : (d.address || d.shipAddress || ''),
+        billingEmail: d.billingEmail || '',
         portalPrefs: d.portalPrefs || {},
       };
     }

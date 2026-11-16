@@ -14,7 +14,7 @@ const PURPL_DIRECT_PER_CASE = PURPL_WHOLESALE_PER_CAN * CANS_PER_CASE; // $27.60
 
 // Bump together with sw.js CACHE on every deploy. Shown in the sidebar so
 // "am I running the new code?" is answerable at a glance.
-const APP_VERSION = 'v272';
+const APP_VERSION = 'v273';
 (function(){ const el = document.getElementById('app-version'); if (el) el.textContent = 'purpl CRM ' + APP_VERSION; })();
 
 function _costs() { return DB?.obj?.('costs', {cogs:{}, target_margin:0.60, overhead_monthly:1200}) || {cogs:{}, target_margin:0.60, overhead_monthly:1200}; }
@@ -3749,7 +3749,77 @@ function _acCardHTML(a, muted) {
   </div>`;
 }
 
+// ── v273: accounts with an incomplete address ──────────────
+// Accounts approved from the old application form often hold only
+// "City, State". This lists them with the most recent address the store
+// typed on a portal order, so each can be fixed in one click.
+function _addrReviewRows() {
+  const orders = (window.PortalDB && PortalDB.getOrders) ? PortalDB.getOrders() : [];
+  const latest = {};
+  orders.forEach(o => {
+    if (!o || !o.accountId || o.isProspect || !_saComplete(o.shipAddress)) return;
+    const t = (o.submittedAt && o.submittedAt.toMillis) ? o.submittedAt.toMillis() : (Date.parse(o.submittedAt) || 0);
+    if (!latest[o.accountId] || t > latest[o.accountId].t) latest[o.accountId] = { t, sa: o.shipAddress };
+  });
+  return DB.a('ac').filter(a => a && a.status !== 'inactive' && !_acAddrUsable(a))
+    .sort((a, b) => (a.name || '') < (b.name || '') ? -1 : 1)
+    .map(a => ({ a, sa: latest[a.id] ? latest[a.id].sa : null }));
+}
+function renderAddrReviewBanner() {
+  const el = document.getElementById('ac-addr-review');
+  if (!el) return;
+  let n = 0;
+  try { n = DB.a('ac').filter(a => a && a.status !== 'inactive' && !_acAddrUsable(a)).length; } catch (e) { n = 0; }
+  if (!n) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = `<div style="margin:0 0 12px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span>${n} account${n === 1 ? ' has' : 's have'} no full address on file (street and zip) — labels and deliveries need one.</span>
+    <button class="btn sm" onclick="openAddrReview()">Review</button></div>`;
+}
+async function openAddrReview() {
+  try { if (window.PortalDB && !PortalDB._loaded) await PortalDB.load(); } catch (e) { console.warn('portal orders unavailable for address review', e); }
+  document.getElementById('addr-review-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'addr-review-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(20,16,28,0.6);display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto';
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  const box = document.createElement('div');
+  box.id = 'addr-review-box';
+  box.style.cssText = 'background:var(--card,#fff);color:var(--text,#1a1a2e);border-radius:12px;max-width:820px;width:100%;padding:18px 20px';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  _renderAddrReview();
+}
+function _renderAddrReview() {
+  const box = document.getElementById('addr-review-box');
+  if (!box) return;
+  const rows = _addrReviewRows();
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 style="margin:0;font-size:17px">Accounts with no full address</h2>
+      <button class="btn sm" onclick="document.getElementById('addr-review-overlay')?.remove()">✕ Close</button>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Where the store has typed a full address on a portal order, you can use it in one click. Otherwise open the account and enter it.</div>
+    ${rows.length ? `<div class="tbl-wrap"><table>
+      <thead><tr><th>Account</th><th>On file</th><th>Most recent order address</th><th></th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td><strong>${escHtml(r.a.name || '—')}</strong></td>
+        <td style="font-size:12.5px;color:var(--muted)">${escHtml(r.a.address || 'nothing')}</td>
+        <td style="font-size:12.5px">${r.sa ? escHtml(_saLine(r.sa)) : '<span style="color:var(--muted)">no portal order with an address</span>'}</td>
+        <td style="white-space:nowrap">${r.sa ? `<button class="btn xs primary" onclick="addrReviewUse('${r.a.id}')">Use this address</button> ` : ''}<button class="btn xs" onclick="document.getElementById('addr-review-overlay')?.remove();editAccount('${r.a.id}')">Edit account</button></td>
+      </tr>`).join('')}</tbody></table></div>`
+      : '<div style="padding:16px;text-align:center;color:var(--muted)">Every account has a full address. Nothing to fix.</div>'}`;
+}
+function addrReviewUse(acId) {
+  const row = _addrReviewRows().find(r => r.a.id === acId);
+  if (!row || !row.sa) { toast('No order address found for that account'); return; }
+  if (_applyOrderAddressToAccount(acId, row.sa, 'address_review')) toast(`Address saved for ${row.a.name || 'account'} ✓`);
+  _renderAddrReview();
+  renderAddrReviewBanner();
+}
+
 function renderAccounts() {
+  try { renderAddrReviewBanner(); } catch (e) { console.warn('address review banner failed', e); } // v273
   let list = DB.a('ac');
   // Populate the fulfillment filter with active distributors so "via {dist}"
   // filtering — including the dashboard drill-down — actually works (the select
@@ -18224,6 +18294,117 @@ async function deletePortalOrder(orderId) {
 
 // ── Confirm portal order flow ─────────────────────────────
 
+// ══════════════════════════════════════════════════════════
+//  v273: ORDER SHIPPING ADDRESS ↔ ACCOUNT ADDRESS
+// ══════════════════════════════════════════════════════════
+// A store types a full shipping address on every portal order, but it used
+// to live only on the order: the account kept whatever the application
+// said (often just "City, State") and shipping labels were built from the
+// account. Now the order's address ships the order, and the owner decides
+// whether it also replaces the address on file.
+function _saComplete(sa) {
+  const t = v => String(v == null ? '' : v).trim();
+  return !!(sa && t(sa.street1) && t(sa.city) && t(sa.state) && t(sa.zip));
+}
+function _saParts(sa) {
+  const t = v => String(v == null ? '' : v).trim().slice(0, 120);
+  return { street1: t(sa.street1), street2: t(sa.street2), city: t(sa.city), state: t(sa.state).toUpperCase().slice(0, 2), zip: t(sa.zip).slice(0, 10) };
+}
+function _saLine(sa) {
+  const p = _saParts(sa);
+  return [p.street1, p.street2, p.city, (p.state + ' ' + p.zip).trim()].filter(Boolean).join(', ');
+}
+// "Usable" = a label could be made from it: street, city and zip.
+function _acAddrUsable(ac) {
+  const p = _shipAddrFor(ac || {});
+  return !!(p.street1 && p.city && p.zip);
+}
+function _addrKey(p) {
+  const n = v => String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return n(p.street1) + '|' + n(p.street2) + '|' + n(p.city) + '|' + n(p.state) + '|' + String(p.zip || '').trim().slice(0, 5);
+}
+// none = the order carries no complete address · fill = the account has no
+// usable address · same = they match · differs = both exist and disagree.
+function _orderAddrState(ac, sa) {
+  if (!_saComplete(sa)) return 'none';
+  if (!_acAddrUsable(ac)) return 'fill';
+  return _addrKey(_shipAddrFor(ac)) === _addrKey(_saParts(sa)) ? 'same' : 'differs';
+}
+// The frozen ship-to stamped on invoices created from a portal order (same
+// shape as a door stamp, so the printed invoice and the label agree). The
+// non-empty locId keeps it selectable as "(saved on invoice)" in the editors.
+function _orderDoorStamp(orderId, sa) {
+  return { locId: 'order-ship-' + orderId, label: '', address: _saLine(sa), addrParts: _saParts(sa), contact: '', phone: '', dropOffRules: '' };
+}
+function _applyOrderAddressToAccount(acId, sa, source) {
+  const ac = DB.a('ac').find(x => x.id === acId);
+  if (!ac || !_saComplete(sa)) return false;
+  const parts = _saParts(sa), line = _saLine(sa);
+  // Map pin: keep the old coordinates for now (the store must not vanish from
+  // Where to Find Us), then re-locate from the new address in the background.
+  const patch = { address: line, addrParts: parts, geocodeFailed: null };
+  let pi = -1;
+  if (Array.isArray(ac.locs) && ac.locs.length) {
+    pi = Math.max(0, ac.locs.findIndex(l => l && l.primary));
+    patch.locs = ac.locs.map((l, i) => i === pi ? { ...l, address: line, addrParts: parts } : l);
+  }
+  DB.updateFields('ac', acId, patch);
+  auditLog('update', 'account', acId, ac.name || '', { field: 'address', from: ac.address || '', to: line, source: source || 'portal_order' });
+  if (window.PlacesAC && PlacesAC.geocode) {
+    Promise.resolve().then(() => PlacesAC.geocode(line)).then(c => {
+      if (!c || typeof c.lat !== 'number' || typeof c.lng !== 'number') return;
+      const cur = DB.a('ac').find(x => x.id === acId);
+      if (!cur || cur.address !== line) return; // edited again meanwhile
+      const cp = { lat: c.lat, lng: c.lng };
+      if (Array.isArray(cur.locs) && cur.locs.length) {
+        const ci = Math.max(0, cur.locs.findIndex(l => l && l.primary));
+        cp.locs = cur.locs.map((l, i) => i === ci ? { ...l, lat: c.lat, lng: c.lng } : l);
+      }
+      DB.updateFields('ac', acId, cp);
+    }).catch(() => {});
+  }
+  return true;
+}
+// The order's own address, or its other-brand twin's (same submission).
+function _poShipAddr(o) {
+  if (!o) return null;
+  if (_saComplete(o.shipAddress)) return o.shipAddress;
+  const paired = PortalDB.getOrders().find(p => _samePortalSubmission(o, p));
+  return (paired && _saComplete(paired.shipAddress)) ? paired.shipAddress : null;
+}
+// Address + billing-email block in the Confirm Order window.
+function _mcpoRenderAddr() {
+  const el = qs('#mcpo-addr');
+  if (!el) return;
+  const o = PortalDB.getOrders().find(x => x.id === _portalOrderId);
+  if (!o) { el.innerHTML = ''; return; }
+  const acId = o.accountId || qs('#mcpo-account-select')?.value || '';
+  const ac = (!o.isProspect && acId) ? (DB.a('ac').find(a => a.id === acId) || null) : null;
+  const sa = _poShipAddr(o);
+  const box = (bg, bd, html) => `<div style="margin-top:8px;padding:8px 10px;background:${bg};border:1px solid ${bd};border-radius:6px;font-size:12.5px;line-height:1.55">${html}</div>`;
+  let h = '';
+  if (sa) {
+    const line = escHtml(_saLine(sa));
+    const st = ac ? _orderAddrState(ac, sa) : 'none';
+    if (!ac) h += box('#f9fafb', '#e5e7eb', `<strong>Ship to (from this order):</strong> ${line}`);
+    else if (st === 'same') h += box('#f0fdf4', '#bbf7d0', `<strong>Ship to:</strong> ${line}<br><span style="color:#166534">Matches the address on file.</span>`);
+    else if (st === 'fill') h += box('#eff6ff', '#bfdbfe', `<strong>Ship to (from this order):</strong> ${line}<br><span style="color:#1e40af">This account has no full address on file — this one will be saved to the account.</span>`);
+    else h += box('#fffbeb', '#fde68a', `<strong>Ship to (from this order):</strong> ${line}<br><strong>On file:</strong> ${escHtml(ac.address || '—')}<br>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;font-weight:600;color:#92400e"><input type="checkbox" id="mcpo-update-addr" style="width:auto;margin:0"> Also update the account's address to this one</label>
+      <span style="color:#92400e">Either way, this order ships to the address the store typed.</span>`);
+  } else {
+    h += box('#f9fafb', '#e5e7eb', 'This order has no complete shipping address — it will ship to the address on the account.');
+  }
+  const oe = String(o.billingEmail || '').trim();
+  if (ac && oe) {
+    const onFile = String(ac.billingEmail || ac.email || '').trim();
+    if (oe.toLowerCase() !== onFile.toLowerCase()) {
+      h += box('#eff6ff', '#bfdbfe', `<strong>Billing email on this order:</strong> ${escHtml(oe)}<br><strong>On file:</strong> ${escHtml(onFile || '—')}<br><span style="color:#1e40af">The invoice goes to the order's email, and it will be saved as this account's billing email. The main contact email is not changed.</span>`);
+    }
+  }
+  el.innerHTML = h;
+}
+
 let _portalOrderId = null;
 
 function openConfirmPortalOrder(id) {
@@ -18281,7 +18462,10 @@ function openConfirmPortalOrder(id) {
       ${o.deliveryWindow?`<div style="font-size:12px;margin-top:4px"><strong>Delivery:</strong> ${escHtml(o.deliveryWindow)}</div>`:''}
     </div>
     ${brandSummary}
+    <div id="mcpo-addr"></div>
   `;
+  _mcpoRenderAddr(); // v273
+  { const _ps = qs('#mcpo-account-select'); if (_ps) _ps.onchange = _mcpoRenderAddr; }
 
   const qtyInput = qs('#mcpo-classic-qty');
   // LF-only orders have no purpl quantity — showing the Classic cases row
@@ -18318,6 +18502,7 @@ async function confirmPortalOrder() {
   if (!_portalOrderId) return;
   if (_confirmPortalInFlight) { toast('Confirming — please wait…'); return; }
   _confirmPortalInFlight = true;
+  const _updAddrChecked = !!qs('#mcpo-update-addr')?.checked; // v273: owner's choice, read before anything closes
   // v255 (B2): stranding recovery — the opening transaction claims the order
   // as 'confirmed' long before the invoice exists. If ANYTHING between the
   // claim and invoice creation throws (config fetch, number allocation, the
@@ -18393,6 +18578,13 @@ async function confirmPortalOrder() {
       if (paired) _c_pairedId = paired.id; // v255 (B2): claimed twin — revert on failure
     }
 
+    // v273: the address the store typed on this order (or its twin).
+    const _poSa = _saComplete(d.shipAddress) ? d.shipAddress : ((paired && _saComplete(paired.shipAddress)) ? paired.shipAddress : null);
+    const _poIsAcct = !!acct.id && !d.isProspect;
+    const _poAddrState = _poSa ? (_poIsAcct ? _orderAddrState(acct, _poSa) : 'differs') : 'none';
+    // Stamp the order's address on the invoices unless it already matches the
+    // account — the label and the printed invoice then use what the store typed.
+    const _poDoor = (_poSa && _poAddrState !== 'same') ? _orderDoorStamp(_portalOrderId, _poSa) : null;
     const purplDoc = d.brand === 'lf' ? paired : d;
     const lfDoc    = d.brand === 'lf' ? d : paired;
     const hasPurpl = purplDoc && (purplDoc.items||[]).some(i => (i.cases||0) > 0);
@@ -18556,7 +18748,7 @@ async function confirmPortalOrder() {
             unitPrice: effectivePrice, pricePerCase: effectivePrice,
             total: i.qty * effectivePrice, lineTotal: i.qty * effectivePrice,
           })),
-          billingEmail: d.billingEmail || acct.email || '',
+          billingEmail: d.billingEmail || acct.email || '', ...(_poDoor ? { deliverTo: { ..._poDoor } } : {}),
           notes: _invNotes, deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: purplDoc.id || _portalOrderId,
@@ -18567,7 +18759,7 @@ async function confirmPortalOrder() {
           date: todayStr, dueDate: dueDateStr,
           total: lfTotal, amount: lfTotal, status: 'draft',
           lineItems: lfItems,
-          billingEmail: d.billingEmail || acct.email || '',
+          billingEmail: d.billingEmail || acct.email || '', ...(_poDoor ? { deliverTo: { ..._poDoor } } : {}),
           notes: _invNotes, deliveryMethod, fulfillmentSource,
           combinedInvoiceId: combId, source: 'portal',
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
@@ -18580,7 +18772,7 @@ async function confirmPortalOrder() {
           date: todayStr, dueDate: dueDateStr, deliveryMethod, fulfillmentSource,
           createdAt: new Date().toISOString(), sentAt: null, paidAt: null,
           purplSubtotal: purplTotal, lfSubtotal: lfTotal, grandTotal: purplTotal + lfTotal,
-          billingEmail: d.billingEmail || acct.email || '',
+          billingEmail: d.billingEmail || acct.email || '', ...(_poDoor ? { deliverTo: { ..._poDoor } } : {}),
           notes: _invNotes, source: 'portal',
           portalOrderId: _portalOrderId,
         }];
@@ -18603,7 +18795,7 @@ async function confirmPortalOrder() {
           })),
           priceType: isDistFulfilled ? 'dist' : 'direct',
           status: 'draft', source: 'portal', brand: 'purpl', deliveryMethod, fulfillmentSource,
-          billingEmail: d.billingEmail || acct.email || '',
+          billingEmail: d.billingEmail || acct.email || '', ...(_poDoor ? { deliverTo: { ..._poDoor } } : {}),
           notes: _invNotes,
           linkedPortalOrderId: _portalOrderId,
         }];
@@ -18619,7 +18811,7 @@ async function confirmPortalOrder() {
           // purpl-only and dual-brand branches do.
           total: lfTotal, amount: lfTotal, status: 'draft', source: 'portal', deliveryMethod, fulfillmentSource,
           lineItems: lfItems,
-          billingEmail: d.billingEmail || acct.email || '',
+          billingEmail: d.billingEmail || acct.email || '', ...(_poDoor ? { deliverTo: { ..._poDoor } } : {}),
           notes: _invNotes,
           linkedPortalOrderId: lfDoc.id || _portalOrderId,
         }];
@@ -18648,6 +18840,27 @@ async function confirmPortalOrder() {
     }
 
     auditLog('portal_confirmed', 'portal_order', _portalOrderId, d.accountName || '', { invoiceId: isDual ? combId : singleInvId }); // v253
+    // v273: carry the order's address / billing email onto the account.
+    // Address: automatic only when the account had none usable; otherwise
+    // only if the owner ticked the box. Billing email: always saved as the
+    // account's Billing / AP email when it differs (owner, 11/16) — the main
+    // contact email is never touched.
+    const _acctNotes = [];
+    try {
+      if (_poIsAcct) {
+        if (_poSa && (_poAddrState === 'fill' || (_poAddrState === 'differs' && _updAddrChecked))) {
+          if (_applyOrderAddressToAccount(acct.id, _poSa, 'portal_order')) _acctNotes.push('address saved to the account');
+        }
+        const _oe = String(d.billingEmail || '').trim();
+        const _onFile = String(acct.billingEmail || acct.email || '').trim();
+        if (_oe && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_oe) && _oe.toLowerCase() !== _onFile.toLowerCase()) {
+          DB.updateFields('ac', acct.id, { billingEmail: _oe });
+          auditLog('update', 'account', acct.id, acct.name || '', { field: 'billingEmail', from: acct.billingEmail || '', to: _oe, source: 'portal_order' });
+          _acctNotes.push('billing email saved to the account');
+        }
+      }
+    } catch (e) { console.error('Account update from portal order failed:', e); }
+    if (_acctNotes.length) setTimeout(() => toast('Account updated: ' + _acctNotes.join(' + '), 7000), 1500);
     // v261: the atomicUpdate above appended the LF stock deductions — check
     // thresholds against the pre-write snapshot taken before the transaction.
     if (hasLf && window._lfPortalBefore) { _lfLowStockCheck(window._lfPortalBefore); window._lfPortalBefore = null; }
@@ -20085,6 +20298,8 @@ async function approveApplication(docId, app) {
   const acId    = uid();
   const token   = generateSecureToken(acId);
   const isPbf   = (app.brandsInterested || []).some(b => b === 'lf' || b === 'lavender');
+  const _ap = (app.addrParts && typeof app.addrParts === 'object') ? app.addrParts : null;
+  const _appAddrParts = (_ap && _saComplete(_ap)) ? _saParts(_ap) : null;
 
   const rec = {
     id:         acId,
@@ -20095,7 +20310,12 @@ async function approveApplication(docId, app) {
     address:    app.address      || '',
     lat:        typeof app.lat === 'number' ? app.lat : null,
     lng:        typeof app.lng === 'number' ? app.lng : null,
-    locations:  app.address ? [{ id: uid(), label: 'Primary', address: app.address, lat: app.lat||null, lng: app.lng||null, dropOffRules: '' }] : [],
+    // v273: the application now carries street/city/state/zip. Save them where
+    // the CRM reads them (addrParts + locs). The old code wrote a `locations`
+    // list that nothing else reads, so approved accounts had no structured
+    // address and labels could not be made from them.
+    addrParts:  _appAddrParts,
+    locs:       app.address ? [{ id: uid(), label: '', address: app.address, lat: typeof app.lat === 'number' ? app.lat : null, lng: typeof app.lng === 'number' ? app.lng : null, addrParts: _appAddrParts, contact: '', phone: '', dropOffRules: '', primary: true, findUs: true }] : [],
     type:       app.storeType    || 'Retail',
     status:     'active',
     isPbf,

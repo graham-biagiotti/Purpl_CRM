@@ -306,6 +306,8 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 .ws-terms2 .ws-term-item{display:flex;gap:10px;font-family:Inter,sans-serif;font-size:13.5px;color:rgba(255,255,255,0.82);line-height:1.65}
 .ws-terms2 .ws-term-dot{color:#C9BEDC;font-weight:700}
 @media(max-width:760px){.ws-steps{grid-template-columns:1fr}.ws-terms2{grid-template-columns:1fr}}
+.ws-addr-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px}
+@media(max-width:480px){.ws-addr-row{grid-template-columns:1fr 1fr}.ws-addr-row .form-group:first-child{grid-column:1/-1}}
 </style>
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon-180.png">
@@ -628,8 +630,30 @@ footer{background:var(--purpl-dark);padding:48px 24px;text-align:center;color:rg
 
         <!-- Store address -->
         <div class="form-group">
-          <label class="form-label ws-form-label" for="ws-address">Store Address</label>
-          <input class="form-input" type="text" id="ws-address" placeholder="City, State is fine">
+          <label class="form-label ws-form-label" for="ws-address">Store Street Address *</label>
+          <input class="form-input" type="text" id="ws-address" placeholder="123 Main St" autocomplete="off">
+          <div class="field-error-msg" id="e-ws-address">Please enter the store's street address.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label ws-form-label" for="ws-address2">Suite / Unit</label>
+          <input class="form-input" type="text" id="ws-address2" placeholder="Optional" maxlength="60">
+        </div>
+        <div class="ws-addr-row">
+          <div class="form-group">
+            <label class="form-label ws-form-label" for="ws-city">City *</label>
+            <input class="form-input" type="text" id="ws-city" maxlength="80">
+            <div class="field-error-msg" id="e-ws-city">Required.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label ws-form-label" for="ws-state">State *</label>
+            <input class="form-input" type="text" id="ws-state" maxlength="2" placeholder="NH" style="text-transform:uppercase">
+            <div class="field-error-msg" id="e-ws-state">2 letters.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label ws-form-label" for="ws-zip">Zip *</label>
+            <input class="form-input" type="text" id="ws-zip" maxlength="10" inputmode="numeric">
+            <div class="field-error-msg" id="e-ws-zip">5 digits.</div>
+          </div>
         </div>
 
         <!-- Business type -->
@@ -792,6 +816,29 @@ function wsFieldError(inputId, errId, show) {
 }
 
 // ── Submit ─────────────────────────────────────────────
+// ── v273: full store address ──────────────────────────
+function wsReadAddress() {
+  var v = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  return { street1: v('ws-address').slice(0, 120), street2: v('ws-address2').slice(0, 60), city: v('ws-city').slice(0, 80),
+           state: v('ws-state').toUpperCase().slice(0, 2), zip: v('ws-zip').slice(0, 10) };
+}
+function wsAddressLine(a) {
+  return [a.street1, a.street2, a.city, (a.state + ' ' + a.zip).trim()].filter(Boolean).join(', ');
+}
+// Picking a suggestion from the address dropdown fills the street box with a
+// whole formatted address; split it into the separate boxes instead. The map
+// location that came with the pick is kept on the street box.
+document.addEventListener('addressSelected', function(e) {
+  var el = e.target;
+  if (!el || el.id !== 'ws-address') return;
+  var parts = null;
+  try { parts = el.dataset.addrParts ? JSON.parse(el.dataset.addrParts) : null; } catch (err) { parts = null; }
+  if (!parts) return;
+  if (parts.street1) el.value = parts.street1;
+  var set = function(id, val) { var t = document.getElementById(id); if (t && val) t.value = val; };
+  set('ws-address2', parts.street2); set('ws-city', parts.city); set('ws-state', parts.state); set('ws-zip', parts.zip);
+});
+
 function wsSubmitApplication() {
   var btn    = document.getElementById('ws-submit-btn');
   var errEl  = document.getElementById('ws-apply-err');
@@ -818,6 +865,17 @@ function wsSubmitApplication() {
 
   wsFieldError('ws-email', 'e-ws-email', !emailValid);
   if (!emailValid) hasError = true;
+
+  // v273: a full store address is required (street, city, state, zip) — the
+  // old single "City, State is fine" box left approved accounts without an
+  // address a delivery or label could use.
+  var wsAddr = wsReadAddress();
+  var _zipOk = /^\d{5}(-\d{4})?$/.test(wsAddr.zip), _stOk = /^[A-Z]{2}$/.test(wsAddr.state);
+  wsFieldError('ws-address', 'e-ws-address', !wsAddr.street1);
+  wsFieldError('ws-city', 'e-ws-city', !wsAddr.city);
+  wsFieldError('ws-state', 'e-ws-state', !_stOk);
+  wsFieldError('ws-zip', 'e-ws-zip', !_zipOk);
+  if (!wsAddr.street1 || !wsAddr.city || !_stOk || !_zipOk) hasError = true;
 
   if (hasError) return;
 
@@ -857,7 +915,8 @@ function wsSubmitApplication() {
         contactName:     contactName,
         email:           email,
         phone:           document.getElementById('ws-phone').value.trim(),
-        address:         addrEl.value.trim(),
+        address:         wsAddressLine(wsAddr),
+        addrParts:       wsAddr,
         lat:             addrLat,
         lng:             addrLng,
         storeType:       document.getElementById('ws-type').value,

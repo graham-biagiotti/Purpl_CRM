@@ -1371,7 +1371,8 @@ function init() {
     document.getElementById('locked-name').textContent = accountName;
     document.getElementById('matched-section').style.display = 'block';
     document.getElementById('unmatched-section').style.display = 'none';
-    if (accountEmail) document.getElementById('billing-email').value = accountEmail;
+    // v273: the account's Billing / AP email (saved from a past order) wins over the main contact email.
+    if (data.billingEmail || accountEmail) document.getElementById('billing-email').value = data.billingEmail || accountEmail;
     var banner = document.getElementById('returning-banner');
     if (banner) banner.style.display = 'block';
 
@@ -1759,25 +1760,19 @@ function submitOrder() {
           }
         });
 
-        firebase.firestore()
-          .collection('accounts')
-          .doc(accountId)
-          .update({
-            // Merge prefs — spread existing first via FieldValue is not possible;
-            // we use set with merge to avoid overwriting unrelated prefs fields.
-            'portalPrefs.billingEmail': billingEmail,
-            'portalPrefs.distributors': getDistributors(),
-            'portalPrefs.distributorDirectOpen': document.getElementById('distributor-direct-open')?.value||'',
-            'portalPrefs.distributorContactOk': document.getElementById('distributor-contact-ok')?.checked||false,
-            'portalPrefs.leadTimeNeeded': document.getElementById('lead-time-needed')?.value||'',
-            'portalPrefs.socialHandle': (document.getElementById('social-handle')?.value||'').trim(),
-            'portalPrefs.deliveryNotes': (document.getElementById('delivery-window')?.value||'').trim(),
-            'portalPrefs.lastUpdated': firebase.firestore.FieldValue.serverTimestamp(),
-            ...(lfItems.length ? {'portalPrefs.lfLastOrder': lfLastOrder} : {}),
-            ...(cases > 0 ? {'portalPrefs.purplLastCases': cases} : {}),
-          }).catch(function(e) {
-            console.log('Prefs save error:', e);
-          });
+        // v273: this used to write straight to the account record, which
+        // the security rules (rightly) refuse for a customer — so nothing was
+        // ever remembered. It now goes through a server function that checks
+        // the personal link first. Best-effort: a failure never blocks the order.
+        var _prefsToken = '';
+        try { _prefsToken = sessionStorage.getItem('pbf_portal_token') || ''; } catch (e) {}
+        if (_prefsToken) {
+          firebase.functions().httpsCallable('savePortalPrefs')({
+            token: _prefsToken,
+            leadTimeNeeded: document.getElementById('lead-time-needed')?.value || '',
+            deliveryNotes: (document.getElementById('delivery-window')?.value || '').trim(),
+          }).catch(function(e) { console.log('Prefs save error:', e); });
+        }
       }
       // Build structured items for confirmation email (server renders HTML)
       var _emailItems = [];
