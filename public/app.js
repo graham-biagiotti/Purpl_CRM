@@ -18323,12 +18323,31 @@ function _addrKey(p) {
   const n = v => String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, '');
   return n(p.street1) + '|' + n(p.street2) + '|' + n(p.city) + '|' + n(p.state) + '|' + String(p.zip || '').trim().slice(0, 5);
 }
+// Gate F2: "no usable address" is not the same as "no real address". Only an
+// account with NO street at all (blank, or just "City, State [zip]") is
+// filled in automatically. One the parser cannot split — "PO Box 12 Warner
+// NH 03278", "45 N Broadway Salem NH 03079" — is a real address someone
+// typed: it is shown beside the order's and the owner decides.
+function _acAddrStreetless(ac) {
+  if (ac && ac.addrParts && String(ac.addrParts.street1 || '').trim()) return false;
+  const line = String((ac && (ac.shipAddress || ac.address)) || '').replace(/\b\d{5}(-\d{4})?\b/g, '');
+  return !/\d/.test(line);
+}
+// Gate F6: an order may be going to one of the account's OTHER locations.
+// Returns the location whose address matches the order's, if any.
+function _orderAddrLoc(ac, sa) {
+  if (!ac || !_saComplete(sa) || !Array.isArray(ac.locs)) return null;
+  const want = _addrKey(_saParts(sa));
+  return ac.locs.find(l => l && _addrKey(_shipAddrFor({ addrParts: l.addrParts, address: l.address })) === want) || null;
+}
 // none = the order carries no complete address · fill = the account has no
-// usable address · same = they match · differs = both exist and disagree.
+// street at all · same = matches the account (or one of its locations) ·
+// differs = both exist and disagree.
 function _orderAddrState(ac, sa) {
   if (!_saComplete(sa)) return 'none';
-  if (!_acAddrUsable(ac)) return 'fill';
-  return _addrKey(_shipAddrFor(ac)) === _addrKey(_saParts(sa)) ? 'same' : 'differs';
+  if (_acAddrUsable(ac) && _addrKey(_shipAddrFor(ac)) === _addrKey(_saParts(sa))) return 'same';
+  if (_orderAddrLoc(ac, sa)) return 'same';
+  return _acAddrStreetless(ac) ? 'fill' : 'differs';
 }
 // The frozen ship-to stamped on invoices created from a portal order (same
 // shape as a door stamp, so the printed invoice and the label agree). The
@@ -18387,7 +18406,10 @@ function _mcpoRenderAddr() {
     const line = escHtml(_saLine(sa));
     const st = ac ? _orderAddrState(ac, sa) : 'none';
     if (!ac) h += box('#f9fafb', '#e5e7eb', `<strong>Ship to (from this order):</strong> ${line}`);
-    else if (st === 'same') h += box('#f0fdf4', '#bbf7d0', `<strong>Ship to:</strong> ${line}<br><span style="color:#166534">Matches the address on file.</span>`);
+    else if (st === 'same') {
+      const _ml = _orderAddrLoc(ac, sa);
+      h += box('#f0fdf4', '#bbf7d0', `<strong>Ship to:</strong> ${line}<br><span style="color:#166534">${_ml && _ml.label ? 'Matches this account\'s location: ' + escHtml(_ml.label) + '.' : 'Matches the address on file.'}</span>`);
+    }
     else if (st === 'fill') h += box('#eff6ff', '#bfdbfe', `<strong>Ship to (from this order):</strong> ${line}<br><span style="color:#1e40af">This account has no full address on file — this one will be saved to the account.</span>`);
     else h += box('#fffbeb', '#fde68a', `<strong>Ship to (from this order):</strong> ${line}<br><strong>On file:</strong> ${escHtml(ac.address || '—')}<br>
       <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;font-weight:600;color:#92400e"><input type="checkbox" id="mcpo-update-addr" style="width:auto;margin:0"> Also update the account's address to this one</label>
@@ -18399,7 +18421,14 @@ function _mcpoRenderAddr() {
   if (ac && oe) {
     const onFile = String(ac.billingEmail || ac.email || '').trim();
     if (oe.toLowerCase() !== onFile.toLowerCase()) {
-      h += box('#eff6ff', '#bfdbfe', `<strong>Billing email on this order:</strong> ${escHtml(oe)}<br><strong>On file:</strong> ${escHtml(onFile || '—')}<br><span style="color:#1e40af">The invoice goes to the order's email, and it will be saved as this account's billing email. The main contact email is not changed.</span>`);
+      // Gate F1: saved as the billing email by default (owner's call) when the
+      // order came in on the store's own link — but it is a box he can untick,
+      // and it starts UNticked when he matched the order to an account by hand
+      // (the email could be anyone's).
+      const _viaLink = !!o.accountId;
+      h += box('#eff6ff', '#bfdbfe', `<strong>Billing email on this order:</strong> ${escHtml(oe)}<br><strong>On file:</strong> ${escHtml(onFile || '—')}<br>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;font-weight:600;color:#1e40af"><input type="checkbox" id="mcpo-update-bill" ${_viaLink ? 'checked' : ''} style="width:auto;margin:0"> Save this as the account's billing email</label>
+        <span style="color:#1e40af">This invoice goes to the order's email either way. The main contact email is not changed.</span>`);
     }
   }
   el.innerHTML = h;
@@ -18503,6 +18532,7 @@ async function confirmPortalOrder() {
   if (_confirmPortalInFlight) { toast('Confirming — please wait…'); return; }
   _confirmPortalInFlight = true;
   const _updAddrChecked = !!qs('#mcpo-update-addr')?.checked; // v273: owner's choice, read before anything closes
+  const _updBillChecked = !!qs('#mcpo-update-bill')?.checked; // gate F1: no box on screen = nothing is saved
   // v255 (B2): stranding recovery — the opening transaction claims the order
   // as 'confirmed' long before the invoice exists. If ANYTHING between the
   // claim and invoice creation throws (config fetch, number allocation, the
@@ -18584,7 +18614,14 @@ async function confirmPortalOrder() {
     const _poAddrState = _poSa ? (_poIsAcct ? _orderAddrState(acct, _poSa) : 'differs') : 'none';
     // Stamp the order's address on the invoices unless it already matches the
     // account — the label and the printed invoice then use what the store typed.
-    const _poDoor = (_poSa && _poAddrState !== 'same') ? _orderDoorStamp(_portalOrderId, _poSa) : null;
+    // Gate F6: an order going to one of the account's other locations is
+    // stamped with THAT location (its label, contact and drop-off rules).
+    const _poLoc = (_poSa && _poIsAcct) ? _orderAddrLoc(acct, _poSa) : null;
+    const _poDoor = !_poSa ? null
+      : (_poAddrState !== 'same') ? _orderDoorStamp(_portalOrderId, _poSa)
+      : (_poLoc && !_poLoc.primary && (acct.locs || []).length > 1)
+        ? { locId: _poLoc.id, label: _poLoc.label || '', address: _poLoc.address || '', addrParts: _poLoc.addrParts || _saParts(_poSa), contact: _poLoc.contact || '', phone: _poLoc.phone || '', dropOffRules: _poLoc.dropOffRules || '' }
+        : null;
     const purplDoc = d.brand === 'lf' ? paired : d;
     const lfDoc    = d.brand === 'lf' ? d : paired;
     const hasPurpl = purplDoc && (purplDoc.items||[]).some(i => (i.cases||0) > 0);
@@ -18842,9 +18879,10 @@ async function confirmPortalOrder() {
     auditLog('portal_confirmed', 'portal_order', _portalOrderId, d.accountName || '', { invoiceId: isDual ? combId : singleInvId }); // v253
     // v273: carry the order's address / billing email onto the account.
     // Address: automatic only when the account had none usable; otherwise
-    // only if the owner ticked the box. Billing email: always saved as the
-    // account's Billing / AP email when it differs (owner, 11/16) — the main
-    // contact email is never touched.
+    // only if the owner ticked the box. Billing email: saved as the account's
+    // Billing / AP email when it differs and its box is ticked (ticked by
+    // default for orders on the store's own link — owner, 11/16; gate F1) —
+    // the main contact email is never touched.
     const _acctNotes = [];
     try {
       if (_poIsAcct) {
@@ -18853,7 +18891,7 @@ async function confirmPortalOrder() {
         }
         const _oe = String(d.billingEmail || '').trim();
         const _onFile = String(acct.billingEmail || acct.email || '').trim();
-        if (_oe && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_oe) && _oe.toLowerCase() !== _onFile.toLowerCase()) {
+        if (_updBillChecked && _oe && _oe.length < 200 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_oe) && _oe.toLowerCase() !== _onFile.toLowerCase()) {
           DB.updateFields('ac', acct.id, { billingEmail: _oe });
           auditLog('update', 'account', acct.id, acct.name || '', { field: 'billingEmail', from: acct.billingEmail || '', to: _oe, source: 'portal_order' });
           _acctNotes.push('billing email saved to the account');

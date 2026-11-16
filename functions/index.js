@@ -599,8 +599,15 @@ exports.savePortalPrefs = onCall(async (request) => {
   const notes = String(request.data?.deliveryNotes == null ? '' : request.data.deliveryNotes).slice(0, 300);
   const db = admin.firestore();
   const acSnap = await db.collection('accounts').where('orderPortalToken', '==', token).limit(1).get();
-  if (acSnap.empty) return { saved: false };
-  const ref = db.collection('workspace/main/ac').doc(acSnap.docs[0].id);
+  let ref = null;
+  if (!acSnap.empty) ref = db.collection('workspace/main/ac').doc(acSnap.docs[0].id);
+  else {
+    // Gate F7: same fallback as lookupPortalToken — the token may exist only
+    // on the workspace record.
+    const wsSnap = await db.collection('workspace/main/ac').where('orderPortalToken', '==', token).limit(1).get();
+    if (!wsSnap.empty) ref = wsSnap.docs[0].ref;
+  }
+  if (!ref) return { saved: false };
   const ws = await ref.get();
   if (!ws.exists) return { saved: false };
   await ref.update({

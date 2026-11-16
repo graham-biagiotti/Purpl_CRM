@@ -834,9 +834,21 @@ document.addEventListener('addressSelected', function(e) {
   var parts = null;
   try { parts = el.dataset.addrParts ? JSON.parse(el.dataset.addrParts) : null; } catch (err) { parts = null; }
   if (!parts) return;
-  if (parts.street1) el.value = parts.street1;
+  // Gate F4: a town-level pick has no street — don't leave "Warner, NH, USA"
+  // sitting in the street box where it would pass as a street.
+  el.value = parts.street1 || '';
   var set = function(id, val) { var t = document.getElementById(id); if (t && val) t.value = val; };
   set('ws-address2', parts.street2); set('ws-city', parts.city); set('ws-state', parts.state); set('ws-zip', parts.zip);
+});
+
+// Gate F5: the map location belongs to the address that was picked. If the
+// applicant then changes city/state/zip by hand, it no longer applies.
+['ws-city', 'ws-state', 'ws-zip'].forEach(function(id) {
+  document.addEventListener('input', function(e) {
+    if (!e.target || e.target.id !== id) return;
+    var st = document.getElementById('ws-address');
+    if (st) { delete st.dataset.lat; delete st.dataset.lng; delete st.dataset.addrParts; }
+  });
 });
 
 function wsSubmitApplication() {
